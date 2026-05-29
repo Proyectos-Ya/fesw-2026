@@ -40,7 +40,7 @@ La estructura base acordada para el JSON de la HdU 01 es la siguiente:
 
 ## 2. Flujo de Trabajo en GitHub (Git Feature Branch Workflow)
 
-Para asegurar la calidad del código y mantener el orden en nuestro único repositorio (Monorepo), todo desarrollo deberá seguir estrictamente este flujo automatizado.
+Para asegurar la calidad del código y mantener el orden en nuestro único repositorio, todo desarrollo deberá seguir estrictamente este flujo automatizado.
 
 ### Las Ramas Base
 * **`main` (Producción):** Código 100% estable, probado y funcional. Nadie sube código directo aquí.
@@ -49,24 +49,16 @@ Para asegurar la calidad del código y mantener el orden en nuestro único repos
 ### Paso a Paso para Desarrolladores (Octavia y Benjamín)
 
 1.  **Sincronizar Local:** Antes de empezar, ve a `develop` y descarga lo último:
-    ```bash
     git checkout develop
     git pull origin develop
-    ```
 2.  **Crear Rama de Tarea:** Crea una rama temporal desde `develop` usando la nomenclatura `feat/hdu1-[nombre-tarea]` o `fix/[nombre-bug]`:
-    ```bash
     git checkout -b feat/hdu1-frontend-form
-    ```
 3.  **Desarrollar y Commitear:** Trabaja en tu carpeta (`/frontend` o `/backend`). Haz commits descriptivos:
-    ```bash
     git add .
     git commit -m "feat: implementado formulario con validaciones de cliente"
-    ```
 4.  **Mover Tarjeta (Manual):** En el tablero de GitHub Projects, arrastra tu tarjeta a **In Progress**.
 5.  **Subir Rama:** Sube tus cambios al repositorio remoto:
-    ```bash
     git push -u origin feat/hdu1-frontend-form
-    ```
 6.  **Abrir Pull Request (PR):**
     * Entra a GitHub Web y haz clic en **Compare & pull request**.
     * **CRUCIAL:** Cambia la rama base para que apunte a **`develop`** (NO a `main`). Debe quedar: `base: develop ⬅ compare: feat/hdu1-...`.
@@ -80,10 +72,8 @@ Para asegurar la calidad del código y mantener el orden en nuestro único repos
 Apenas una tarjeta entre a la columna **In Review / QA**, se iniciará el proceso de revisión:
 
 1.  **Testing Local:** Alfredo descargará la rama correspondiente en su entorno local para realizar pruebas de caja negra, validación de inputs y manejo de errores (ej. simulación de timeouts).
-    ```bash
     git fetch origin
     git checkout feat/hdu1-frontend-form
-    ```
 2.  **Revisión de Código:** Se revisará la limpieza del código en la pestaña **Files changed** del PR en GitHub.
 3.  **Dictamen:**
     * Si hay fallas, Alfredo comentará las líneas afectadas y seleccionará **Request changes** (vuelve a desarrollo).
