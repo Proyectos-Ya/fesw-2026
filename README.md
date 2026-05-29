@@ -1,0 +1,51 @@
+# ProyectosYA - Monorepo
+
+Bienvenido al repositorio principal de **ProyectosYA**, una plataforma de matching y gestión de licitaciones de Mercado Público potenciada por Inteligencia Artificial.
+
+El repositorio está organizado como un monorepo bajo el directorio `monorepo/`:
+* [Frontend (Next.js)](file:///d:/ProyectosYA/monorepo/frontend)
+* [Backend (FastAPI)](file:///d:/ProyectosYA/monorepo/backend)
+
+---
+
+## Configuración de Asistentes y Agentes de IA
+
+Si utilizas asistentes de código basados en IA (**Antigravity, Claude Code, Cursor, OpenCode, Copilot**, etc.), es **fundamental** configurarlos para que respeten las reglas y estándares de este repositorio. Esto evitará conflictos de arquitectura, commits mal estructurados o pushes no autorizados.
+
+### ¿Cómo configurarlos con `AGENTS.md` y `SKILL.md`?
+
+En la raíz del repositorio cuentas con dos guías críticas:
+* [AGENTS.md](file:///d:/ProyectosYA/AGENTS.md): Reglas de arquitectura, tecnologías y dependencias obligatorias del proyecto.
+* [SKILL.md](file:///d:/ProyectosYA/SKILL.md): Instrucciones operativas para agentes en Git (formato de commits de IA y prohibición estricta de push).
+
+#### 1. Configuración en Cursor / VS Code (Cursor Rules)
+Para que Cursor use estas reglas automáticamente en todos tus chats y ediciones:
+* El repositorio lee las reglas de forma nativa al incluir referencias de contexto.
+* Puedes configurar el asistente añadiendo las reglas a la configuración de tu área de trabajo o creando un enlace en tus instrucciones de Cursor:
+  > *"Siempre lee, respeta y sigue estrictamente las directrices del archivo [AGENTS.md](file:///d:/ProyectosYA/AGENTS.md) y [SKILL.md](file:///d:/ProyectosYA/SKILL.md) antes de escribir código, hacer pruebas o realizar cualquier commit."*
+
+#### 2. Configuración en Antigravity / Claude Code
+Cuando inicies una conversación o un agente autónomo de Antigravity/Claude Code:
+* Puedes referenciar directamente los archivos en tu prompt inicial:
+  `@AGENTS.md @SKILL.md`
+* También puedes configurar las instrucciones del sistema del agente en tu configuración local del espacio de trabajo para cargar siempre el contexto de estos archivos.
+
+#### 3. Configuración en OpenCode / Copilot (Instrucciones Personalizadas de Workspace)
+Puedes definir reglas en tu editor de código para que el asistente de IA las consuma por defecto.
+* Crea o edita el archivo `.vscode/settings.json` en la raíz de tu workspace y añade las directrices en la sección de configuraciones personalizadas del agente de IA:
+  ```json
+  {
+    "github.copilot.chat.codeGeneration.instructions": [
+      "Lee y adhiérete estrictamente a las reglas de desarrollo de AGENTS.md y SKILL.md en la raíz del proyecto."
+    ]
+  }
+  ```
+
+---
+
+## Reglas de Oro para Todos los Desarrolladores y Agentes
+
+1. **Gestor de Dependencias**: Usa únicamente **`pnpm`** en la carpeta `monorepo/frontend` por motivos de seguridad y velocidad.
+2. **Ciclo TDD**: Nunca confirmes código sin haber corrido la suite de pruebas (`pytest` en backend y `pnpm run test` en frontend).
+3. **Tipado Estricto (TypeScript)**: Está estrictamente prohibido utilizar el tipo `any`. Todo código debe hacer uso de tipado fuerte (definiendo interfaces, tipos concretos o genéricos).
+4. **Commits y Push**: Sigue el estándar de Conventional Commits. Si dejas que una IA haga el commit por ti, asegúrate de que incluya la etiqueta `[AI Generated]`. **Las IAs tienen prohibido hacer push directo al origen.**

@@ -1,0 +1,28 @@
+[tool.ruff]
+# Target Python version
+target-version = "py312"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+# Enable lint rules
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort (import sorting)
+# B: flake8-bugbear
+# Q: flake8-quotes
+# UP: pyupgrade (modern Python syntax suggestions)
+lint.select = ["E", "F", "I", "B", "Q", "UP"]
+lint.ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
