@@ -35,7 +35,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 
 ---
 
-## 3. Control de Calidad y Aprobación (Responsable: Alfredo Iturra)
+## 3. Control de Calidad y Aprobación (Responsable: Alfredo)
 
 Apenas una tarjeta entre a la columna **In Review / QA**, se iniciará el proceso de revisión:
 
