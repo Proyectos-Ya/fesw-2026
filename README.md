@@ -12,11 +12,11 @@ El repositorio está organizado como un monorepo bajo el directorio `monorepo/`:
 
 Para obtener información detallada sobre la instalación, configuración y la arquitectura de cada módulo, puedes revisar los siguientes documentos:
 
-* 💻 **Frontend**: Consulta el [README de Frontend](file:///d:/ProyectosYA/monorepo/frontend/README.md) para conocer las dependencias, la Screaming Architecture y cómo iniciar el servidor de desarrollo de Next.js.
-* 🐍 **Backend**: Consulta el [README de Backend](file:///d:/ProyectosYA/monorepo/backend/README.md) para configurar el entorno virtual de Python, iniciar la base de datos PostgreSQL mediante Docker, y levantar la API con FastAPI.
+* 💻 **Frontend**: Consulta el [README de Frontend](./monorepo/frontend/README.md) para conocer las dependencias, la Screaming Architecture y cómo iniciar el servidor de desarrollo de Next.js.
+* 🐍 **Backend**: Consulta el [README de Backend](./monorepo/backend/README.md) para configurar el entorno virtual de Python, iniciar la base de datos PostgreSQL mediante Docker, y levantar la API con FastAPI.
 * 📋 **Historias de Usuario (User Stories)**:
-  - Para conocer el alcance y criterios de aceptación del producto mínimo viable, lee [Historias de Usuario - MVP](file:///d:/ProyectosYA/user-story/user-stories-mvp.md).
-  - Para ver el roadmap y las historias planificadas para el resto del año, revisa [Historias de Usuario - Anual](file:///d:/ProyectosYA/user-story/user-stories-anual.md).
+  - Para conocer el alcance y criterios de aceptación del producto mínimo viable, lee [Historias de Usuario - MVP](./user-story/user-stories-mvp.md).
+  - Para ver el roadmap y las historias planificadas para el resto del año, revisa [Historias de Usuario - Anual](./user-story/user-stories-anual.md).
 
 ---
 
@@ -27,8 +27,8 @@ Si utilizas asistentes de código basados en IA (**Antigravity, Claude Code, Cur
 ### ¿Cómo configurarlos con `AGENTS.md` y `SKILL.md`?
 
 En la raíz del repositorio cuentas con dos guías críticas:
-* [AGENTS.md](file:///d:/ProyectosYA/AGENTS.md): Reglas de arquitectura, tecnologías y dependencias obligatorias del proyecto.
-* [SKILL.md](file:///d:/ProyectosYA/SKILL.md): Instrucciones operativas para agentes en Git (formato de commits de IA y prohibición estricta de push).
+* [AGENTS.md](./ProyectosYA/AGENTS.md): Reglas de arquitectura, tecnologías y dependencias obligatorias del proyecto.
+* [SKILL.md](./SKILL.md): Instrucciones operativas para agentes en Git (formato de commits de IA y prohibición estricta de push).
 
 #### 1. Configuración en Cursor / VS Code (Cursor Rules)
 Para que Cursor use estas reglas automáticamente en todos tus chats y ediciones:
