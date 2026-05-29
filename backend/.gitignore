@@ -1,0 +1,9 @@
+.python-version
+.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+
