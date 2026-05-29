@@ -6,7 +6,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 * **`main` (Producción):** Código 100% estable, probado y funcional. Nadie sube código directo aquí.
 * **`develop` (Desarrollo):** Rama de integración diaria. Es la base para iniciar cualquier tarea.
 
-### Paso a Paso para Desarrolladores
+### Paso a Paso para Desarrolladores (Octavia y Benjamin)
 
 1.  **Sincronizar Local:** Antes de empezar, vayan a `develop` y ejecuten lo último:
     ```bash
