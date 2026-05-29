@@ -1,6 +1,6 @@
-## 🔄 2. Flujo de Trabajo en GitHub (Git Feature Branch Workflow)
+## Flujo de Trabajo en GitHub 
 
-Para asegurar la calidad del código y mantener el orden en nuestro único repositorio (Monorepo), todo desarrollo deberá seguir estrictamente este flujo automatizado.
+Para asegurar la calidad del código y mantener el orden en nuestro repositorio, todo desarrollo deberá seguir estrictamente este flujo automatizado.
 
 ### Las Ramas Base
 * **`main` (Producción):** Código 100% estable, probado y funcional. Nadie sube código directo aquí.
@@ -8,29 +8,29 @@ Para asegurar la calidad del código y mantener el orden en nuestro único repos
 
 ### Paso a Paso para Desarrolladores (Octavia y Benjamín)
 
-1.  **Sincronizar Local:** Antes de empezar, ve a `develop` y descarga lo último:
+1.  **Sincronizar Local:** Antes de empezar, vayan a `develop` y ejecuten lo último:
     ```bash
     git checkout develop
     git pull origin develop
     ```
-2.  **Crear Rama de Tarea:** Crea una rama temporal desde `develop` usando la nomenclatura `feat/hdu1-[nombre-tarea]` o `fix/[nombre-bug]`:
+2.  **Crear Rama de Tarea:** Creen una rama temporal desde `develop` usando la nomenclatura `feat/hdu1-[nombre-tarea]` o `fix/[nombre-bug]`:
     ```bash
     git checkout -b feat/hdu1-frontend-form
     ```
-3.  **Desarrollar y Commitear:** Trabaja en tu carpeta (`/frontend` o `/backend`). Haz commits descriptivos:
+3.  **Desarrollar y Commitear:** Trabajen en su carpeta (`/frontend` o `/backend`). Hagan commits descriptivos:
     ```bash
     git add .
     git commit -m "feat: implementado formulario con validaciones de cliente"
     ```
-4.  **Mover Tarjeta (Manual):** En el tablero de GitHub Projects, arrastra tu tarjeta a **In Progress**.
-5.  **Subir Rama:** Sube tus cambios al repositorio remoto:
+4.  **Mover Tarjeta (Manual):** En el tablero de GitHub Projects, arrastren su tarjeta a **In Progress**.
+5.  **Subir Rama:** Subam sus cambios al repositorio remoto:
     ```bash
     git push -u origin feat/hdu1-frontend-form
     ```
 6.  **Abrir Pull Request (PR):**
-    * Entra a GitHub Web y haz clic en **Compare & pull request**.
-    * ⚠️ **CRUCIAL:** Cambia la rama base para que apunte a **`develop`** (NO a `main`). Debe quedar: `base: develop ⬅ compare: feat/hdu1-...`.
-    * En la descripción, enlaza el Issue escribiendo **`Closes #X`** (donde X es el número de la tarea).
+    * Entren a GitHub Web y hagan clic en **Compare & pull request**.
+    * **CRUCIAL:** Cambien la rama base para que apunte a **`develop`** (NO a `main`). Debe quedar: `base: develop ⬅ compare: feat/hdu1-...`.
+    * En la descripción, enlazen el Issue escribiendo **`Closes #X`** (donde X es el número de la tarea).
     * *La tarjeta se moverá automáticamente en el tablero a **In Review / QA**.*
 
 ---
