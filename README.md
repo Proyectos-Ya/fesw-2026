@@ -8,6 +8,18 @@ El repositorio está organizado como un monorepo bajo el directorio `monorepo/`:
 
 ---
 
+## 📚 Documentación del Proyecto
+
+Para obtener información detallada sobre la instalación, configuración y la arquitectura de cada módulo, puedes revisar los siguientes documentos:
+
+* 💻 **Frontend**: Consulta el [README de Frontend](file:///d:/ProyectosYA/monorepo/frontend/README.md) para conocer las dependencias, la Screaming Architecture y cómo iniciar el servidor de desarrollo de Next.js.
+* 🐍 **Backend**: Consulta el [README de Backend](file:///d:/ProyectosYA/monorepo/backend/README.md) para configurar el entorno virtual de Python, iniciar la base de datos PostgreSQL mediante Docker, y levantar la API con FastAPI.
+* 📋 **Historias de Usuario (User Stories)**:
+  - Para conocer el alcance y criterios de aceptación del producto mínimo viable, lee [Historias de Usuario - MVP](file:///d:/ProyectosYA/user-story/user-stories-mvp.md).
+  - Para ver el roadmap y las historias planificadas para el resto del año, revisa [Historias de Usuario - Anual](file:///d:/ProyectosYA/user-story/user-stories-anual.md).
+
+---
+
 ## Configuración de Asistentes y Agentes de IA
 
 Si utilizas asistentes de código basados en IA (**Antigravity, Claude Code, Cursor, OpenCode, Copilot**, etc.), es **fundamental** configurarlos para que respeten las reglas y estándares de este repositorio. Esto evitará conflictos de arquitectura, commits mal estructurados o pushes no autorizados.
