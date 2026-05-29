@@ -8,7 +8,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 
 ### Paso a Paso para Desarrolladores (Octavia y Benjamin)
 
-1.  **Sincronizar Local:** Antes de empezar, vayan a `develop` y ejecuten lo último:
+1.  **Sincronizar Local:** Antes de empezar, vayan a `develop` y ejecuten:
     ```bash
     git checkout develop
     git pull origin develop
