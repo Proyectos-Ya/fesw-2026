@@ -30,7 +30,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 6.  **Abrir Pull Request (PR):**
     * Entren a GitHub Web y hagan clic en **Compare & pull request**.
     * **CRUCIAL:** Cambien la rama base para que apunte a **`develop`** (NO a `main`). Debe quedar: `base: develop ⬅ compare: feat/hdu1-...`.
-    * En la descripción, enlazen el Issue escribiendo **`Closes #X`** (donde X es el número de la tarea).
+    * En la descripción, enlazen el issue escribiendo **`Closes #X`** (donde X es el número de la tarea).
     * *La tarjeta se moverá automáticamente en el tablero a **In Review / QA**.*
 
 ---
