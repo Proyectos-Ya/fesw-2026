@@ -1,6 +1,6 @@
 ## Flujo de Trabajo en GitHub 
 
-Para asegurar la calidad del código y mantener el orden en nuestro repositorio, todo desarrollo deberá seguir este flujo automatizado.
+Para asegurar la calidad del código y mantener el orden en nuestro repositorio, todo desarrollo deberá seguir este flujo .
 
 ### Las Ramas Base
 * **`main` (Producción):** Código 100% estable, probado y funcional. Nadie sube código directo aquí.
