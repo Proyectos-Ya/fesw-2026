@@ -6,7 +6,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 * **`main` (Producción):** Código 100% estable, probado y funcional. Nadie sube código directo aquí.
 * **`develop` (Desarrollo):** Rama de integración diaria. Es la base para iniciar cualquier tarea.
 
-### Paso a Paso para Desarrolladores (Octavia y Benjamín)
+### Paso a Paso para Desarrolladores
 
 1.  **Sincronizar Local:** Antes de empezar, vayan a `develop` y ejecuten lo último:
     ```bash
@@ -35,7 +35,7 @@ Para asegurar la calidad del código y mantener el orden en nuestro repositorio,
 
 ---
 
-## 🧪 3. Control de Calidad y Aprobación (Responsable: Alfredo Iturra)
+## 3. Control de Calidad y Aprobación (Responsable: Alfredo Iturra)
 
 Apenas una tarjeta entre a la columna **In Review / QA**, se iniciará el proceso de revisión:
 
