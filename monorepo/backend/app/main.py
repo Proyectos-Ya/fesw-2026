@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routers import proveedores
 
 app = FastAPI(
     title="ProyectosYA API",
@@ -27,3 +28,7 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+
+app.include_router(proveedores.router)
