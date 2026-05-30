@@ -1,6 +1,9 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 pydantic>=2.6.0
+pydantic-settings>=2.7.0
+sqlmodel>=0.0.38
+asyncpg>=0.29.0
 python-dotenv>=1.0.0
 ruff>=0.3.0
 pyright>=1.1.350
