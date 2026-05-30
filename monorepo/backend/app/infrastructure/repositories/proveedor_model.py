@@ -4,14 +4,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Column, TEXT
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import declared_attr
 from sqlmodel import Field, SQLModel
 
 
 class ProveedorModel(SQLModel, table=True):
-    @declared_attr
-    def __tablename__(cls) -> str:
-        return "proveedor"
+    __tablename__: ClassVar[str] = "proveedor" # type: ignore
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     rut: str = Field(unique=True, max_length=12)
