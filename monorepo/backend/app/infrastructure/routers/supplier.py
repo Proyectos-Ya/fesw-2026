@@ -7,7 +7,7 @@ from app.application.use_cases.supplier.create_supplier import CreateSupplierUse
 from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import SupplierAlreadyExists, SupplierNotFound, SupplierValidationError
-from monorepo.backend.app.application.schemas.supplier_schema import CreateSupplierSchema
+from app.application.schemas.supplier_schema import CreateSupplierSchema
 
 
 def create_supplier_router(get_supplier_repo: Callable) -> APIRouter:

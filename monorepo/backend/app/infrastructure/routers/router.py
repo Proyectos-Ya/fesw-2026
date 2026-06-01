@@ -1,8 +1,8 @@
 from typing import Callable
 from fastapi import APIRouter
 
-from monorepo.backend.app.infrastructure.routers.health import create_health_router
-from monorepo.backend.app.infrastructure.routers.supplier import create_supplier_router
+from app.infrastructure.routers.health import create_health_router
+from app.infrastructure.routers.supplier import create_supplier_router
 
 
 def create_router(get_supplier_repo: Callable) -> APIRouter:

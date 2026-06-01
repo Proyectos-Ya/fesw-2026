@@ -3,7 +3,7 @@ from sqlmodel import SQLModel
 from contextlib import asynccontextmanager
 
 from app.bootstrap import bootstrap
-from monorepo.backend.app.infrastructure.middleware import register_middleware
+from app.infrastructure.middleware import register_middleware
 from app.infrastructure.db import engine
 
 # Importar TODOS los modelos para que SQLModel los registre

@@ -1,7 +1,7 @@
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import SupplierAlreadyExists, SupplierValidationError
-from monorepo.backend.app.application.schemas.supplier_schema import CreateSupplierSchema
+from app.application.schemas.supplier_schema import CreateSupplierSchema
 from pydantic import ValidationError
 
 class CreateSupplierUseCase:
