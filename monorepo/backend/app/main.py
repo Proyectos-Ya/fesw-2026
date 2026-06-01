@@ -1,34 +1,28 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.routers import proveedores
+from sqlmodel import SQLModel
+from contextlib import asynccontextmanager
 
-app = FastAPI(
-    title="ProyectosYA API",
-    description="Backend API for ProyectosYA - Bidding matching platform",
-    version="0.1.0"
-)
+from app.bootstrap import bootstrap
+from monorepo.backend.app.infrastructure.middleware import register_middleware
+from app.infrastructure.db import engine
 
-# Enable CORS for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/")
-def read_root():
-    return {
-        "status": "online",
-        "message": "Welcome to ProyectosYA API",
-        "version": "0.1.0"
-    }
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+# Importar TODOS los modelos para que SQLModel los registre
+from app.infrastructure.repositories.supplier_model import SupplierModel  # noqa
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    yield
 
-app.include_router(proveedores.router)
+
+def create_app() -> FastAPI:
+    # Fábrica de la aplicación: registra middlewares y dependencias
+    app = FastAPI(title="ProyectosYA API", lifespan=lifespan)
+    register_middleware(app)
+    bootstrap(app)
+    return app
+
+
+app = create_app()

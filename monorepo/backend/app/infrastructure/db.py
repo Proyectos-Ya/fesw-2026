@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.core.config import settings
+from app.config import settings
 
 engine = create_async_engine(
     settings.database_url,

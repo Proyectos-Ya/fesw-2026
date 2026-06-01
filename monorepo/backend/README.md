@@ -1,43 +1,75 @@
 # ProyectosYA Backend - FastAPI
 
 Este es el backend de ProyectosYA construido con FastAPI.
+# ProyectosYA Backend - FastAPI
+
+Este es el backend de ProyectosYA construido con FastAPI.
 
 ## Requisitos
 - Python 3.12+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo
 
-## Configuración y Ejecución
+## Configuración inicial
 
-1. **Crear entorno virtual:**
-   ```bash
-   python -m venv .venv
-   ```
+Estos pasos solo se hacen **una vez** al clonar el proyecto.
 
-2. **Activar el entorno virtual:**
-   - En Windows (PowerShell):
-     ```powershell
-     .venv\Scripts\Activate.ps1
-     ```
-   - En macOS/Linux:
-     ```bash
-     source .venv/bin/activate
-     ```
+### 1. Crear el archivo `.env`
 
-3. **Instalar dependencias:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Desde la raíz del monorepo:
 
-4. **Ejecutar el servidor de desarrollo:**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-   El servidor estará disponible en [http://127.0.0.1:8000](http://127.0.0.1:8000).
+```bash
+cp .env.example .env
+```
 
-## Endpoints Principales
-- `GET /` - Mensaje de bienvenida y estado del servicio
-- `GET /health` - Health check endpoint
-- `GET /docs` - Documentación interactiva de la API (Swagger UI)
+Abre `.env` y completa los valores. El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
 
+### 2. Crear entorno virtual
+
+```bash
+python -m venv .venv
+```
+
+### 3. Activar el entorno virtual
+
+- En Windows (PowerShell):
+  ```powershell
+  .venv\Scripts\Activate.ps1
+  ```
+- En macOS/Linux:
+  ```bash
+  source .venv/bin/activate
+  ```
+
+### 4. Instalar dependencias
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Cada vez que trabajes en el proyecto
+
+```bash
+# 1. Desde la raíz del monorepo — levantar la base de datos
+docker compose up -d
+
+# 2. Desde monorepo/backend/ — activar el entorno virtual
+source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\Activate.ps1  # Windows
+
+# 3. Iniciar el servidor
+uvicorn app.main:app --reload
+```
+
+El servidor estará disponible en [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+---
+
+## Endpoints principales
+- `GET /` — Mensaje de bienvenida
+- `GET /health` — Estado del servicio
+- `GET /docs` — Documentación interactiva (Swagger UI)
 ---
 
 ## Estructura de Carpetas

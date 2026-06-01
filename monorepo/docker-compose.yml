@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16
+    container_name: proyectosya-db
+    environment:
+      # Variables leídas desde el .env
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Puerto local (tu máquina) : puerto interno (contenedor)
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      # Aquí se guardan los datos aunque reinicies el contenedor
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Docker espera que Postgres esté listo antes de considerarlo "up"
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  # Volumen nombrado: persiste entre reinicios de Docker
+  postgres_data:
