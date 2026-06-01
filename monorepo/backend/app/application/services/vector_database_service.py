@@ -12,11 +12,11 @@ class VectorDatabaseService(ABC):
     """
 
     @abstractmethod
-    async def create_provider(self, provider: Vector) -> None:
+    async def create_supplier(self, supplier: Vector) -> None:
         """
         Persiste el vector de un proveedor en la base de datos vectorial.
 
         Args:
-            provider: Vector con el embedding y metadata del proveedor.
+            supplier: Vector con el embedding y metadata del proveedor.
         """
         ...

@@ -1,9 +1,7 @@
 from pathlib import Path
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(_ENV_FILE)  # ← inyecta las variables antes de que pydantic las lea
 
 
 class Settings(BaseSettings):
@@ -12,11 +10,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
+    # --- PostgreSQL ---
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "proyectosya"
     postgres_user: str = "postgres"
-    postgres_password: str 
+    postgres_password: str
+
+    # --- Qdrant ---
+    qdrant_host: str = "localhost"
+    qdrant_http_port: int = 6333
+    qdrant_grpc_port: int = 6334
 
     @property
     def database_url(self) -> str:
@@ -25,5 +29,9 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def qdrant_url(self) -> str:
+        return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
 
-settings = Settings() # type: ignore[call-arg]
+
+settings = Settings()  # type: ignore

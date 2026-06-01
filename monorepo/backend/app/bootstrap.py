@@ -16,7 +16,6 @@ def get_supplier_repo(
 
 
 def bootstrap(app: FastAPI) -> None:
-    """Composition root: conecta implementaciones con interfaces."""
     router = create_router(
         get_supplier_repo=get_supplier_repo,
     )
