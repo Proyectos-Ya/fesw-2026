@@ -4,10 +4,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class ProviderPayload(BaseModel):
+class SupplierPayload(BaseModel):
     """Metadata del proveedor que se almacena junto al vector en Qdrant."""
 
-    provider_id: uuid.UUID
+    supplier_id: uuid.UUID
     company_name: str
     description: str
     rubros: list[str] = Field(default_factory=list)
@@ -19,7 +19,7 @@ class ProviderPayload(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convierte el payload a un diccionario serializable para Qdrant."""
         return {
-            "provider_id": str(self.provider_id),
+            "supplier_id": str(self.supplier_id),
             "company_name": self.company_name,
             "description": self.description,
             "rubros": self.rubros,
@@ -43,4 +43,4 @@ class Vector(BaseModel):
     embedding: list[float]
 
     # Metadata adicional almacenada junto al vector para filtros y recuperación
-    payload: ProviderPayload
+    payload: SupplierPayload
