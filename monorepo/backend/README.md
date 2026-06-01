@@ -24,6 +24,7 @@ cp .env.example .env
 Abre `.env` y completa los valores. El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
 
 ### 2. Crear entorno virtual
+Desde `monorepo/backend/:`
 
 ```bash
 python -m venv .venv
