@@ -4,6 +4,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.config import settings
 
+
 engine = create_async_engine(
     settings.database_url,
     echo=True,
