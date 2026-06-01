@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
-from pydantic import BaseModel, field_validator
+from uuid import UUID, uuid4
+from pydantic import BaseModel, Field, field_validator
 
 
 def is_valid_rut(rut: str) -> bool:
@@ -35,7 +35,7 @@ def is_valid_rut(rut: str) -> bool:
 
 
 class Supplier(BaseModel):
-    id: UUID
+    id: UUID =  Field(default_factory=uuid4)
     rut: str
     legal_name: str
     trade_name: Optional[str] = None
@@ -46,8 +46,8 @@ class Supplier(BaseModel):
     keywords: Optional[list[str]] = None
     years_experience: Optional[int] = None
     num_employees: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     @field_validator("rut")
     @classmethod

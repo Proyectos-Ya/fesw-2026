@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.infrastructure.db import get_session
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
-from monorepo.backend.app.infrastructure.routers.router import create_router
+from app.infrastructure.routers.router import create_router
 
 
 def get_supplier_repo(
@@ -16,7 +16,6 @@ def get_supplier_repo(
 
 
 def bootstrap(app: FastAPI) -> None:
-    """Composition root: conecta implementaciones con interfaces."""
     router = create_router(
         get_supplier_repo=get_supplier_repo,
     )
