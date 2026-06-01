@@ -1,9 +1,6 @@
 # ProyectosYA Backend - FastAPI
 
 Este es el backend de ProyectosYA construido con FastAPI.
-# ProyectosYA Backend - FastAPI
-
-Este es el backend de ProyectosYA construido con FastAPI.
 
 ## Requisitos
 - Python 3.12+
