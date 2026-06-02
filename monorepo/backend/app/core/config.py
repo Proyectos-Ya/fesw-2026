@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -11,6 +12,15 @@ class Settings(BaseSettings):
     postgres_db: str = "proyectosya"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
+
+    mercado_publico_ticket: str = ""
+
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_collection: str = "licitaciones"
+
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_vector_size: int = 1024
 
     @property
     def database_url(self) -> str:
