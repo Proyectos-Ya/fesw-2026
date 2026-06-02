@@ -15,3 +15,8 @@ class MatchRequest(BaseModel):
 class MatchResult(BaseModel):
     resultados: list[ResultadoMatching]
     version_modelo: str
+
+
+class ObtenerScoreRequest(BaseModel):
+    proveedor_id: UUID
+    licitacion_id: UUID
