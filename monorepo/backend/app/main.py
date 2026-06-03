@@ -1,12 +1,14 @@
-from fastapi import FastAPI
-from sqlmodel import SQLModel
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
+from sqlmodel import SQLModel
+
 from app.bootstrap import bootstrap
-from app.infrastructure.middleware import register_middleware
-from app.infrastructure.db import engine
 from app.config import settings
+from app.infrastructure.db import engine
+from app.infrastructure.middleware import register_middleware
 
 
 @asynccontextmanager
