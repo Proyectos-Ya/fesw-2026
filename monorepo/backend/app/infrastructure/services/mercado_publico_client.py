@@ -1,8 +1,8 @@
 import httpx
 from typing import List, Dict, Any, cast
 from datetime import datetime, timedelta
-from app.application.tenders.interfaces.tender_ingestion_service import TenderIngestionService
-from app.application.tenders.dtos.tender_ingestion_dto import TenderIngestaDTO, ItemLicitacionDTO
+from monorepo.backend.app.application.repositories.tender_ingestion_service import TenderIngestionService
+from monorepo.backend.app.domain.models.tender_ingestion_dto import TenderIngestaDTO, ItemLicitacionDTO
 
 class MercadoPublicoClient(TenderIngestionService):
     # Cliente para interactuar con la API de mercado publico
