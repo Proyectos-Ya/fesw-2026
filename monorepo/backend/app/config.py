@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     @property
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
+    
+    mercado_publico_api_key: str
+    is_dev: bool = True
+
+    model_config = SettingsConfigDict(env_file=".env")
 
 
 settings = Settings()  # type: ignore
