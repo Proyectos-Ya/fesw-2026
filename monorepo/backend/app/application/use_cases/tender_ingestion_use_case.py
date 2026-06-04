@@ -1,5 +1,5 @@
-from monorepo.backend.app.application.repositories.tender_ingestion_service import TenderIngestionService
-from monorepo.backend.app.application.repositories.tenders_repository import ITendersRepository
+from monorepo.backend.app.application.repositories.tenders.tender_ingestion_service import TenderIngestionService
+from monorepo.backend.app.application.repositories.tenders.tenders_repository import ITendersRepository
 from typing import Dict, Any
 
 class TenderIngestionUseCase:

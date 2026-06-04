@@ -1,7 +1,7 @@
 import httpx
 from typing import List, Dict, Any, cast
 from datetime import datetime, timedelta
-from monorepo.backend.app.application.repositories.tender_ingestion_service import TenderIngestionService
+from monorepo.backend.app.application.repositories.tenders.tender_ingestion_service import TenderIngestionService
 from monorepo.backend.app.domain.models.tender_ingestion_dto import TenderIngestaDTO, ItemLicitacionDTO
 
 class MercadoPublicoClient(TenderIngestionService):
