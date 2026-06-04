@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from monorepo.backend.app.domain.models.tender_ingestion_dto import TenderIngestaDTO
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 
 class TenderIngestionService(ABC):
     @abstractmethod

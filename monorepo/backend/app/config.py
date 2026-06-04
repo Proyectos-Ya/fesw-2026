@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
+        extra="ignore"
     )
 
     # --- PostgreSQL ---
@@ -35,8 +36,5 @@ class Settings(BaseSettings):
     
     mercado_publico_api_key: str
     is_dev: bool = True
-
-    model_config = SettingsConfigDict(env_file=".env")
-
 
 settings = Settings()  # type: ignore

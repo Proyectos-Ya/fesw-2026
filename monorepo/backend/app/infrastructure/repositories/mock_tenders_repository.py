@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Dict
-from monorepo.backend.app.application.repositories.tenders.tenders_repository import ITendersRepository
-from monorepo.backend.app.domain.models.tender_ingestion_dto import TenderIngestaDTO
+from app.application.repositories.tenders.tenders_repository import ITendersRepository
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 
 class MockTendersRepository(ITendersRepository):
     def __init__(self):

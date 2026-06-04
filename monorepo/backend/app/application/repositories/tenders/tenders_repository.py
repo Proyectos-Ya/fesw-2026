@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from monorepo.backend.app.domain.models.tender_ingestion_dto import TenderIngestaDTO
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 
 class ITendersRepository(ABC):
     @abstractmethod
