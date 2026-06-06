@@ -1,13 +1,11 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
 from uuid import UUID
 
-from app.application.repositories.membership_repository import IMembershipRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
 from app.application.repositories.user_repository import IUserRepository
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
-from app.domain.entities.membership import MembershipStatus, SupplierMembership
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import InvalidToken
@@ -29,36 +27,6 @@ class InMemoryUserRepository(IUserRepository):
     async def save(self, user: User) -> User:
         self.users[user.id] = user
         return user
-
-
-class InMemoryMembershipRepository(IMembershipRepository):
-    def __init__(self) -> None:
-        self.memberships: dict[UUID, SupplierMembership] = {}
-
-    async def save(self, membership: SupplierMembership) -> SupplierMembership:
-        self.memberships[membership.id] = membership
-        return membership
-
-    async def get_by_id(self, membership_id: UUID) -> SupplierMembership | None:
-        return self.memberships.get(membership_id)
-
-    async def get_by_user(self, user_id: UUID) -> SupplierMembership | None:
-        for m in self.memberships.values():
-            if m.user_id == user_id:
-                return m
-        return None
-
-    async def list_by_supplier(
-        self, supplier_id: UUID, status: MembershipStatus | None = None
-    ) -> list[SupplierMembership]:
-        return [
-            m
-            for m in self.memberships.values()
-            if m.supplier_id == supplier_id and (status is None or m.status == status)
-        ]
-
-    async def delete(self, membership_id: UUID) -> None:
-        self.memberships.pop(membership_id, None)
 
 
 class InMemorySupplierRepository(ISupplierRepository):

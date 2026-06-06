@@ -7,7 +7,6 @@ from app import bootstrap
 from app.main import app
 from tests.unit.application.fakes import (
     FakeSupplierVectorRepository,
-    InMemoryMembershipRepository,
     InMemorySupplierRepository,
     InMemoryUserRepository,
 )
@@ -22,12 +21,10 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     sí se firma/verifica de verdad (servicio real), validando el flujo completo.
     """
     users = InMemoryUserRepository()
-    memberships = InMemoryMembershipRepository()
     suppliers = InMemorySupplierRepository()
     vectors = FakeSupplierVectorRepository()
 
     app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
-    app.dependency_overrides[bootstrap.get_membership_repo] = lambda: memberships
     app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
     app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: vectors
 

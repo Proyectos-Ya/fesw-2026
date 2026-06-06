@@ -1,7 +1,6 @@
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.application.repositories.membership_repository import IMembershipRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.user_repository import IUserRepository
 
@@ -9,7 +8,6 @@ from app.application.repositories.supplier_vector_repository import ISupplierVec
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import get_session
-from app.infrastructure.repositories.membership_repository import MembershipRepository
 from app.infrastructure.repositories.qdrant_supplier_repository import (
     QdrantSupplierRepository,
 )
@@ -36,12 +34,6 @@ def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserReposito
     return UserRepository(session)
 
 
-def get_membership_repo(
-    session: AsyncSession = Depends(get_session),
-) -> IMembershipRepository:
-    return MembershipRepository(session)
-
-
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
     hasher = BcryptPasswordHasher()
@@ -61,7 +53,6 @@ def bootstrap(app: FastAPI) -> None:
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_user_repo=get_user_repo,
-        get_membership_repo=get_membership_repo,
         get_current_user=get_current_user,
         hasher=hasher,
         token_service=token_service,
