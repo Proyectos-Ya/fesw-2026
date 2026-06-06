@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     qdrant_http_port: int = 6333
     qdrant_grpc_port: int = 6334
 
+    mercado_publico_ticket: str = ""
+
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_collection: str = "licitaciones"
+
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_vector_size: int = 1024
+
     @property
     def database_url(self) -> str:
         return (
