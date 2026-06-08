@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -25,6 +27,11 @@ class SupplierRepository(ISupplierRepository):
             select(SupplierModel).where(SupplierModel.rut == rut)
         )
         model = result.first()
+        return self._to_entity(model) if model else None
+
+    async def get_by_id(self, supplier_id: UUID) -> Supplier | None:
+        # Busca un proveedor por su id interno
+        model = await self.session.get(SupplierModel, supplier_id)
         return self._to_entity(model) if model else None
 
     async def save(self, supplier: Supplier) -> Supplier:

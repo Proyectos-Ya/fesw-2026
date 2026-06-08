@@ -1,23 +1,17 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-<<<<<<< HEAD
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
-=======
->>>>>>> parent of c4700ad (Merge branch 'develop' into feat/login)
 from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance
-from contextlib import asynccontextmanager
+from qdrant_client.models import Distance, VectorParams
+from sqlmodel import SQLModel
+
 from app.bootstrap import bootstrap
-<<<<<<< HEAD
-from app.infrastructure.middleware import register_middleware
-from app.infrastructure.db import engine
 from app.config import settings
+from app.infrastructure.db import engine
+from app.infrastructure.middleware import register_middleware
 from app.routers import licitaciones, matching, proveedores
-=======
-from app.config import settings
-from app.infrastructure.db import engine
-from app.infrastructure.middleware import register_middleware
->>>>>>> parent of c4700ad (Merge branch 'develop' into feat/login)
 
 
 @asynccontextmanager
@@ -45,3 +39,36 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+app = FastAPI(
+    title="ProyectosYA API",
+    description="Backend API for ProyectosYA - Bidding matching platform",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "message": "Welcome to ProyectosYA API",
+        "version": "0.1.0",
+    }
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+
+app.include_router(proveedores.router)
+app.include_router(licitaciones.router)
+app.include_router(matching.router)
