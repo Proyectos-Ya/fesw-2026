@@ -6,8 +6,6 @@ sqlmodel>=0.0.38
 asyncpg>=0.29.0
 greenlet==3.5.1
 python-dotenv>=1.0.0
-sentence-transformers>=3.0.0
-qdrant-client>=1.9.0
 ruff>=0.3.0
 pyright>=1.1.350
 pytest>=8.0.0
