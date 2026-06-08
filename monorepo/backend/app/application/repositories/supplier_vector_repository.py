@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 
-class SupplierVectorRepository(ABC):
+class ISupplierVectorRepository(ABC):
     """
     Interfaz abstracta para el repositorio vectorial de proveedores.
 
