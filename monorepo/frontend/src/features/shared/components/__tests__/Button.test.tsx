@@ -7,12 +7,12 @@ test('renders primary button by default', () => {
   render(<Button>Click me</Button>);
   const button = screen.getByRole('button', { name: /click me/i });
   expect(button).toBeInTheDocument();
-  expect(button).toHaveClass('bg-brand-primary-600');
+  expect(button).toHaveClass('bg-blue-600');
 });
 
-test('renders ghost button variant', () => {
-  render(<Button variant="ghost">Cancel</Button>);
+test('renders secondary button variant', () => {
+  render(<Button variant="secondary">Cancel</Button>);
   const button = screen.getByRole('button', { name: /cancel/i });
   expect(button).toBeInTheDocument();
-  expect(button).toHaveClass('text-zinc-600');
+  expect(button).toHaveClass('bg-gray-200');
 });

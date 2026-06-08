@@ -12,12 +12,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.4.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-hook-form": "^7.77.0",
-    "zod": "^4.4.3"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
