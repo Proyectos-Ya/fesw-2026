@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     qdrant_http_port: int = 6333
     qdrant_grpc_port: int = 6334
 
+<<<<<<< feat/login
     # --- Auth / JWT ---
     # Valores por defecto para no romper si el .env no carga; en producción
     # jwt_secret_key DEBE venir del entorno.
@@ -32,6 +33,16 @@ class Settings(BaseSettings):
     auth_cookie_name: str = "access_token"
     # Cookie Secure solo en producción (requiere HTTPS); en local va en False
     auth_cookie_secure: bool = False
+=======
+    mercado_publico_ticket: str = ""
+
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_collection: str = "licitaciones"
+
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_vector_size: int = 1024
+>>>>>>> develop
 
     @property
     def database_url(self) -> str:
