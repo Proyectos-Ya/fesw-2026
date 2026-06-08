@@ -3,7 +3,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.services.text_builder import TextBuilder
 from app.application.useCases.ingest_licitaciones import IngestLicitacionesUseCase
-from app.core.config import settings
+from app.config import settings
 from app.domain.models.licitacion_schema import IngestRequest, IngestResult
 from app.infrastructure.db import get_session
 from app.infrastructure.repositories.licitacion_repository import LicitacionRepository

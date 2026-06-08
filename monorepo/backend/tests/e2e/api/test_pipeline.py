@@ -91,10 +91,10 @@ async def test_match_retorna_resultado(client: AsyncClient) -> None:
 async def test_match_proveedor_no_encontrado_retorna_404(
     client: AsyncClient,
 ) -> None:
-    from app.domain.errors.proveedor_errors import ProveedorNoEncontrado
+    from app.domain.errors.supplier_errors import SupplierNotFound
 
     mock_uc = AsyncMock()
-    mock_uc.execute.side_effect = ProveedorNoEncontrado("rut-inexistente")
+    mock_uc.execute.side_effect = SupplierNotFound("rut-inexistente")
     app.dependency_overrides[get_match_use_case] = lambda: mock_uc
 
     response = await client.post(

@@ -9,8 +9,8 @@ class ResultadoMatchingModel(SQLModel, table=True):
     __tablename__: ClassVar[str] = "resultado_matching"  # type: ignore
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    proveedor_id: UUID = Field(foreign_key="proveedor.id", index=True)
-    licitacion_id: UUID = Field(foreign_key="licitacion.id", index=True)
+    proveedor_id: UUID = Field(foreign_key="supplier.id", index=True)
+    licitacion_id: UUID = Field(foreign_key="tender.id", index=True)
     score_similitud: float
     score_reranker: float | None = Field(default=None)
     score_final: float

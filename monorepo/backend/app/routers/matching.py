@@ -6,17 +6,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.application.services.text_builder import TextBuilder
 from app.application.useCases.match_licitaciones import MatchLicitacionesUseCase
 from app.application.useCases.obtener_score_matching import ObtenerScoreMatchingUseCase
-from app.core.config import settings
+from app.config import settings
 from app.domain.entities.resultado_matching import ResultadoMatching
 from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
-from app.domain.errors.proveedor_errors import ProveedorNoEncontrado
+from app.domain.errors.supplier_errors import SupplierNotFound
 from app.domain.models.matching_schema import (
     MatchRequest,
     MatchResult,
     ObtenerScoreRequest,
 )
 from app.infrastructure.db import get_session
-from app.infrastructure.repositories.proveedor_repository import ProveedorRepository
+from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.resultado_matching_repository import (
     ResultadoMatchingRepository,
 )
@@ -29,7 +29,7 @@ def get_match_use_case(
     session: AsyncSession = Depends(get_session),
 ) -> MatchLicitacionesUseCase:
     return MatchLicitacionesUseCase(
-        proveedor_repo=ProveedorRepository(session),
+        proveedor_repo=SupplierRepository(session),
         embedding_service=get_embedding_service(),
         vector_store=get_vector_store(),
         resultado_matching_repo=ResultadoMatchingRepository(session),
@@ -53,7 +53,7 @@ async def match_licitaciones(
 ) -> MatchResult:
     try:
         return await use_case.execute(request)
-    except ProveedorNoEncontrado as e:
+    except SupplierNotFound as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 

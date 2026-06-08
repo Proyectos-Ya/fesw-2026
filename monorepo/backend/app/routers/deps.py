@@ -3,7 +3,7 @@ from functools import lru_cache
 import httpx
 from qdrant_client import AsyncQdrantClient
 
-from app.core.config import settings
+from app.config import settings
 from app.infrastructure.services.bge_m3_embedding_service import BgeM3EmbeddingService
 from app.infrastructure.services.mercado_publico_client import MercadoPublicoClient
 from app.infrastructure.services.qdrant_vector_store import QdrantVectorStore

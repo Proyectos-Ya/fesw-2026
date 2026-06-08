@@ -1,4 +1,4 @@
-from app.application.repositories.proveedor_repository import IProveedorRepository
+from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.resultado_matching_repository import (
     IResultadoMatchingRepository,
 )
@@ -9,7 +9,7 @@ from app.application.services.vector_store_service import (
     IVectorStoreService,
 )
 from app.domain.entities.resultado_matching import ResultadoMatching
-from app.domain.errors.proveedor_errors import ProveedorNoEncontrado
+from app.domain.errors.supplier_errors import SupplierNotFound
 from app.domain.models.matching_schema import MatchRequest, MatchResult
 
 
@@ -17,7 +17,7 @@ class MatchLicitacionesUseCase:
 
     def __init__(
         self,
-        proveedor_repo: IProveedorRepository,
+        proveedor_repo: ISupplierRepository,
         embedding_service: IEmbeddingService,
         vector_store: IVectorStoreService,
         resultado_matching_repo: IResultadoMatchingRepository,
@@ -34,9 +34,9 @@ class MatchLicitacionesUseCase:
     async def execute(self, request: MatchRequest) -> MatchResult:
         proveedor = await self._proveedor_repo.get_by_id(request.proveedor_id)
         if proveedor is None:
-            raise ProveedorNoEncontrado(str(request.proveedor_id))
+            raise SupplierNotFound(str(request.proveedor_id))
 
-        texto = self._text_builder.build_from_proveedor(proveedor)
+        texto = self._text_builder.build_from_supplier(proveedor)
         vectors = await self._embedding_service.embed([texto])
         query_vector = vectors[0]
 

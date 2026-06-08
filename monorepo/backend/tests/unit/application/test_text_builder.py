@@ -15,7 +15,7 @@ import pytest
 
 from app.application.services.text_builder import TextBuilder
 from app.domain.entities.licitacion import ItemLicitacion, Licitacion
-from app.domain.entities.proveedor import Proveedor
+from app.domain.entities.supplier import Supplier
 
 FECHA_CIERRE = datetime(2026, 7, 1, tzinfo=timezone.utc)
 
@@ -60,22 +60,22 @@ def licitacion_minima() -> Licitacion:
 
 
 @pytest.fixture
-def proveedor_completo() -> Proveedor:
-    return Proveedor(
-        rut="76.123.456-7",
-        razon_social="TechSolutions SpA",
-        rubros=["Tecnología de la Información", "Consultoría"],
-        descripcion_libre="Empresa especializada en soluciones TI para el sector público",
-        palabras_clave=["redes", "servidores", "soporte técnico"],
-        certificaciones=["ISO 9001", "Microsoft Partner"],
+def proveedor_completo() -> Supplier:
+    return Supplier(
+        rut="12345678-5",
+        legal_name="TechSolutions SpA",
+        sectors=["Tecnología de la Información", "Consultoría"],
+        description="Empresa especializada en soluciones TI para el sector público",
+        keywords=["redes", "servidores", "soporte técnico"],
+        certifications=["ISO 9001", "Microsoft Partner"],
     )
 
 
 @pytest.fixture
-def proveedor_minimo() -> Proveedor:
-    return Proveedor(
-        rut="12.345.678-9",
-        razon_social="Servicios Generales Ltda",
+def proveedor_minimo() -> Supplier:
+    return Supplier(
+        rut="12.345.678-5",
+        legal_name="Servicios Generales Ltda",
     )
 
 
@@ -166,47 +166,47 @@ class TestBuildFromLicitacion:
 
 class TestBuildFromProveedor:
     def test_contiene_rubros_cuando_existen(
-        self, builder: TextBuilder, proveedor_completo: Proveedor
+        self, builder: TextBuilder, proveedor_completo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_completo)
+        texto = builder.build_from_supplier(proveedor_completo)
         assert "Tecnología de la Información" in texto
 
     def test_contiene_descripcion_libre_cuando_existe(
-        self, builder: TextBuilder, proveedor_completo: Proveedor
+        self, builder: TextBuilder, proveedor_completo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_completo)
+        texto = builder.build_from_supplier(proveedor_completo)
         assert "soluciones TI para el sector público" in texto
 
     def test_contiene_palabras_clave_cuando_existen(
-        self, builder: TextBuilder, proveedor_completo: Proveedor
+        self, builder: TextBuilder, proveedor_completo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_completo)
+        texto = builder.build_from_supplier(proveedor_completo)
         assert "redes" in texto
         assert "servidores" in texto
 
     def test_contiene_certificaciones_cuando_existen(
-        self, builder: TextBuilder, proveedor_completo: Proveedor
+        self, builder: TextBuilder, proveedor_completo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_completo)
+        texto = builder.build_from_supplier(proveedor_completo)
         assert "ISO 9001" in texto
 
     def test_no_produce_segmentos_vacios(
-        self, builder: TextBuilder, proveedor_completo: Proveedor
+        self, builder: TextBuilder, proveedor_completo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_completo)
+        texto = builder.build_from_supplier(proveedor_completo)
         assert ". ." not in texto
         assert not texto.startswith(". ")
 
     def test_proveedor_minimo_no_es_vacio(
-        self, builder: TextBuilder, proveedor_minimo: Proveedor
+        self, builder: TextBuilder, proveedor_minimo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_minimo)
+        texto = builder.build_from_supplier(proveedor_minimo)
         assert len(texto.strip()) > 0
 
     def test_omite_campos_none(
-        self, builder: TextBuilder, proveedor_minimo: Proveedor
+        self, builder: TextBuilder, proveedor_minimo: Supplier
     ) -> None:
-        texto = builder.build_from_proveedor(proveedor_minimo)
+        texto = builder.build_from_supplier(proveedor_minimo)
         assert "None" not in texto
         assert "Capacidades:" not in texto
         assert "Certificaciones:" not in texto
@@ -222,19 +222,19 @@ class TestSimetriaFormato:
         self,
         builder: TextBuilder,
         licitacion_completa: Licitacion,
-        proveedor_completo: Proveedor,
+        proveedor_completo: Supplier,
     ) -> None:
         assert builder.build_from_licitacion(licitacion_completa).endswith(".")
-        assert builder.build_from_proveedor(proveedor_completo).endswith(".")
+        assert builder.build_from_supplier(proveedor_completo).endswith(".")
 
     def test_ambos_usan_punto_espacio_como_separador(
         self,
         builder: TextBuilder,
         licitacion_completa: Licitacion,
-        proveedor_completo: Proveedor,
+        proveedor_completo: Supplier,
     ) -> None:
         texto_lic = builder.build_from_licitacion(licitacion_completa)
-        texto_prov = builder.build_from_proveedor(proveedor_completo)
+        texto_prov = builder.build_from_supplier(proveedor_completo)
         # Ambos deben tener al menos un separador ". " cuando hay múltiples secciones
         assert ". " in texto_lic
         assert ". " in texto_prov
@@ -243,14 +243,14 @@ class TestSimetriaFormato:
         self,
         builder: TextBuilder,
         licitacion_completa: Licitacion,
-        proveedor_completo: Proveedor,
+        proveedor_completo: Supplier,
     ) -> None:
         """
         Con datos completos, ambos lados deben tener 4 secciones:
         [concepto_principal, descripcion, etiqueta_A, etiqueta_B]
         """
         texto_lic = builder.build_from_licitacion(licitacion_completa)
-        texto_prov = builder.build_from_proveedor(proveedor_completo)
+        texto_prov = builder.build_from_supplier(proveedor_completo)
 
         secciones_lic = [s for s in texto_lic.rstrip(".").split(". ") if s]
         secciones_prov = [s for s in texto_prov.rstrip(".").split(". ") if s]
@@ -261,11 +261,11 @@ class TestSimetriaFormato:
         self,
         builder: TextBuilder,
         licitacion_minima: Licitacion,
-        proveedor_minimo: Proveedor,
+        proveedor_minimo: Supplier,
     ) -> None:
         """Con datos mínimos, ambos lados producen exactamente 1 sección."""
         texto_lic = builder.build_from_licitacion(licitacion_minima)
-        texto_prov = builder.build_from_proveedor(proveedor_minimo)
+        texto_prov = builder.build_from_supplier(proveedor_minimo)
 
         secciones_lic = [s for s in texto_lic.rstrip(".").split(". ") if s]
         secciones_prov = [s for s in texto_prov.rstrip(".").split(". ") if s]

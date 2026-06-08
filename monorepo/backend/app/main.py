@@ -11,7 +11,7 @@ from app.bootstrap import bootstrap
 from app.config import settings
 from app.infrastructure.db import engine
 from app.infrastructure.middleware import register_middleware
-from app.routers import licitaciones, matching, proveedores
+from app.routers import licitaciones, matching
 
 
 @asynccontextmanager
@@ -40,12 +40,6 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
-app = FastAPI(
-    title="ProyectosYA API",
-    description="Backend API for ProyectosYA - Bidding matching platform",
-    version="0.1.0",
-)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -69,6 +63,5 @@ def health_check():
     return {"status": "healthy"}
 
 
-app.include_router(proveedores.router)
 app.include_router(licitaciones.router)
 app.include_router(matching.router)

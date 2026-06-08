@@ -1,5 +1,5 @@
 from app.domain.entities.licitacion import Licitacion
-from app.domain.entities.proveedor import Proveedor
+from app.domain.entities.supplier import Supplier
 
 
 class TextBuilder:
@@ -37,23 +37,23 @@ class TextBuilder:
 
         return ". ".join(sections) + "."
 
-    def build_from_proveedor(self, proveedor: Proveedor) -> str:
+    def build_from_supplier(self, supplier: Supplier) -> str:
         sections: list[str] = []
 
-        if proveedor.rubros:
-            sections.append(", ".join(proveedor.rubros))
+        if supplier.sectors:
+            sections.append(", ".join(supplier.sectors))
         else:
-            sections.append(proveedor.razon_social)
+            sections.append(supplier.legal_name)
 
-        if proveedor.descripcion_libre:
-            sections.append(proveedor.descripcion_libre)
+        if supplier.description:
+            sections.append(supplier.description)
 
-        if proveedor.palabras_clave:
-            sections.append(f"Capacidades: {', '.join(proveedor.palabras_clave)}")
+        if supplier.keywords:
+            sections.append(f"Capacidades: {', '.join(supplier.keywords)}")
 
-        if proveedor.certificaciones:
+        if supplier.certifications:
             sections.append(
-                f"Certificaciones: {', '.join(proveedor.certificaciones)}"
+                f"Certificaciones: {', '.join(supplier.certifications)}"
             )
 
         return ". ".join(sections) + "."

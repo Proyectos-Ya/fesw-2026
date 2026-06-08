@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.application.repositories.proveedor_repository import IProveedorRepository
+from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.resultado_matching_repository import (
     IResultadoMatchingRepository,
 )
@@ -15,8 +15,8 @@ from app.application.services.vector_store_service import (
     VectorSearchResult,
 )
 from app.application.useCases.match_licitaciones import MatchLicitacionesUseCase
-from app.domain.entities.proveedor import Proveedor
-from app.domain.errors.proveedor_errors import ProveedorNoEncontrado
+from app.domain.entities.supplier import Supplier
+from app.domain.errors.supplier_errors import SupplierNotFound
 from app.domain.models.matching_schema import MatchRequest
 
 PROVEEDOR_ID = uuid4()
@@ -24,14 +24,14 @@ LICITACION_ID_1 = uuid4()
 LICITACION_ID_2 = uuid4()
 
 
-def _make_proveedor() -> Proveedor:
-    return Proveedor(
+def _make_proveedor() -> Supplier:
+    return Supplier(
         id=PROVEEDOR_ID,
-        rut="12345678-9",
-        razon_social="Empresa Test SpA",
-        rubros=["Tecnología", "Software"],
-        descripcion_libre="Desarrollo de software a medida",
-        palabras_clave=["Python", "FastAPI"],
+        rut="12345678-5",
+        legal_name="Empresa Test SpA",
+        sectors=["Tecnología", "Software"],
+        description="Desarrollo de software a medida",
+        keywords=["Python", "FastAPI"],
     )
 
 
@@ -42,7 +42,7 @@ def _make_vector() -> list[float]:
 @pytest.fixture
 def deps() -> dict:
     return {
-        "proveedor_repo": AsyncMock(spec=IProveedorRepository),
+        "proveedor_repo": AsyncMock(spec=ISupplierRepository),
         "embedding_service": AsyncMock(spec=IEmbeddingService),
         "vector_store": AsyncMock(spec=IVectorStoreService),
         "resultado_matching_repo": AsyncMock(spec=IResultadoMatchingRepository),
@@ -73,7 +73,7 @@ async def test_proveedor_no_encontrado_lanza_excepcion(
 ) -> None:
     deps["proveedor_repo"].get_by_id.return_value = None
 
-    with pytest.raises(ProveedorNoEncontrado):
+    with pytest.raises(SupplierNotFound):
         await use_case.execute(request_default)
 
 
@@ -84,7 +84,7 @@ async def test_proveedor_no_encontrado_no_llama_embed(
 ) -> None:
     deps["proveedor_repo"].get_by_id.return_value = None
 
-    with pytest.raises(ProveedorNoEncontrado):
+    with pytest.raises(SupplierNotFound):
         await use_case.execute(request_default)
 
     deps["embedding_service"].embed.assert_not_called()
