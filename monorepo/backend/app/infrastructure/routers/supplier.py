@@ -1,37 +1,21 @@
-from collections.abc import Callable
-from uuid import UUID
-
+from typing import Callable
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.supplier_vector_repository import (
-    ISupplierVectorRepository,
-)
-from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
 from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.domain.entities.supplier import Supplier
-from app.domain.errors.supplier_errors import (
-    SupplierAlreadyExists,
-    SupplierNotFound,
-    SupplierValidationError,
-)
+from app.domain.errors.supplier_errors import SupplierAlreadyExists, SupplierNotFound, SupplierValidationError
+from app.application.schemas.supplier_schema import CreateSupplierSchema
+from app.application.repositories.supplier_vector_repository import SupplierVectorRepository
 
 
-def create_supplier_router(
-    get_supplier_repo: Callable,
-    get_supplier_vector_repo: Callable,
-    get_current_user: Callable,
-) -> APIRouter:
+def create_supplier_router(get_supplier_repo: Callable, get_supplier_vector_repo: Callable) -> APIRouter:
     """
-    Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
-    Recibe las funciones de dependencia, nunca las implementaciones concretas.
+    Fábrica del router de proveedores.
+    Recibe la función de dependencia del repo, nunca la implementación concreta.
     """
-    router = APIRouter(
-        prefix="/suppliers",
-        tags=["Suppliers"],
-        dependencies=[Depends(get_current_user)],
-    )
+    router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
     @router.post(
         "/",
@@ -45,9 +29,9 @@ def create_supplier_router(
     async def create_supplier(
         data: CreateSupplierSchema,
         repo: ISupplierRepository = Depends(get_supplier_repo),
-        vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
+        vector_repo: SupplierVectorRepository = Depends(get_supplier_vector_repo),
     ):
-        # Crea la empresa: la persiste en PostgreSQL e indexa su vector en Qdrant
+        # Delega la creación al caso de uso correspondiente
         try:
             return await CreateSupplierUseCase(repo, vector_repo).execute(data)
         except SupplierAlreadyExists as e:
@@ -55,19 +39,20 @@ def create_supplier_router(
         except SupplierValidationError as e:
             # Regla de negocio inválida (ej: RUT mal formateado por lógica interna)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+ 
 
     @router.get(
-        "/{supplier_id}",
-        response_model=Supplier,
-        responses={404: {"description": "Not Found - Supplier does not exist"}},
-    )
+            "/{rut}", response_model=Supplier,
+            responses={
+                404: {"description": "Not Found - Supplier does not exist"}
+            },)
     async def get_supplier(
-        supplier_id: UUID,
+        rut: str,
         repo: ISupplierRepository = Depends(get_supplier_repo),
     ):
-        # Busca un proveedor por su id interno
+        # Busca un proveedor por RUT usando el caso de uso
         try:
-            return await GetSupplierUseCase(repo).execute(supplier_id)
+            return await GetSupplierUseCase(repo).execute(rut)
         except SupplierNotFound as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
@@ -46,8 +46,8 @@ class Supplier(BaseModel):
     keywords: Optional[list[str]] = None
     years_experience: Optional[int] = None
     num_employees: Optional[int] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     @field_validator("rut")
     @classmethod

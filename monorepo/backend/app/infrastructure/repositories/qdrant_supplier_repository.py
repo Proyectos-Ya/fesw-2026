@@ -4,11 +4,11 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointIdsList, PointStruct
 
 from app.application.repositories.supplier_vector_repository import (
-    ISupplierVectorRepository,
+    SupplierVectorRepository,
 )
 
 
-class QdrantSupplierRepository(ISupplierVectorRepository):
+class QdrantSupplierRepository(SupplierVectorRepository):
     """
     Implementación concreta del repositorio vectorial de proveedores.
 

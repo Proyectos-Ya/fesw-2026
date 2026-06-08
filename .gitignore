@@ -25,8 +25,6 @@ htmlcov/
 .env.development.local
 .env.test.local
 .env.production.local
-.envrc
-.direnv
 
 # Editors / OS
 .vscode/
@@ -40,5 +38,4 @@ test-results/
 
 # Claude Code
 CLAUDE.md
-.claude
 

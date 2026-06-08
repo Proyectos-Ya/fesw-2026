@@ -1,23 +1,14 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
-<<<<<<< feat/login
-=======
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
->>>>>>> develop
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
-from sqlmodel import SQLModel
-
+from qdrant_client.models import VectorParams, Distance
+from contextlib import asynccontextmanager
 from app.bootstrap import bootstrap
-from app.config import settings
-<<<<<<< feat/login
-from app.infrastructure.db import engine
 from app.infrastructure.middleware import register_middleware
-=======
+from app.infrastructure.db import engine
+from app.config import settings
 from app.routers import licitaciones, matching, proveedores
->>>>>>> develop
 
 
 @asynccontextmanager

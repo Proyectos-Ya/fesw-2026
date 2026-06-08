@@ -11,9 +11,5 @@ class ISupplierRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_by_id(self, supplier_id: UUID) -> Supplier | None:
-        ...
-
-    @abstractmethod
     async def save(self, supplier: Supplier) -> Supplier:
         ...
