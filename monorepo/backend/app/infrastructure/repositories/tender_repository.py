@@ -3,7 +3,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.domain.entities.tender import Tender
+from app.domain.entities.tender import Tender, TenderItem
+
 from app.infrastructure.repositories.tender_model import (
     TenderModel,
     BuyerInstitutionModel,
@@ -34,7 +35,20 @@ class TenderRepository(ITenderRepository):
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
             updated_at=model.updated_at,
+            items=[
+                TenderItem(
+                    id=item.id,
+                    tender_id=item.tender_id,
+                    product_code=item.product_code,
+                    name=item.name,
+                    description=item.description,
+                    quantity=item.quantity,
+                    unit_of_measure=item.unit_of_measure,
+                )
+                for item in (model.items or [])
+            ],
         )
+
 
     def _to_model(self, entity: Tender) -> TenderModel:
         """Convert Domain Entity to DB Model."""
