@@ -11,7 +11,7 @@ from app.bootstrap import bootstrap
 from app.config import settings
 from app.infrastructure.db import engine
 from app.infrastructure.middleware import register_middleware
-from app.routers import licitaciones, matching
+# from app.routers import licitaciones, matching
 
 
 @asynccontextmanager
@@ -24,6 +24,14 @@ async def lifespan(app: FastAPI):
         collection_name="suppliers",
         vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
     )
+
+    app.state.qdrant_client.recreate_collection(
+        collection_name="tenders",
+        vectors_config={
+            "tender": VectorParams(size=1024, distance=Distance.COSINE)
+        },
+    )
+
 
     yield
 
@@ -63,5 +71,6 @@ def health_check():
     return {"status": "healthy"}
 
 
-app.include_router(licitaciones.router)
-app.include_router(matching.router)
+# app.include_router(licitaciones.router)
+# app.include_router(matching.router)
+

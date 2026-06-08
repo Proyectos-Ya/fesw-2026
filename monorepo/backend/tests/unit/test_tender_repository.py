@@ -16,8 +16,8 @@ from app.infrastructure.repositories.tender_model import (
     RegionModel,
 )
 from app.infrastructure.repositories.supplier_model import SupplierModel
-from app.infrastructure.repositories.resultado_matching_model import ResultadoMatchingModel
 from app.infrastructure.repositories.tender_repository import TenderRepository
+
 
 
 def utc_now_naive() -> datetime:
@@ -43,8 +43,8 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         await session.exec(delete(TenderStatusModel))
         await session.exec(delete(RegionModel))
         await session.exec(delete(SupplierModel))
-        await session.exec(delete(ResultadoMatchingModel))
         await session.commit()
+
     
     # Dispose the engine to clear the connection pool, preventing event loop errors between tests
     await engine.dispose()
