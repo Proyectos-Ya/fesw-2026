@@ -128,6 +128,7 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     router = create_router(
+        get_rank_tenders_use_case=get_rank_tenders_use_case,
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_user_repo=get_user_repo,
