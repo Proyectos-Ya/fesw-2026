@@ -4,9 +4,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.application.services.text_builder import TextBuilder
 from app.application.useCases.ingest_licitaciones import IngestLicitacionesUseCase
 from app.config import settings
-from app.domain.models.licitacion_schema import IngestRequest, IngestResult
+from app.domain.models.tender_schema import IngestRequest, IngestResult
 from app.infrastructure.db import get_session
-from app.infrastructure.repositories.licitacion_repository import LicitacionRepository
+from app.infrastructure.repositories.tender_repository import TenderRepository as LicitacionRepository
 from app.routers.deps import (
     get_embedding_service,
     get_mercado_publico_client,

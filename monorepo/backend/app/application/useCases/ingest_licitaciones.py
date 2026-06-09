@@ -1,12 +1,12 @@
 from uuid import uuid4
 
-from app.application.repositories.licitacion_repository import ILicitacionRepository
+from app.application.repositories.tender_repository import ITenderRepository as ILicitacionRepository
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.mercado_publico_service import IMercadoPublicoService
 from app.application.services.text_builder import TextBuilder
 from app.application.services.vector_store_service import IVectorStoreService
-from app.domain.entities.licitacion import Licitacion
-from app.domain.models.licitacion_schema import IngestRequest, IngestResult
+from app.domain.entities.tender import Tender as Licitacion
+from app.domain.models.tender_schema import IngestRequest, IngestResult
 
 
 class IngestLicitacionesUseCase:

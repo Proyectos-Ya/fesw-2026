@@ -42,6 +42,12 @@ class InMemorySupplierRepository(ISupplierRepository):
                 return supplier
         return None
 
+    async def get_by_user_id(self, user_id: UUID) -> Supplier | None:
+        for supplier in self.suppliers.values():
+            if supplier.user_id == user_id:
+                return supplier
+        return None
+
     async def save(self, supplier: Supplier) -> Supplier:
         self.suppliers[supplier.rut] = supplier
         return supplier

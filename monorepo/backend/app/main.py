@@ -71,6 +71,6 @@ def health_check():
     return {"status": "healthy"}
 
 
-# app.include_router(licitaciones.router)
-# app.include_router(matching.router)
+app.include_router(licitaciones.router)
+app.include_router(matching.router)
 

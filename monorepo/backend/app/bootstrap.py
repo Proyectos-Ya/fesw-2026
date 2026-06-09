@@ -24,6 +24,9 @@ from app.application.services.reranker_service import IRerankerService
 from app.infrastructure.services.bge_reranker_service import BgeRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
+from app.application.repositories.matching_result_repository import IMatchingResultRepository
+from app.infrastructure.repositories.matching_result_repository import MatchingResultRepository
+from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 
 
 
@@ -59,6 +62,31 @@ def get_reranker_service(request: Request) -> IRerankerService:
 def get_weighting_service(request: Request) -> IWeightingService:
     return request.app.state.weighting_service
 
+
+
+def get_matching_result_repo(
+    session: AsyncSession = Depends(get_session),
+) -> IMatchingResultRepository:
+    return MatchingResultRepository(session)
+
+
+def get_rank_tenders_use_case(
+    session: AsyncSession = Depends(get_session),
+    supplier_vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
+    tender_vector_repo: ITenderVectorRepository = Depends(get_tender_vector_repo),
+    reranker_service: IRerankerService = Depends(get_reranker_service),
+    weighting_service: IWeightingService = Depends(get_weighting_service),
+) -> RankTendersUseCase:
+    return RankTendersUseCase(
+        supplier_repo=SupplierRepository(session),
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=TenderRepository(session),
+        reranker_service=reranker_service,
+        weighting_service=weighting_service,
+        matching_result_repo=MatchingResultRepository(session),
+        model_version=settings.embedding_model,
+    )
 
 
 def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserRepository:

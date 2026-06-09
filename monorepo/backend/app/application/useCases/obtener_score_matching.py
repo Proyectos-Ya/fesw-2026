@@ -1,7 +1,7 @@
-from app.application.repositories.resultado_matching_repository import (
-    IResultadoMatchingRepository,
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository as IResultadoMatchingRepository,
 )
-from app.domain.entities.resultado_matching import ResultadoMatching
+from app.domain.entities.matching_result import MatchingResult as ResultadoMatching
 from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 from app.domain.models.matching_schema import ObtenerScoreRequest
 
