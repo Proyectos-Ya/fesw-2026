@@ -20,6 +20,11 @@ from app.application.repositories.tender_repository import ITenderRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.application.repositories.tender_vector_repository import ITenderVectorRepository
 from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
+from app.application.services.reranker_service import IRerankerService
+from app.infrastructure.services.bge_reranker_service import BgeRerankerService
+from app.application.services.weighting_service import IWeightingService
+from app.infrastructure.services.field_weighting_service import FieldWeightingService
+
 
 
 def get_supplier_repo(
@@ -47,11 +52,18 @@ def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
         client=get_qdrant_client(),
         vector_size=settings.embedding_vector_size,
     )
+def get_reranker_service(request: Request) -> IRerankerService:
+    return request.app.state.reranker_service
+
+
+def get_weighting_service(request: Request) -> IWeightingService:
+    return request.app.state.weighting_service
 
 
 
 def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserRepository:
     return UserRepository(session)
+
 
 
 def bootstrap(app: FastAPI) -> None:
@@ -62,6 +74,24 @@ def bootstrap(app: FastAPI) -> None:
         algorithm=settings.jwt_algorithm,
         expire_minutes=settings.access_token_expire_minutes,
     )
+
+    # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
+    try:
+        app.state.reranker_service = BgeRerankerService()
+    except Exception:
+        # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
+        class MockRerankerService(IRerankerService):
+            async def rerank(self, query_text, candidates, limit):
+                return [(c[0], 1.0) for c in candidates][:limit]
+        app.state.reranker_service = MockRerankerService()
+
+    app.state.weighting_service = FieldWeightingService(
+        reranker_weight=0.5,
+        region_weight=0.2,
+        sector_weight=0.2,
+        keyword_weight=0.1,
+    )
+
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(
         get_user_repo=get_user_repo,

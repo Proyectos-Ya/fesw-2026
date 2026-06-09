@@ -68,3 +68,5 @@ class Tender(BaseModel):
     available_amount_clp: Optional[float] = None  # Budget normalized to CLP
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: datetime = Field(default_factory=utc_now_naive)
+    items: list[TenderItem] = Field(default_factory=list)
+
