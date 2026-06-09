@@ -16,8 +16,8 @@ from app.infrastructure.repositories.tender_model import (
     RegionModel,
 )
 from app.infrastructure.repositories.supplier_model import SupplierModel
-from app.infrastructure.repositories.resultado_matching_model import ResultadoMatchingModel
 from app.infrastructure.repositories.tender_repository import TenderRepository
+
 
 
 def utc_now_naive() -> datetime:
@@ -25,29 +25,32 @@ def utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# Fixture que crea automáticamente todas las tablas antes de ejecutar cada prueba
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db_tables():
-    # Make sure all tables are created
+    # Asegura que todas las tablas estén creadas en la base de datos
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     yield
 
 
+# Fixture para manejar la sesión de la base de datos y limpiar las tablas al finalizar la prueba
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSession(engine) as session:
         yield session
-        # Teardown: Clean up tables using session.exec() to prevent deprecation warnings
+        # Limpieza de tablas para evitar interferencias entre pruebas
         await session.exec(delete(TenderModel))
         await session.exec(delete(BuyerInstitutionModel))
         await session.exec(delete(TenderStatusModel))
         await session.exec(delete(RegionModel))
         await session.exec(delete(SupplierModel))
-        await session.exec(delete(ResultadoMatchingModel))
         await session.commit()
+
     
-    # Dispose the engine to clear the connection pool, preventing event loop errors between tests
+    # Libera los recursos del pool de conexiones para evitar problemas de event loop de asyncio
     await engine.dispose()
+
 
 
 @pytest.mark.asyncio

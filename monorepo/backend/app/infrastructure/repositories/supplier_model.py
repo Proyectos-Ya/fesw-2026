@@ -10,6 +10,7 @@ from sqlmodel import Field, SQLModel
 class SupplierModel(SQLModel, table=True):
     __tablename__ = "supplier"   # type: ignore
     id: UUID = Field(primary_key=True)
+    user_id: Optional[UUID] = Field(default=None, foreign_key="users.id", index=True, unique=True)
     rut: str
     legal_name: str
     trade_name: Optional[str] = None

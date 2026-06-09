@@ -1,6 +1,6 @@
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.resultado_matching_repository import (
-    IResultadoMatchingRepository,
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository as IResultadoMatchingRepository,
 )
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.text_builder import TextBuilder
@@ -8,7 +8,7 @@ from app.application.services.vector_store_service import (
     FiltrosVectoriales,
     IVectorStoreService,
 )
-from app.domain.entities.resultado_matching import ResultadoMatching
+from app.domain.entities.matching_result import MatchingResult as ResultadoMatching
 from app.domain.errors.supplier_errors import SupplierNotFound
 from app.domain.models.matching_schema import MatchRequest, MatchResult
 

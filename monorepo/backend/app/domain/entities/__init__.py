@@ -1,3 +1,4 @@
+from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import (
     Region,
@@ -9,6 +10,7 @@ from app.domain.entities.tender import (
 )
 
 __all__ = [
+    "MatchingResult",
     "Supplier",
     "Region",
     "TenderStatus",

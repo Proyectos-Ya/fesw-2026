@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.domain.entities.resultado_matching import ResultadoMatching
+from app.domain.entities.matching_result import MatchingResult as ResultadoMatching
 
 
 class MatchRequest(BaseModel):

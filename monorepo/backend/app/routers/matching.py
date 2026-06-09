@@ -7,7 +7,7 @@ from app.application.services.text_builder import TextBuilder
 from app.application.useCases.match_licitaciones import MatchLicitacionesUseCase
 from app.application.useCases.obtener_score_matching import ObtenerScoreMatchingUseCase
 from app.config import settings
-from app.domain.entities.resultado_matching import ResultadoMatching
+from app.domain.entities.matching_result import MatchingResult as ResultadoMatching
 from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 from app.domain.errors.supplier_errors import SupplierNotFound
 from app.domain.models.matching_schema import (
@@ -17,8 +17,8 @@ from app.domain.models.matching_schema import (
 )
 from app.infrastructure.db import get_session
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
-from app.infrastructure.repositories.resultado_matching_repository import (
-    ResultadoMatchingRepository,
+from app.infrastructure.repositories.matching_result_repository import (
+    MatchingResultRepository as ResultadoMatchingRepository,
 )
 from app.routers.deps import get_embedding_service, get_vector_store
 

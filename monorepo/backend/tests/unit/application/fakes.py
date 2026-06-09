@@ -42,6 +42,12 @@ class InMemorySupplierRepository(ISupplierRepository):
                 return supplier
         return None
 
+    async def get_by_user_id(self, user_id: UUID) -> Supplier | None:
+        for supplier in self.suppliers.values():
+            if supplier.user_id == user_id:
+                return supplier
+        return None
+
     async def save(self, supplier: Supplier) -> Supplier:
         self.suppliers[supplier.rut] = supplier
         return supplier
@@ -50,12 +56,18 @@ class InMemorySupplierRepository(ISupplierRepository):
 class FakeSupplierVectorRepository(ISupplierVectorRepository):
     def __init__(self) -> None:
         self.upserts: list[UUID] = []
+        self.vectors: dict[UUID, list[float]] = {}
 
     def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
         self.upserts.append(supplier_id)
+        self.vectors[supplier_id] = embedding
 
     def delete(self, supplier_id: UUID) -> None:
-        pass
+        self.vectors.pop(supplier_id, None)
+
+    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+        return self.vectors.get(supplier_id)
+
 
 
 class FakePasswordHasher(IPasswordHasher):

@@ -31,8 +31,8 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
         point = PointStruct(
             id=str(supplier_id),
             vector=embedding,
-            # Solo el ID en el payload — los datos completos viven en PostgreSQL
-            payload={},
+            # Se guarda el ID del proveedor en el payload
+            payload={"supplier_id": str(supplier_id)},
         )
 
         self._client.upsert(
@@ -48,3 +48,17 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
             collection_name=self._COLLECTION_NAME,
             points_selector=PointIdsList(points=[str(supplier_id)]),
         )
+
+    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+        """
+        Obtiene el vector (embedding) de un proveedor desde Qdrant.
+        """
+        records = self._client.retrieve(
+            collection_name=self._COLLECTION_NAME,
+            ids=[str(supplier_id)],
+            with_vectors=True,
+        )
+        if not records:
+            return None
+        return records[0].vector
+

@@ -20,7 +20,7 @@ from app.config import settings
 from app.infrastructure.db import engine
 from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.middleware import register_middleware
-from app.routers import licitaciones, matching
+# from app.routers import licitaciones, matching
 
 
 @asynccontextmanager
@@ -36,6 +36,12 @@ async def lifespan(app: FastAPI):
         collection_name="suppliers",
         vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
     )
+    app.state.qdrant_client.recreate_collection(
+        collection_name="tenders",
+        vectors_config={
+            "tender": VectorParams(size=1024, distance=Distance.COSINE)
+        },
+    )
 
     # Inyección de dependencias para ingesta
     async with AsyncSession(engine) as session:
@@ -45,9 +51,10 @@ async def lifespan(app: FastAPI):
         
         scheduler = TenderScheduler(use_case, is_dev=settings.is_dev)
         print("[Main] Iniciando scheduler de ingesta...")
-        ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion())
+        ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion()
 
-        yield
+
+    yield
 
     ingestion_task.cancel()
     app.state.qdrant_client.close()
@@ -88,3 +95,4 @@ def health_check():
 
 app.include_router(licitaciones.router)
 app.include_router(matching.router)
+

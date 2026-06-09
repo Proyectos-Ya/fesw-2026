@@ -1,0 +1,139 @@
+from typing import Optional
+from uuid import UUID
+
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointIdsList,
+    PointStruct,
+    VectorParams,
+)
+
+from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+
+
+class QdrantTenderRepository(ITenderVectorRepository):
+    """
+    Implementación del repositorio vectorial de licitaciones (tenders) usando Qdrant
+    con soporte para vectores nombrados (named vectors).
+    """
+
+    _COLLECTION_NAME = "tenders"
+    _VECTOR_NAME = "tender"
+
+    def __init__(
+        self,
+        client: AsyncQdrantClient,
+        vector_size: int = 1024,
+    ) -> None:
+        self._client = client
+        self._vector_size = vector_size
+
+    async def ensure_collection(self) -> None:
+        """
+        Crea la colección en Qdrant si no existe, configurando un vector nombrado 'tender'.
+        """
+        result = await self._client.get_collections()
+        existing = {c.name for c in result.collections}
+        if self._COLLECTION_NAME not in existing:
+            await self._client.create_collection(
+                collection_name=self._COLLECTION_NAME,
+                vectors_config={
+                    self._VECTOR_NAME: VectorParams(
+                        size=self._vector_size,
+                        distance=Distance.COSINE,
+                    )
+                },
+            )
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        embedding: list[float],
+        payload: dict,
+    ) -> None:
+        """
+        Inserta o actualiza una licitación en Qdrant utilizando el vector nombrado.
+        """
+        point = PointStruct(
+            id=str(tender_id),
+            vector={self._VECTOR_NAME: embedding},
+            payload=payload,
+        )
+        await self._client.upsert(
+            collection_name=self._COLLECTION_NAME,
+            points=[point],
+        )
+
+    async def delete(self, tender_id: UUID) -> None:
+        """
+        Elimina el punto correspondiente a la licitación en Qdrant.
+        """
+        await self._client.delete(
+            collection_name=self._COLLECTION_NAME,
+            points_selector=PointIdsList(points=[str(tender_id)]),
+        )
+
+    async def search_by_supplier_vector(
+        self,
+        supplier_vector: list[float],
+        limit: int,
+        filters: Optional[dict] = None,
+    ) -> list[tuple[UUID, float]]:
+        """
+        Busca las licitaciones más similares al vector de perfil del proveedor,
+        buscando en el vector nombrado 'tender' y aplicando los filtros indicados.
+        """
+        query_filter = self._build_filter(filters)
+        
+        results = await self._client.search(
+            collection_name=self._COLLECTION_NAME,
+            query_vector=(self._VECTOR_NAME, supplier_vector),
+            query_filter=query_filter,
+            limit=limit,
+        )
+
+        return [
+            (UUID(result.id) if isinstance(result.id, str) else result.id, result.score)
+            for result in results
+        ]
+
+    def _build_filter(self, filters: Optional[dict]) -> Optional[Filter]:
+        """
+        Construye el objeto Filter de Qdrant a partir de un diccionario de filtros de metadatos.
+        """
+        if not filters:
+            return None
+
+        conditions = []
+        
+        # Atributos de filtro del payload:
+        # code (str), region_id (int), province (str), available_amount_clp (float), status_code (str)
+        if "code" in filters and filters["code"] is not None:
+            conditions.append(
+                FieldCondition(key="code", match=MatchValue(value=filters["code"]))
+            )
+        if "region_id" in filters and filters["region_id"] is not None:
+            conditions.append(
+                FieldCondition(key="region_id", match=MatchValue(value=filters["region_id"]))
+            )
+        if "province" in filters and filters["province"] is not None:
+            conditions.append(
+                FieldCondition(key="province", match=MatchValue(value=filters["province"]))
+            )
+        if "available_amount_clp" in filters and filters["available_amount_clp"] is not None:
+            conditions.append(
+                FieldCondition(
+                    key="available_amount_clp",
+                    match=MatchValue(value=filters["available_amount_clp"]),
+                )
+            )
+        if "status_code" in filters and filters["status_code"] is not None:
+            conditions.append(
+                FieldCondition(key="status_code", match=MatchValue(value=filters["status_code"]))
+            )
+
+        return Filter(must=conditions) if conditions else None

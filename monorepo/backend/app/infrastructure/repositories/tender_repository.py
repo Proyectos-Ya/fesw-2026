@@ -1,11 +1,13 @@
 from typing import List, Optional
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 import uuid
 
 from app.domain.entities.tender import utc_now_naive
 from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.domain.entities.tender import Tender
+from app.domain.entities.tender import Tender, TenderItem
+
 from app.infrastructure.repositories.tender_model import (
     TenderModel,
     BuyerInstitutionModel,
@@ -29,16 +31,31 @@ class TenderRepository(ITenderRepository):
             name=model.name,
             description=model.description,
             status_id=model.status_id,
+            status_code=model.status.code if model.status else None,
             published_at=model.published_at,
             closing_at=model.closing_at,
             last_change_at=model.last_change_at,
             buyer_rut=model.buyer_rut,
+            buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
             province=model.province,
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
             updated_at=model.updated_at,
+            items=[
+                TenderItem(
+                    id=item.id,
+                    tender_id=item.tender_id,
+                    product_code=item.product_code,
+                    name=item.name,
+                    description=item.description,
+                    quantity=item.quantity,
+                    unit_of_measure=item.unit_of_measure,
+                )
+                for item in (model.items or [])
+            ],
         )
+
 
     def _to_model(self, entity: Tender) -> TenderModel:
         """Convert Domain Entity to DB Model."""
@@ -61,7 +78,10 @@ class TenderRepository(ITenderRepository):
 
     async def get_tenders(self, filters: TenderFilters) -> List[Tender]:
         """Retrieve tenders matching specified filters."""
-        query = select(TenderModel)
+        query = select(TenderModel).options(
+            selectinload(TenderModel.status),
+            selectinload(TenderModel.buyer)
+        )
 
         # Apply join if region name filtering is requested
         if filters.regions:

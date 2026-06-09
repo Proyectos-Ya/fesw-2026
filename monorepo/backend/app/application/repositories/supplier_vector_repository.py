@@ -32,3 +32,13 @@ class ISupplierVectorRepository(ABC):
 
         """
         ...
+
+    @abstractmethod
+    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+        """
+        Obtiene el vector (embedding) de un proveedor dado su ID.
+
+        Devuelve una lista de floats con el embedding si existe, o None si no.
+        """
+        ...
+
