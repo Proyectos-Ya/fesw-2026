@@ -8,7 +8,11 @@ import { Step1Identity } from "./steps/Step1Identity";
 import { Step2Operations } from "./steps/Step2Operations";
 import { Step3Specialization } from "./steps/Step3Specialization";
 import { Step4Summary } from "./steps/Step4Summary";
+import { z } from "zod";
+import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
+import { createSupplier } from "../services/supplierService";
+import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
 const PLACEHOLDER_ADMIN = "Usuario Demo";
 
@@ -17,12 +21,28 @@ export function ProfileWizard() {
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setError(null);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const payload = profileSchema.parse(formData);
+      await createSupplier(payload);
       router.push("/?as=ready");
+    } catch (err) {
+      console.error("[ProfileWizard] Error al guardar perfil:", err);
+      if (err instanceof TimeoutError) {
+        setError(err.message);
+      } else if (err instanceof ApiError) {
+        setError(err.message);
+      } else if (err instanceof z.ZodError) {
+        setError("Hay campos incompletos o inválidos. Revisa los pasos anteriores.");
+      } else {
+        setError(
+          "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.",
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -64,13 +84,23 @@ export function ProfileWizard() {
           />
         )}
         {currentStep === 4 && (
-          <Step4Summary
-            data={formData}
-            onBack={prevStep}
-            onSubmit={handleSubmit}
-            onGoToStep={goToStep}
-            isLoading={isSubmitting}
-          />
+          <>
+            {error && (
+              <div
+                role="alert"
+                className="mb-4 rounded-input border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
+                {error}
+              </div>
+            )}
+            <Step4Summary
+              data={formData}
+              onBack={prevStep}
+              onSubmit={handleSubmit}
+              onGoToStep={goToStep}
+              isLoading={isSubmitting}
+            />
+          </>
         )}
       </div>
     </div>
