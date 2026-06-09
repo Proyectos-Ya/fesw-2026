@@ -13,6 +13,7 @@ def create_router(
     get_rank_tenders_use_case: Callable,
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
+    get_embedding_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
     hasher: IPasswordHasher,
@@ -47,6 +48,7 @@ def create_router(
         create_supplier_router(
             get_supplier_repo=get_supplier_repo,
             get_supplier_vector_repo=get_supplier_vector_repo,
+            get_embedding_service=get_embedding_service,
             get_current_user=get_current_user,
         )
     )

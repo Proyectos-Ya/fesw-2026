@@ -5,6 +5,7 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.user_repository import IUserRepository
 
 from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
+from app.application.services.embedding_service import IEmbeddingService
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import get_session
@@ -21,6 +22,7 @@ from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.application.repositories.tender_vector_repository import ITenderVectorRepository
 from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
 from app.application.services.reranker_service import IRerankerService
+from app.infrastructure.services.bge_m3_embedding_service import BgeM3EmbeddingService
 from app.infrastructure.services.bge_reranker_service import BgeRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
@@ -48,11 +50,13 @@ def get_tender_repo(
     return TenderRepository(session)
 
 
+def get_embedding_service(request: Request) -> IEmbeddingService:
+    return request.app.state.embedding_service
+
+
 def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
-    # Reutiliza el cliente Qdrant asíncrono
-    from app.routers.deps import get_qdrant_client
     return QdrantTenderRepository(
-        client=get_qdrant_client(),
+        client=request.app.state.qdrant_async_client,
         vector_size=settings.embedding_vector_size,
     )
 def get_reranker_service(request: Request) -> IRerankerService:
@@ -103,6 +107,8 @@ def bootstrap(app: FastAPI) -> None:
         expire_minutes=settings.access_token_expire_minutes,
     )
 
+    app.state.embedding_service = BgeM3EmbeddingService(model_name=settings.embedding_model)
+
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
     try:
         app.state.reranker_service = BgeRerankerService()
@@ -131,6 +137,7 @@ def bootstrap(app: FastAPI) -> None:
         get_rank_tenders_use_case=get_rank_tenders_use_case,
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
+        get_embedding_service=get_embedding_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
         hasher=hasher,

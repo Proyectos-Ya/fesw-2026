@@ -15,6 +15,7 @@ from app.domain.errors.supplier_errors import (
     SupplierValidationError,
 )
 from tests.unit.application.fakes import (
+    FakeEmbeddingService,
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
 )
@@ -37,11 +38,17 @@ def vector_repo() -> FakeSupplierVectorRepository:
 
 
 @pytest.fixture
+def embedding_service() -> FakeEmbeddingService:
+    return FakeEmbeddingService()
+
+
+@pytest.fixture
 def use_case(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
 ) -> CreateSupplierUseCase:
-    return CreateSupplierUseCase(supplier_repo, vector_repo)
+    return CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +110,7 @@ async def test_duplicate_rut_does_not_write_qdrant(
     vector_repo: FakeSupplierVectorRepository,
 ) -> None:
     """Si el RUT ya existe, la operación falla antes de indexar en Qdrant."""
-    use_case = CreateSupplierUseCase(supplier_repo, vector_repo)
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
 
     # Primera creación exitosa
     await use_case.execute(SUPPLIER_DATA)
@@ -121,7 +128,7 @@ async def test_duplicate_rut_does_not_add_extra_sql_row(
     vector_repo: FakeSupplierVectorRepository,
 ) -> None:
     """Si el RUT ya existe, el repo SQL queda con exactamente un proveedor."""
-    use_case = CreateSupplierUseCase(supplier_repo, vector_repo)
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
     await use_case.execute(SUPPLIER_DATA)
 
     with pytest.raises(SupplierAlreadyExists):
@@ -148,7 +155,7 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
     vector_repo: FakeSupplierVectorRepository,
 ) -> None:
     """Un RUT inválido falla en la validación: ni SQL ni Qdrant reciben datos."""
-    use_case = CreateSupplierUseCase(supplier_repo, vector_repo)
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
     data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
 
     with pytest.raises(SupplierValidationError):
@@ -156,3 +163,45 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 
     assert len(supplier_repo.suppliers) == 0
     assert len(vector_repo.upserts) == 0
+
+
+# ---------------------------------------------------------------------------
+# Embedding: vector indexado proviene del servicio, no de valor hardcodeado
+# ---------------------------------------------------------------------------
+
+
+async def test_embedding_stored_comes_from_service(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """El vector guardado en Qdrant es el que devuelve el EmbeddingService."""
+    fake_vector = [0.9] * 1024
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService(fake_vector))
+
+    supplier = await use_case.execute(SUPPLIER_DATA)
+
+    assert vector_repo.vectors[supplier.id] == fake_vector
+
+
+async def test_embedding_service_called_once_per_creation(
+    use_case: CreateSupplierUseCase,
+    embedding_service: FakeEmbeddingService,
+) -> None:
+    """El EmbeddingService se invoca exactamente una vez al crear un proveedor."""
+    await use_case.execute(SUPPLIER_DATA)
+
+    assert len(embedding_service.calls) == 1
+
+
+async def test_embedding_text_includes_legal_name(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """El texto enviado al EmbeddingService contiene el nombre legal del proveedor."""
+    embedding_service = FakeEmbeddingService()
+    data = CreateSupplierSchema(rut=VALID_RUT, legal_name="Constructora Norte SpA")
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
+
+    await use_case.execute(data)
+
+    assert any("Constructora Norte SpA" in text for text in embedding_service.calls[0])

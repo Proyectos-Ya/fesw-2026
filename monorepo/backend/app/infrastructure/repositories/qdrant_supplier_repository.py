@@ -60,5 +60,8 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
         )
         if not records:
             return None
-        return records[0].vector
+        vector_data = records[0].vector
+        if isinstance(vector_data, dict):
+            return next(iter(vector_data.values()))
+        return vector_data
 
