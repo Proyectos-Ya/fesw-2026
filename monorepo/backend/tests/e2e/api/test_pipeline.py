@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
-from app.domain.entities.resultado_matching import ResultadoMatching
-from app.domain.models.licitacion_schema import IngestResult
+from app.domain.entities.matching_result import MatchingResult as ResultadoMatching
+from app.domain.models.tender_schema import IngestResult
 from app.domain.models.matching_schema import MatchResult
 from app.main import app
 from app.routers.licitaciones import get_ingest_use_case
@@ -65,11 +65,11 @@ async def test_match_retorna_resultado(client: AsyncClient) -> None:
     licitacion_id = uuid4()
 
     resultado = ResultadoMatching(
-        proveedor_id=proveedor_id,
-        licitacion_id=licitacion_id,
-        score_similitud=0.92,
-        score_final=0.92,
-        version_modelo="bge-m3-v1",
+        supplier_id=proveedor_id,
+        tender_id=licitacion_id,
+        similarity_score=0.92,
+        final_score=0.92,
+        model_version="bge-m3-v1",
     )
     mock_uc = AsyncMock()
     mock_uc.execute.return_value = MatchResult(
@@ -85,7 +85,7 @@ async def test_match_retorna_resultado(client: AsyncClient) -> None:
     data = response.json()
     assert data["version_modelo"] == "bge-m3-v1"
     assert len(data["resultados"]) == 1
-    assert data["resultados"][0]["score_similitud"] == 0.92
+    assert data["resultados"][0]["similarity_score"] == 0.92
 
 
 async def test_match_proveedor_no_encontrado_retorna_404(
@@ -116,11 +116,11 @@ async def test_obtener_score_retorna_resultado_matching(
     licitacion_id = uuid4()
 
     resultado = ResultadoMatching(
-        proveedor_id=proveedor_id,
-        licitacion_id=licitacion_id,
-        score_similitud=0.88,
-        score_final=0.88,
-        version_modelo="bge-m3-v1",
+        supplier_id=proveedor_id,
+        tender_id=licitacion_id,
+        similarity_score=0.88,
+        final_score=0.88,
+        model_version="bge-m3-v1",
     )
     mock_uc = AsyncMock()
     mock_uc.execute.return_value = resultado
@@ -130,8 +130,8 @@ async def test_obtener_score_retorna_resultado_matching(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["score_similitud"] == 0.88
-    assert data["version_modelo"] == "bge-m3-v1"
+    assert data["similarity_score"] == 0.88
+    assert data["model_version"] == "bge-m3-v1"
 
 
 async def test_obtener_score_no_encontrado_retorna_404(

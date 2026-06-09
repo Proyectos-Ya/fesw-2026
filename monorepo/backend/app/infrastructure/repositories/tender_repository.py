@@ -1,4 +1,5 @@
 from typing import List
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -26,10 +27,12 @@ class TenderRepository(ITenderRepository):
             name=model.name,
             description=model.description,
             status_id=model.status_id,
+            status_code=model.status.code if model.status else None,
             published_at=model.published_at,
             closing_at=model.closing_at,
             last_change_at=model.last_change_at,
             buyer_rut=model.buyer_rut,
+            buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
             province=model.province,
             available_amount_clp=model.available_amount_clp,
@@ -71,7 +74,10 @@ class TenderRepository(ITenderRepository):
 
     async def get_tenders(self, filters: TenderFilters) -> List[Tender]:
         """Retrieve tenders matching specified filters."""
-        query = select(TenderModel)
+        query = select(TenderModel).options(
+            selectinload(TenderModel.status),
+            selectinload(TenderModel.buyer)
+        )
 
         # Apply join if region name filtering is requested
         if filters.regions:

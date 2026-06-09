@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from app.domain.entities.licitacion import Licitacion
+from app.domain.entities.tender import Tender as Licitacion
 
 
 class IMercadoPublicoService(ABC):

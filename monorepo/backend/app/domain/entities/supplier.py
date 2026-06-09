@@ -36,6 +36,7 @@ def is_valid_rut(rut: str) -> bool:
 
 class Supplier(BaseModel):
     id: UUID =  Field(default_factory=uuid4)
+    user_id: Optional[UUID] = None  # ID del usuario propietario de esta cuenta proveedor
     rut: str
     legal_name: str
     trade_name: Optional[str] = None

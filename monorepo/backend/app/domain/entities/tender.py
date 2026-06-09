@@ -59,10 +59,12 @@ class Tender(BaseModel):
     name: str
     description: Optional[str] = None
     status_id: int
+    status_code: Optional[str] = None  # Código del estado de la licitación (ej: 'publicada', 'cerrada')
     published_at: datetime
     closing_at: datetime
     last_change_at: datetime
     buyer_rut: str
+    buyer_name: Optional[str] = None  # Nombre de la institución compradora
     buyer_unit: str
     province: Optional[str] = None  # Calculated geographical province
     available_amount_clp: Optional[float] = None  # Budget normalized to CLP

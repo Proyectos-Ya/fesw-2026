@@ -34,6 +34,14 @@ class SupplierRepository(ISupplierRepository):
         model = await self.session.get(SupplierModel, supplier_id)
         return self._to_entity(model) if model else None
 
+    async def get_by_user_id(self, user_id: UUID) -> Supplier | None:
+        # Busca un proveedor por el id del usuario propietario
+        result = await self.session.exec(
+            select(SupplierModel).where(SupplierModel.user_id == user_id)
+        )
+        model = result.first()
+        return self._to_entity(model) if model else None
+
     async def save(self, supplier: Supplier) -> Supplier:
         # Persiste el proveedor en la base de datos
         model = self._to_model(supplier)
