@@ -15,25 +15,18 @@ class ItemLicitacionDTO(BaseModel):
     unidad_medida: str
 
 class TenderIngestaDTO(BaseModel):
-    "Mapeo de la tabla licitacion"
-    codigo_externo: str = Field(..., alias="CodigoExterno")
-    nombre: str = Field(..., alias="Nombre")
-    descripcion: Optional[str] = Field(None, alias="Descripcion")
-    estado: Optional[str] = Field(None, alias="Estado")
-    codigo_estado: Optional[int] = Field(None, alias="CodigoEstado")
-    tipo: Optional[int] = Field(None, alias="Tipo")
-    monto_estimado: Optional[float] = Field(None, alias="MontoEstimado")
-    organismo_codigo: Optional[str] = Field(None, alias="CodigoOrganismo")
-    organismo_nombre: Optional[str] = Field(None, alias="NombreOrganismo")
-    region: Optional[str] = Field(None, alias="Region")
-    comuna: Optional[str] = Field(None, alias="Comuna")
-    es_obra: bool = False
-    es_renovable: bool = False
-    fecha_publicacion: Optional[datetime] = Field(None, alias="FechaPublicacion")
-    fecha_cierre: Optional[datetime] = Field(None, alias="FechaCierre")
-    fecha_adjudicacion: Optional[datetime] = Field(None, alias="FechaAdjudicacion")
+    code: str = Field(..., alias="CodigoExterno")
+    name: str = Field(..., alias="Nombre")
+    description: Optional[str] = Field(None, alias="Descripcion")
+    status_code: int = Field(..., alias="CodigoEstado")
+    published_at: datetime = Field(..., alias="FechaPublicacion")
+    closing_at: datetime = Field(..., alias="FechaCierre")
+    buyer_rut: str = Field(..., alias="RutComprador")
+    buyer_name: str = Field(..., alias="NombreOrganismo")
+    buyer_unit: str = Field(..., alias="UnidadCompra")
+    region_name: str = Field(..., alias="RegionUnidad")
     
-    # Relacion con items
+    available_amount_clp: Optional[float] = Field(None, alias="MontoEstimado")
     items: List[ItemLicitacionDTO] = []
 
     class Config:
