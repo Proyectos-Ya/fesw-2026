@@ -18,6 +18,8 @@ from app.infrastructure.services.password_hasher import BcryptPasswordHasher
 from app.infrastructure.services.token_service import JwtTokenService
 from app.application.repositories.tender_repository import ITenderRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
 
 
 def get_supplier_repo(
@@ -36,6 +38,16 @@ def get_tender_repo(
 ) -> ITenderRepository:
     # Crea el repositorio concreto de licitaciones con la sesión de BD
     return TenderRepository(session)
+
+
+def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
+    # Reutiliza el cliente Qdrant asíncrono
+    from app.routers.deps import get_qdrant_client
+    return QdrantTenderRepository(
+        client=get_qdrant_client(),
+        vector_size=settings.embedding_vector_size,
+    )
+
 
 
 def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserRepository:

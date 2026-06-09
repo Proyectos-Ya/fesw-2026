@@ -1,41 +1,31 @@
-from app.domain.entities.licitacion import Licitacion
 from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender import Tender, TenderItem
 
 
 class TextBuilder:
     """
     Construye representaciones textuales simétricas para licitaciones y proveedores.
-
-    Formato compartido (4 secciones con datos completos, 1 con datos mínimos):
-      {concepto_principal}. {descripcion_libre}.
-      {Etiqueta_A}: {lista_A}. {Etiqueta_B}: {lista_B}.
-
-    La simetría estructural es un requisito no negociable: si los dos documentos
-    se representan con estructuras distintas, la similitud coseno entre sus
-    vectores pierde significado aunque el modelo de embeddings sea el mismo.
     """
 
-    def build_from_licitacion(self, licitacion: Licitacion) -> str:
-        sections: list[str] = []
+    def build_from_tender(self, tender: Tender, items: list[TenderItem], buyer_name: str) -> str:
+        """
+        Construye la representación de texto para una licitación (tender) siguiendo la estrategia requerida.
+        """
+        parts = [
+            f"Title: {tender.name}",
+            f"Description: {tender.description if tender.description else ''}"
+        ]
 
-        sections.append(licitacion.nombre)
+        items_parts = ["Items Requested:"]
+        for item in items:
+            desc = f": {item.description}" if item.description else ""
+            items_parts.append(f"- {item.name}{desc}")
 
-        if licitacion.descripcion:
-            sections.append(licitacion.descripcion)
+        parts.append("\n".join(items_parts))
+        parts.append(f"Buyer: {buyer_name} ({tender.buyer_unit})")
 
-        if licitacion.categorias:
-            sections.append(f"Categorías: {', '.join(licitacion.categorias)}")
+        return "\n".join(parts)
 
-        if licitacion.items:
-            items_text = ", ".join(
-                f"{item.nombre}: {item.descripcion}"
-                if item.descripcion
-                else item.nombre
-                for item in licitacion.items
-            )
-            sections.append(f"Items: {items_text}")
-
-        return ". ".join(sections) + "."
 
     def build_from_supplier(self, supplier: Supplier) -> str:
         sections: list[str] = []
