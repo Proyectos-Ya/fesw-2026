@@ -6,9 +6,11 @@ from app.application.services.token_service import ITokenService
 from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.supplier import create_supplier_router
+from app.infrastructure.routers.tender import create_tender_router
 
 
 def create_router(
+    get_rank_tenders_use_case: Callable,
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_user_repo: Callable,
@@ -45,6 +47,12 @@ def create_router(
         create_supplier_router(
             get_supplier_repo=get_supplier_repo,
             get_supplier_vector_repo=get_supplier_vector_repo,
+            get_current_user=get_current_user,
+        )
+    )
+    root.include_router(
+        create_tender_router(
+            get_rank_tenders_use_case=get_rank_tenders_use_case,
             get_current_user=get_current_user,
         )
     )
