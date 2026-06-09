@@ -1,8 +1,10 @@
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+import uuid
 
+from app.domain.entities.tender import utc_now_naive
 from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
 from app.domain.entities.tender import Tender, TenderItem
 
@@ -10,6 +12,8 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     BuyerInstitutionModel,
     RegionModel,
+    TenderStatusModel,
+    TenderItemModel,
 )
 
 
@@ -97,3 +101,65 @@ class TenderRepository(ITenderRepository):
         models = result.all()
 
         return [self._to_entity(m) for m in models]
+
+    async def get_by_code(self, code: str) -> Optional[TenderModel]:
+        statement = select(TenderModel).where(TenderModel.code == code)
+        result = await self.session.exec(statement)
+        return result.first()
+
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+        statement = select(BuyerInstitutionModel).where(BuyerInstitutionModel.rut == rut)
+        result = await self.session.exec(statement)
+        buyer = result.first()
+        
+        if not buyer:
+            now = utc_now_naive()
+            buyer = BuyerInstitutionModel(
+                rut=rut, name=name, region_id=region_id,
+                created_at=now, updated_at=now
+            )
+            self.session.add(buyer)
+            await self.session.flush()
+        return rut
+
+    async def get_or_create_status(self, status_id: int) -> int:
+        statement = select(TenderStatusModel).where(TenderStatusModel.id == status_id)
+        result = await self.session.exec(statement)
+        status = result.first()
+        
+        if not status:
+            ESTADOS_MAP = {
+                1: "Publicada",
+                2: "Publicada",
+                6: "Publicada",
+                7: "Cerrada",
+                8: "Desierta",
+                18: "Adjudicada"
+            }
+            
+            if status_id in ESTADOS_MAP:
+                name_str = ESTADOS_MAP[status_id]
+                code_str = f"{name_str.lower().strip()}_{status_id}"
+            else:
+                name_str = f"Estado Desconocido ({status_id})"
+                code_str = f"desconocido_{status_id}"
+
+            status = TenderStatusModel(
+                id=status_id,
+                code=code_str,
+                name=name_str
+            )
+            self.session.add(status)
+            await self.session.flush()
+            
+        return status_id
+
+    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]):
+        self.session.add(tender_model)
+        for item in items:
+            self.session.add(item)
+        await self.session.commit()
+
+    async def rollback(self) -> None:
+        # Limpia buffer
+        await self.session.rollback()

@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.domain.entities.tender import Tender
+from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
 
 
 class TenderFilters(BaseModel):
@@ -20,3 +21,18 @@ class ITenderRepository(ABC):
     async def get_tenders(self, filters: TenderFilters) -> List[Tender]:
         """Retrieve a list of tenders matching the specified filters."""
         ...
+
+    @abstractmethod
+    async def get_by_code(self, code: str) -> Optional[TenderModel]: ...
+
+    @abstractmethod
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str: ...
+
+    @abstractmethod
+    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]) -> None: ...
+
+    @abstractmethod
+    async def get_or_create_status(self, status_id: int) -> int: ...
+
+    @abstractmethod
+    async def rollback(self) -> None: pass
