@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from app import bootstrap
 from app.main import app
 from tests.unit.application.fakes import (
+    FakeEmbeddingService,
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
     InMemoryUserRepository,
@@ -27,6 +28,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
     app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
     app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: vectors
+    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: FakeEmbeddingService()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

@@ -70,6 +70,18 @@ class FakeSupplierVectorRepository(ISupplierVectorRepository):
 
 
 
+class FakeEmbeddingService:
+    """Devuelve siempre el mismo vector configurable — evita cargar el modelo real."""
+
+    def __init__(self, vector: list[float] | None = None) -> None:
+        self.vector = vector if vector is not None else [0.5] * 1024
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(texts)
+        return [self.vector] * len(texts)
+
+
 class FakePasswordHasher(IPasswordHasher):
     """Hash reversible y trivial — solo para pruebas, jamás producción."""
 
