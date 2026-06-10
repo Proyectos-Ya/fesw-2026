@@ -20,12 +20,12 @@ class SmartQuestionServiceImpl(ISmartQuestionService):
 
         # Logica del arbol
         questions_pool: List[Dict[str, Any]] = []
-        if clean_category == "construction":
+        if clean_category == "construccion":
             questions_pool = [
                 {"question": "¿Inscrito en el Registro de Contratistas del MOP?", "target_field": "certifications", "options": ["Sí", "No"]},
                 {"question": "¿Capacidad logística fuera de su región base?", "target_field": "mobility", "options": ["Sí", "No"]}
             ]
-        elif clean_category == "Seguridad":
+        elif clean_category == "ti":
             questions_pool = [
                 {"question": "Placeholder", "target_field": "Placeholder", "options": ["Sí", "No"]},
                 {"question": "Placerholder", "target_field": "Placerholder", "options": ["Sí", "No"]}

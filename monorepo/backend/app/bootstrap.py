@@ -29,6 +29,11 @@ from app.infrastructure.services.field_weighting_service import FieldWeightingSe
 from app.application.repositories.matching_result_repository import IMatchingResultRepository
 from app.infrastructure.repositories.matching_result_repository import MatchingResultRepository
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.repositories.question_repository import IQuestionRepository
+from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+from app.application.services.smart_question_service import ISmartQuestionService
+from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
+from app.application.use_cases.questions.smart_question_use_case import SmartQuestionUseCase
 
 
 
@@ -97,6 +102,28 @@ def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserReposito
     return UserRepository(session)
 
 
+def get_question_repo(
+    session: AsyncSession = Depends(get_session),
+) -> IQuestionRepository:
+    return QuestionRepositoryImpl(session)
+
+
+def get_smart_question_service(
+    question_repo: IQuestionRepository = Depends(get_question_repo),
+) -> ISmartQuestionService:
+    return SmartQuestionServiceImpl(question_repository=question_repo)
+
+
+def get_smart_question_use_case(
+    smart_question_service: ISmartQuestionService = Depends(get_smart_question_service),
+    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
+) -> SmartQuestionUseCase:
+    return SmartQuestionUseCase(
+        smart_question_service=smart_question_service,
+        supplier_repository=supplier_repo,
+    )
+
+
 
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
@@ -135,6 +162,7 @@ def bootstrap(app: FastAPI) -> None:
 
     router = create_router(
         get_rank_tenders_use_case=get_rank_tenders_use_case,
+        get_smart_question_use_case=get_smart_question_use_case,
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_embedding_service=get_embedding_service,
