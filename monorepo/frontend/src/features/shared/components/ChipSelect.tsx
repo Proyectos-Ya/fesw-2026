@@ -26,7 +26,7 @@ export function ChipSelect({
   };
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-zinc-900">{label}</span>
+      <span className="text-sm font-semibold text-text-strong">{label}</span>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const isSelected = selected.includes(option);
@@ -36,10 +36,10 @@ export function ChipSelect({
               type="button"
               onClick={() => toggle(option)}
               aria-pressed={isSelected}
-              className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary-500 ${
+              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                 isSelected
-                  ? "border-brand-primary-700 bg-brand-primary-100 text-brand-primary-900"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                  ? "border-primary bg-primary-soft text-primary shadow-sm"
+                  : "border-border-default bg-white text-text-muted hover:border-border-strong hover:bg-bg-page"
               }`}
             >
               {option}
@@ -48,9 +48,9 @@ export function ChipSelect({
         })}
       </div>
       {error ? (
-        <p className="text-xs text-semantic-danger-base">{error}</p>
+        <p className="text-xs text-danger">{error}</p>
       ) : hint ? (
-        <p className="text-xs text-zinc-400">{hint}</p>
+        <p className="text-xs text-text-muted">{hint}</p>
       ) : null}
     </div>
   );

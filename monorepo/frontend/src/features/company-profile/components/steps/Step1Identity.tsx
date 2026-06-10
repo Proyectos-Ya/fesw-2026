@@ -26,20 +26,23 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
   return (
     <div>
       <div className="mb-6">
-        <h2 className="mb-1 text-xl font-bold text-brand-primary-900">
+        <h2 className="mb-1 text-2xl font-bold tracking-tight text-text-strong">
           Identidad de tu empresa
         </h2>
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-text-muted">
           Ingresa los datos de la empresa que va a postular a licitaciones.
         </p>
       </div>
 
-      <div className="mb-6 rounded-input border border-brand-primary-100 bg-brand-primary-50 px-4 py-3 text-sm text-zinc-600">
-        Registrado como administrador:{" "}
-        <span className="font-semibold text-brand-primary-900">{adminName}</span>
+      <div className="mb-8 rounded-md border border-primary-border bg-primary-soft/50 px-4 py-3.5 text-sm text-text-body flex items-center gap-3 shadow-sm">
+        <div className="size-2 rounded-full bg-primary animate-pulse" />
+        <span>
+          Registrado como administrador:{" "}
+          <span className="font-bold text-primary">{adminName}</span>
+        </span>
       </div>
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-6">
         <Input
           label="Nombre de la empresa"
           placeholder="Ej: Constructora Pérez y Asociados Ltda."

@@ -13,18 +13,19 @@ function HomeContent() {
   if (!isLoggedIn || hasProfile) return null;
 
   return (
-    <section className="flex flex-1 flex-col items-center justify-center text-center">
-      <h1 className="font-display text-3xl font-semibold text-brand-primary-900 sm:text-4xl">
-        Aún no has creado tu perfil de marca inteligente
+    <section className="flex flex-1 flex-col items-center justify-center text-center py-12">
+      <h1 className="font-display text-4xl font-extrabold tracking-tight text-text-strong sm:text-5xl lg:text-6xl max-w-3xl leading-[1.1]">
+        Menos papeleo.<br />
+        <span className="text-accent">Más proyectos ganados.</span>
       </h1>
-      <p className="mt-4 max-w-md text-zinc-600">
-        Constrúyelo para empezar a recibir licitaciones que coincidan con tu negocio.
+      <p className="mt-6 max-w-lg text-lg text-text-muted leading-relaxed">
+        Crea tu perfil inteligente para empezar a recibir licitaciones que realmente coincidan con tu negocio.
       </p>
       <Link
         href="/perfil"
-        className="mt-10 rounded-button bg-brand-primary-600 px-8 py-3 text-base font-medium text-white transition-colors hover:bg-brand-primary-700"
+        className="mt-10 rounded-full bg-primary px-10 py-4 text-base font-bold text-white shadow-teal transition-all hover:bg-primary-hover hover:scale-[1.02] active:scale-[0.98]"
       >
-        Comenzar
+        Construir mi perfil inteligente
       </Link>
     </section>
   );

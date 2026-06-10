@@ -51,7 +51,7 @@ export function ProfileWizard() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <WizardProgress currentStep={currentStep} totalSteps={totalSteps} />
-      <div className="rounded-card bg-white p-8 shadow-premium">
+      <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
         {currentStep === 1 && (
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
@@ -88,7 +88,7 @@ export function ProfileWizard() {
             {error && (
               <div
                 role="alert"
-                className="mb-4 rounded-input border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                className="mb-6 rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm text-danger font-medium"
               >
                 {error}
               </div>
