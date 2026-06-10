@@ -56,4 +56,8 @@ class Settings(BaseSettings):
     mercado_publico_api_key: str
     is_dev: bool = True
 
+    # --- Gemini ---
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
+
 settings = Settings()  # type: ignore
