@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./../globals.css";
 import { Sidebar } from "@/features/shared/components/Sidebar";
 import { Icon } from "@/features/shared/components/Icon";
+import { SessionProvider } from "@/features/auth/components/SessionProvider";
 
 export const metadata: Metadata = {
   title: "ProyectosYa",
@@ -16,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex bg-bg-page font-sans selection:bg-teal-200 selection:text-warm-900">
+        <SessionProvider>
         <Sidebar />
         
         <div className="flex-1 flex flex-col min-w-0">
@@ -44,6 +46,7 @@ export default function RootLayout({
             {children}
           </main>
         </div>
+        </SessionProvider>
       </body>
     </html>
   );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
+import { useSession } from "@/features/auth/components/SessionProvider";
 
 interface NavItemProps {
   icon: string;
@@ -44,20 +45,13 @@ function NavItem({ icon, label, href, active, badge }: NavItemProps) {
   );
 }
 
-interface SidebarProps {
-  user?: {
-    name: string;
-    company?: string;
-    avatar?: string;
-  };
-}
-
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout } = useSession();
 
-  const currentUser = user ?? {
-    name: "Usuario Demo",
-    company: "Empresa Demo S.A.",
+  const currentUser = {
+    name: user?.full_name ?? "",
+    detail: user?.email ?? "",
   };
 
   return (
@@ -73,22 +67,23 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="flex-1" />
 
       <div className="mt-auto pt-4 border-t border-border-subtle flex items-center gap-3 group">
-        <Avatar name={currentUser.name} src={currentUser.avatar} size="md" />
+        <Avatar name={currentUser.name} size="md" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold text-text-strong truncate">
             {currentUser.name}
           </div>
           <div className="text-xs text-text-subtle truncate">
-            {currentUser.company}
+            {currentUser.detail}
           </div>
         </div>
-        <Link 
-          href="/perfil"
-          className="p-1.5 rounded-md text-text-subtle hover:bg-primary-soft hover:text-primary transition-all duration-200"
-          title="Configuración de perfil"
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="p-1.5 rounded-md text-text-subtle hover:bg-danger-soft hover:text-danger transition-all duration-200"
+          title="Cerrar sesión"
         >
-          <Icon name="settings" size={18} />
-        </Link>
+          <Icon name="log-out" size={18} />
+        </button>
       </div>
     </aside>
   );

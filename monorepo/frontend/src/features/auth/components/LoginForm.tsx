@@ -30,7 +30,7 @@ export function LoginForm() {
     setError(null);
     try {
       await login(data);
-      router.push("/?as=new"); // Redirect to home as a logged-in user without a profile yet
+      router.push("/");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

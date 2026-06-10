@@ -13,11 +13,11 @@ import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier } from "../services/supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
-
-const PLACEHOLDER_ADMIN = "Usuario Demo";
+import { useSession } from "@/features/auth/components/SessionProvider";
 
 export function ProfileWizard() {
   const router = useRouter();
+  const { user } = useSession();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,7 +29,7 @@ export function ProfileWizard() {
     try {
       const payload = profileSchema.parse(formData);
       await createSupplier(payload);
-      router.push("/?as=ready");
+      router.push("/");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
       if (err instanceof TimeoutError) {
@@ -55,7 +55,7 @@ export function ProfileWizard() {
         {currentStep === 1 && (
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
-            adminName={PLACEHOLDER_ADMIN}
+            adminName={user?.full_name ?? ""}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
           />
