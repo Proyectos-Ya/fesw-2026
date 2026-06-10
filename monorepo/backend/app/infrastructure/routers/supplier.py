@@ -9,9 +9,11 @@ from app.application.repositories.supplier_vector_repository import (
 )
 from app.application.schemas.supplier_schema import (
     CreateSupplierSchema,
+    RutExistsResponse,
     UpdateSupplierSchema,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.use_cases.supplier.check_rut_exists import CheckRutExistsUseCase
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
 from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.application.use_cases.supplier.get_supplier_by_user import (
@@ -113,6 +115,15 @@ def create_supplier_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         except SupplierValidationError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    @router.get("/rut-exists", response_model=RutExistsResponse)
+    async def rut_exists(
+        rut: str,
+        repo: ISupplierRepository = Depends(get_supplier_repo),
+    ):
+        # Verificación temprana de RUT duplicado para el wizard de creación.
+        # Declarada antes de /{supplier_id} para que no se capture como id.
+        return RutExistsResponse(exists=await CheckRutExistsUseCase(repo).execute(rut))
 
     @router.get(
         "/{supplier_id}",

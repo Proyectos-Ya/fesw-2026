@@ -29,3 +29,7 @@ class UpdateSupplierSchema(BaseModel):
     keywords: Optional[list[str]] = None
     years_experience: Optional[int] = Field(default=None, ge=0)
     num_employees: Optional[int] = Field(default=None, ge=1)
+
+class RutExistsResponse(BaseModel):
+    """Respuesta de la verificación temprana de RUT duplicado."""
+    exists: bool

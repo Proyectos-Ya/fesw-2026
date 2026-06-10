@@ -2,6 +2,25 @@ import { z } from "zod";
 
 const rutRegex = /^(\d{1,3}(\.\d{3})*|\d{7,8})-[\dkK]$/;
 
+/** Valida el dígito verificador de un RUT chileno (módulo 11). */
+export function isValidRut(rut: string): boolean {
+  const cleaned = rut.replace(/\./g, "").replace(/-/g, "").toUpperCase();
+  if (cleaned.length < 2) return false;
+
+  const body = cleaned.slice(0, -1);
+  const checkDigit = cleaned.slice(-1);
+  if (!/^\d+$/.test(body)) return false;
+
+  const multipliers = [2, 3, 4, 5, 6, 7];
+  const total = [...body]
+    .reverse()
+    .reduce((sum, digit, i) => sum + Number(digit) * multipliers[i % 6], 0);
+  const remainder = 11 - (total % 11);
+  const expected = remainder === 11 ? "0" : remainder === 10 ? "K" : String(remainder);
+
+  return checkDigit === expected;
+}
+
 export const step1Schema = z.object({
   legal_name: z
     .string()
@@ -11,7 +30,10 @@ export const step1Schema = z.object({
     .string()
     .max(150, "El nombre no puede superar los 150 caracteres.")
     .optional(),
-  rut: z.string().regex(rutRegex, "RUT inválido. Formato: 12.345.678-9"),
+  rut: z
+    .string()
+    .regex(rutRegex, "RUT inválido. Formato: 12.345.678-9")
+    .refine(isValidRut, "El RUT no es válido. Revisa el dígito verificador."),
 });
 
 export const step2Schema = z.object({

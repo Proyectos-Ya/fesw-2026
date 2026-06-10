@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSupplier, getMySupplier, updateSupplier } from "../supplierService";
+import {
+  checkRutExists,
+  createSupplier,
+  getMySupplier,
+  updateSupplier,
+} from "../supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import type { ProfileData } from "../../profileSchema";
 
@@ -98,6 +103,35 @@ describe("getMySupplier", () => {
       status: 404,
       message: "Sin empresa asociada",
     });
+  });
+});
+
+describe("checkRutExists", () => {
+  it("hace GET a /suppliers/rut-exists con el RUT codificado y devuelve true si existe", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ exists: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await checkRutExists("76.086.428-5");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain("/suppliers/rut-exists?rut=76.086.428-5");
+    expect(result).toBe(true);
+  });
+
+  it("devuelve false cuando el RUT no está registrado", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ exists: false }),
+      }),
+    );
+
+    await expect(checkRutExists("76.086.428-5")).resolves.toBe(false);
   });
 });
 

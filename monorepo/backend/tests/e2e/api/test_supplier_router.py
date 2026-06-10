@@ -104,6 +104,32 @@ async def test_update_supplier_me_edits_own_company(api: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_rut_exists_without_session_returns_401(api: AsyncClient):
+    resp = await api.get("/suppliers/rut-exists", params={"rut": SUPPLIER["rut"]})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_rut_exists_returns_false_when_not_registered(api: AsyncClient):
+    await _login(api)
+
+    resp = await api.get("/suppliers/rut-exists", params={"rut": SUPPLIER["rut"]})
+    assert resp.status_code == 200
+    assert resp.json() == {"exists": False}
+
+
+@pytest.mark.asyncio
+async def test_rut_exists_returns_true_when_registered(api: AsyncClient):
+    await _login(api)
+    created = await api.post("/suppliers/", json=SUPPLIER)
+    assert created.status_code == 201
+
+    resp = await api.get("/suppliers/rut-exists", params={"rut": SUPPLIER["rut"]})
+    assert resp.status_code == 200
+    assert resp.json() == {"exists": True}
+
+
+@pytest.mark.asyncio
 async def test_get_supplier_me_returns_own_company(api: AsyncClient):
     await _login(api)
     created = await api.post("/suppliers/", json=SUPPLIER)

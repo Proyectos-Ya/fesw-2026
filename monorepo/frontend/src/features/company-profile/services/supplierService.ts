@@ -23,6 +23,14 @@ export function getMySupplier(): Promise<Supplier> {
   return apiFetch<Supplier>("/suppliers/me");
 }
 
+/** Consulta si ya existe una empresa registrada con ese RUT. */
+export async function checkRutExists(rut: string): Promise<boolean> {
+  const { exists } = await apiFetch<{ exists: boolean }>(
+    `/suppliers/rut-exists?rut=${encodeURIComponent(rut)}`,
+  );
+  return exists;
+}
+
 /** Campos editables de la empresa; el RUT no se puede modificar. */
 export type UpdateSupplierData = Partial<Omit<ProfileData, "rut" | "trade_name">> & {
   trade_name?: string | null;
