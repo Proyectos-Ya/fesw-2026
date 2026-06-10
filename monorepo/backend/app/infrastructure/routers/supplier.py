@@ -21,6 +21,7 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFound,
     SupplierNotFoundForUser,
     SupplierValidationError,
+    UserAlreadyHasSupplier,
 )
 
 
@@ -62,7 +63,7 @@ def create_supplier_router(
             return await CreateSupplierUseCase(repo, vector_repo, embedding_service).execute(
                 data, user_id=current_user.id
             )
-        except SupplierAlreadyExists as e:
+        except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
         except SupplierValidationError as e:
             # Regla de negocio inválida (ej: RUT mal formateado por lógica interna)

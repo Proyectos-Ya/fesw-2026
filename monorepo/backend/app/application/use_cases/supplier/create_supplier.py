@@ -12,6 +12,7 @@ from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
+    UserAlreadyHasSupplier,
 )
 
 
@@ -46,6 +47,10 @@ class CreateSupplierUseCase:
         existing = await self.repo.get_by_rut(data.rut)
         if existing:
             raise SupplierAlreadyExists(data.rut)
+
+        # Regla de negocio: un usuario solo puede ser dueño de una empresa
+        if user_id is not None and await self.repo.get_by_user_id(user_id):
+            raise UserAlreadyHasSupplier(user_id)
 
         saved_supplier = await self.repo.save(supplier)
 

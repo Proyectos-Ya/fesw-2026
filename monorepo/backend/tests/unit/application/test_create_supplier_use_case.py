@@ -15,6 +15,7 @@ from app.application.use_cases.supplier.create_supplier import CreateSupplierUse
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
+    UserAlreadyHasSupplier,
 )
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
@@ -184,6 +185,24 @@ async def test_supplier_saved_with_owner_user_id(
     assert stored is not None
     assert stored.id == supplier.id
     assert stored.user_id == owner_id
+
+
+async def test_user_with_supplier_cannot_create_another(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un usuario que ya tiene empresa no puede crear otra (regla de negocio)."""
+    owner_id = uuid4()
+    await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+
+    second = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
+    with pytest.raises(UserAlreadyHasSupplier):
+        await use_case.execute(second, user_id=owner_id)
+
+    # El intento fallido no contamina SQL ni Qdrant
+    assert len(supplier_repo.suppliers) == 1
+    assert len(vector_repo.upserts) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -53,6 +53,19 @@ async def test_create_supplier_associates_logged_user(api: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_second_supplier_for_same_user_returns_409(api: AsyncClient):
+    await _login(api)
+    first = await api.post("/suppliers/", json=SUPPLIER)
+    assert first.status_code == 201
+
+    resp = await api.post(
+        "/suppliers/", json={"rut": "77777777-7", "legal_name": "Otra Empresa SpA"}
+    )
+    assert resp.status_code == 409
+    assert "empresa" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_get_supplier_me_returns_404_without_company(api: AsyncClient):
     await _login(api)
 

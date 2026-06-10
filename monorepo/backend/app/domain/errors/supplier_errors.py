@@ -17,6 +17,12 @@ class SupplierValidationError(Exception):
         super().__init__(message)
 
 
+class UserAlreadyHasSupplier(Exception):
+    def __init__(self, user_id: UUID):
+        super().__init__("Ya tienes una empresa registrada")
+        self.user_id = user_id
+
+
 class SupplierNotFoundForUser(Exception):
     def __init__(self, user_id: UUID):
         super().__init__(f"No se encontró un perfil de proveedor asociado al usuario {user_id}")
