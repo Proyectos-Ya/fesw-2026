@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
@@ -49,7 +50,11 @@ export function TenderCard({ match }: TenderCardProps) {
   const buyer = tender.buyer_name ?? "Organismo no especificado";
 
   return (
-    <article className="flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs">
+    <Link
+      href={`/matches/${tender.id}`}
+      className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      aria-label={`Ver detalle de ${tender.name}`}
+    >
       <div className="flex-none">
         <MatchMeter
           value={score}
@@ -106,17 +111,12 @@ export function TenderCard({ match }: TenderCardProps) {
             </div>
           </div>
           <div className="flex-1" />
-          <button
-            type="button"
-            disabled
-            className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary opacity-70 cursor-not-allowed"
-            title="Disponible en el próximo paso"
-          >
-            Ver análisis
+          <span className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-teal-100">
+            Ver detalle
             <Icon name="arrow-right" size={16} />
-          </button>
+          </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
