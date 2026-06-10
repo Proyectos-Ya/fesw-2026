@@ -13,7 +13,7 @@ class QuestionModel(SQLModel, table=True):
     provider_id: UUID = Field(index=True, nullable=False)
     # tender_id: Optional[UUID] = Field(default=None, nullable=True) # Por el pmv, lo dejamos comentado
 
-    discrepancy_tipe: Optional[str] = Field(default="Category", nullable=True)
+    discrepancy_type: Optional[str] = Field(default="Category", nullable=True)
     tender_requirement: Optional[str] = Field(default=None, nullable=True)
     question: str = Field(nullable=False)
     target_profile_field: str = Field(nullable=False)
