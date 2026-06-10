@@ -6,6 +6,8 @@ Verifican explícitamente que los datos se persisten en el repositorio SQL
 Qdrant (FakeSupplierVectorRepository), y que los errores de negocio dejan
 ambos stores intactos.
 """
+from uuid import uuid4
+
 import pytest
 
 from app.application.schemas.supplier_schema import CreateSupplierSchema
@@ -163,6 +165,25 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 
     assert len(supplier_repo.suppliers) == 0
     assert len(vector_repo.upserts) == 0
+
+
+# ---------------------------------------------------------------------------
+# Propietario: la empresa queda asociada al usuario que la crea
+# ---------------------------------------------------------------------------
+
+
+async def test_supplier_saved_with_owner_user_id(
+    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
+    """El user_id del creador queda persistido en el proveedor."""
+    owner_id = uuid4()
+
+    supplier = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+
+    stored = await supplier_repo.get_by_user_id(owner_id)
+    assert stored is not None
+    assert stored.id == supplier.id
+    assert stored.user_id == owner_id
 
 
 # ---------------------------------------------------------------------------

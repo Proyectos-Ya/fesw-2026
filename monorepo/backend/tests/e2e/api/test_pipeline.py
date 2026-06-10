@@ -4,7 +4,7 @@ y consulta por ID. Usa repositorios en memoria (sin BD ni Qdrant real).
 """
 from uuid import uuid4
 
-import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 
@@ -17,6 +17,15 @@ VALID_SUPPLIER = {
     "years_experience": 5,
     "num_employees": 20,
 }
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _session(api: AsyncClient) -> None:
+    """Las rutas de /suppliers exigen sesión: registra e inicia sesión antes
+    de cada prueba; la cookie httpOnly queda guardada en el cliente."""
+    credentials = {"email": "pipeline@example.com", "password": "supersecret"}
+    await api.post("/auth/register", json={**credentials, "full_name": "Pipeline Test"})
+    await api.post("/auth/login", json=credentials)
 
 
 # ---------------------------------------------------------------------------

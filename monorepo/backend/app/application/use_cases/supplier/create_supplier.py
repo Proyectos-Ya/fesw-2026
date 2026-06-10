@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import ValidationError
 
 from app.application.repositories.supplier_repository import ISupplierRepository
@@ -35,9 +37,9 @@ class CreateSupplierUseCase:
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
 
-    async def execute(self, data: CreateSupplierSchema) -> Supplier:
+    async def execute(self, data: CreateSupplierSchema, user_id: UUID | None = None) -> Supplier:
         try:
-            supplier = Supplier(**data.model_dump())
+            supplier = Supplier(**data.model_dump(), user_id=user_id)
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"]))
 
