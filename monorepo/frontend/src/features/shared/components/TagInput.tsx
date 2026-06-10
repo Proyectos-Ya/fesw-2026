@@ -44,27 +44,27 @@ export function TagInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-zinc-900">
+      <label className="text-sm font-semibold text-text-strong">
         {label}{" "}
         {optional ? (
-          <span className="font-normal text-zinc-400">(opcional)</span>
+          <span className="font-normal text-text-subtle">(opcional)</span>
         ) : null}
       </label>
       <div
-        className={`flex flex-wrap gap-2 rounded-input border bg-white px-3 py-2 transition-colors focus-within:border-brand-primary-500 focus-within:ring-2 focus-within:ring-brand-primary-500 ${
-          error ? "border-semantic-danger-base" : "border-zinc-200"
+        className={`flex flex-wrap gap-2 rounded-md border bg-white px-3 py-2 transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
+          error ? "border-danger" : "border-border-default hover:border-border-strong"
         }`}
       >
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-full bg-brand-primary-100 px-2.5 py-0.5 text-xs font-medium text-brand-primary-900"
+            className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary shadow-sm"
           >
             {tag}
             <button
               type="button"
               onClick={() => remove(tag)}
-              className="ml-0.5 hover:text-brand-primary-700 focus:outline-none"
+              className="ml-0.5 hover:text-primary-hover focus:outline-none"
               aria-label={`Eliminar ${tag}`}
             >
               ×
@@ -80,13 +80,13 @@ export function TagInput({
             if (value) add(value);
           }}
           placeholder={tags.length === 0 ? placeholder : ""}
-          className="min-w-[120px] flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400"
+          className="min-w-[120px] flex-1 bg-transparent text-sm outline-none text-text-body placeholder:text-text-subtle"
         />
       </div>
       {error ? (
-        <p className="text-xs text-semantic-danger-base">{error}</p>
+        <p className="text-xs text-danger">{error}</p>
       ) : hint ? (
-        <p className="text-xs text-zinc-400">{hint}</p>
+        <p className="text-xs text-text-muted">{hint}</p>
       ) : null}
     </div>
   );

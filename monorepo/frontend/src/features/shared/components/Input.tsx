@@ -10,22 +10,22 @@ export function Input({ label, error, hint, id, className = "", ...rest }: Input
   const inputId = id ?? `input-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-sm font-semibold text-zinc-900">
+      <label htmlFor={inputId} className="text-sm font-semibold text-text-strong">
         {label}
       </label>
       <input
         id={inputId}
-        className={`w-full rounded-input border px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary-500 focus:border-brand-primary-500 ${
+        className={`w-full rounded-md border px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-subtle transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
           error
-            ? "border-semantic-danger-base bg-semantic-danger-light"
-            : "border-zinc-200 bg-white hover:border-zinc-400"
+            ? "border-danger bg-danger-soft/30"
+            : "border-border-default bg-white hover:border-border-strong"
         } ${className}`}
         {...rest}
       />
       {error ? (
-        <p className="text-xs text-semantic-danger-base">{error}</p>
+        <p className="text-xs text-danger">{error}</p>
       ) : hint ? (
-        <p className="text-xs text-zinc-400">{hint}</p>
+        <p className="text-xs text-text-muted">{hint}</p>
       ) : null}
     </div>
   );

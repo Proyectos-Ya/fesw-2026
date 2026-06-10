@@ -38,14 +38,14 @@ export function Step3Specialization({ defaultValues, onNext, onBack }: Step3Prop
   return (
     <div>
       <div className="mb-6">
-        <h2 className="mb-1 text-xl font-bold text-brand-primary-900">Especialización</h2>
-        <p className="text-sm text-zinc-600">
+        <h2 className="mb-1 text-2xl font-bold tracking-tight text-text-strong">Especialización</h2>
+        <p className="text-sm text-text-muted">
           Esta información es la base del motor de matching. Mientras más detallada, mejores
           serán las recomendaciones.
         </p>
       </div>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8">
         <Controller
           name="sectors"
           control={control}

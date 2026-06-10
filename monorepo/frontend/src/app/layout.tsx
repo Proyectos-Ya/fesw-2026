@@ -1,16 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const outfit = Outfit({
-  variable: "--font-outfit",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "ProyectosYa",
@@ -23,25 +12,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-      className={`${inter.variable} ${outfit.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-zinc-50">
-        <header className="border-b border-zinc-200 bg-white">
+    <html lang="es" className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-bg-page font-sans selection:bg-teal-200 selection:text-warm-900">
+        <header className="border-b border-border-subtle bg-white shadow-xs">
           <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
             <div className="flex items-center gap-3">
               <div
                 aria-hidden
-                className="size-8 rounded-button bg-brand-primary-500"
+                className="size-8 rounded-md bg-primary shadow-teal"
               />
-              <span className="font-display text-lg font-semibold text-brand-primary-900">
+              <span className="font-display text-xl font-bold tracking-tight text-text-strong">
                 ProyectosYa
               </span>
             </div>
             <button
               type="button"
-              className="rounded-button bg-brand-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-primary-700"
+              className="rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-all hover:bg-primary hover:text-white"
             >
               Iniciar sesión
             </button>

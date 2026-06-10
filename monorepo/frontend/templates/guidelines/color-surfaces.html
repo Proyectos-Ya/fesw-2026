@@ -1,0 +1,29 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Surfaces & ink" subtitle="Semantic background and text pairings in use" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:20px;background:var(--bg-page);font-family:var(--font-sans)}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .panel{border-radius:var(--radius-lg);padding:16px;box-shadow:var(--shadow-sm)}
+  .t1{font-family:var(--font-display);font-weight:600;font-size:18px;margin-bottom:4px}
+  .t2{font-size:13px}
+  .meta{font-family:var(--font-mono);font-size:10px;margin-top:12px;opacity:.6}
+</style></head>
+<body>
+  <div class="grid">
+    <div class="panel" style="background:var(--bg-page);border:1px solid var(--border-default)">
+      <div class="t1" style="color:var(--text-strong)">Página</div>
+      <div class="t2" style="color:var(--text-muted)">Texto secundario sobre fondo off-white.</div>
+      <div class="meta" style="color:var(--text-subtle)">--bg-page · --text-strong</div>
+    </div>
+    <div class="panel" style="background:var(--surface-card)">
+      <div class="t1" style="color:var(--text-strong)">Tarjeta</div>
+      <div class="t2" style="color:var(--text-body)">Superficie blanca, sombra suave.</div>
+      <div class="meta" style="color:var(--text-subtle)">--surface-card · --shadow-sm</div>
+    </div>
+    <div class="panel" style="background:var(--primary)">
+      <div class="t1" style="color:var(--on-primary)">Teal</div>
+      <div class="t2" style="color:var(--teal-100)">Texto claro sobre primario.</div>
+      <div class="meta" style="color:var(--teal-200)">--primary · --on-primary</div>
+    </div>
+  </div>
+</body></html>

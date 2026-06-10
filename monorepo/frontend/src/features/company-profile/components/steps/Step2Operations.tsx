@@ -31,13 +31,13 @@ export function Step2Operations({ defaultValues, onNext, onBack }: Step2Props) {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="mb-1 text-xl font-bold text-brand-primary-900">Operación</h2>
-        <p className="text-sm text-zinc-600">
+        <h2 className="mb-1 text-2xl font-bold tracking-tight text-text-strong">Operación</h2>
+        <p className="text-sm text-text-muted">
           ¿Dónde opera tu empresa y cuál es su tamaño?
         </p>
       </div>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8">
         <Controller
           name="regions"
           control={control}
@@ -53,7 +53,7 @@ export function Step2Operations({ defaultValues, onNext, onBack }: Step2Props) {
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-6">
           <Input
             label="Años de experiencia"
             type="number"

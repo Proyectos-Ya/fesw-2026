@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="700x170" name="Iconography (Lucide)" subtitle="2px stroke · inherits currentColor" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;padding:22px;background:var(--bg-page)}
+.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:16px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-body)}
+.cell span{font-family:var(--font-mono);font-size:10px;color:var(--text-subtle)}</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const { Icon } = window.ProyectosYaDesignSystem_1dd038;
+const names=['sparkles','search','target','file-text','bell','building-2','clock','check','bookmark','arrow-right','filter','tags','map-pin','trending-up','shield-check','user','settings','calendar','download','chevron-right'];
+function Demo(){return(<div className="grid">{names.map(n=>(
+  <div className="cell" key={n}><Icon name={n} size={24} color="var(--teal-700)"/><span>{n}</span></div>
+))}</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body></html>
