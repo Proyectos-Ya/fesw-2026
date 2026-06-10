@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "../globals.css";
+import { AuthProvider } from "@/features/auth/AuthContext";
 
 export const metadata: Metadata = {
   title: "ProyectosYa - Autenticación",
@@ -14,7 +15,7 @@ export default function AuthLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="h-full bg-white font-sans selection:bg-teal-200 selection:text-warm-900">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

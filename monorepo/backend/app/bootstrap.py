@@ -32,6 +32,11 @@ from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.infrastructure.services.gemini_deep_analysis_service import GeminiDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import GetOrCreateDeepAnalysisUseCase
+from app.application.repositories.question_repository import IQuestionRepository
+from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+from app.application.services.smart_question_service import ISmartQuestionService
+from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
+from app.application.use_cases.questions.smart_question_use_case import SmartQuestionUseCase
 
 
 
@@ -115,6 +120,27 @@ def get_get_or_create_deep_analysis_use_case(
         deep_analysis_service=deep_analysis_service,
     )
 
+def get_question_repo(
+    session: AsyncSession = Depends(get_session),
+) -> IQuestionRepository:
+    return QuestionRepositoryImpl(session)
+
+
+def get_smart_question_service(
+    question_repo: IQuestionRepository = Depends(get_question_repo),
+) -> ISmartQuestionService:
+    return SmartQuestionServiceImpl(question_repository=question_repo)
+
+
+def get_smart_question_use_case(
+    smart_question_service: ISmartQuestionService = Depends(get_smart_question_service),
+    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
+) -> SmartQuestionUseCase:
+    return SmartQuestionUseCase(
+        smart_question_service=smart_question_service,
+        supplier_repository=supplier_repo,
+    )
+
 
 
 def bootstrap(app: FastAPI) -> None:
@@ -158,6 +184,7 @@ def bootstrap(app: FastAPI) -> None:
 
     router = create_router(
         get_rank_tenders_use_case=get_rank_tenders_use_case,
+        get_smart_question_use_case=get_smart_question_use_case,
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_embedding_service=get_embedding_service,

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/features/auth/AuthContext";
 import { useProfileWizard } from "../hooks/useProfileWizard";
 import { WizardProgress } from "@/features/shared/components/WizardProgress";
 import { Step1Identity } from "./steps/Step1Identity";
@@ -14,14 +15,15 @@ import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier } from "../services/supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
-const PLACEHOLDER_ADMIN = "Usuario Demo";
-
 export function ProfileWizard() {
   const router = useRouter();
+  const { user } = useAuth();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const adminName = user?.full_name ?? "Usuario";
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -29,7 +31,7 @@ export function ProfileWizard() {
     try {
       const payload = profileSchema.parse(formData);
       await createSupplier(payload);
-      router.push("/?as=ready");
+      router.push("/");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
       if (err instanceof TimeoutError) {
@@ -55,7 +57,7 @@ export function ProfileWizard() {
         {currentStep === 1 && (
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
-            adminName={PLACEHOLDER_ADMIN}
+            adminName={adminName}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
           />
