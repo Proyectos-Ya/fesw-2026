@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     is_dev: bool = True
 
     # --- Gemini ---
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_api_key: str
+    gemini_model: str
 
 settings = Settings()  # type: ignore
