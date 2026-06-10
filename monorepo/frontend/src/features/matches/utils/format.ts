@@ -57,3 +57,18 @@ export function formatClosingDate(closingAtIso: string): string {
   if (Number.isNaN(closing.getTime())) return "—";
   return closingFormatter.format(closing);
 }
+
+const dateTimeFormatter = new Intl.DateTimeFormat("es-CL", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return dateTimeFormatter.format(d);
+}

@@ -245,31 +245,32 @@
   color: var(--primary);
 }
 
-body {
-  margin: 0;
-  background: var(--bg-page);
-  color: var(--text-body);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
+@layer base {
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
 
-h1, h2, h3, h4, h5 {
-  font-family: var(--font-display);
-  color: var(--text-strong);
-  font-weight: 600;
-  line-height: 1.12;
-  margin: 0 0 0.5em;
-}
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.12;
+    margin: 0 0 0.5em;
+  }
 
-p {
-  margin: 0 0 1em;
-}
+  p {
+    margin: 0 0 1em;
+  }
 
-a {
-  color: var(--text-link);
-  text-decoration: none;
-}
+  a {
+    color: var(--text-link);
+    text-decoration: none;
+  }
 
-a:hover {
-  text-decoration: underline;
+  a:hover {
+    text-decoration: underline;
+  }
 }
