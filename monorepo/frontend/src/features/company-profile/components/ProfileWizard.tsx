@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/features/auth/AuthContext";
 import { useProfileWizard } from "../hooks/useProfileWizard";
 import { WizardProgress } from "@/features/shared/components/WizardProgress";
 import { Step1Identity } from "./steps/Step1Identity";
@@ -13,29 +14,23 @@ import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, getMySupplierOrNull } from "../services/supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
-import { useSession } from "@/features/auth/components/SessionProvider";
-import { useCompany } from "./CompanyProvider";
 
 export function ProfileWizard() {
   const router = useRouter();
-  const { user } = useSession();
-  const { setSupplier } = useCompany();
+  const { user } = useAuth();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const adminName = user?.full_name ?? "Usuario";
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
     try {
       const payload = profileSchema.parse(formData);
-      const created = await createSupplier({
-        ...payload,
-        // Campo opcional: un string vacío se envía como omitido
-        trade_name: payload.trade_name?.trim() ? payload.trade_name.trim() : undefined,
-      });
-      setSupplier(created); // Actualiza el estado compartido (sidebar, home)
+      await createSupplier(payload);
       router.push("/");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
@@ -69,12 +64,8 @@ export function ProfileWizard() {
       <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
         {currentStep === 1 && (
           <Step1Identity
-            defaultValues={{
-              legal_name: formData.legal_name,
-              trade_name: formData.trade_name,
-              rut: formData.rut,
-            }}
-            adminName={user?.full_name ?? ""}
+            defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
+            adminName={adminName}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
           />

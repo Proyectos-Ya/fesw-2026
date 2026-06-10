@@ -5,15 +5,29 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { loginSchema, type LoginData } from "../authSchema";
 import { login } from "../services/authService";
+import { useAuth } from "../AuthContext";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
 import { ApiError } from "@/features/shared/api/client";
 
-export function LoginForm() {
+function RegisteredBanner() {
+  const params = useSearchParams();
+  if (params.get("registered") !== "true") return null;
+  return (
+    <div className="mb-6 rounded-md bg-success-soft/40 border border-success/20 p-3 text-sm font-medium text-success">
+      Tu cuenta fue creada. Inicia sesión para continuar.
+    </div>
+  );
+}
+
+function LoginFormInner() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +44,7 @@ export function LoginForm() {
     setError(null);
     try {
       await login(data);
+      await refresh();
       router.push("/");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -56,6 +71,8 @@ export function LoginForm() {
             Entra para ver tus licitaciones compatibles de hoy.
           </p>
 
+          <RegisteredBanner />
+
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
             {error && (
               <div className="p-4 rounded-md bg-danger-soft/30 border border-danger/20 text-danger text-sm font-medium">
@@ -71,23 +88,13 @@ export function LoginForm() {
               {...register("email")}
             />
 
-            <div className="flex flex-col gap-2">
-              <Input
-                label="Contraseña"
-                type="password"
-                placeholder="••••••••"
-                error={errors.password?.message}
-                {...register("password")}
-              />
-              <div className="flex justify-end">
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-xs font-bold text-primary hover:text-primary-hover transition-colors"
-                >
-                  ¿Olvidaste tu contraseña?
-                </Link>
-              </div>
-            </div>
+            <Input
+              label="Contraseña"
+              type="password"
+              placeholder="••••••••"
+              error={errors.password?.message}
+              {...register("password")}
+            />
 
             <Button
               type="submit"
@@ -126,5 +133,13 @@ export function LoginForm() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function LoginForm() {
+  return (
+    <Suspense fallback={null}>
+      <LoginFormInner />
+    </Suspense>
   );
 }

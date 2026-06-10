@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MatchMeter } from "@/features/shared/components/MatchMeter";
 
 export function AuthBrandPanel() {
   return (
@@ -21,11 +22,9 @@ export function AuthBrandPanel() {
           Tus oportunidades de Compra Ágil, filtradas por IA y ordenadas por compatibilidad.
         </p>
 
-        {/* Floating match card mockup */}
+        {/* Floating match card */}
         <div className="max-w-xs bg-white rounded-xl p-4 flex gap-4 items-center shadow-lg border border-teal-500/10">
-          <div className="size-12 rounded-full border-[3px] border-primary border-t-transparent animate-pulse flex items-center justify-center font-bold text-primary">
-            94%
-          </div>
+          <MatchMeter value={94} size="md" />
           <div className="flex-1 min-w-0">
             <span className="inline-block bg-primary-soft text-primary text-[10px] font-bold uppercase tracking-caps px-2 py-0.5 rounded-full mb-1">
               Nuevo match

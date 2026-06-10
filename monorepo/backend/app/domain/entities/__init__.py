@@ -8,6 +8,7 @@ from app.domain.entities.tender import (
     TenderAIAnalysis,
     Tender,
 )
+from app.domain.entities.deep_analysis import DeepAnalysis
 
 __all__ = [
     "MatchingResult",
@@ -18,4 +19,6 @@ __all__ = [
     "TenderItem",
     "TenderAIAnalysis",
     "Tender",
+    "DeepAnalysis",
 ]
+
