@@ -3,6 +3,7 @@ import "./../globals.css";
 import { AuthProvider } from "@/features/auth/AuthContext";
 import { Sidebar } from "@/features/shared/components/Sidebar";
 import { AppHeader } from "@/features/shared/components/AppHeader";
+import { Icon } from "@/features/shared/components/Icon";
 
 export const metadata: Metadata = {
   title: "ProyectosYa",

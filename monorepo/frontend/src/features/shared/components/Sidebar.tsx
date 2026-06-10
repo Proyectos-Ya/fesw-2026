@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "./Icon";
@@ -9,7 +10,7 @@ interface NavItemProps {
   icon: string;
   label: string;
   href: string;
-  active: boolean;
+  active?: boolean;
   badge?: number;
 }
 

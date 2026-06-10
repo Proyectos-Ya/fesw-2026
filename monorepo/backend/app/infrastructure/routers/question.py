@@ -1,0 +1,40 @@
+from collections.abc import Callable
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+
+from app.application.use_cases.questions.smart_question_use_case import SmartQuestionUseCase
+from app.domain.entities.question import Question
+
+def create_question_router(
+    get_smart_question_use_case: Callable,
+    get_current_user: Callable,
+) -> APIRouter:
+    
+    router = APIRouter(
+        prefix="/questions",
+        tags=["Smart Questions"],
+        dependencies=[Depends(get_current_user)],  # Obliga a estar logeado
+    )
+
+    @router.get(
+        "",
+        response_model=list[Question],
+        responses={
+            500: {"description": "Error interno del servidor"},
+        },
+    )
+    async def get_smart_questions(
+        profileId: UUID = Query(..., description="ID del Supplier para obtener su cuestionario"),
+        use_case: SmartQuestionUseCase = Depends(get_smart_question_use_case),
+    ):
+        """Retorna la cola de preguntas dinámicas para el Dashboard."""
+        try:
+            return await use_case.execute(provider_id=profileId)
+        except Exception as e:
+            print(f"[API Error] Error en GET /questions: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al procesar el árbol dinámico de preguntas."
+            )
+
+    return router
