@@ -45,6 +45,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
+    """Crea y persiste las entidades relacionadas (Region, Status, Buyer, Supplier, Tender) necesarias para probar DeepAnalysisModel."""
     # 1. Seed region
     region = RegionModel(id=13, name="Metropolitana")
     session.add(region)
@@ -96,6 +97,7 @@ async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
 
 @pytest.mark.asyncio
 async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession):
+    """Verifica que el modelo DeepAnalysisModel se pueda persistir correctamente en la base de datos y luego ser recuperado con todos sus datos íntegros."""
     tender_id = uuid4()
     supplier_id = uuid4()
     await seed_related_entities(db_session, tender_id, supplier_id)
@@ -132,6 +134,7 @@ async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession
 
 @pytest.mark.asyncio
 async def test_composite_unique_constraint_raises(db_session: AsyncSession):
+    """Verifica que la restricción de unicidad compuesta funcione: no se puede crear más de un análisis para el mismo par (tender_id, supplier_id)."""
     tender_id = uuid4()
     supplier_id = uuid4()
     await seed_related_entities(db_session, tender_id, supplier_id)

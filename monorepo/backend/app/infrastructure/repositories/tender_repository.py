@@ -80,7 +80,8 @@ class TenderRepository(ITenderRepository):
         """Retrieve tenders matching specified filters."""
         query = select(TenderModel).options(
             selectinload(TenderModel.status),
-            selectinload(TenderModel.buyer)
+            selectinload(TenderModel.buyer),
+            selectinload(TenderModel.items)
         )
 
         # Apply join if region name filtering is requested

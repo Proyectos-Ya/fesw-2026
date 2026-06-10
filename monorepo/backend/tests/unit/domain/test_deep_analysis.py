@@ -7,6 +7,7 @@ from app.domain.entities.deep_analysis import DeepAnalysis
 
 
 def test_create_valid_deep_analysis():
+    """Verifica que se pueda crear una instancia válida de DeepAnalysis con todos los campos requeridos."""
     tender_id = uuid4()
     supplier_id = uuid4()
     analysis = DeepAnalysis(
@@ -29,6 +30,7 @@ def test_create_valid_deep_analysis():
 
 @pytest.mark.parametrize("valid_rec", ["Postular", "Evaluar con cautela", "No recomendado"])
 def test_valid_recommendations(valid_rec: str):
+    """Verifica que la entidad acepte los tres valores válidos para la recomendación."""
     analysis = DeepAnalysis(
         tender_id=uuid4(),
         supplier_id=uuid4(),
@@ -41,6 +43,7 @@ def test_valid_recommendations(valid_rec: str):
 
 @pytest.mark.parametrize("invalid_rec", ["postular", "Postular ", "Recomendado", "Rechazar", ""])
 def test_invalid_recommendations_raises(invalid_rec: str):
+    """Verifica que se lance un ValidationError si se proporciona una recomendación no válida o mal formateada."""
     with pytest.raises(ValidationError):
         DeepAnalysis(
             tender_id=uuid4(),
@@ -53,6 +56,7 @@ def test_invalid_recommendations_raises(invalid_rec: str):
 
 @pytest.mark.parametrize("invalid_score", [-1.0, 100.1, -0.01, 105.0])
 def test_invalid_compatibility_score_raises(invalid_score: float):
+    """Verifica que se lance un ValidationError si el porcentaje de compatibilidad está fuera del rango [0.0, 100.0]."""
     with pytest.raises(ValidationError):
         DeepAnalysis(
             tender_id=uuid4(),
