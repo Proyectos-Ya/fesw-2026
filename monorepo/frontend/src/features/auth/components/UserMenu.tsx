@@ -1,14 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useSession } from "./SessionProvider";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../AuthContext";
 import { Avatar } from "@/features/shared/components/Avatar";
 import { Icon } from "@/features/shared/components/Icon";
 
 /** Avatar del usuario en el header con menú desplegable (perfil + logout). */
 export function UserMenu() {
-  const { user, logout } = useSession();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
 
   return (
     <div className="relative">
@@ -42,7 +49,7 @@ export function UserMenu() {
             <button
               type="button"
               role="menuitem"
-              onClick={() => void logout()}
+              onClick={() => void handleLogout()}
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-danger-soft hover:text-danger"
             >
               <Icon name="log-out" size={16} />

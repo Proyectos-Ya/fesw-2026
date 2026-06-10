@@ -2,10 +2,11 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
 import { useCompany } from "@/features/company-profile/components/CompanyProvider";
+import { useAuth } from "@/features/auth/AuthContext";
 
 interface NavItemProps {
   icon: string;
@@ -90,16 +91,43 @@ const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = 
   { icon: "sparkles", label: "Inicio", href: "/" },
   { icon: "target", label: "Matches", href: "/matches" },
   { icon: "bookmark", label: "Guardados", href: "/guardados" },
-  { icon: "building-2", label: "Mi empresa", href: "/perfil" },
 ];
+
+// Solo visible cuando el usuario ya tiene una empresa asignada
+const COMPANY_NAV_ITEM = {
+  icon: "building-2",
+  label: "Mi empresa",
+  href: "/empresa",
+} as const;
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar() {
+  const router = useRouter();
   const pathname = usePathname() ?? "/";
+  const { user, logout } = useAuth();
+  const { company } = useCompany();
+
+  const currentUser = {
+    name: user?.full_name ?? "Usuario",
+    company:
+      company.status === "with-company"
+        ? company.supplier.legal_name
+        : "Sin empresa",
+  };
+
+  const navItems =
+    company.status === "with-company"
+      ? [...NAV_ITEMS, COMPANY_NAV_ITEM]
+      : NAV_ITEMS;
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
 
   return (
     <aside className="w-64 flex-none bg-white border-r border-border-subtle flex flex-col p-4 gap-1 sticky top-0 h-screen shadow-xs">
@@ -112,7 +140,7 @@ export function Sidebar({ user }: SidebarProps) {
       </div>
 
       <nav className="flex flex-col gap-1" aria-label="Navegación principal">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavItem
             key={item.href}
             icon={item.icon}
@@ -126,7 +154,7 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="flex-1" />
 
       <div className="mt-auto pt-4 border-t border-border-subtle flex items-center gap-3 group">
-        <Avatar name={currentUser.name} src={currentUser.avatar} size="md" />
+        <Avatar name={currentUser.name} size="md" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold text-text-strong truncate">
             {currentUser.name}
@@ -135,13 +163,14 @@ export function Sidebar({ user }: SidebarProps) {
             {currentUser.company}
           </div>
         </div>
-        <Link
-          href="/perfil"
-          className="p-1.5 rounded-md text-text-subtle hover:bg-primary-soft hover:text-primary transition-all duration-200"
-          title="Configuración de perfil"
+        <button
+          type="button"
+          onClick={() => void handleLogout()}
+          className="p-1.5 rounded-md text-text-subtle hover:bg-danger-soft hover:text-danger transition-all duration-200"
+          title="Cerrar sesión"
         >
-          <Icon name="settings" size={18} />
-        </Link>
+          <Icon name="log-out" size={18} />
+        </button>
       </div>
     </aside>
   );

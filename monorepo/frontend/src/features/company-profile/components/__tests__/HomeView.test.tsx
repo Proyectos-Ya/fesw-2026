@@ -4,19 +4,37 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "../HomeView";
 import type { CompanyState } from "../CompanyProvider";
 import type { Supplier } from "../../services/supplierService";
+import type { UserPublic } from "@/features/auth/authSchema";
 
-vi.mock("@/features/auth/components/SessionProvider", () => ({
-  useSession: () => ({
-    user: {
-      id: "user-1",
-      email: "ana@example.com",
-      full_name: "Ana Pérez",
-      phone: null,
-      active: true,
-      email_verified: false,
-      created_at: "2026-01-01T00:00:00Z",
-    },
-    isLoading: false,
+const replaceMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    replace: replaceMock,
+    push: vi.fn(),
+  }),
+}));
+
+const USER: UserPublic = {
+  id: "user-1",
+  email: "ana@example.com",
+  full_name: "Ana Pérez",
+  phone: null,
+  active: true,
+  email_verified: false,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+let authState: {
+  user: UserPublic | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+} = { user: USER, isLoading: false, isAuthenticated: true };
+
+vi.mock("@/features/auth/AuthContext", () => ({
+  useAuth: () => ({
+    ...authState,
+    refresh: vi.fn(),
     logout: vi.fn(),
   }),
 }));
@@ -41,31 +59,54 @@ afterEach(() => {
 });
 
 describe("HomeView", () => {
-  it("sin empresa muestra las opciones de crear y unirse con sus rutas", () => {
+  it("muestra el estado de carga mientras se valida la sesión o la empresa", () => {
+    authState = { user: USER, isLoading: false, isAuthenticated: true };
+    companyState = { status: "loading" };
+
+    render(<HomeView />);
+
+    expect(screen.getByText(/Cargando/)).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("redirige a /login si no hay sesión activa", () => {
+    authState = { user: null, isLoading: false, isAuthenticated: false };
+    companyState = { status: "loading" };
+
+    render(<HomeView />);
+
+    expect(replaceMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("sin empresa invita a construir el perfil inteligente", () => {
+    authState = { user: USER, isLoading: false, isAuthenticated: true };
     companyState = { status: "without-company" };
 
     render(<HomeView />);
 
-    const crear = screen.getByRole("link", { name: /crear mi empresa/i });
-    expect(crear).toHaveAttribute("href", "/empresa/crear");
-
-    const unirse = screen.getByRole("link", { name: /unirse a una empresa/i });
-    expect(unirse).toHaveAttribute("href", "/empresa/unirse");
+    expect(screen.getByText(/Hola, Ana/)).toBeInTheDocument();
+    const cta = screen.getByRole("link", {
+      name: /construir mi perfil inteligente/i,
+    });
+    expect(cta).toHaveAttribute("href", "/perfil");
   });
 
-  it("con empresa saluda al usuario y muestra el nombre de la empresa", () => {
+  it("con empresa muestra el placeholder de licitaciones con el nombre de la empresa", () => {
+    authState = { user: USER, isLoading: false, isAuthenticated: true };
     companyState = { status: "with-company", supplier: SUPPLIER };
 
     render(<HomeView />);
 
-    expect(screen.getByText(/Hola, Ana Pérez/)).toBeInTheDocument();
-    expect(screen.getByText("Constructora Norte SpA")).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: /crear mi empresa/i }),
+      screen.getByText(/Recomendadas para Constructora Norte SpA/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /construir mi perfil inteligente/i }),
     ).not.toBeInTheDocument();
   });
 
   it("ante un error inesperado muestra un mensaje de recarga", () => {
+    authState = { user: USER, isLoading: false, isAuthenticated: true };
     companyState = { status: "error" };
 
     render(<HomeView />);
