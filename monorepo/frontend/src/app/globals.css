@@ -128,32 +128,109 @@
 }
 
 @theme {
-  /* Colors */
+  /* ---- Full color scales (so utilities like bg-warm-100, text-coral-300 compile) ---- */
+  --color-warm-50:  var(--warm-50);
+  --color-warm-100: var(--warm-100);
+  --color-warm-200: var(--warm-200);
+  --color-warm-300: var(--warm-300);
+  --color-warm-400: var(--warm-400);
+  --color-warm-500: var(--warm-500);
+  --color-warm-600: var(--warm-600);
+  --color-warm-700: var(--warm-700);
+  --color-warm-800: var(--warm-800);
+  --color-warm-900: var(--warm-900);
+
+  --color-teal-50:  var(--teal-50);
+  --color-teal-100: var(--teal-100);
+  --color-teal-200: var(--teal-200);
+  --color-teal-300: var(--teal-300);
+  --color-teal-400: var(--teal-400);
+  --color-teal-500: var(--teal-500);
+  --color-teal-600: var(--teal-600);
+  --color-teal-700: var(--teal-700);
+  --color-teal-800: var(--teal-800);
+  --color-teal-900: var(--teal-900);
+
+  --color-coral-50:  var(--coral-50);
+  --color-coral-100: var(--coral-100);
+  --color-coral-200: var(--coral-200);
+  --color-coral-300: var(--coral-300);
+  --color-coral-400: var(--coral-400);
+  --color-coral-500: var(--coral-500);
+  --color-coral-600: var(--coral-600);
+  --color-coral-700: var(--coral-700);
+  --color-coral-800: var(--coral-800);
+  --color-coral-900: var(--coral-900);
+
+  --color-green-100: var(--green-100);
+  --color-green-500: var(--green-500);
+  --color-green-600: var(--green-600);
+  --color-amber-100: var(--amber-100);
+  --color-amber-500: var(--amber-500);
+  --color-amber-600: var(--amber-600);
+  --color-red-100:   var(--red-100);
+  --color-red-500:   var(--red-500);
+  --color-red-600:   var(--red-600);
+  --color-blue-100:  var(--blue-100);
+  --color-blue-500:  var(--blue-500);
+
+  /* ---- Semantic aliases ---- */
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-primary-soft: var(--primary-soft);
+  --color-primary-border: var(--primary-border);
+  --color-on-primary: var(--on-primary);
+
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-on-accent: var(--on-accent);
+
   --color-bg-page: var(--bg-page);
+  --color-bg-sunken: var(--bg-sunken);
   --color-surface-card: var(--surface-card);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-teal: var(--surface-teal);
+  --color-surface-coral: var(--surface-coral);
+
   --color-text-strong: var(--text-strong);
   --color-text-body: var(--text-body);
   --color-text-muted: var(--text-muted);
   --color-text-subtle: var(--text-subtle);
+  --color-text-on-teal: var(--text-on-teal);
+  --color-text-on-coral: var(--text-on-coral);
+  --color-text-link: var(--text-link);
+
   --color-border-subtle: var(--border-subtle);
   --color-border-default: var(--border-default);
   --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
 
-  /* Typography */
+  /* ---- Typography ---- */
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
   --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
 
   --tracking-caps: 0.08em;
 
-  /* Shadows */
+  /* ---- Shadows ---- */
+  --shadow-xs: 0 1px 2px rgba(27, 24, 20, 0.05);
+  --shadow-sm: 0 2px 6px rgba(27, 24, 20, 0.06);
+  --shadow-md: 0 6px 16px rgba(27, 24, 20, 0.08);
+  --shadow-lg: 0 12px 28px rgba(27, 24, 20, 0.10);
   --shadow-premium: 0 12px 32px rgba(27, 24, 20, 0.10), 0 3px 8px rgba(27, 24, 20, 0.05);
   --shadow-teal: 0 8px 24px rgba(10, 110, 105, 0.18);
   --shadow-coral: 0 8px 24px rgba(196, 67, 34, 0.18);
