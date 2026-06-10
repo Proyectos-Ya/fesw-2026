@@ -124,11 +124,7 @@ class RankTendersUseCase:
         candidates = []
         for t in active_tenders:
             # Construir texto representativo de la licitación
-            tender_text = self.text_builder.build_from_tender(
-                tender=t,
-                items=t.items,
-                buyer_name=t.buyer_name if t.buyer_name else "",
-            )
+            tender_text = self.text_builder.build_from_tender(tender=t, items=t.items)
             candidates.append((t.id, tender_text))
 
         # Ejecutar el servicio de re-ranking (retorna tuplas de (tender_id, score))

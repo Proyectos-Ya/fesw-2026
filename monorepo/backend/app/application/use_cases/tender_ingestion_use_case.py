@@ -1,11 +1,14 @@
 import uuid
 from typing import Dict, Any, Optional
 
-# Interfaces de la capa de aplicación
-from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.repositories.tender_repository import ITenderRepository
-from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
+from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+
 
 class TenderIngestionUseCase:
     REGION_MAP = {
@@ -26,13 +29,24 @@ class TenderIngestionUseCase:
         "Región de Arica y Parinacota": 15, "Arica y Parinacota": 15,
         "Región de Ñuble": 16, "Ñuble": 16, "Nuble": 16
     }
+    # Mapeo de CodigoEstado (int) al código de string usado en Qdrant y constantes
+    _STATUS_CODE_MAP: Dict[int, str] = {
+        1: "publicada", 2: "publicada", 6: "publicada",
+        7: "cerrada", 8: "desierta", 18: "adjudicada",
+    }
+
     def __init__(
-        self, 
-        ingestion_service: ITenderIngestionService, 
-        repository: ITenderRepository
+        self,
+        ingestion_service: ITenderIngestionService,
+        repository: ITenderRepository,
+        embedding_service: IEmbeddingService,
+        tender_vector_repo: ITenderVectorRepository,
     ):
         self.service = ingestion_service
         self.repo = repository
+        self.embedding_service = embedding_service
+        self.tender_vector_repo = tender_vector_repo
+        self.text_builder = TextBuilder()
 
     async def execute(self, limit: Optional[int] = None) -> Dict[str, Any]:
         dtos = await self.service.fetch_public_tenders()
@@ -95,7 +109,19 @@ class TenderIngestionUseCase:
                     ) for item in dto.items
                 ]
 
+                text = self.text_builder.build_from_tender(new_tender, tender_items)
                 await self.repo.save_complex_tender(new_tender, tender_items)
+                vectors = await self.embedding_service.embed([text])
+                status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
+                await self.tender_vector_repo.upsert(
+                    tender_id=tender_id,
+                    embedding=vectors[0],
+                    payload={
+                        "status_code": status_code,
+                        "region_id": region_id,
+                        "available_amount_clp": dto.available_amount_clp,
+                    },
+                )
                 stats["saved"] += 1
 
             except Exception as e:

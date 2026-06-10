@@ -27,19 +27,26 @@ async def lifespan(app: FastAPI):
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
 
-    app.state.qdrant_client.recreate_collection(
-        collection_name="suppliers",
-        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-    )
-    app.state.qdrant_client.recreate_collection(
-        collection_name="tenders",
-        vectors_config={
-            "tender": VectorParams(size=1024, distance=Distance.COSINE)
-        },
-    )
+    existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
+    if "suppliers" not in existing:
+        app.state.qdrant_client.create_collection(
+            collection_name="suppliers",
+            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+        )
+    if "tenders" not in existing:
+        app.state.qdrant_client.create_collection(
+            collection_name="tenders",
+            vectors_config={"tender": VectorParams(size=1024, distance=Distance.COSINE)},
+        )
 
     ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-    scheduler = TenderScheduler(engine, ingestion_service, is_dev=settings.is_dev)
+    scheduler = TenderScheduler(
+        engine=engine,
+        ingestion_service=ingestion_service,
+        embedding_service=app.state.embedding_service,
+        qdrant_client=app.state.qdrant_async_client,
+        is_dev=settings.is_dev,
+    )
     print("[Main] Iniciando scheduler de ingesta...")
     ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion())
     yield
