@@ -50,6 +50,13 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
           {...register("legal_name")}
         />
         <Input
+          label="Nombre de fantasía (opcional)"
+          placeholder="Ej: Constructora Pérez"
+          hint="El nombre con el que se conoce comercialmente a tu empresa."
+          error={errors.trade_name?.message}
+          {...register("trade_name")}
+        />
+        <Input
           label="RUT de la empresa"
           placeholder="Ej: 76.123.456-7"
           hint="Formato: XX.XXX.XXX-X"

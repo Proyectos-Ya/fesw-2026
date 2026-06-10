@@ -233,6 +233,22 @@ async def test_embedding_service_called_once_per_creation(
     assert len(embedding_service.calls) == 1
 
 
+async def test_embedding_text_includes_trade_name_when_present(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """El nombre de fantasía, si existe, forma parte del texto del embedding."""
+    embedding_service = FakeEmbeddingService()
+    data = CreateSupplierSchema(
+        rut=VALID_RUT, legal_name="Empresa SpA", trade_name="La Constructora"
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
+
+    await use_case.execute(data)
+
+    assert any("La Constructora" in text for text in embedding_service.calls[0])
+
+
 async def test_embedding_text_includes_legal_name(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,

@@ -16,8 +16,10 @@ from app.domain.errors.supplier_errors import (
 )
 
 
-def _build_supplier_text(data: CreateSupplierSchema) -> str:
+def _build_supplier_text(data: CreateSupplierSchema | Supplier) -> str:
     parts = [data.legal_name]
+    if data.trade_name:
+        parts.append(data.trade_name)
     if data.description:
         parts.append(data.description)
     if data.sectors:

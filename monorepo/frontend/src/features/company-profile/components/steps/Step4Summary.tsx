@@ -87,6 +87,7 @@ export function Step4Summary({
         <Section title="Identidad" step={1} onEdit={onGoToStep}>
           <div className="grid grid-cols-2 gap-4">
             <Row label="Nombre de la empresa" value={data.legal_name ?? ""} />
+            <Row label="Nombre de fantasía" value={data.trade_name?.trim() || "—"} />
             <Row label="RUT" value={data.rut ?? ""} />
           </div>
         </Section>

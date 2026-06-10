@@ -7,6 +7,10 @@ export const step1Schema = z.object({
     .string()
     .min(2, "El nombre debe tener al menos 2 caracteres.")
     .max(150, "El nombre no puede superar los 150 caracteres."),
+  trade_name: z
+    .string()
+    .max(150, "El nombre no puede superar los 150 caracteres.")
+    .optional(),
   rut: z.string().regex(rutRegex, "RUT inválido. Formato: 12.345.678-9"),
 });
 

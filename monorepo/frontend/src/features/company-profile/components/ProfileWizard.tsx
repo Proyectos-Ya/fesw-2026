@@ -14,10 +14,12 @@ import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier } from "../services/supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { useSession } from "@/features/auth/components/SessionProvider";
+import { useCompany } from "./CompanyProvider";
 
 export function ProfileWizard() {
   const router = useRouter();
   const { user } = useSession();
+  const { setSupplier } = useCompany();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,7 +30,12 @@ export function ProfileWizard() {
     setError(null);
     try {
       const payload = profileSchema.parse(formData);
-      await createSupplier(payload);
+      const created = await createSupplier({
+        ...payload,
+        // Campo opcional: un string vacío se envía como omitido
+        trade_name: payload.trade_name?.trim() ? payload.trade_name.trim() : undefined,
+      });
+      setSupplier(created); // Actualiza el estado compartido (sidebar, home)
       router.push("/");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
@@ -54,7 +61,11 @@ export function ProfileWizard() {
       <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
         {currentStep === 1 && (
           <Step1Identity
-            defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
+            defaultValues={{
+              legal_name: formData.legal_name,
+              trade_name: formData.trade_name,
+              rut: formData.rut,
+            }}
             adminName={user?.full_name ?? ""}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
