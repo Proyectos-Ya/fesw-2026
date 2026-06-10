@@ -29,6 +29,9 @@ from app.infrastructure.services.field_weighting_service import FieldWeightingSe
 from app.application.repositories.matching_result_repository import IMatchingResultRepository
 from app.infrastructure.repositories.matching_result_repository import MatchingResultRepository
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.infrastructure.services.gemini_deep_analysis_service import GeminiDeepAnalysisService
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import GetOrCreateDeepAnalysisUseCase
 from app.application.repositories.question_repository import IQuestionRepository
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
 from app.application.services.smart_question_service import ISmartQuestionService
@@ -102,6 +105,21 @@ def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserReposito
     return UserRepository(session)
 
 
+def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
+    return request.app.state.deep_analysis_service
+
+
+def get_get_or_create_deep_analysis_use_case(
+    session: AsyncSession = Depends(get_session),
+    deep_analysis_service: IDeepAnalysisService = Depends(get_deep_analysis_service),
+) -> GetOrCreateDeepAnalysisUseCase:
+    return GetOrCreateDeepAnalysisUseCase(
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        deep_analysis_service=deep_analysis_service,
+    )
+
 def get_question_repo(
     session: AsyncSession = Depends(get_session),
 ) -> IQuestionRepository:
@@ -135,6 +153,10 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     app.state.embedding_service = BgeM3EmbeddingService(model_name=settings.embedding_model)
+    app.state.deep_analysis_service = GeminiDeepAnalysisService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
 
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
     try:
@@ -173,5 +195,6 @@ def bootstrap(app: FastAPI) -> None:
         cookie_name=settings.auth_cookie_name,
         cookie_secure=settings.auth_cookie_secure,
         cookie_max_age=settings.access_token_expire_minutes * 60,
+        get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
     )
     app.include_router(router)
