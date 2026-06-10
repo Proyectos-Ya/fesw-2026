@@ -15,6 +15,8 @@ from app.infrastructure.repositories.tender_model import (
     TenderStatusModel,
     TenderItemModel,
 )
+from app.domain.entities.deep_analysis import DeepAnalysis
+from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 
 
 class TenderRepository(ITenderRepository):
@@ -164,3 +166,62 @@ class TenderRepository(ITenderRepository):
     async def rollback(self) -> None:
         # Limpia buffer
         await self.session.rollback()
+
+    def _to_deep_analysis_entity(self, model: DeepAnalysisModel) -> DeepAnalysis:
+        """Convert DeepAnalysisModel to DeepAnalysis domain entity."""
+        return DeepAnalysis(
+            id=model.id,
+            tender_id=model.tender_id,
+            supplier_id=model.supplier_id,
+            compatibility_score=model.compatibility_score,
+            recommendation=model.recommendation,
+            justification=model.justification,
+            prompt_instruction=model.prompt_instruction,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
+
+    def _to_deep_analysis_model(self, entity: DeepAnalysis) -> DeepAnalysisModel:
+        """Convert DeepAnalysis domain entity to DeepAnalysisModel DB model."""
+        return DeepAnalysisModel(
+            id=entity.id,
+            tender_id=entity.tender_id,
+            supplier_id=entity.supplier_id,
+            compatibility_score=entity.compatibility_score,
+            recommendation=entity.recommendation,
+            justification=entity.justification,
+            prompt_instruction=entity.prompt_instruction,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        )
+
+    async def get_deep_analysis(self, tender_id: uuid.UUID, supplier_id: uuid.UUID) -> Optional[DeepAnalysis]:
+        statement = select(DeepAnalysisModel).where(
+            DeepAnalysisModel.tender_id == tender_id,
+            DeepAnalysisModel.supplier_id == supplier_id
+        )
+        result = await self.session.exec(statement)
+        model = result.first()
+        return self._to_deep_analysis_entity(model) if model else None
+
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        statement = select(DeepAnalysisModel).where(
+            DeepAnalysisModel.tender_id == deep_analysis.tender_id,
+            DeepAnalysisModel.supplier_id == deep_analysis.supplier_id
+        )
+        result = await self.session.exec(statement)
+        model = result.first()
+
+        if model:
+            model.compatibility_score = deep_analysis.compatibility_score
+            model.recommendation = deep_analysis.recommendation
+            model.justification = deep_analysis.justification
+            model.prompt_instruction = deep_analysis.prompt_instruction
+            model.updated_at = deep_analysis.updated_at
+        else:
+            model = self._to_deep_analysis_model(deep_analysis)
+            self.session.add(model)
+
+        await self.session.commit()
+        await self.session.refresh(model)
+        return self._to_deep_analysis_entity(model)

@@ -22,6 +22,7 @@ from tests.unit.application.fakes import InMemorySupplierRepository, FakeSupplie
 # ---------------------------------------------------------------------------
 
 from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+from app.domain.entities.deep_analysis import DeepAnalysis
 
 class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
@@ -53,6 +54,12 @@ class InMemoryTenderRepository(ITenderRepository):
 
     async def rollback(self) -> None:
         pass
+
+    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+        return None
+
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        return deep_analysis
 
 
 class FakeTenderVectorRepository(ITenderVectorRepository):
