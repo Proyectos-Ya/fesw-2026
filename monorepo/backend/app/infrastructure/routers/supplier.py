@@ -7,13 +7,17 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
-from app.application.schemas.supplier_schema import CreateSupplierSchema
+from app.application.schemas.supplier_schema import (
+    CreateSupplierSchema,
+    UpdateSupplierSchema,
+)
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
 from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.application.use_cases.supplier.get_supplier_by_user import (
     GetSupplierByUserUseCase,
 )
+from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.user import User
 from app.domain.errors.supplier_errors import (
@@ -83,6 +87,32 @@ def create_supplier_router(
             return await GetSupplierByUserUseCase(repo).execute(current_user.id)
         except SupplierNotFoundForUser as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+    @router.patch(
+        "/me",
+        response_model=Supplier,
+        responses={
+            400: {"description": "Datos de empresa inválidos"},
+            404: {"description": "El usuario no tiene una empresa asociada"},
+        },
+    )
+    async def update_my_supplier(
+        data: UpdateSupplierSchema,
+        current_user: User = Depends(get_current_user),
+        repo: ISupplierRepository = Depends(get_supplier_repo),
+        vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
+        embedding_service: IEmbeddingService = Depends(get_embedding_service),
+    ):
+        # Edita la empresa del usuario autenticado; re-indexa el vector si
+        # cambian los campos que alimentan el matching
+        try:
+            return await UpdateSupplierUseCase(repo, vector_repo, embedding_service).execute(
+                current_user.id, data
+            )
+        except SupplierNotFoundForUser as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        except SupplierValidationError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     @router.get(
         "/{supplier_id}",

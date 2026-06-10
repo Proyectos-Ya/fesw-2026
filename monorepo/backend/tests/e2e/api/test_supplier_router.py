@@ -74,6 +74,36 @@ async def test_get_supplier_me_returns_404_without_company(api: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_update_supplier_me_without_session_returns_401(api: AsyncClient):
+    resp = await api.patch("/suppliers/me", json={"legal_name": "Nueva SpA"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_supplier_me_without_company_returns_404(api: AsyncClient):
+    await _login(api)
+    resp = await api.patch("/suppliers/me", json={"legal_name": "Nueva SpA"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_supplier_me_edits_own_company(api: AsyncClient):
+    await _login(api)
+    await api.post("/suppliers/", json=SUPPLIER)
+
+    resp = await api.patch(
+        "/suppliers/me",
+        json={"legal_name": "Constructora Renovada SpA", "num_employees": 50},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["legal_name"] == "Constructora Renovada SpA"
+    assert body["num_employees"] == 50
+    # El RUT no cambia: no es parte del schema de edición
+    assert body["rut"] == SUPPLIER["rut"]
+
+
+@pytest.mark.asyncio
 async def test_get_supplier_me_returns_own_company(api: AsyncClient):
     await _login(api)
     created = await api.post("/suppliers/", json=SUPPLIER)

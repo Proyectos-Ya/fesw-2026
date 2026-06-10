@@ -1,17 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/features/auth/components/SessionProvider";
 import { Icon } from "@/features/shared/components/Icon";
-import { ApiError } from "@/features/shared/api/client";
-import { getMySupplier, type Supplier } from "../services/supplierService";
-
-type CompanyState =
-  | { status: "loading" }
-  | { status: "without-company" }
-  | { status: "with-company"; supplier: Supplier }
-  | { status: "error" };
+import { useCompany } from "./CompanyProvider";
 
 function OptionCard({
   href,
@@ -44,28 +36,7 @@ function OptionCard({
 
 export function HomeView() {
   const { user } = useSession();
-  const [company, setCompany] = useState<CompanyState>({ status: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    getMySupplier()
-      .then((supplier) => {
-        if (!cancelled) setCompany({ status: "with-company", supplier });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 404) {
-          setCompany({ status: "without-company" });
-        } else {
-          setCompany({ status: "error" });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { company } = useCompany();
 
   if (company.status === "loading") return null;
 

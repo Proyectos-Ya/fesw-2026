@@ -3,6 +3,8 @@ import "./../globals.css";
 import { Sidebar } from "@/features/shared/components/Sidebar";
 import { Icon } from "@/features/shared/components/Icon";
 import { SessionProvider } from "@/features/auth/components/SessionProvider";
+import { UserMenu } from "@/features/auth/components/UserMenu";
+import { CompanyProvider } from "@/features/company-profile/components/CompanyProvider";
 
 export const metadata: Metadata = {
   title: "ProyectosYa",
@@ -18,6 +20,7 @@ export default function RootLayout({
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex bg-bg-page font-sans selection:bg-teal-200 selection:text-warm-900">
         <SessionProvider>
+        <CompanyProvider>
         <Sidebar />
         
         <div className="flex-1 flex flex-col min-w-0">
@@ -36,9 +39,7 @@ export default function RootLayout({
                 <span className="absolute top-2 right-2 size-2 bg-accent rounded-full border-2 border-white" />
               </button>
               <div className="h-8 w-px bg-border-subtle mx-2" />
-              <div className="size-8 rounded-full bg-primary-soft flex items-center justify-center font-bold text-xs text-primary">
-                JD
-              </div>
+              <UserMenu />
             </div>
           </header>
           
@@ -46,6 +47,7 @@ export default function RootLayout({
             {children}
           </main>
         </div>
+        </CompanyProvider>
         </SessionProvider>
       </body>
     </html>

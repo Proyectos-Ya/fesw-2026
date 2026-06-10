@@ -54,6 +54,10 @@ class InMemorySupplierRepository(ISupplierRepository):
         self.suppliers[supplier.rut] = supplier
         return supplier
 
+    async def update(self, supplier: Supplier) -> Supplier:
+        self.suppliers[supplier.rut] = supplier
+        return supplier
+
 
 class FakeSupplierVectorRepository(ISupplierVectorRepository):
     def __init__(self) -> None:

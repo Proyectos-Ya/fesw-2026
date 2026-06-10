@@ -21,3 +21,7 @@ class ISupplierRepository(ABC):
     @abstractmethod
     async def save(self, supplier: Supplier) -> Supplier:
         ...
+
+    @abstractmethod
+    async def update(self, supplier: Supplier) -> Supplier:
+        ...

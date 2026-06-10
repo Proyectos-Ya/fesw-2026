@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "../HomeView";
-import { ApiError } from "@/features/shared/api/client";
+import type { CompanyState } from "../CompanyProvider";
 import type { Supplier } from "../../services/supplierService";
 
 vi.mock("@/features/auth/components/SessionProvider", () => ({
@@ -21,10 +21,14 @@ vi.mock("@/features/auth/components/SessionProvider", () => ({
   }),
 }));
 
-const getMySupplierMock = vi.fn();
+let companyState: CompanyState = { status: "loading" };
 
-vi.mock("../../services/supplierService", () => ({
-  getMySupplier: () => getMySupplierMock() as Promise<Supplier>,
+vi.mock("../CompanyProvider", () => ({
+  useCompany: () => ({
+    company: companyState,
+    setSupplier: vi.fn(),
+    refresh: vi.fn(),
+  }),
 }));
 
 const SUPPLIER = {
@@ -37,37 +41,37 @@ afterEach(() => {
 });
 
 describe("HomeView", () => {
-  it("sin empresa muestra las opciones de crear y unirse con sus rutas", async () => {
-    getMySupplierMock.mockRejectedValue(new ApiError(404, "Sin empresa"));
+  it("sin empresa muestra las opciones de crear y unirse con sus rutas", () => {
+    companyState = { status: "without-company" };
 
     render(<HomeView />);
 
-    const crear = await screen.findByRole("link", { name: /crear mi empresa/i });
+    const crear = screen.getByRole("link", { name: /crear mi empresa/i });
     expect(crear).toHaveAttribute("href", "/empresa/crear");
 
     const unirse = screen.getByRole("link", { name: /unirse a una empresa/i });
     expect(unirse).toHaveAttribute("href", "/empresa/unirse");
   });
 
-  it("con empresa saluda al usuario y muestra el nombre de la empresa", async () => {
-    getMySupplierMock.mockResolvedValue(SUPPLIER);
+  it("con empresa saluda al usuario y muestra el nombre de la empresa", () => {
+    companyState = { status: "with-company", supplier: SUPPLIER };
 
     render(<HomeView />);
 
-    expect(await screen.findByText(/Hola, Ana Pérez/)).toBeInTheDocument();
+    expect(screen.getByText(/Hola, Ana Pérez/)).toBeInTheDocument();
     expect(screen.getByText("Constructora Norte SpA")).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /crear mi empresa/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("ante un error inesperado muestra un mensaje de recarga", async () => {
-    getMySupplierMock.mockRejectedValue(new ApiError(500, "Error interno"));
+  it("ante un error inesperado muestra un mensaje de recarga", () => {
+    companyState = { status: "error" };
 
     render(<HomeView />);
 
     expect(
-      await screen.findByText(/No pudimos cargar tu información/),
+      screen.getByText(/No pudimos cargar tu información/),
     ).toBeInTheDocument();
   });
 });

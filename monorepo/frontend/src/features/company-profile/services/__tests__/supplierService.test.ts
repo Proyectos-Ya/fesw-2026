@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSupplier, getMySupplier } from "../supplierService";
+import { createSupplier, getMySupplier, updateSupplier } from "../supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import type { ProfileData } from "../../profileSchema";
 
@@ -98,5 +98,25 @@ describe("getMySupplier", () => {
       status: 404,
       message: "Sin empresa asociada",
     });
+  });
+});
+
+describe("updateSupplier", () => {
+  it("hace PATCH a /suppliers/me con los campos editados", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "abc-123", ...validData, legal_name: "Nueva SpA" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateSupplier({ legal_name: "Nueva SpA" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/suppliers/me");
+    expect(options.method).toBe("PATCH");
+    expect(options.credentials).toBe("include");
+    expect(JSON.parse(options.body as string)).toEqual({ legal_name: "Nueva SpA" });
+    expect(result.legal_name).toBe("Nueva SpA");
   });
 });
