@@ -70,6 +70,25 @@ class FakeSupplierVectorRepository(ISupplierVectorRepository):
 
 
 
+class FakeTenderVectorRepository:
+    """Repositorio vectorial de licitaciones en memoria para pruebas."""
+
+    def __init__(self) -> None:
+        self.upserts: list[tuple[UUID, list[float], dict]] = []
+
+    async def ensure_collection(self) -> None:
+        pass
+
+    async def upsert(self, tender_id: UUID, embedding: list[float], payload: dict) -> None:
+        self.upserts.append((tender_id, embedding, payload))
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.upserts = [(tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id]
+
+    async def search_by_supplier_vector(self, supplier_vector: list[float], limit: int, filters=None) -> list:
+        return []
+
+
 class FakeEmbeddingService:
     """Devuelve siempre el mismo vector configurable — evita cargar el modelo real."""
 

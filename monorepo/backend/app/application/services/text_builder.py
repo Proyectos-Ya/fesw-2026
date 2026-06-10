@@ -1,5 +1,16 @@
+from typing import Optional, Protocol, Sequence
+
 from app.domain.entities.supplier import Supplier
-from app.domain.entities.tender import Tender, TenderItem
+
+
+class _TenderLike(Protocol):
+    name: str
+    description: Optional[str]
+
+
+class _ItemLike(Protocol):
+    name: str
+    description: Optional[str]
 
 
 class TextBuilder:
@@ -7,24 +18,22 @@ class TextBuilder:
     Construye representaciones textuales simétricas para licitaciones y proveedores.
     """
 
-    def build_from_tender(self, tender: Tender, items: list[TenderItem], buyer_name: str) -> str:
+    def build_from_tender(self, tender: _TenderLike, items: Sequence[_ItemLike]) -> str:
         """
-        Construye la representación de texto para una licitación (tender) siguiendo la estrategia requerida.
+        Construye el texto semántico de una licitación para embedding.
+        Solo incluye qué trabajo se necesita (nombre, descripción, items).
+        No incluye datos del comprador para mantener simetría con el perfil del proveedor.
         """
-        parts = [
-            f"Title: {tender.name}",
-            f"Description: {tender.description if tender.description else ''}"
-        ]
-
-        items_parts = ["Items Requested:"]
-        for item in items:
-            desc = f": {item.description}" if item.description else ""
-            items_parts.append(f"- {item.name}{desc}")
-
-        parts.append("\n".join(items_parts))
-        parts.append(f"Buyer: {buyer_name} ({tender.buyer_unit})")
-
-        return "\n".join(parts)
+        parts = [tender.name]
+        if tender.description:
+            parts.append(tender.description)
+        if items:
+            item_texts = [
+                item.name + (f": {item.description}" if item.description else "")
+                for item in items
+            ]
+            parts.append("Items: " + ". ".join(item_texts))
+        return ". ".join(parts)
 
 
     def build_from_supplier(self, supplier: Supplier) -> str:
