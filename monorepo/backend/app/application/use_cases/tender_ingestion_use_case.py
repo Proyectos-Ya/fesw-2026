@@ -109,9 +109,8 @@ class TenderIngestionUseCase:
                     ) for item in dto.items
                 ]
 
-                await self.repo.save_complex_tender(new_tender, tender_items)
-
                 text = self.text_builder.build_from_tender(new_tender, tender_items)
+                await self.repo.save_complex_tender(new_tender, tender_items)
                 vectors = await self.embedding_service.embed([text])
                 status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
                 await self.tender_vector_repo.upsert(

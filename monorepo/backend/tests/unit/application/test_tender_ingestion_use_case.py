@@ -3,14 +3,14 @@ Tests unitarios de TenderIngestionUseCase.
 Verifican que tras guardar cada licitación en SQL se genera su embedding
 y se indexa en el repositorio vectorial (Qdrant).
 """
-from datetime import datetime
 from typing import List, Optional
-from uuid import UUID
 
-import pytest
-
+from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
+from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
-from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
+from app.domain.entities.tender import Tender
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
+from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from tests.unit.application.fakes import FakeEmbeddingService, FakeTenderVectorRepository
 
 
@@ -19,7 +19,7 @@ from tests.unit.application.fakes import FakeEmbeddingService, FakeTenderVectorR
 # ---------------------------------------------------------------------------
 
 
-class FakeIngestionService:
+class FakeIngestionService(ITenderIngestionService):
     def __init__(self, dtos: List[TenderIngestaDTO]) -> None:
         self._dtos = dtos
 
@@ -27,22 +27,25 @@ class FakeIngestionService:
         return self._dtos
 
 
-class FakeTenderRepository:
+class FakeTenderRepository(ITenderRepository):
     """Repositorio SQL en memoria que deja pasar todas las operaciones."""
 
     def __init__(self) -> None:
         self.saved: list = []
 
-    async def get_by_code(self, code: str) -> Optional[object]:
+    async def get_tenders(self, filters: TenderFilters) -> List[Tender]:  # noqa: ARG002
+        return []
+
+    async def get_by_code(self, code: str) -> Optional[TenderModel]:  # noqa: ARG002
         return None
 
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:  # noqa: ARG002
         return rut
 
     async def get_or_create_status(self, status_id: int) -> int:
         return status_id
 
-    async def save_complex_tender(self, tender_model: object, items: list) -> None:
+    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]) -> None:
         self.saved.append((tender_model, items))
 
     async def rollback(self) -> None:
@@ -167,8 +170,8 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
 async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
     """Si el código ya existe en SQL no se llama a Qdrant."""
     class RepoConDuplicado(FakeTenderRepository):
-        async def get_by_code(self, code: str) -> object:
-            return object()  # simula que ya existe
+        async def get_by_code(self, code: str) -> TenderModel:  # noqa: ARG002
+            return TenderModel.__new__(TenderModel)  # simula que ya existe
 
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(

@@ -3,7 +3,9 @@ from uuid import UUID
 
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
+from app.application.repositories.tender_vector_repository import ITenderVectorRepository
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.domain.entities.supplier import Supplier
@@ -70,7 +72,7 @@ class FakeSupplierVectorRepository(ISupplierVectorRepository):
 
 
 
-class FakeTenderVectorRepository:
+class FakeTenderVectorRepository(ITenderVectorRepository):
     """Repositorio vectorial de licitaciones en memoria para pruebas."""
 
     def __init__(self) -> None:
@@ -85,11 +87,11 @@ class FakeTenderVectorRepository:
     async def delete(self, tender_id: UUID) -> None:
         self.upserts = [(tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id]
 
-    async def search_by_supplier_vector(self, supplier_vector: list[float], limit: int, filters=None) -> list:
+    async def search_by_supplier_vector(self, supplier_vector: list[float], limit: int, filters: dict | None = None) -> list[tuple[UUID, float]]:  # noqa: ARG002
         return []
 
 
-class FakeEmbeddingService:
+class FakeEmbeddingService(IEmbeddingService):
     """Devuelve siempre el mismo vector configurable — evita cargar el modelo real."""
 
     def __init__(self, vector: list[float] | None = None) -> None:
