@@ -14,6 +14,8 @@ class TenderFilters(BaseModel):
     provinces: Optional[List[str]] = None  # Filter by Province Names (e.g. ['Santiago'])
 
 
+from app.domain.entities.deep_analysis import DeepAnalysis
+
 class ITenderRepository(ABC):
     """Interface for the Tender repository in the Application layer."""
 
@@ -36,3 +38,13 @@ class ITenderRepository(ABC):
 
     @abstractmethod
     async def rollback(self) -> None: pass
+
+    @abstractmethod
+    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+        """Retrieve the DeepAnalysis for a specific tender and supplier, if it exists."""
+        ...
+
+    @abstractmethod
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        """Save (create or update) the DeepAnalysis in the database."""
+        ...

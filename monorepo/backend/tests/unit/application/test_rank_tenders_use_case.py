@@ -21,6 +21,9 @@ from tests.unit.application.fakes import InMemorySupplierRepository, FakeSupplie
 # Implementaciones fake específicas para las pruebas unitarias de este caso de uso
 # ---------------------------------------------------------------------------
 
+from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+from app.domain.entities.deep_analysis import DeepAnalysis
+
 class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
     def __init__(self) -> None:
@@ -36,6 +39,27 @@ class InMemoryTenderRepository(ITenderRepository):
                 pass
             results.append(t)
         return results
+
+    async def get_by_code(self, code: str) -> Optional[TenderModel]:
+        return None
+
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+        return rut
+
+    async def save_complex_tender(self, tender_model: TenderModel, items: list[TenderItemModel]) -> None:
+        pass
+
+    async def get_or_create_status(self, status_id: int) -> int:
+        return status_id
+
+    async def rollback(self) -> None:
+        pass
+
+    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+        return None
+
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        return deep_analysis
 
 
 class FakeTenderVectorRepository(ITenderVectorRepository):

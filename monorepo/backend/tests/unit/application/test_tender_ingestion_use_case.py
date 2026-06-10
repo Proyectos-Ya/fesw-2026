@@ -4,11 +4,13 @@ Verifican que tras guardar cada licitación en SQL se genera su embedding
 y se indexa en el repositorio vectorial (Qdrant).
 """
 from typing import List, Optional
+from uuid import UUID
 
 from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.domain.entities.tender import Tender
+from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from tests.unit.application.fakes import FakeEmbeddingService, FakeTenderVectorRepository
@@ -50,6 +52,12 @@ class FakeTenderRepository(ITenderRepository):
 
     async def rollback(self) -> None:
         pass
+
+    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+        return None
+
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        return deep_analysis
 
 
 def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
