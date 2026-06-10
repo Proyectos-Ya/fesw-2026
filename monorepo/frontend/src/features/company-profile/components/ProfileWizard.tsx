@@ -11,7 +11,7 @@ import { Step4Summary } from "./steps/Step4Summary";
 import { z } from "zod";
 import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
-import { createSupplier } from "../services/supplierService";
+import { createSupplier, getMySupplierOrNull } from "../services/supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { useSession } from "@/features/auth/components/SessionProvider";
 import { useCompany } from "./CompanyProvider";
@@ -39,15 +39,23 @@ export function ProfileWizard() {
       router.push("/");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
-      if (err instanceof TimeoutError) {
-        setError(err.message);
-      } else if (err instanceof ApiError) {
+      if (err instanceof ApiError) {
         setError(err.message);
       } else if (err instanceof z.ZodError) {
         setError("Hay campos incompletos o inválidos. Revisa los pasos anteriores.");
       } else {
+        // Timeout o corte de red: no hubo respuesta, pero el backend pudo
+        // haber alcanzado a crear la empresa. Se verifica antes de mostrar error.
+        const existing = await getMySupplierOrNull();
+        if (existing) {
+          setSupplier(existing);
+          router.push("/");
+          return;
+        }
         setError(
-          "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.",
+          err instanceof TimeoutError
+            ? err.message
+            : "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.",
         );
       }
     } finally {

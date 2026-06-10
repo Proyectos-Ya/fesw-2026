@@ -3,6 +3,7 @@ import {
   checkRutExists,
   createSupplier,
   getMySupplier,
+  getMySupplierOrNull,
   updateSupplier,
 } from "../supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
@@ -103,6 +104,46 @@ describe("getMySupplier", () => {
       status: 404,
       message: "Sin empresa asociada",
     });
+  });
+});
+
+describe("getMySupplierOrNull", () => {
+  it("devuelve la empresa cuando existe", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: "abc-123", ...validData }),
+      }),
+    );
+
+    const result = await getMySupplierOrNull();
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe("abc-123");
+  });
+
+  it("devuelve null cuando el usuario no tiene empresa (404)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        json: async () => ({ detail: "Sin empresa asociada" }),
+      }),
+    );
+
+    await expect(getMySupplierOrNull()).resolves.toBeNull();
+  });
+
+  it("devuelve null cuando la consulta falla por red", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
+
+    await expect(getMySupplierOrNull()).resolves.toBeNull();
   });
 });
 

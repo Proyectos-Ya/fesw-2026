@@ -23,6 +23,19 @@ export function getMySupplier(): Promise<Supplier> {
   return apiFetch<Supplier>("/suppliers/me");
 }
 
+/**
+ * Empresa del usuario o null si no existe o no se pudo consultar.
+ * Permite verificar, tras un timeout o corte de red en la creación,
+ * si el backend alcanzó a crear la empresa de todas formas.
+ */
+export async function getMySupplierOrNull(): Promise<Supplier | null> {
+  try {
+    return await getMySupplier();
+  } catch {
+    return null;
+  }
+}
+
 /** Consulta si ya existe una empresa registrada con ese RUT. */
 export async function checkRutExists(rut: string): Promise<boolean> {
   const { exists } = await apiFetch<{ exists: boolean }>(
