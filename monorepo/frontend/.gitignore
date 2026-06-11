@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# mock infrastructure (local dev only — apply from templates/mocks/README.md)
+templates/mocks/
+src/mocks/
+src/features/shared/api/errors.ts

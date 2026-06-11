@@ -47,6 +47,7 @@ class TenderRepository(ITenderRepository):
             buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
             province=model.province,
+            region=model.buyer.region.name if model.buyer and model.buyer.region else None,
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -88,7 +89,7 @@ class TenderRepository(ITenderRepository):
         """Retrieve tenders matching specified filters."""
         query = select(TenderModel).options(
             selectinload(TenderModel.status),
-            selectinload(TenderModel.buyer),
+            selectinload(TenderModel.buyer).selectinload(BuyerInstitutionModel.region),
             selectinload(TenderModel.items)
         )
 

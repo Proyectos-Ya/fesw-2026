@@ -14,6 +14,7 @@ import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, getMySupplierOrNull } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
+import { SuccessView } from "./SuccessView";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
 export function ProfileWizard() {
@@ -23,6 +24,7 @@ export function ProfileWizard() {
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const adminName = user?.full_name ?? "Usuario";
@@ -34,7 +36,7 @@ export function ProfileWizard() {
       const payload = profileSchema.parse(formData);
       const created = await createSupplier(payload);
       setSupplier(created); // Actualiza el estado compartido (sidebar, home)
-      router.push("/");
+      setShowSuccess(true);
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
       if (err instanceof ApiError) {
@@ -47,7 +49,7 @@ export function ProfileWizard() {
         const existing = await getMySupplierOrNull();
         if (existing) {
           setSupplier(existing);
-          router.push("/");
+          setShowSuccess(true);
           return;
         }
         setError(
@@ -60,6 +62,16 @@ export function ProfileWizard() {
       setIsSubmitting(false);
     }
   };
+
+  if (showSuccess) {
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+          <SuccessView onRedirect={() => router.push("/")} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-2xl">

@@ -36,12 +36,13 @@ class FieldWeightingService(IWeightingService):
             # 1. Puntuación base del Reranker
             score = reranker_score * self.reranker_weight
 
-            # 2. Coincidencia de región (province de la licitación con regions del proveedor)
+            # 2. Coincidencia de región (region de la licitación con regions del proveedor)
             region_matched = False
-            if supplier.regions and tender.province:
-                prov_lower = tender.province.strip().lower()
+            tender_region = tender.region or tender.province
+            if supplier.regions and tender_region:
+                reg_lower = tender_region.strip().lower()
                 for region in supplier.regions:
-                    if region.strip().lower() in prov_lower or prov_lower in region.strip().lower():
+                    if region.strip().lower() in reg_lower or reg_lower in region.strip().lower():
                         region_matched = True
                         break
 

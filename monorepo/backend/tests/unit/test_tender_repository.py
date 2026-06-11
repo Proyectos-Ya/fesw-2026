@@ -111,6 +111,7 @@ async def test_get_by_id(db_session: AsyncSession):
     assert len(results) == 1
     assert results[0].id == tender_id
     assert results[0].name == "Materiales Eléctricos"
+    assert results[0].region == "Metropolitana"
 
 
 @pytest.mark.asyncio
@@ -184,6 +185,7 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     results = await repo.get_tenders(filters)
     assert len(results) == 1
     assert results[0].code == "COT-METRO"
+    assert results[0].region == "Metropolitana"
 
 
 @pytest.mark.asyncio
