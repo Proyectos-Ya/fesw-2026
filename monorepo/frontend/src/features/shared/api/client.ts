@@ -71,5 +71,10 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail);
   }
 
+  // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
