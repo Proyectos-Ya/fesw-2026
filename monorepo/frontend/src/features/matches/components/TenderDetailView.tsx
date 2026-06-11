@@ -69,7 +69,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
@@ -95,7 +94,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         setState({ kind: "ready", match: found });
 
         // Cargar el análisis de compatibilidad si ya existe
-        setAnalysisLoading(true);
         try {
           const ana = await getDeepAnalysisOnly(tenderId);
           if (!cancelled) {
@@ -103,10 +101,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           }
         } catch (err) {
           console.error("Error al cargar análisis de compatibilidad:", err);
-        } finally {
-          if (!cancelled) {
-            setAnalysisLoading(false);
-          }
         }
       } catch (err) {
         if (cancelled) return;
