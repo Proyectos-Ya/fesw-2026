@@ -106,6 +106,13 @@ class RankTendersUseCase:
         tenders = await self.tender_repo.get_tenders(TenderFilters(ids=tender_ids))
         tender_dict = {t.id: t for t in tenders}
 
+        # 3.3.1 Limpieza de puntos huérfanos: IDs presentes en Qdrant pero sin fila
+        # en SQL (p. ej. por reseteos de la BD). Se eliminan del almacén vectorial
+        # para que no ocupen cupos del top-N en búsquedas futuras.
+        for uid, _ in search_results:
+            if uid not in tender_dict:
+                await self.tender_vector_repo.delete(uid)
+
         # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL)
         active_tenders = []
         similarity_scores = {}
@@ -135,21 +142,26 @@ class RankTendersUseCase:
         )
         reranked_dict = {uid: score for uid, score in reranked_scores}
 
-        # Filtrar active_tenders para dejar solo los re-rankeados (top M)
-        top_candidates = [t for t in active_tenders if t.id in reranked_dict]
+        # Filtrar active_tenders para dejar solo los re-rankeados (top M),
+        # en tuplas (tender, score_reranker) como exige IWeightingService
+        top_candidates = [
+            (t, reranked_dict[t.id]) for t in active_tenders if t.id in reranked_dict
+        ]
 
-        # 3.6 Ponderación manual (IWeightingService)
-        weighted_results = self.weighting_service.calculate_scores(supplier, top_candidates)
+        # 3.6 Ponderación manual (IWeightingService): retorna (tender_id, score_final)
+        weighted_results = self.weighting_service.calculate_scores(top_candidates, supplier)
 
         # 3.7 Construir entidades MatchingResult definitivas
+        tender_by_id = {t.id: t for t in active_tenders}
         new_matches = []
-        for t, final_score in weighted_results:
-            sim_score = similarity_scores.get(t.id, 0.0)
-            rerank_score = reranked_dict.get(t.id)
+        for tender_id, final_score in weighted_results:
+            t = tender_by_id[tender_id]
+            sim_score = similarity_scores.get(tender_id, 0.0)
+            rerank_score = reranked_dict.get(tender_id)
 
             match_res = MatchingResult(
                 supplier_id=supplier.id,
-                tender_id=t.id,
+                tender_id=tender_id,
                 similarity_score=sim_score,
                 reranker_score=rerank_score,
                 final_score=final_score,

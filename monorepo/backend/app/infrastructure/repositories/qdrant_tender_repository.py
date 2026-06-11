@@ -88,17 +88,19 @@ class QdrantTenderRepository(ITenderVectorRepository):
         buscando en el vector nombrado 'tender' y aplicando los filtros indicados.
         """
         query_filter = self._build_filter(filters)
-        
-        results = await self._client.search(
+
+        # qdrant-client >= 1.15 eliminó `search`; `query_points` es la API vigente
+        response = await self._client.query_points(
             collection_name=self._COLLECTION_NAME,
-            query_vector=(self._VECTOR_NAME, supplier_vector),
+            query=supplier_vector,
+            using=self._VECTOR_NAME,
             query_filter=query_filter,
             limit=limit,
         )
 
         return [
             (UUID(result.id) if isinstance(result.id, str) else result.id, result.score)
-            for result in results
+            for result in response.points
         ]
 
     def _build_filter(self, filters: Optional[dict]) -> Optional[Filter]:

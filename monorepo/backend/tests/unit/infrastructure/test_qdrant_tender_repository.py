@@ -120,18 +120,21 @@ async def test_search_by_supplier_vector(
     # validando que consulte el vector nombrado 'tender' y devuelva los IDs con sus scores.
     supplier_vector = _make_vector()
     t1, t2 = uuid4(), uuid4()
-    client.search.return_value = [
+    response = MagicMock()
+    response.points = [
         _make_scored_point(t1, 0.95),
         _make_scored_point(t2, 0.85),
     ]
-    
+    client.query_points.return_value = response
+
     results = await repository.search_by_supplier_vector(supplier_vector, limit=5)
-    
-    client.search.assert_called_once()
-    call_kwargs = client.search.call_args.kwargs
+
+    client.query_points.assert_called_once()
+    call_kwargs = client.query_points.call_args.kwargs
     assert call_kwargs["collection_name"] == COLLECTION
-    # Valida que el query_vector se pase como tupla (nombre_vector, embedding)
-    assert call_kwargs["query_vector"] == (VECTOR_NAME, supplier_vector)
+    # Valida que se consulte el vector nombrado 'tender' con el embedding del proveedor
+    assert call_kwargs["query"] == supplier_vector
+    assert call_kwargs["using"] == VECTOR_NAME
     assert call_kwargs["limit"] == 5
     assert call_kwargs["query_filter"] is None
     
@@ -144,7 +147,9 @@ async def test_search_by_supplier_vector_con_filtros(
 ) -> None:
     # Verifica que la búsqueda por similitud aplique correctamente los filtros de metadatos en Qdrant.
     supplier_vector = _make_vector()
-    client.search.return_value = []
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
     filters = {
         "code": "XYZ",
         "region_id": 16,
@@ -155,7 +160,7 @@ async def test_search_by_supplier_vector_con_filtros(
     
     await repository.search_by_supplier_vector(supplier_vector, limit=5, filters=filters)
     
-    client.search.assert_called_once()
-    call_kwargs = client.search.call_args.kwargs
+    client.query_points.assert_called_once()
+    call_kwargs = client.query_points.call_args.kwargs
     # Valida que se haya construido y pasado un objeto de filtro de búsqueda
     assert call_kwargs["query_filter"] is not None

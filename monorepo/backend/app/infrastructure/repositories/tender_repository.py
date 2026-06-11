@@ -17,6 +17,7 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
+from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 
 
 class TenderRepository(ITenderRepository):
@@ -33,7 +34,12 @@ class TenderRepository(ITenderRepository):
             name=model.name,
             description=model.description,
             status_id=model.status_id,
-            status_code=model.status.code if model.status else None,
+            # Código semántico ('publicada', ...) derivado del status_id: la tabla
+            # tender_status guarda códigos únicos por fila (ej. '2', 'publicada_2'),
+            # pero el pipeline de matching filtra por el código semántico.
+            status_code=TENDER_STATUS_CODE_BY_ID.get(
+                model.status_id, model.status.code if model.status else None
+            ),
             published_at=model.published_at,
             closing_at=model.closing_at,
             last_change_at=model.last_change_at,
@@ -139,8 +145,10 @@ class TenderRepository(ITenderRepository):
                 8: "Desierta",
                 18: "Adjudicada"
             }
-            
+
             if status_id in ESTADOS_MAP:
+                # code tiene índice único: se sufija con el id; el código
+                # semántico se deriva en _to_entity vía TENDER_STATUS_CODE_BY_ID.
                 name_str = ESTADOS_MAP[status_id]
                 code_str = f"{name_str.lower().strip()}_{status_id}"
             else:

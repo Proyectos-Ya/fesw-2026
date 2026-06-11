@@ -67,6 +67,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     def __init__(self) -> None:
         self.search_results: list[tuple[UUID, float]] = []
         self.searched_vectors: list[list[float]] = []
+        self.deleted: list[UUID] = []
 
     async def ensure_collection(self) -> None:
         pass
@@ -75,7 +76,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         pass
 
     async def delete(self, tender_id: UUID) -> None:
-        pass
+        self.deleted.append(tender_id)
 
     async def search_by_supplier_vector(
         self,
@@ -134,9 +135,11 @@ class FakeRerankerService(IRerankerService):
 
 class FakeWeightingService(IWeightingService):
     """Fake service para simular ponderación manual por campos."""
-    def calculate_scores(self, supplier: Supplier, candidates: list[Tender]) -> list[tuple[Tender, float]]:
+    def calculate_scores(
+        self, candidates: list[tuple[Tender, float]], supplier: Supplier
+    ) -> list[tuple[UUID, float]]:
         # Asigna un score decreciente para cada candidato para simular el resultado de la ponderación
-        return [(t, 0.95 - (i * 0.05)) for i, t in enumerate(candidates)]
+        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
 
 
 # ---------------------------------------------------------------------------
@@ -381,3 +384,45 @@ async def test_closed_tenders_are_filtered_out() -> None:
     assert len(results) == 1
     assert results[0].tender_id == tender_id_active
     assert results[0].tender.id == tender_id_active
+
+
+@pytest.mark.asyncio
+async def test_orphan_vectors_are_deleted_from_vector_store() -> None:
+    """Valida que los IDs retornados por Qdrant sin fila correspondiente en SQL
+    (puntos huérfanos) se eliminen del almacén vectorial y no bloqueen los resultados."""
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    tender_id_valid = uuid4()
+    tender_id_orphan = uuid4()  # Existe en Qdrant pero no en SQL
+
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[tender_id_valid] = create_dummy_tender(tender_id_valid)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [
+        (tender_id_valid, 0.90),
+        (tender_id_orphan, 0.88),
+    ]
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        reranker_service=FakeRerankerService(),
+        weighting_service=FakeWeightingService(),
+        matching_result_repo=InMemoryMatchingResultRepository(),
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    # La válida se retorna y el huérfano se limpia de Qdrant
+    assert len(results) == 1
+    assert results[0].tender_id == tender_id_valid
+    assert tender_vector_repo.deleted == [tender_id_orphan]
