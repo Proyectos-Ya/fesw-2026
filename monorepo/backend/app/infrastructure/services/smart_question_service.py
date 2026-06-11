@@ -20,7 +20,7 @@ class SmartQuestionServiceImpl(ISmartQuestionService):
 
         # Logica del arbol
         questions_pool: List[Dict[str, Any]] = []
-        if clean_category == "construccion" or clean_category == "obras_civiles":
+        if clean_category == "construccion" or clean_category == "obras_civiles" or clean_category == "constructora":
             # Preguntas tentativas para el rubro construccion
             questions_pool = [
                 {
