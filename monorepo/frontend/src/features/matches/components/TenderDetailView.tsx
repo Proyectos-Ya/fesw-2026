@@ -11,8 +11,8 @@ import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
-import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult, Tender } from "../tenderTypes";
+import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
+import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import {
   daysUntilClosing,
   formatCLP,
@@ -68,6 +68,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
+  const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
@@ -80,6 +82,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
     let cancelled = false;
     setState({ kind: "loading" });
+    setAnalysis(null);
     void (async () => {
       try {
         const matches = await getRecommendedTenders(user.id);
@@ -90,6 +93,21 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           return;
         }
         setState({ kind: "ready", match: found });
+
+        // Cargar el análisis de compatibilidad si ya existe
+        setAnalysisLoading(true);
+        try {
+          const ana = await getDeepAnalysisOnly(tenderId);
+          if (!cancelled) {
+            setAnalysis(ana);
+          }
+        } catch (err) {
+          console.error("Error al cargar análisis de compatibilidad:", err);
+        } finally {
+          if (!cancelled) {
+            setAnalysisLoading(false);
+          }
+        }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError || err instanceof TimeoutError) {
@@ -231,6 +249,82 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           value={formatClosingDate(tender.published_at)}
         />
       </div>
+
+      {/* Análisis de compatibilidad IA si ya existe */}
+      {analysis && (
+        <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
+          <div className="flex flex-col gap-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span className="flex size-9 items-center justify-center rounded-md bg-primary text-white shadow-sm">
+                  <Icon name="sparkles" size={18} />
+                </span>
+                <div>
+                  <h3 className="font-display text-lg font-bold text-text-strong mb-0.5">
+                    Análisis de Compatibilidad IA
+                  </h3>
+                  <p className="text-xs text-text-muted mb-0">
+                    Última actualización: {formatDateTime(analysis.updated_at)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 border-t border-border-subtle pt-5 sm:grid-cols-4 items-center">
+              <div className="flex flex-col items-center justify-center p-2">
+                <MatchMeter
+                  value={analysis.compatibility_score}
+                  size="md"
+                  thresholds={{ high: 70, mid: 40 }}
+                  colors={{
+                    high: "var(--green-500)",
+                    mid: "var(--amber-500)",
+                    low: "var(--red-500)",
+                  }}
+                />
+                <div className="mt-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle text-center">
+                  Score de Compatibilidad
+                </div>
+              </div>
+
+              <div className="sm:col-span-3 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-text-muted">Recomendación:</span>
+                  <Badge
+                    tone={
+                      analysis.recommendation === "Postular"
+                        ? "success"
+                        : analysis.recommendation === "Evaluar con cautela"
+                        ? "warning"
+                        : "danger"
+                    }
+                    iconLeft={
+                      <Icon
+                        name={
+                          analysis.recommendation === "Postular"
+                            ? "circle-check"
+                            : analysis.recommendation === "Evaluar con cautela"
+                            ? "alert-triangle"
+                            : "alert-circle"
+                        }
+                        size={12}
+                      />
+                    }
+                  >
+                    {analysis.recommendation}
+                  </Badge>
+                </div>
+                <div className="text-sm leading-relaxed text-text-body whitespace-pre-line">
+                  <h4 className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-1">
+                    Justificación del Análisis
+                  </h4>
+                  {analysis.justification}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Section title="Fechas importantes" icon="calendar">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">

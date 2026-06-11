@@ -1,0 +1,99 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateDeepAnalysis, getDeepAnalysisOnly } from "../tenderService";
+import { ApiError } from "@/features/shared/api/client";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("generateDeepAnalysis", () => {
+  it("hace POST a /tenders/{tenderId}/analysis con los parametros de prompt y forceRegenerate", async () => {
+    const mockAnalysis = {
+      id: "da-123",
+      tender_id: "tender-123",
+      supplier_id: "supplier-123",
+      compatibility_score: 95,
+      recommendation: "Postular",
+      justification: "Excelente match",
+      prompt_instruction: "ISO 9001",
+      created_at: "2026-06-11",
+      updated_at: "2026-06-11",
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockAnalysis,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateDeepAnalysis("tender-123", "ISO 9001", true, false);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/tenders/tender-123/analysis");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body as string)).toMatchObject({
+      prompt_instruction: "ISO 9001",
+      force_regenerate: true,
+      only_if_exists: false,
+    });
+    expect(result).toEqual(mockAnalysis);
+  });
+});
+
+describe("getDeepAnalysisOnly", () => {
+  it("hace POST pidiendo only_if_exists: true y devuelve el analisis si existe (200)", async () => {
+    const mockAnalysis = {
+      id: "da-123",
+      tender_id: "tender-123",
+      compatibility_score: 80,
+      recommendation: "Postular",
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockAnalysis,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getDeepAnalysisOnly("tender-123");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/tenders/tender-123/analysis");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body as string)).toMatchObject({
+      prompt_instruction: null,
+      force_regenerate: false,
+      only_if_exists: true,
+    });
+    expect(result).toEqual(mockAnalysis);
+  });
+
+  it("devuelve null si el servidor responde con error 404 (no existe analisis generado)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ detail: "El analisis no ha sido generado" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getDeepAnalysisOnly("tender-123");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(result).toBeNull();
+  });
+
+  it("lanza ApiError si el servidor responde con otro codigo de error (ej: 500)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: async () => ({ detail: "Internal error" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getDeepAnalysisOnly("tender-123")).rejects.toBeInstanceOf(ApiError);
+  });
+});

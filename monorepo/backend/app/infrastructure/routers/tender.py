@@ -26,6 +26,10 @@ class DeepAnalysisRequest(BaseModel):
         default=False,
         description="Indica si se debe forzar una nueva generación de análisis ignorando el caché."
     )
+    only_if_exists: bool = Field(
+        default=False,
+        description="Si es True, no genera el análisis si no existe y en su lugar retorna un error 404."
+    )
 
 
 def create_tender_router(
@@ -90,14 +94,22 @@ def create_tender_router(
         """
         prompt_instruction = request_body.prompt_instruction if request_body else None
         force_regenerate = request_body.force_regenerate if request_body else False
+        only_if_exists = request_body.only_if_exists if request_body else False
 
         try:
-            return await use_case.execute(
+            analysis = await use_case.execute(
                 tender_id=tender_id,
                 user_id=current_user.id,
                 force_regenerate=force_regenerate,
                 prompt_instruction=prompt_instruction,
+                only_if_exists=only_if_exists,
             )
+            if analysis is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="El análisis de compatibilidad aún no ha sido generado."
+                )
+            return analysis
         except SupplierNotFoundForUser as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         except TenderNotFound as e:
