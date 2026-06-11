@@ -13,6 +13,7 @@ import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
+import { compraAgilFichaUrl } from "../utils/links";
 import {
   daysUntilClosing,
   formatCLP,
@@ -57,11 +58,6 @@ function scoreLabel(score: number): string {
   if (score >= 70) return "Alta compatibilidad";
   if (score >= 40) return "Compatibilidad media";
   return "Baja compatibilidad";
-}
-
-function mercadoPublicoUrl(code: string): string {
-  const encoded = encodeURIComponent(code);
-  return `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${encoded}`;
 }
 
 export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
@@ -177,7 +173,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const score = normalizeScore(match.final_score);
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
-  const officialUrl = mercadoPublicoUrl(tender.code);
+  const officialUrl = compraAgilFichaUrl(tender.code);
 
   return (
     <section className="mx-auto w-full max-w-4xl">
