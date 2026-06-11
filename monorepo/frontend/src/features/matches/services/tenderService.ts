@@ -1,6 +1,5 @@
-import { apiFetch } from "@/features/shared/api/client";
+import { apiFetch, ApiError } from "@/features/shared/api/client";
 import type { MatchingResult, DeepAnalysis } from "../tenderTypes";
-import { ApiError } from "@/features/shared/api/client";
 
 interface GetRecommendedOptions {
   forceRefresh?: boolean;
@@ -54,4 +53,11 @@ export async function getDeepAnalysisOnly(tenderId: string): Promise<DeepAnalysi
     }
     throw err;
   }
+}
+
+/**
+ * Obtiene el análisis de compatibilidad IA actual sin forzar la regeneración.
+ */
+export function getDeepAnalysis(tenderId: string): Promise<DeepAnalysis> {
+  return generateDeepAnalysis(tenderId, undefined, false);
 }
