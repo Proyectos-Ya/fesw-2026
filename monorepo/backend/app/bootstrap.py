@@ -37,6 +37,7 @@ from app.infrastructure.repositories.question_repository import QuestionReposito
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
 from app.application.use_cases.questions.smart_question_use_case import SmartQuestionUseCase
+from app.application.use_cases.questions.answer_question_use_case import AnswerQuestionUseCase
 
 
 
@@ -142,6 +143,12 @@ def get_smart_question_use_case(
     )
 
 
+def get_answer_question_use_case(
+    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
+) -> AnswerQuestionUseCase:
+    # Inyectar el caso de uso que procesa las respuestas
+    return AnswerQuestionUseCase(supplier_repo=supplier_repo)
+
 
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
@@ -185,6 +192,7 @@ def bootstrap(app: FastAPI) -> None:
     router = create_router(
         get_rank_tenders_use_case=get_rank_tenders_use_case,
         get_smart_question_use_case=get_smart_question_use_case,
+        get_answer_question_use_case=get_answer_question_use_case,
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_embedding_service=get_embedding_service,
