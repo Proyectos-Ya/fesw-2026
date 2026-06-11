@@ -29,26 +29,26 @@ export function filterMatchesByBudget(
   return matches.filter((m) => m.tender != null && tenderMatchesBudget(m.tender, range));
 }
 
-/** Tenders without province (or without tender) are rejected while the filter is active. */
-export function filterMatchesByProvince(
+/** Tenders without region (or without tender) are rejected while the filter is active. */
+export function filterMatchesByRegion(
   matches: MatchingResult[],
-  province: string | null,
+  region: string | null,
 ): MatchingResult[] {
-  if (province === null) return matches;
-  const wanted = province.trim().toLowerCase();
+  if (region === null) return matches;
+  const wanted = region.trim().toLowerCase();
   return matches.filter(
-    (m) => m.tender?.province != null && m.tender.province.trim().toLowerCase() === wanted,
+    (m) => m.tender?.region != null && m.tender.region.trim().toLowerCase() === wanted,
   );
 }
 
-/** Unique provinces present in the matches, alphabetically sorted (case-insensitive dedupe). */
-export function listProvinces(matches: MatchingResult[]): string[] {
+/** Unique regions present in the matches, alphabetically sorted (case-insensitive dedupe). */
+export function listRegions(matches: MatchingResult[]): string[] {
   const seen = new Map<string, string>();
   for (const m of matches) {
-    const province = m.tender?.province?.trim();
-    if (!province) continue;
-    const key = province.toLowerCase();
-    if (!seen.has(key)) seen.set(key, province);
+    const region = m.tender?.region?.trim();
+    if (!region) continue;
+    const key = region.toLowerCase();
+    if (!seen.has(key)) seen.set(key, region);
   }
   return [...seen.values()].sort((a, b) => a.localeCompare(b, "es"));
 }
