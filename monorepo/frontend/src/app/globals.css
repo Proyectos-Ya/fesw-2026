@@ -265,12 +265,15 @@
     margin: 0 0 1em;
   }
 
-  a {
+  /* Solo enlaces "desnudos": un selector global `a` queda sin capa en el CSS
+     compilado y pisaría las utilidades de color (ej: text-on-primary) de los
+     enlaces-botón. */
+  a:not([class]) {
     color: var(--text-link);
     text-decoration: none;
   }
 
-  a:hover {
+  a:not([class]):hover {
     text-decoration: underline;
   }
 }
