@@ -13,6 +13,7 @@ from app.infrastructure.routers.question import create_question_router
 def create_router(
     get_rank_tenders_use_case: Callable,
     get_smart_question_use_case: Callable,
+    get_answer_question_use_case: Callable,
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
