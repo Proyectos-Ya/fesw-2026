@@ -17,11 +17,13 @@ async def seed_database_metadata(session: AsyncSession):
         if not exists:
             session.add(RegionModel(id=r_id, name=r_name))
 
-    # Seed de Estados
+    # Seed de Estados. El campo code tiene índice único, por lo que se usa str(id);
+    # el código semántico ('publicada', ...) se deriva del status_id vía
+    # TENDER_STATUS_CODE_BY_ID al construir la entidad (ver TenderRepository._to_entity).
     estados_data = {
         1: "Publicada",
         2: "Publicada",
-        6: "Publicada",  
+        6: "Publicada",
         7: "Cerrada",
         8: "Desierta",
         18: "Adjudicada"
@@ -31,5 +33,5 @@ async def seed_database_metadata(session: AsyncSession):
         results = await session.exec(statement)
         if not results.first():
             session.add(TenderStatusModel(id=e_id, code=str(e_id), name=e_name))
-    
+
     await session.commit()

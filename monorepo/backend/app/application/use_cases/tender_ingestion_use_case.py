@@ -8,6 +8,7 @@ from app.application.services.tender_ingestion_service import ITenderIngestionSe
 from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 
 
 class TenderIngestionUseCase:
@@ -29,11 +30,10 @@ class TenderIngestionUseCase:
         "Región de Arica y Parinacota": 15, "Arica y Parinacota": 15,
         "Región de Ñuble": 16, "Ñuble": 16, "Nuble": 16
     }
-    # Mapeo de CodigoEstado (int) al código de string usado en Qdrant y constantes
-    _STATUS_CODE_MAP: Dict[int, str] = {
-        1: "publicada", 2: "publicada", 6: "publicada",
-        7: "cerrada", 8: "desierta", 18: "adjudicada",
-    }
+    # Mapeo de CodigoEstado (int) al código de string usado en Qdrant y constantes.
+    # Definido en shared/constants para mantener una sola fuente de verdad con
+    # el seeder y el repositorio SQL.
+    _STATUS_CODE_MAP: Dict[int, str] = TENDER_STATUS_CODE_BY_ID
 
     def __init__(
         self,
