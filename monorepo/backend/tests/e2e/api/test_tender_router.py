@@ -292,3 +292,85 @@ async def test_analyze_tender_compatibility_unauthorized(api: AsyncClient) -> No
     tender_id = uuid4()
     response = await api.post(f"/tenders/{tender_id}/analysis", json={})
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_only_if_exists_not_found(api: AsyncClient) -> None:
+    """Valida que retorne código 404 si only_if_exists es True y no hay análisis generado previamente."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = None
+    
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    # Registrar e iniciar sesión
+    register_data = {
+        "email": "only_not_found@example.com",
+        "password": "mypassword123",
+        "full_name": "Only Not Found",
+    }
+    await api.post("/auth/register", json=register_data)
+    await api.post(
+        "/auth/login",
+        json={"email": register_data["email"], "password": register_data["password"]},
+    )
+
+    response = await api.post(
+        f"/tenders/{tender_id}/analysis",
+        json={"only_if_exists": True}
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert "no ha sido generado" in data["detail"]
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_only_if_exists_success(api: AsyncClient) -> None:
+    """Valida que retorne código 200 con el análisis si only_if_exists es True y ya existía previamente."""
+    tender_id = uuid4()
+    supplier_id = uuid4()
+    
+    from datetime import timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    mock_analysis = DeepAnalysis(
+        tender_id=tender_id,
+        supplier_id=supplier_id,
+        compatibility_score=75.0,
+        recommendation="Postular",
+        justification="Ya existe de prueba.",
+        prompt_instruction=None,
+        created_at=now,
+        updated_at=now,
+    )
+    
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = mock_analysis
+    
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    # Registrar e iniciar sesión
+    register_data = {
+        "email": "only_success@example.com",
+        "password": "mypassword123",
+        "full_name": "Only Success",
+    }
+    await api.post("/auth/register", json=register_data)
+    await api.post(
+        "/auth/login",
+        json={"email": register_data["email"], "password": register_data["password"]},
+    )
+
+    response = await api.post(
+        f"/tenders/{tender_id}/analysis",
+        json={"only_if_exists": True}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["compatibility_score"] == 75.0
+    assert data["recommendation"] == "Postular"
+    mock_uc.execute.assert_called_once()

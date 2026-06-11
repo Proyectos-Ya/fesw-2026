@@ -412,3 +412,106 @@ async def test_manual_force_regenerate_overwrites_prompt():
     assert len(ai_service.calls) == 1
     assert ai_service.calls[0] == (tender_id, supplier_id, 85.0, "Priorizar certificaciones ISO 14001")
     assert result.prompt_instruction == "Priorizar certificaciones ISO 14001"
+
+
+@pytest.mark.asyncio
+async def test_only_if_exists_returns_none_when_missing():
+    """Retorna None si only_if_exists=True y no hay análisis generado previamente."""
+    supplier_id = uuid4()
+    user_id = uuid4()
+    tender_id = uuid4()
+    
+    supplier_repo = InMemorySupplierRepository()
+    supplier = create_dummy_supplier(supplier_id, user_id, datetime.now(timezone.utc).replace(tzinfo=None))
+    await supplier_repo.save(supplier)
+    
+    tender_repo = FakeTenderRepositoryForAnalysis()
+    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
+
+    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
+    matching_result = MatchingResult(
+        supplier_id=supplier_id,
+        tender_id=tender_id,
+        similarity_score=0.80,
+        final_score=0.85,
+        model_version="v1"
+    )
+    await matching_result_repo.save_bulk([matching_result])
+
+    ai_service = FakeDeepAnalysisService()
+    use_case = GetOrCreateDeepAnalysisUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
+        deep_analysis_service=ai_service,
+    )
+
+    # Ejecutar con only_if_exists=True
+    result = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        only_if_exists=True
+    )
+
+    # Debe retornar None y no llamar al LLM
+    assert result is None
+    assert len(ai_service.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_only_if_exists_returns_existing_when_present():
+    """Retorna el análisis existente si only_if_exists=True y ya existía previamente."""
+    supplier_id = uuid4()
+    user_id = uuid4()
+    tender_id = uuid4()
+    
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    supplier_repo = InMemorySupplierRepository()
+    supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
+    await supplier_repo.save(supplier)
+
+    tender_repo = FakeTenderRepositoryForAnalysis()
+    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
+
+    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
+    matching_result = MatchingResult(
+        supplier_id=supplier_id,
+        tender_id=tender_id,
+        similarity_score=0.80,
+        final_score=0.85,
+        model_version="v1"
+    )
+    await matching_result_repo.save_bulk([matching_result])
+
+    existing_analysis = DeepAnalysis(
+        tender_id=tender_id,
+        supplier_id=supplier_id,
+        compatibility_score=85.0,
+        recommendation="Evaluar con cautela",
+        justification="Ya calculado",
+        prompt_instruction="Instruccion previa",
+        created_at=now - timedelta(hours=1),
+        updated_at=now - timedelta(hours=1),
+    )
+    await tender_repo.save_deep_analysis(existing_analysis)
+
+    ai_service = FakeDeepAnalysisService()
+    use_case = GetOrCreateDeepAnalysisUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
+        deep_analysis_service=ai_service,
+    )
+
+    # Ejecutar con only_if_exists=True
+    result = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        only_if_exists=True
+    )
+
+    # Debe retornar el análisis existente
+    assert result is not None
+    assert result.recommendation == "Evaluar con cautela"
+    assert result.justification == "Ya calculado"
+    assert len(ai_service.calls) == 0

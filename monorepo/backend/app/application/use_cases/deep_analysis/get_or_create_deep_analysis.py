@@ -29,8 +29,9 @@ class GetOrCreateDeepAnalysisUseCase:
         tender_id: UUID,
         user_id: UUID,
         force_regenerate: bool = False,
-        prompt_instruction: Optional[str] = None
-    ) -> DeepAnalysis:
+        prompt_instruction: Optional[str] = None,
+        only_if_exists: bool = False,
+    ) -> Optional[DeepAnalysis]:
         """
         Orquesta la recuperación o generación de un análisis de compatibilidad IA.
         
@@ -73,6 +74,8 @@ class GetOrCreateDeepAnalysisUseCase:
             should_generate = True
         elif not existing_analysis:
             # No existe análisis: se genera por primera vez
+            if only_if_exists:
+                return None
             should_generate = True
         else:
             # Existe análisis: verificar si el perfil del proveedor se actualizó después de la última generación

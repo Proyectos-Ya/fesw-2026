@@ -40,3 +40,15 @@ export interface MatchingResult {
   calculated_at: string;
   tender: Tender | null;
 }
+
+export interface DeepAnalysis {
+  id: string;
+  tender_id: string;
+  supplier_id: string;
+  compatibility_score: number;
+  recommendation: "Postular" | "Evaluar con cautela" | "No recomendado";
+  justification: string;
+  prompt_instruction: string | null;
+  created_at: string;
+  updated_at: string;
+}
