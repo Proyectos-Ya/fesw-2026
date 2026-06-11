@@ -1,5 +1,5 @@
-import { HomeView } from "@/features/company-profile/components/HomeView";
+import { HomeDashboard } from "@/features/matches/components/HomeDashboard";
 
 export default function Home() {
-  return <HomeView />;
+  return <HomeDashboard />;
 }
