@@ -3,10 +3,15 @@
 import type { ChangeEvent } from "react";
 import { Icon } from "@/features/shared/components/Icon";
 import { isBudgetFilterActive, type BudgetRange } from "../utils/filter";
+import { LocationFilter } from "./LocationFilter";
 
 interface BudgetFilterProps {
   value: BudgetRange;
   onChange: (next: BudgetRange) => void;
+  /** Provincias disponibles para el filtro de ubicación. */
+  provinces: string[];
+  province: string | null;
+  onProvinceChange: (next: string | null) => void;
 }
 
 function parseAmount(raw: string): number | null {
@@ -57,15 +62,26 @@ function BudgetInput({
   );
 }
 
-export function BudgetFilter({ value, onChange }: BudgetFilterProps) {
-  const active = isBudgetFilterActive(value);
+export function BudgetFilter({
+  value,
+  onChange,
+  provinces,
+  province,
+  onProvinceChange,
+}: BudgetFilterProps) {
+  const active = isBudgetFilterActive(value) || province !== null;
 
   return (
     <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
       <div className="inline-flex items-center gap-2 self-start pt-5 pr-2 text-sm font-semibold text-text-strong">
         <Icon name="sliders-horizontal" size={16} color="var(--primary)" />
-        Filtrar por presupuesto
+        Filtrar licitaciones
       </div>
+      <LocationFilter
+        provinces={provinces}
+        value={province}
+        onChange={onProvinceChange}
+      />
       <BudgetInput
         label="Desde"
         id="budget-min"
@@ -84,7 +100,10 @@ export function BudgetFilter({ value, onChange }: BudgetFilterProps) {
       {active && (
         <button
           type="button"
-          onClick={() => onChange({ min: null, max: null })}
+          onClick={() => {
+            onChange({ min: null, max: null });
+            onProvinceChange(null);
+          }}
           className="inline-flex items-center gap-1.5 self-end px-3 py-2 text-xs font-bold text-text-muted hover:text-primary transition-colors"
         >
           <Icon name="x" size={14} />

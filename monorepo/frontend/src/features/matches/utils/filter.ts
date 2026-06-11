@@ -28,3 +28,27 @@ export function filterMatchesByBudget(
   if (!isBudgetFilterActive(range)) return matches;
   return matches.filter((m) => m.tender != null && tenderMatchesBudget(m.tender, range));
 }
+
+/** Tenders without province (or without tender) are rejected while the filter is active. */
+export function filterMatchesByProvince(
+  matches: MatchingResult[],
+  province: string | null,
+): MatchingResult[] {
+  if (province === null) return matches;
+  const wanted = province.trim().toLowerCase();
+  return matches.filter(
+    (m) => m.tender?.province != null && m.tender.province.trim().toLowerCase() === wanted,
+  );
+}
+
+/** Unique provinces present in the matches, alphabetically sorted (case-insensitive dedupe). */
+export function listProvinces(matches: MatchingResult[]): string[] {
+  const seen = new Map<string, string>();
+  for (const m of matches) {
+    const province = m.tender?.province?.trim();
+    if (!province) continue;
+    const key = province.toLowerCase();
+    if (!seen.has(key)) seen.set(key, province);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, "es"));
+}

@@ -14,7 +14,9 @@ import type { MatchingResult } from "../tenderTypes";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
+  filterMatchesByProvince,
   isBudgetFilterActive,
+  listProvinces,
   type BudgetRange,
 } from "../utils/filter";
 import { BudgetFilter } from "./BudgetFilter";
@@ -38,6 +40,7 @@ export function MatchesDashboard() {
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
+  const [province, setProvince] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -138,8 +141,10 @@ export function MatchesDashboard() {
 
   const { matches } = state;
   const total = matches.length;
-  const filterActive = isBudgetFilterActive(budget);
-  const visible = filterActive ? filterMatchesByBudget(matches, budget) : matches;
+  const filterActive = isBudgetFilterActive(budget) || province !== null;
+  const visible = filterActive
+    ? filterMatchesByProvince(filterMatchesByBudget(matches, budget), province)
+    : matches;
   const shown = visible.length;
 
   let countLine: string;
@@ -149,7 +154,7 @@ export function MatchesDashboard() {
     countLine =
       shown === total
         ? `Mostrando ${shown} de ${total} licitaciones.`
-        : `Mostrando ${shown} de ${total} licitaciones según tu filtro de presupuesto.`;
+        : `Mostrando ${shown} de ${total} licitaciones según tus filtros.`;
   } else {
     countLine =
       total === 1
@@ -160,11 +165,24 @@ export function MatchesDashboard() {
   return (
     <section className="mx-auto w-full max-w-3xl">
       <DashboardHeader countLine={countLine} />
-      {total > 0 && <BudgetFilter value={budget} onChange={setBudget} />}
+      {total > 0 && (
+        <BudgetFilter
+          value={budget}
+          onChange={setBudget}
+          provinces={listProvinces(matches)}
+          province={province}
+          onProvinceChange={setProvince}
+        />
+      )}
       {total === 0 ? (
         <EmptyMatches />
       ) : shown === 0 ? (
-        <EmptyForFilter onClear={() => setBudget(EMPTY_BUDGET_RANGE)} />
+        <EmptyForFilter
+          onClear={() => {
+            setBudget(EMPTY_BUDGET_RANGE);
+            setProvince(null);
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {visible.map((m) => (
@@ -183,17 +201,18 @@ function EmptyForFilter({ onClear }: { onClear: () => void }) {
         <Icon name="sliders-horizontal" size={22} color="var(--text-subtle)" />
       </div>
       <h2 className="font-display text-xl font-semibold text-text-strong">
-        Ninguna licitación coincide con tu filtro
+        Ninguna licitación coincide con tus filtros
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        Ajusta el rango de presupuesto o límpialo para volver a ver todos tus matches.
+        Ajusta la ubicación o el rango de presupuesto, o límpialos para volver a
+        ver todos tus matches.
       </p>
       <button
         type="button"
         onClick={onClear}
         className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-teal-100 transition-colors"
       >
-        Limpiar filtro
+        Limpiar filtros
       </button>
     </div>
   );
