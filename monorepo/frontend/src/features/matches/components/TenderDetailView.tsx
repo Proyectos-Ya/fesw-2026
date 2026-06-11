@@ -13,6 +13,7 @@ import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
+import { compraAgilFichaUrl } from "../utils/links";
 import {
   daysUntilClosing,
   formatCLP,
@@ -59,16 +60,12 @@ function scoreLabel(score: number): string {
   return "Baja compatibilidad";
 }
 
-function mercadoPublicoUrl(code: string): string {
-  const encoded = encodeURIComponent(code);
-  return `https://www.mercadopublico.cl/Procurement/Modules/RFB/DetailsAcquisition.aspx?idlicitacion=${encoded}`;
-}
-
 export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
@@ -94,6 +91,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         setState({ kind: "ready", match: found });
 
         // Cargar el análisis de compatibilidad si ya existe
+        setAnalysisLoading(true);
         try {
           const ana = await getDeepAnalysisOnly(tenderId);
           if (!cancelled) {
@@ -101,6 +99,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           }
         } catch (err) {
           console.error("Error al cargar análisis de compatibilidad:", err);
+        } finally {
+          if (!cancelled) {
+            setAnalysisLoading(false);
+          }
         }
       } catch (err) {
         if (cancelled) return;
@@ -171,7 +173,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const score = normalizeScore(match.final_score);
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
-  const officialUrl = mercadoPublicoUrl(tender.code);
+  const officialUrl = compraAgilFichaUrl(tender.code);
 
   return (
     <section className="mx-auto w-full max-w-4xl">
