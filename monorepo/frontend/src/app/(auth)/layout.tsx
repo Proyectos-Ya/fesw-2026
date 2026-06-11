@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../globals.css";
 import { AuthProvider } from "@/features/auth/AuthContext";
+import { RedirectIfAuthenticated } from "@/features/auth/components/RedirectIfAuthenticated";
 
 export const metadata: Metadata = {
   title: "ProyectosYa - Autenticación",
@@ -15,7 +16,9 @@ export default function AuthLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="h-full bg-white font-sans selection:bg-teal-200 selection:text-warm-900">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <RedirectIfAuthenticated>{children}</RedirectIfAuthenticated>
+        </AuthProvider>
       </body>
     </html>
   );
