@@ -227,6 +227,34 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         </div>
       </header>
 
+      {/* AI Compatibility Analysis CTA Card */}
+      <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
+            <Icon name="sparkles" size={20} />
+          </span>
+          <div>
+            <h3 className="font-display text-lg font-bold text-text-strong mb-1">
+              Análisis de compatibilidad IA
+            </h3>
+            <p className="text-sm text-text-muted mb-0">
+              Obtén una evaluación detallada de esta licitación según el perfil de tu empresa.
+            </p>
+          </div>
+        </div>
+        <Button
+          onClick={() => router.push(`/matches/${tenderId}/analisis`)}
+          variant="primary"
+          className="shrink-0"
+          id="btn-generate-ai-analysis"
+        >
+          <span className="inline-flex items-center gap-2">
+            <Icon name="sparkles" size={16} />
+            Generar análisis de compatibilidad IA
+          </span>
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <KeyValueCard
           icon="wallet"
