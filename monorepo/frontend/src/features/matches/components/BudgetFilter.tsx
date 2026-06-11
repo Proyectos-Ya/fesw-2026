@@ -8,10 +8,10 @@ import { LocationFilter } from "./LocationFilter";
 interface BudgetFilterProps {
   value: BudgetRange;
   onChange: (next: BudgetRange) => void;
-  /** Provincias disponibles para el filtro de ubicación. */
-  provinces: string[];
-  province: string | null;
-  onProvinceChange: (next: string | null) => void;
+  /** Regiones disponibles para el filtro de ubicación. */
+  regions: string[];
+  region: string | null;
+  onRegionChange: (next: string | null) => void;
 }
 
 function parseAmount(raw: string): number | null {
@@ -37,7 +37,7 @@ function BudgetInput({
 }) {
   const handle = (e: ChangeEvent<HTMLInputElement>) => onChange(parseAmount(e.target.value));
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
       <label
         htmlFor={id}
         className="text-[10px] font-bold uppercase tracking-caps text-text-subtle"
@@ -65,23 +65,25 @@ function BudgetInput({
 export function BudgetFilter({
   value,
   onChange,
-  provinces,
-  province,
-  onProvinceChange,
+  regions,
+  region,
+  onRegionChange,
 }: BudgetFilterProps) {
-  const active = isBudgetFilterActive(value) || province !== null;
+  const active = isBudgetFilterActive(value) || region !== null;
 
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
-      <div className="inline-flex items-center gap-2 self-start pt-5 pr-2 text-sm font-semibold text-text-strong">
+    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs sm:flex-nowrap">
+      <div className="inline-flex shrink-0 items-center gap-2 self-end pb-2.5 pr-1 text-sm font-semibold text-text-strong">
         <Icon name="sliders-horizontal" size={16} color="var(--primary)" />
-        Filtrar licitaciones
+        Filtrar
       </div>
-      <LocationFilter
-        provinces={provinces}
-        value={province}
-        onChange={onProvinceChange}
-      />
+      <div className="min-w-0 flex-[1.4] basis-full sm:basis-0">
+        <LocationFilter
+          regions={regions}
+          value={region}
+          onChange={onRegionChange}
+        />
+      </div>
       <BudgetInput
         label="Desde"
         id="budget-min"
@@ -96,15 +98,14 @@ export function BudgetFilter({
         value={value.max}
         onChange={(max) => onChange({ ...value, max })}
       />
-      <div className="flex-1" />
       {active && (
         <button
           type="button"
           onClick={() => {
             onChange({ min: null, max: null });
-            onProvinceChange(null);
+            onRegionChange(null);
           }}
-          className="inline-flex items-center gap-1.5 self-end px-3 py-2 text-xs font-bold text-text-muted hover:text-primary transition-colors"
+          className="inline-flex shrink-0 items-center gap-1.5 self-end px-2 py-2 text-xs font-bold text-text-muted hover:text-primary transition-colors"
         >
           <Icon name="x" size={14} />
           Limpiar

@@ -3,9 +3,9 @@ import type { MatchingResult, Tender } from "../../tenderTypes";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
-  filterMatchesByProvince,
+  filterMatchesByRegion,
   isBudgetFilterActive,
-  listProvinces,
+  listRegions,
   tenderMatchesBudget,
 } from "../filter";
 
@@ -23,7 +23,8 @@ function makeTender(overrides: Partial<Tender> = {}): Tender {
     buyer_rut: "61.000.000-0",
     buyer_name: "Municipalidad de Prueba",
     buyer_unit: "Adquisiciones",
-    province: "Santiago",
+    province: null,
+    region: "Metropolitana de Santiago",
     available_amount_clp: 5_000_000,
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",
@@ -66,30 +67,30 @@ describe("budget filter", () => {
   });
 });
 
-describe("province filter", () => {
+describe("region filter", () => {
   const matches = [
-    makeMatch("a", { province: "Santiago" }),
-    makeMatch("b", { province: "Cordillera" }),
-    makeMatch("c", { province: "santiago" }),
-    makeMatch("d", { province: null }),
+    makeMatch("a", { region: "Metropolitana de Santiago" }),
+    makeMatch("b", { region: "Valparaíso" }),
+    makeMatch("c", { region: "metropolitana de santiago" }),
+    makeMatch("d", { region: null }),
     makeMatch("e", null),
   ];
 
-  it("sin provincia seleccionada deja pasar todo", () => {
-    expect(filterMatchesByProvince(matches, null)).toEqual(matches);
+  it("sin región seleccionada deja pasar todo", () => {
+    expect(filterMatchesByRegion(matches, null)).toEqual(matches);
   });
 
-  it("filtra por provincia sin distinguir mayúsculas", () => {
-    const result = filterMatchesByProvince(matches, "Santiago");
+  it("filtra por región sin distinguir mayúsculas", () => {
+    const result = filterMatchesByRegion(matches, "Metropolitana de Santiago");
     expect(result.map((m) => m.id)).toEqual(["a", "c"]);
   });
 
-  it("excluye licitaciones sin provincia o sin tender cuando el filtro está activo", () => {
-    const result = filterMatchesByProvince(matches, "Cordillera");
+  it("excluye licitaciones sin región o sin tender cuando el filtro está activo", () => {
+    const result = filterMatchesByRegion(matches, "Valparaíso");
     expect(result.map((m) => m.id)).toEqual(["b"]);
   });
 
-  it("lista provincias únicas ordenadas alfabéticamente", () => {
-    expect(listProvinces(matches)).toEqual(["Cordillera", "Santiago"]);
+  it("lista regiones únicas ordenadas alfabéticamente", () => {
+    expect(listRegions(matches)).toEqual(["Metropolitana de Santiago", "Valparaíso"]);
   });
 });

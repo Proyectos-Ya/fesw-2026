@@ -67,6 +67,7 @@ class Tender(BaseModel):
     buyer_name: Optional[str] = None  # Nombre de la institución compradora
     buyer_unit: str
     province: Optional[str] = None  # Calculated geographical province
+    region: Optional[str] = None  # Region name derived from the buyer institution
     available_amount_clp: Optional[float] = None  # Budget normalized to CLP
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: datetime = Field(default_factory=utc_now_naive)

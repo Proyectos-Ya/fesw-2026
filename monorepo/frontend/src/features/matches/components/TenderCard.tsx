@@ -80,12 +80,12 @@ export function TenderCard({ match }: TenderCardProps) {
             <Icon name="building-2" size={15} color="var(--text-subtle)" />
             <span className="truncate">{buyer}</span>
           </span>
-          {tender.province && (
+          {(tender.region ?? tender.province) && (
             <>
               <span className="text-border-strong">·</span>
               <span className="inline-flex items-center gap-1.5">
                 <Icon name="map-pin" size={15} color="var(--text-subtle)" />
-                <span>{tender.province}</span>
+                <span>{tender.region ?? tender.province}</span>
               </span>
             </>
           )}

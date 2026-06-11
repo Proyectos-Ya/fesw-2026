@@ -14,9 +14,9 @@ import type { MatchingResult } from "../tenderTypes";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
-  filterMatchesByProvince,
+  filterMatchesByRegion,
   isBudgetFilterActive,
-  listProvinces,
+  listRegions,
   type BudgetRange,
 } from "../utils/filter";
 import { BudgetFilter } from "./BudgetFilter";
@@ -40,7 +40,7 @@ export function MatchesDashboard() {
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
-  const [province, setProvince] = useState<string | null>(null);
+  const [region, setRegion] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -141,9 +141,9 @@ export function MatchesDashboard() {
 
   const { matches } = state;
   const total = matches.length;
-  const filterActive = isBudgetFilterActive(budget) || province !== null;
+  const filterActive = isBudgetFilterActive(budget) || region !== null;
   const visible = filterActive
-    ? filterMatchesByProvince(filterMatchesByBudget(matches, budget), province)
+    ? filterMatchesByRegion(filterMatchesByBudget(matches, budget), region)
     : matches;
   const shown = visible.length;
 
@@ -169,9 +169,9 @@ export function MatchesDashboard() {
         <BudgetFilter
           value={budget}
           onChange={setBudget}
-          provinces={listProvinces(matches)}
-          province={province}
-          onProvinceChange={setProvince}
+          regions={listRegions(matches)}
+          region={region}
+          onRegionChange={setRegion}
         />
       )}
       {total === 0 ? (
@@ -180,7 +180,7 @@ export function MatchesDashboard() {
         <EmptyForFilter
           onClear={() => {
             setBudget(EMPTY_BUDGET_RANGE);
-            setProvince(null);
+            setRegion(null);
           }}
         />
       ) : (
