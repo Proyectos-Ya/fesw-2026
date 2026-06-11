@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +14,7 @@ import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { Textarea } from "@/features/shared/components/Textarea";
 import { getRecommendedTenders, getDeepAnalysis, generateDeepAnalysis } from "../services/tenderService";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
-import { formatDateTime, normalizeScore } from "../utils/format";
+import { formatDateTime } from "../utils/format";
 
 interface TenderAnalysisViewProps {
   tenderId: string;
@@ -181,7 +183,6 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
 
   const { match } = state;
   const tender = match.tender as Tender;
-  const score = normalizeScore(match.final_score);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
 
   return (
