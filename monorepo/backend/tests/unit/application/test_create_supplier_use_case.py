@@ -6,6 +6,8 @@ Verifican explícitamente que los datos se persisten en el repositorio SQL
 Qdrant (FakeSupplierVectorRepository), y que los errores de negocio dejan
 ambos stores intactos.
 """
+from uuid import uuid4
+
 import pytest
 
 from app.application.schemas.supplier_schema import CreateSupplierSchema
@@ -13,6 +15,7 @@ from app.application.use_cases.supplier.create_supplier import CreateSupplierUse
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
+    UserAlreadyHasSupplier,
 )
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
@@ -166,6 +169,43 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 
 
 # ---------------------------------------------------------------------------
+# Propietario: la empresa queda asociada al usuario que la crea
+# ---------------------------------------------------------------------------
+
+
+async def test_supplier_saved_with_owner_user_id(
+    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
+    """El user_id del creador queda persistido en el proveedor."""
+    owner_id = uuid4()
+
+    supplier = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+
+    stored = await supplier_repo.get_by_user_id(owner_id)
+    assert stored is not None
+    assert stored.id == supplier.id
+    assert stored.user_id == owner_id
+
+
+async def test_user_with_supplier_cannot_create_another(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un usuario que ya tiene empresa no puede crear otra (regla de negocio)."""
+    owner_id = uuid4()
+    await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+
+    second = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
+    with pytest.raises(UserAlreadyHasSupplier):
+        await use_case.execute(second, user_id=owner_id)
+
+    # El intento fallido no contamina SQL ni Qdrant
+    assert len(supplier_repo.suppliers) == 1
+    assert len(vector_repo.upserts) == 1
+
+
+# ---------------------------------------------------------------------------
 # Embedding: vector indexado proviene del servicio, no de valor hardcodeado
 # ---------------------------------------------------------------------------
 
@@ -191,6 +231,22 @@ async def test_embedding_service_called_once_per_creation(
     await use_case.execute(SUPPLIER_DATA)
 
     assert len(embedding_service.calls) == 1
+
+
+async def test_embedding_text_includes_trade_name_when_present(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """El nombre de fantasía, si existe, forma parte del texto del embedding."""
+    embedding_service = FakeEmbeddingService()
+    data = CreateSupplierSchema(
+        rut=VALID_RUT, legal_name="Empresa SpA", trade_name="La Constructora"
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
+
+    await use_case.execute(data)
+
+    assert any("La Constructora" in text for text in embedding_service.calls[0])
 
 
 async def test_embedding_text_includes_legal_name(

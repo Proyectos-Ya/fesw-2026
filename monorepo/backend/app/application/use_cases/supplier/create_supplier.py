@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import ValidationError
 
 from app.application.repositories.supplier_repository import ISupplierRepository
@@ -10,11 +12,14 @@ from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
+    UserAlreadyHasSupplier,
 )
 
 
-def _build_supplier_text(data: CreateSupplierSchema) -> str:
+def _build_supplier_text(data: CreateSupplierSchema | Supplier) -> str:
     parts = [data.legal_name]
+    if data.trade_name:
+        parts.append(data.trade_name)
     if data.description:
         parts.append(data.description)
     if data.sectors:
@@ -35,15 +40,19 @@ class CreateSupplierUseCase:
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
 
-    async def execute(self, data: CreateSupplierSchema) -> Supplier:
+    async def execute(self, data: CreateSupplierSchema, user_id: UUID | None = None) -> Supplier:
         try:
-            supplier = Supplier(**data.model_dump())
+            supplier = Supplier(**data.model_dump(), user_id=user_id)
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"]))
 
         existing = await self.repo.get_by_rut(data.rut)
         if existing:
             raise SupplierAlreadyExists(data.rut)
+
+        # Regla de negocio: un usuario solo puede ser dueño de una empresa
+        if user_id is not None and await self.repo.get_by_user_id(user_id):
+            raise UserAlreadyHasSupplier(user_id)
 
         saved_supplier = await self.repo.save(supplier)
 

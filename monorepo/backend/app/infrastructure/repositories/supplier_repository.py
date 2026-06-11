@@ -49,3 +49,10 @@ class SupplierRepository(ISupplierRepository):
         await self.session.commit()
         await self.session.refresh(model)
         return self._to_entity(model)
+
+    async def update(self, supplier: Supplier) -> Supplier:
+        # Actualiza un proveedor existente (merge por primary key)
+        model = await self.session.merge(self._to_model(supplier))
+        await self.session.commit()
+        await self.session.refresh(model)
+        return self._to_entity(model)

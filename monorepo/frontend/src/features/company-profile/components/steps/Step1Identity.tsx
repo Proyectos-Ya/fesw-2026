@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { step1Schema, type Step1Data } from "../../profileSchema";
+import { checkRutExists } from "../../services/supplierService";
 import { Input } from "@/features/shared/components/Input";
 import { WizardNavigation } from "../WizardNavigation";
 
@@ -17,11 +19,33 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors },
   } = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
     defaultValues,
+    mode: "onTouched",
   });
+  const [isCheckingRut, setIsCheckingRut] = useState(false);
+
+  const handleNext = async (data: Step1Data) => {
+    setIsCheckingRut(true);
+    try {
+      if (await checkRutExists(data.rut)) {
+        setError("rut", {
+          type: "manual",
+          message: "Este RUT ya está registrado en la plataforma.",
+        });
+        return;
+      }
+    } catch {
+      // Si la verificación falla (red, servidor), no se bloquea el avance:
+      // el backend vuelve a validar el duplicado al crear la empresa.
+    } finally {
+      setIsCheckingRut(false);
+    }
+    onNext(data);
+  };
 
   return (
     <div>
@@ -50,6 +74,13 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
           {...register("legal_name")}
         />
         <Input
+          label="Nombre de fantasía (opcional)"
+          placeholder="Ej: Constructora Pérez"
+          hint="El nombre con el que se conoce comercialmente a tu empresa."
+          error={errors.trade_name?.message}
+          {...register("trade_name")}
+        />
+        <Input
           label="RUT de la empresa"
           placeholder="Ej: 76.123.456-7"
           hint="Formato: XX.XXX.XXX-X"
@@ -60,9 +91,10 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
 
       <WizardNavigation
         onBack={onBack}
-        onNext={handleSubmit(onNext)}
+        onNext={handleSubmit(handleNext)}
         isFirstStep
         isLastStep={false}
+        isLoading={isCheckingRut}
       />
     </div>
   );

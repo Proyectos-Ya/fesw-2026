@@ -49,6 +49,8 @@ class Supplier(BaseModel):
     num_employees: Optional[int] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    # Última vez que cambió el contenido que alimenta el matching (embedding)
+    profile_changed_at: Optional[datetime] = None
 
     @field_validator("rut")
     @classmethod
