@@ -16,6 +16,7 @@ import { SmartQuestionsBanner } from "./SmartQuestionsBanner";
 import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
+import { answerSmartQuestion } from "../services/questionService";
 
 const GREEN_THRESHOLD = 70;
 
@@ -35,6 +36,7 @@ export function HomeDashboard() {
   const { questions: fetchedQuestions } = useSmartQuestions(user?.id ?? "");
   const [pendingQuestions, setPendingQuestions] = useState<Question[]>([]);
   const [showCard, setShowCard] = useState(false);
+  const [isAnswering, setIsAnswering] = useState(false);
 
   useEffect(() => {
     setPendingQuestions(fetchedQuestions);
@@ -42,6 +44,29 @@ export function HomeDashboard() {
 
   function handleBannerOpen() {
     if (pendingQuestions.length > 0) setShowCard(true);
+  }
+
+async function handleAnswer(questionId: string, targetField: string, answerValue: string) {
+    if (!user?.id || isAnswering) return;
+
+    setIsAnswering(true);
+    try {
+      await answerSmartQuestion({
+        supplier_id: user?.id,
+        question_id: questionId,
+        target_profile_field: targetField,
+        answer: answerValue,
+      });
+      
+      advanceQueue();
+
+      setRetryNonce((n) => n + 1);
+
+    } catch (error) {
+      console.error("Error al responder la pregunta:", error);
+    } finally {
+      setIsAnswering(false);
+    }
   }
 
   function advanceQueue() {
@@ -152,7 +177,13 @@ export function HomeDashboard() {
           <SmartQuestionCard
             key={pendingQuestions[0].id}
             question={pendingQuestions[0]}
-            onSubmit={() => advanceQueue()}
+            onSubmit={(value: string) => 
+              handleAnswer(
+                pendingQuestions[0].id, 
+                pendingQuestions[0].target_profile_field, 
+                value
+              )
+            }
             onOmit={() => advanceQueue()}
           />
         </div>
