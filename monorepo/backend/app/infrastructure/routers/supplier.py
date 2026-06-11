@@ -63,6 +63,12 @@ def create_supplier_router(
         vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
         embedding_service: IEmbeddingService = Depends(get_embedding_service),
     ):
+        # TEMPORAL solo para demo del CA de timeout (>1 min sin respuesta).
+        # Descomentar para el primer intento: duerme 70s (el cliente aborta a los
+        # 60s y muestra el error) y luego corta con 503 SIN persistir nada, por lo
+        # que la empresa nunca se crea. Volver a comentar para el segundo intento.
+        # import asyncio; await asyncio.sleep(100); raise HTTPException(status_code=503, detail="Simulación de demora del servidor")
+
         # Crea la empresa asociada al usuario autenticado:
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
