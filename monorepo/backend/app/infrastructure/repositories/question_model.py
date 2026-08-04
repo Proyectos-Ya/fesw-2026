@@ -1,5 +1,7 @@
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.shared.datetime_utils import utc_now_naive
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column
@@ -21,7 +23,7 @@ class QuestionModel(SQLModel, table=True):
     answer: Optional[str] = Field(default=None, nullable=True)
     omitted: bool = Field(default=False, index=True)
 
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+    generated_at: datetime = Field(default_factory=utc_now_naive, nullable=False)
     answered_at: Optional[datetime] = Field(default=None, nullable=True)
 
     # Campos para el arbol del pmv

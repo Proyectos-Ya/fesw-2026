@@ -3,6 +3,7 @@ import asyncio
 from typing import List, Dict, Any, cast
 from datetime import datetime
 from app.config import settings
+from app.shared.datetime_utils import CHILE_TZ
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO, ItemLicitacionDTO
 
@@ -90,8 +91,8 @@ class MercadoPublicoClient(ITenderIngestionService):
                             Nombre=str(tender_detail.get("nombre")),
                             Descripcion=tender_detail.get("descripcion"),
                             CodigoEstado=int(estado.get("id_estado", 5)),
-                            FechaPublicacion=fechas.get("fecha_publicacion") or datetime.now(),
-                            FechaCierre=fechas.get("fecha_cierre") or datetime.now(),
+                            FechaPublicacion=fechas.get("fecha_publicacion") or datetime.now(CHILE_TZ),
+                            FechaCierre=fechas.get("fecha_cierre") or datetime.now(CHILE_TZ),
                             RutComprador=str(institucion.get("rut", "Sin RUT")),
                             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
                             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),

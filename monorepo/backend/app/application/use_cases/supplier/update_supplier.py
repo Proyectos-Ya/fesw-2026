@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
 from uuid import UUID
+
+from app.shared.datetime_utils import utc_now_naive
 
 from pydantic import ValidationError
 
@@ -44,7 +45,7 @@ class UpdateSupplierUseCase:
         if not updates:
             return supplier
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now_naive()
         matching_changed = bool(_MATCHING_FIELDS & updates.keys())
 
         try:

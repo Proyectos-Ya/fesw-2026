@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
+
+from app.shared.datetime_utils import utc_now_naive
 
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
@@ -60,7 +61,7 @@ class RankTendersUseCase:
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now_naive()
 
         # 2. Si no es forzado, intentar obtener las recomendaciones del cache SQL
         if not force_refresh:

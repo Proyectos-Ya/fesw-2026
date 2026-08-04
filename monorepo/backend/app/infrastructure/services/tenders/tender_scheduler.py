@@ -9,6 +9,7 @@ from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
+from app.shared.datetime_utils import CHILE_TZ
 from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 
@@ -50,7 +51,7 @@ class TenderScheduler:
         await self._execute_once(limit)
 
         while True:
-            ahora = datetime.now()
+            ahora = datetime.now(CHILE_TZ)
             manana_am = (ahora + timedelta(days=1)).replace(
                 hour=2, minute=0, second=0, microsecond=0
             )

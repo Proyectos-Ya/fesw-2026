@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import List, Optional
 # from uuid import UUID
+
+from app.shared.datetime_utils import to_utc_naive
 
 class ItemLicitacionDTO(BaseModel):
     "Mapeo de la tabla item_licitacion"
@@ -31,3 +33,13 @@ class TenderIngestaDTO(BaseModel):
 
     class Config:
         populate_by_name = True
+
+    @field_validator("published_at", "closing_at", mode="after")
+    @classmethod
+    def normalize_to_utc(cls, value: datetime) -> datetime:
+        """Mercado Público entrega estas fechas en hora local de Chile y sin
+        offset. Se normalizan a UTC naive aquí, en el borde de entrada, para que
+        toda la base de datos comparta una única zona horaria."""
+        normalized = to_utc_naive(value)
+        assert normalized is not None  # el campo es obligatorio, nunca es None
+        return normalized

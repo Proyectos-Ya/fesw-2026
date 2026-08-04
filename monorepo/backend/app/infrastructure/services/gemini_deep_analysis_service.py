@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 from typing import Optional
 import httpx
 
@@ -8,6 +7,7 @@ from app.domain.entities.supplier import Supplier
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction, DeepAnalysisServiceError
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.shared.datetime_utils import utc_now_naive
 
 
 class GeminiDeepAnalysisService(IDeepAnalysisService):
@@ -192,7 +192,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             )
 
         # 9. Construir y retornar entidad de dominio DeepAnalysis (sobrescribiendo el score con matching_score)
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now_naive()
         return DeepAnalysis(
             tender_id=tender.id,
             supplier_id=supplier.id,

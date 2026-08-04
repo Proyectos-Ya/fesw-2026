@@ -1,12 +1,10 @@
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
+from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
-def utc_now_naive() -> datetime:
-    """Returns a timezone-naive UTC datetime to avoid Python 3.12 deprecations and DB offset issues."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+__all__ = ["utc_now_naive"]
 
 
 class Region(BaseModel):
@@ -27,8 +25,8 @@ class BuyerInstitution(BaseModel):
     rut: str
     name: str
     region_id: int
-    created_at: datetime = Field(default_factory=utc_now_naive)
-    updated_at: datetime = Field(default_factory=utc_now_naive)
+    created_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
 
 class TenderItem(BaseModel):
@@ -49,7 +47,7 @@ class TenderAIAnalysis(BaseModel):
     supplier_id: UUID
     match_score: float  # Compatibility percentage (0.0 to 100.0)
     match_justification: dict  # AI detailed breakdown
-    generated_at: datetime = Field(default_factory=utc_now_naive)
+    generated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
 
 class Tender(BaseModel):
@@ -60,16 +58,16 @@ class Tender(BaseModel):
     description: Optional[str] = None
     status_id: int
     status_code: Optional[str] = None  # Código del estado de la licitación (ej: 'publicada', 'cerrada')
-    published_at: datetime
-    closing_at: datetime
-    last_change_at: datetime
+    published_at: UtcDateTime
+    closing_at: UtcDateTime
+    last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: Optional[str] = None  # Nombre de la institución compradora
     buyer_unit: str
     province: Optional[str] = None  # Calculated geographical province
     region: Optional[str] = None  # Region name derived from the buyer institution
     available_amount_clp: Optional[float] = None  # Budget normalized to CLP
-    created_at: datetime = Field(default_factory=utc_now_naive)
-    updated_at: datetime = Field(default_factory=utc_now_naive)
+    created_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     items: list[TenderItem] = Field(default_factory=list)
 

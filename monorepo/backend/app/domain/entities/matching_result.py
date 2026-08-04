@@ -1,14 +1,9 @@
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from app.domain.entities.tender import Tender
-
-
-def utc_now_naive() -> datetime:
-    """Retorna la fecha y hora UTC naive actual."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 
 class MatchingResult(BaseModel):
@@ -21,6 +16,6 @@ class MatchingResult(BaseModel):
     reranker_score: Optional[float] = None  # Score refinado por el Reranker (ONNX)
     final_score: float  # Score definitivo después de aplicar ponderaciones manuales
     model_version: str  # Versión del modelo de embeddings utilizado (para trazabilidad)
-    calculated_at: datetime = Field(default_factory=utc_now_naive)  # Fecha del cálculo
+    calculated_at: UtcDateTime = Field(default_factory=utc_now_naive)  # Fecha del cálculo
     tender: Optional[Tender] = None  # Licitación hidratada asociada
 
