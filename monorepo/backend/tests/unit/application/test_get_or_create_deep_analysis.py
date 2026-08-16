@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -41,13 +42,13 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
             results.append(t)
         return results
 
-    async def get_by_code(self, code: str) -> any | None:
+    async def get_by_code(self, code: str) -> Any | None:
         return None
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
         return rut
 
-    async def save_complex_tender(self, tender_model: any, items: list[any]) -> None:
+    async def save_complex_tender(self, tender_model: Any, items: list[Any]) -> None:
         pass
 
     async def get_or_create_status(self, status_id: int) -> int:
