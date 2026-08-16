@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+
 @pytest.mark.asyncio
 async def test_read_root(client: AsyncClient):
     """Prueba que el endpoint raíz responda correctamente."""
@@ -9,6 +10,7 @@ async def test_read_root(client: AsyncClient):
     data = response.json()
     assert data["status"] == "online"
     assert "Welcome" in data["message"]
+
 
 @pytest.mark.asyncio
 async def test_health_check(client: AsyncClient):

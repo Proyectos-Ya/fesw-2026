@@ -2,8 +2,8 @@ import asyncio
 import os
 from uuid import UUID
 
-from huggingface_hub import snapshot_download
 import numpy as np
+from huggingface_hub import snapshot_download
 
 from app.application.services.reranker_service import IRerankerService
 
@@ -13,7 +13,9 @@ class BgeRerankerService(IRerankerService):
     Implementación del servicio de re-ranking usando BGE-Reranker-v2-M3 en formato ONNX.
     """
 
-    def __init__(self, model_name: str = "onnx-community/bge-reranker-v2-m3-ONNX") -> None:
+    def __init__(
+        self, model_name: str = "onnx-community/bge-reranker-v2-m3-ONNX"
+    ) -> None:
         # Importaciones tardías para evitar fallas durante la carga de módulos si faltan dependencias pesadas
         import onnxruntime as ort
         from transformers import AutoTokenizer
@@ -41,7 +43,9 @@ class BgeRerankerService(IRerankerService):
                 f"No se encontró el archivo ONNX en el modelo {model_name}"
             )
 
-        self.session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(
+            onnx_path, providers=["CPUExecutionProvider"]
+        )
 
     async def rerank(
         self,
@@ -97,8 +101,7 @@ class BgeRerankerService(IRerankerService):
 
         # Mapeamos los resultados de vuelta a (tender_id, score)
         ranked_candidates = [
-            (candidates[i][0], float(scores_list[i]))
-            for i in range(len(candidates))
+            (candidates[i][0], float(scores_list[i])) for i in range(len(candidates))
         ]
 
         # Ordenamos los candidatos de mayor a menor score

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 from uuid import UUID
 
 
@@ -39,7 +38,7 @@ class ITenderVectorRepository(ABC):
         self,
         supplier_vector: list[float],
         limit: int,
-        filters: Optional[dict] = None,
+        filters: dict | None = None,
     ) -> list[tuple[UUID, float]]:
         """
         Busca las top N licitaciones afines al vector de perfil de un proveedor,

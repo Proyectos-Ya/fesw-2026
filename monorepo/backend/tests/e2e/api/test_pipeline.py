@@ -2,11 +2,11 @@
 Pruebas e2e del pipeline de proveedor: creación de perfil e indexación en Qdrant,
 y consulta por ID. Usa repositorios en memoria (sin BD ni Qdrant real).
 """
+
 from uuid import uuid4
 
 import pytest_asyncio
 from httpx import AsyncClient
-
 
 VALID_SUPPLIER = {
     "rut": "76086428-5",
@@ -55,6 +55,7 @@ async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
 
     def capture_vector_repo():
         from tests.unit.application.fakes import FakeSupplierVectorRepository
+
         repo = FakeSupplierVectorRepository()
         nonlocal captured_vector_repo
         captured_vector_repo = repo

@@ -97,7 +97,9 @@ async def migrate(dry_run: bool, force: bool) -> int:
             updated += 1
 
         if dry_run:
-            print(f"[Migración] DRY RUN: se corregirían {updated} filas. Nada fue escrito.")
+            print(
+                f"[Migración] DRY RUN: se corregirían {updated} filas. Nada fue escrito."
+            )
             return updated
 
         await session.execute(
@@ -115,10 +117,14 @@ def _fmt(value: datetime | None) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--dry-run", action="store_true", help="Muestra los cambios sin escribir en la base."
+        "--dry-run",
+        action="store_true",
+        help="Muestra los cambios sin escribir en la base.",
     )
     parser.add_argument(
-        "--force", action="store_true", help="Ejecuta aunque la migración ya esté registrada."
+        "--force",
+        action="store_true",
+        help="Ejecuta aunque la migración ya esté registrada.",
     )
     args = parser.parse_args()
     asyncio.run(migrate(dry_run=args.dry_run, force=args.force))

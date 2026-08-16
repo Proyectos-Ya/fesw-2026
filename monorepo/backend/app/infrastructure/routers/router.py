@@ -1,13 +1,14 @@
-from typing import Callable
+from collections.abc import Callable
+
 from fastapi import APIRouter
 
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.health import create_health_router
+from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
-from app.infrastructure.routers.question import create_question_router
 
 
 def create_router(

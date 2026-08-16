@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,11 +26,13 @@ def build_get_current_user(
 
     async def get_current_user(
         request: Request,
-        credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
         user_repo: IUserRepository = Depends(get_user_repo),
     ) -> User:
         # 1) Header Authorization tiene prioridad; 2) si no, la cookie
-        token = credentials.credentials if credentials else request.cookies.get(cookie_name)
+        token = (
+            credentials.credentials if credentials else request.cookies.get(cookie_name)
+        )
 
         unauthorized = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

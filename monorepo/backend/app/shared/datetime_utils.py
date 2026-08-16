@@ -13,8 +13,8 @@ Las conversiones ocurren únicamente en los bordes del sistema:
   JavaScript interpreta el string como hora local y muestra la hora corrida.
 """
 
-from datetime import datetime, timezone
-from typing import Annotated, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from pydantic import PlainSerializer
@@ -24,10 +24,10 @@ CHILE_TZ = ZoneInfo("America/Santiago")
 
 def utc_now_naive() -> datetime:
     """Instante actual en UTC, sin tzinfo, listo para persistir."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
-def to_utc_naive(value: Optional[datetime]) -> Optional[datetime]:
+def to_utc_naive(value: datetime | None) -> datetime | None:
     """Normaliza una fecha a UTC naive.
 
     Un valor naive se asume en hora de Chile (el caso de Mercado Público);
@@ -38,7 +38,7 @@ def to_utc_naive(value: Optional[datetime]) -> Optional[datetime]:
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=CHILE_TZ)
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.astimezone(UTC).replace(tzinfo=None)
 
 
 def serialize_utc(value: datetime) -> str:
@@ -52,8 +52,8 @@ def serialize_utc(value: datetime) -> str:
             f"serialize_utc espera un datetime, recibió {type(value).__name__}"
         )
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 # Tipo para los campos datetime de las entidades expuestas por la API.

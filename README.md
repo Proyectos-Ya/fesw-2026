@@ -3,8 +3,8 @@
 Bienvenido al repositorio principal de **ProyectosYA**, una plataforma de matching y gestión de licitaciones de Mercado Público potenciada por Inteligencia Artificial.
 
 El repositorio está organizado como un monorepo bajo el directorio `monorepo/`:
-* [Frontend (Next.js)](file:///d:/ProyectosYA/monorepo/frontend)
-* [Backend (FastAPI)](file:///d:/ProyectosYA/monorepo/backend)
+* [Frontend (Next.js)](./monorepo/frontend)
+* [Backend (FastAPI)](./monorepo/backend)
 
 ---
 
@@ -34,7 +34,7 @@ En la raíz del repositorio cuentas con dos guías críticas:
 Para que Cursor use estas reglas automáticamente en todos tus chats y ediciones:
 * El repositorio lee las reglas de forma nativa al incluir referencias de contexto.
 * Puedes configurar el asistente añadiendo las reglas a la configuración de tu área de trabajo o creando un enlace en tus instrucciones de Cursor:
-  > *"Siempre lee, respeta y sigue estrictamente las directrices del archivo [AGENTS.md](file:///d:/ProyectosYA/AGENTS.md) y [SKILL.md](file:///d:/ProyectosYA/SKILL.md) antes de escribir código, hacer pruebas o realizar cualquier commit."*
+  > *"Siempre lee, respeta y sigue estrictamente las directrices del archivo [AGENTS.md](./AGENTS.md) y [SKILL.md](./SKILL.md) antes de escribir código, hacer pruebas o realizar cualquier commit."*
 
 #### 2. Configuración en Antigravity / Claude Code
 Cuando inicies una conversación o un agente autónomo de Antigravity/Claude Code:

@@ -62,7 +62,7 @@ async def test_bge_reranker_initialization_and_rerank(
         mock_sd.assert_called_once_with(
             repo_id="onnx-community/bge-reranker-v2-m3-ONNX"
         )
-        
+
         # Validamos con la misma concatenación de ruta usada en la clase concreta
         expected_path = os.path.join("/fake/model/dir", "onnx", "model.onnx")
         mock_is.assert_called_once_with(

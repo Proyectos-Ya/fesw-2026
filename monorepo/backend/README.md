@@ -40,9 +40,15 @@ python -m venv .venv
 
 ### 4. Instalar dependencias
 
+Para desarrollo, instala `requirements-dev.txt`: incluye las dependencias de
+runtime más las herramientas (ruff, pyright, pytest).
+
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
+
+`requirements.txt` contiene solo lo de runtime y es lo que instala la imagen
+de Docker; no hace falta instalarlo por separado.
 
 ---
 

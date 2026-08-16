@@ -1,9 +1,14 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
+
 from uuid import UUID
 
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
-from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+from app.application.repositories.supplier_vector_repository import (
+    ISupplierVectorRepository,
+)
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 from app.application.repositories.user_repository import IUserRepository
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.password_hasher import IPasswordHasher
@@ -75,7 +80,6 @@ class FakeSupplierVectorRepository(ISupplierVectorRepository):
         return self.vectors.get(supplier_id)
 
 
-
 class FakeTenderVectorRepository(ITenderVectorRepository):
     """Repositorio vectorial de licitaciones en memoria para pruebas."""
 
@@ -85,13 +89,19 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     async def ensure_collection(self) -> None:
         pass
 
-    async def upsert(self, tender_id: UUID, embedding: list[float], payload: dict) -> None:
+    async def upsert(
+        self, tender_id: UUID, embedding: list[float], payload: dict
+    ) -> None:
         self.upserts.append((tender_id, embedding, payload))
 
     async def delete(self, tender_id: UUID) -> None:
-        self.upserts = [(tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id]
+        self.upserts = [
+            (tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id
+        ]
 
-    async def search_by_supplier_vector(self, supplier_vector: list[float], limit: int, filters: dict | None = None) -> list[tuple[UUID, float]]:  # noqa: ARG002
+    async def search_by_supplier_vector(
+        self, supplier_vector: list[float], limit: int, filters: dict | None = None
+    ) -> list[tuple[UUID, float]]:  # noqa: ARG002
         return []
 
 

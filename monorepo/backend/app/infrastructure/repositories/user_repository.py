@@ -9,7 +9,6 @@ from app.infrastructure.repositories.user_model import UserModel
 
 
 class UserRepository(IUserRepository):
-
     def __init__(self, session: AsyncSession):
         self.session = session
 

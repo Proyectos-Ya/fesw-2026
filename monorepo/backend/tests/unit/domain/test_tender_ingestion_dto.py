@@ -50,7 +50,9 @@ class TestTenderIngestaDTONormalizesDatesToUtc:
         assert dto.closing_at == datetime(2026, 1, 20, 18, 0, 0)
 
     def test_datetime_object_input_is_also_normalized(self):
-        dto = _build_dto(datetime(2026, 7, 27, 17, 42, 0), datetime(2026, 7, 30, 15, 0, 0))
+        dto = _build_dto(
+            datetime(2026, 7, 27, 17, 42, 0), datetime(2026, 7, 30, 15, 0, 0)
+        )
 
         assert dto.published_at == datetime(2026, 7, 27, 21, 42, 0)
         assert dto.closing_at == datetime(2026, 7, 30, 19, 0, 0)

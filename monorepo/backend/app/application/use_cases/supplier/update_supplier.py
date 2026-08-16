@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from app.shared.datetime_utils import utc_now_naive
-
 from pydantic import ValidationError
 
 from app.application.repositories.supplier_repository import ISupplierRepository
@@ -16,6 +14,7 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierValidationError,
 )
+from app.shared.datetime_utils import utc_now_naive
 
 # Campos que alimentan el texto del embedding: si cambian, hay que re-indexar
 _MATCHING_FIELDS = {"legal_name", "trade_name", "description", "sectors", "keywords"}
@@ -54,7 +53,9 @@ class UpdateSupplierUseCase:
                     **supplier.model_dump(),
                     **updates,
                     "updated_at": now,
-                    "profile_changed_at": now if matching_changed else supplier.profile_changed_at,
+                    "profile_changed_at": now
+                    if matching_changed
+                    else supplier.profile_changed_at,
                 }
             )
         except ValidationError as e:

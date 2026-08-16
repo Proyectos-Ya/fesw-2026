@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,7 +15,7 @@ class TestUtcNowNaive:
         assert utc_now_naive().tzinfo is None
 
     def test_matches_current_utc_instant(self):
-        delta = abs(utc_now_naive() - datetime.now(timezone.utc).replace(tzinfo=None))
+        delta = abs(utc_now_naive() - datetime.now(UTC).replace(tzinfo=None))
         assert delta < timedelta(seconds=5)
 
 
@@ -35,7 +35,7 @@ class TestToUtcNaive:
         assert to_utc_naive(aware) == datetime(2026, 7, 27, 21, 42, 0)
 
     def test_utc_aware_input_only_drops_tzinfo(self):
-        aware = datetime(2026, 7, 27, 21, 42, 0, tzinfo=timezone.utc)
+        aware = datetime(2026, 7, 27, 21, 42, 0, tzinfo=UTC)
         assert to_utc_naive(aware) == datetime(2026, 7, 27, 21, 42, 0)
 
     def test_result_is_always_naive(self):

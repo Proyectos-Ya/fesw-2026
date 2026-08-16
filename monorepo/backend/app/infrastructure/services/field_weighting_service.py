@@ -42,7 +42,10 @@ class FieldWeightingService(IWeightingService):
             if supplier.regions and tender_region:
                 reg_lower = tender_region.strip().lower()
                 for region in supplier.regions:
-                    if region.strip().lower() in reg_lower or reg_lower in region.strip().lower():
+                    if (
+                        region.strip().lower() in reg_lower
+                        or reg_lower in region.strip().lower()
+                    ):
                         region_matched = True
                         break
 

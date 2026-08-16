@@ -1,28 +1,27 @@
-from datetime import datetime, timezone
-from typing import AsyncGenerator
-from uuid import uuid4, UUID
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from uuid import uuid4
+
 import pytest
 import pytest_asyncio
 from sqlmodel import delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.domain.entities.tender import Tender
 from app.application.repositories.tender_repository import TenderFilters
-from app.infrastructure.db import engine, SQLModel
-from app.infrastructure.repositories.tender_model import (
-    TenderModel,
-    BuyerInstitutionModel,
-    TenderStatusModel,
-    RegionModel,
-)
+from app.infrastructure.db import SQLModel, engine
 from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_model import (
+    BuyerInstitutionModel,
+    RegionModel,
+    TenderModel,
+    TenderStatusModel,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
-
 
 
 def utc_now_naive() -> datetime:
     """Returns a timezone-naive UTC datetime to avoid Python 3.12 deprecations and DB offset issues."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # Fixture que crea automáticamente todas las tablas antes de ejecutar cada prueba
@@ -47,10 +46,8 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         await session.exec(delete(SupplierModel))
         await session.commit()
 
-    
     # Libera los recursos del pool de conexiones para evitar problemas de event loop de asyncio
     await engine.dispose()
-
 
 
 @pytest.mark.asyncio

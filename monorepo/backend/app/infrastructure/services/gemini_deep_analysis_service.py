@@ -1,12 +1,15 @@
 import json
-from typing import Optional
+
 import httpx
 
-from app.domain.entities.tender import Tender
-from app.domain.entities.supplier import Supplier
-from app.domain.entities.deep_analysis import DeepAnalysis
-from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction, DeepAnalysisServiceError
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender import Tender
+from app.domain.errors.deep_analysis_errors import (
+    DeepAnalysisServiceError,
+    InvalidPromptInstruction,
+)
 from app.shared.datetime_utils import utc_now_naive
 
 
@@ -15,7 +18,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         self.api_key = api_key
         self.model_name = model_name
 
-    def _validate_prompt_injection(self, prompt_instruction: Optional[str]) -> None:
+    def _validate_prompt_injection(self, prompt_instruction: str | None) -> None:
         """Realiza una validación sintáctica preventiva para bloquear prompt injection común."""
         if not prompt_instruction:
             return
@@ -39,7 +42,11 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
                 )
 
     def _build_prompt(
-        self, tender: Tender, supplier: Supplier, matching_score: float, prompt_instruction: Optional[str]
+        self,
+        tender: Tender,
+        supplier: Supplier,
+        matching_score: float,
+        prompt_instruction: str | None,
     ) -> str:
         """Construye un prompt robusto que unifica el contexto y aplica directivas de seguridad contra prompt injection."""
         tender_items_str = ""
@@ -73,7 +80,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             refinement_str = (
                 f"\n[INSTRUCCIONES DE REFINAMIENTO ADICIONALES DEL USUARIO (PRIORIDAD BAJA)]\n"
                 f"El usuario ha solicitado enfocar o refinar el análisis bajo las siguientes consideraciones:\n"
-                f"\"\"\"\n{prompt_instruction}\n\"\"\"\n"
+                f'"""\n{prompt_instruction}\n"""\n'
             )
 
         prompt = (
@@ -85,7 +92,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             f"En tu respuesta JSON, en la clave 'compatibility_score', DEBES devolver exactamente este valor ({matching_score}) sin alterarlo de ninguna manera.\n\n"
             f"Instrucciones para generar la recomendación:\n"
             f"- Debes evaluar detenidamente las fortalezas del proveedor frente a los requerimientos de la licitación.\n"
-            f"- Define la 'recommendation' limitándola estrictamente a uno de estos tres valores: \"Postular\", \"Evaluar con cautela\" o \"No recomendado\".\n"
+            f'- Define la \'recommendation\' limitándola estrictamente a uno de estos tres valores: "Postular", "Evaluar con cautela" o "No recomendado".\n'
             f"- Proporciona una 'justification' detallada y coherente (en español) fundamentando por qué la compatibilidad global es de {matching_score}% "
             f"y explicando la recomendación sugerida en base a las coincidencias o discrepancias de los ítems y certificaciones.\n\n"
             f"[INSTRUCCIONES DE SEGURIDAD - ANTI PROMPT INJECTION]\n"
@@ -107,26 +114,20 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         tender: Tender,
         supplier: Supplier,
         matching_score: float,
-        prompt_instruction: Optional[str] = None
+        prompt_instruction: str | None = None,
     ) -> DeepAnalysis:
         # 1. Validar preventivamente prompt injection sintáctico
         self._validate_prompt_injection(prompt_instruction)
 
         # 2. Construir prompt
-        prompt = self._build_prompt(tender, supplier, matching_score, prompt_instruction)
+        prompt = self._build_prompt(
+            tender, supplier, matching_score, prompt_instruction
+        )
 
         # 3. Preparar payload estructurado para la API de Gemini
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
         payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }
-            ],
+            "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": {
@@ -134,20 +135,28 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
                     "properties": {
                         "compatibility_score": {
                             "type": "NUMBER",
-                            "description": "Porcentaje de compatibilidad global de 0 a 100"
+                            "description": "Porcentaje de compatibilidad global de 0 a 100",
                         },
                         "recommendation": {
                             "type": "STRING",
-                            "enum": ["Postular", "Evaluar con cautela", "No recomendado"]
+                            "enum": [
+                                "Postular",
+                                "Evaluar con cautela",
+                                "No recomendado",
+                            ],
                         },
                         "justification": {
                             "type": "STRING",
-                            "description": "Justificación clara y detallada del porcentaje y la recomendación"
-                        }
+                            "description": "Justificación clara y detallada del porcentaje y la recomendación",
+                        },
                     },
-                    "required": ["compatibility_score", "recommendation", "justification"]
-                }
-            }
+                    "required": [
+                        "compatibility_score",
+                        "recommendation",
+                        "justification",
+                    ],
+                },
+            },
         }
 
         # 4. Consumir la API
@@ -155,7 +164,9 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, json=payload, timeout=30.0)
         except httpx.HTTPError as e:
-            raise DeepAnalysisServiceError(f"Error de conexión con la API de Gemini: {e}")
+            raise DeepAnalysisServiceError(
+                f"Error de conexión con la API de Gemini: {e}"
+            )
 
         # 5. Validar respuesta HTTP
         if response.status_code != 200:

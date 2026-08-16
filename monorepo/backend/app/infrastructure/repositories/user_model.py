@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from sqlmodel import Field, SQLModel
@@ -12,7 +11,7 @@ class UserModel(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     full_name: str
-    phone: Optional[str] = None
+    phone: str | None = None
     active: bool = True
     email_verified: bool = False
     created_at: datetime

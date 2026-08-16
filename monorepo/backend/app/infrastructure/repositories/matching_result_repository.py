@@ -1,8 +1,11 @@
 from uuid import UUID
-from sqlmodel import select, delete
+
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.application.repositories.matching_result_repository import IMatchingResultRepository
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
 from app.domain.entities.matching_result import MatchingResult
 from app.infrastructure.repositories.matching_result_model import MatchingResultModel
 
@@ -49,7 +52,9 @@ class MatchingResultRepository(IMatchingResultRepository):
     async def get_by_supplier_id(self, supplier_id: UUID) -> list[MatchingResult]:
         """Obtiene todos los resultados de matching asociados a un proveedor."""
         result = await self.session.exec(
-            select(MatchingResultModel).where(MatchingResultModel.supplier_id == supplier_id)
+            select(MatchingResultModel).where(
+                MatchingResultModel.supplier_id == supplier_id
+            )
         )
         models = result.all()
         return [self._to_entity(m) for m in models]
@@ -57,7 +62,9 @@ class MatchingResultRepository(IMatchingResultRepository):
     async def delete_by_supplier_id(self, supplier_id: UUID) -> None:
         """Elimina físicamente todas las recomendaciones de un proveedor."""
         await self.session.exec(
-            delete(MatchingResultModel).where(MatchingResultModel.supplier_id == supplier_id)
+            delete(MatchingResultModel).where(
+                MatchingResultModel.supplier_id == supplier_id
+            )
         )
         await self.session.commit()
 
@@ -73,4 +80,3 @@ class MatchingResultRepository(IMatchingResultRepository):
         )
         model = result.first()
         return self._to_entity(model) if model else None
-
