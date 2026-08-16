@@ -1,5 +1,4 @@
 import os
-import sys
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -7,11 +6,6 @@ import numpy as np
 import pytest
 
 from app.infrastructure.services.bge_reranker_service import BgeRerankerService
-
-# Stubbing dependencies en sys.modules para permitir importar el servicio sin instalar dependencias pesadas
-sys.modules.setdefault("transformers", MagicMock())
-sys.modules.setdefault("onnxruntime", MagicMock())
-sys.modules.setdefault("huggingface_hub", MagicMock())
 
 
 @pytest.fixture
