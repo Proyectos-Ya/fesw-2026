@@ -3,8 +3,20 @@
 Este es el backend de ProyectosYA construido con FastAPI.
 
 ## Requisitos
+
 - Python 3.12+
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo,
+  con al menos **4 GB de memoria asignados**
+
+> El contenedor de la API consume ~3 GB cuando termina de cargar el modelo de embeddings.
+> Con menos memoria, Docker lo mata durante el arranque sin un mensaje claro.
+
+> **Windows**: clona el repositorio **dentro de WSL2**, no en `C:\`. Sobre el disco de
+> Windows los eventos de archivo no llegan al contenedor y el hot reload deja de
+> funcionar; además el I/O es mucho más lento. Si no puedes moverlo, agrega
+> `WATCHFILES_FORCE_POLLING=1` a tu `.env`.
+
+---
 
 ## Configuración inicial
 
@@ -18,14 +30,29 @@ Desde la raíz del monorepo:
 cp .env.example .env
 ```
 
-Abre `.env` y completa los valores. El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
+Abre `.env` y completa los valores. Estas variables son **obligatorias** — sin ellas la
+aplicación no arranca:
 
-### 2. Crear entorno virtual
-Desde `monorepo/backend/:`
+| Variable | Para qué sirve |
+|---|---|
+| `POSTGRES_PASSWORD` | Credencial de la base de datos |
+| `MERCADO_PUBLICO_API_KEY` | Ticket de la API de Mercado Público |
+| `GEMINI_API_KEY` | Clave del servicio de análisis |
+| `GEMINI_MODEL` | Modelo de Gemini a utilizar |
+| `JWT_SECRET_KEY` | Firma de los tokens de sesión |
+
+El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
+
+### 2. Crear el entorno virtual
+
+Desde `monorepo/backend/`:
 
 ```bash
 python -m venv .venv
 ```
+
+> Alternativa opcional: si tienes [uv](https://docs.astral.sh/uv/) instalado,
+> `uv venv --python 3.12` hace lo mismo en segundos y descarga Python si te falta.
 
 ### 3. Activar el entorno virtual
 
@@ -40,33 +67,119 @@ python -m venv .venv
 
 ### 4. Instalar dependencias
 
-Para desarrollo, instala `requirements-dev.txt`: incluye las dependencias de
-runtime más las herramientas (ruff, pyright, pytest).
-
 ```bash
 pip install -r requirements-dev.txt
 ```
 
-`requirements.txt` contiene solo lo de runtime y es lo que instala la imagen
-de Docker; no hace falta instalarlo por separado.
+Ese archivo ya incluye `requirements.txt`, así que un solo comando deja el entorno completo.
+
+---
+
+## Entornos de trabajo: venv y Docker
+
+El proyecto usa **dos entornos con propósitos distintos**, y ambos son necesarios.
+
+| | Qué instala | Quién lo instala | Para qué |
+|---|---|---|---|
+| **Contenedor** | `requirements.txt` | El Dockerfile, al construir | Ejecutar la aplicación |
+| **venv local** | `requirements-dev.txt` | Tú, una vez | Tests, ruff, pyright y el editor |
+
+Aunque la aplicación corra dentro de Docker, **el venv local sigue haciendo falta**:
+
+- Los tests se ejecutan localmente — el contenedor no incluye pytest.
+- Ruff y pyright también se ejecutan localmente.
+- VS Code necesita apuntar a ese venv para resolver los imports; sin él marca en rojo
+  todo el proyecto.
+
+`requirements.txt` nunca se instala a mano: es lo que la imagen instala sola.
 
 ---
 
 ## Cada vez que trabajes en el proyecto
 
+### Flujo A (recomendado): la API en Docker
+
 ```bash
-# 1. Desde la raíz del monorepo — levantar la base de datos
+# Terminal 1 — desde monorepo/
 docker compose up -d
 
-# 2. Desde monorepo/backend/ — activar el entorno virtual
-source .venv/bin/activate   # macOS/Linux
-.venv\Scripts\Activate.ps1  # Windows
+# Terminal 2 — desde monorepo/frontend/
+pnpm dev
+```
 
-# 3. Iniciar el servidor
+- API en [http://localhost:8000](http://localhost:8000) — Swagger en `/docs`
+- Frontend en [http://localhost:3000](http://localhost:3000)
+- Los cambios en archivos `.py` se recargan solos: el código está montado desde tu
+  máquina y `uvicorn` corre con `--reload`.
+
+**El primer arranque tarda varios minutos** porque descarga los modelos de embeddings
+y reranking (~11 GB en total). Quedan guardados en un volumen de Docker, así que los
+siguientes arranques toman ~20 segundos.
+
+Comandos útiles:
+
+```bash
+docker compose logs -f api    # ver qué está pasando
+docker compose ps             # estado de los servicios
+docker compose down           # bajar todo (los datos persisten)
+```
+
+> Nunca uses `docker compose down -v` salvo que quieras empezar de cero: la bandera `-v`
+> borra los volúmenes, y con ellos la base de datos, los vectores de Qdrant y los modelos
+> descargados.
+
+### Flujo B (alternativo): la API nativa
+
+Útil para depurar con breakpoints del editor o si prefieres no usar el contenedor.
+
+```bash
+# 1. Desde monorepo/ — solo la infraestructura
+docker compose up -d postgres qdrant
+
+# 2. Desde monorepo/backend/ — con el venv activado
 uvicorn app.main:app --reload
 ```
 
-El servidor estará disponible en [http://127.0.0.1:8000](http://127.0.0.1:8000).
+> **No uses los dos flujos a la vez**: ambos ocupan el puerto 8000 y el segundo va a fallar.
+
+---
+
+## ⚠️ Observación: cuándo hay que reconstruir la imagen
+
+`docker compose up -d` construye la imagen **solo si todavía no existe**. Después la
+reutiliza tal cual, y **no detecta** que cambiaste `requirements.txt` o el `Dockerfile`.
+
+Si agregas o actualizas una dependencia, la imagen se queda con la versión vieja y vas a
+ver errores de import que no tienen sentido. Hay que reconstruir explícitamente:
+
+```bash
+docker compose up -d --build
+```
+
+| Qué cambiaste | ¿Reconstruir? |
+|---|---|
+| Código Python (`.py`) | No — el hot reload se encarga |
+| `requirements.txt` | **Sí** |
+| `Dockerfile` | **Sí** |
+| `docker-compose.yml` | No, pero sí `docker compose up -d` de nuevo |
+
+Y recuerda que una dependencia nueva hay que instalarla **en los dos entornos**: agregarla
+al archivo correspondiente, reconstruir la imagen, y actualizar tu venv local con
+`pip install -r requirements-dev.txt`.
+
+---
+
+## Calidad de código
+
+Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.
+
+```bash
+ruff check .          # detectar problemas
+ruff check . --fix    # corregir los que se pueden automáticamente
+ruff format .         # formatear
+```
+
+Ambos vienen en `requirements-dev.txt`, así que están disponibles con el venv activado.
 
 ---
 
