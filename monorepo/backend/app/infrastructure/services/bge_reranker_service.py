@@ -22,8 +22,19 @@ class BgeRerankerService(IRerankerService):
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        # Descargamos el modelo desde Hugging Face usando huggingface_hub
-        model_dir = snapshot_download(repo_id=model_name)
+        # Descargamos el modelo desde Hugging Face usando huggingface_hub.
+        # allow_patterns evita bajar el repositorio completo: publica ocho
+        # variantes cuantizadas (fp16, int8, uint8, q4, bnb4...) de las que solo
+        # usamos una, y sin filtrar el caché ocupa ~7 GB en vez de ~2 GB.
+        # model.onnx_data son los pesos externos que acompañan a model.onnx.
+        model_dir = snapshot_download(
+            repo_id=model_name,
+            allow_patterns=[
+                "onnx/model.onnx",
+                "onnx/model.onnx_data",
+                "*.json",
+            ],
+        )
 
         # Buscamos el archivo ONNX en el directorio descargado
         possible_paths = [

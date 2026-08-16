@@ -6,12 +6,12 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from app.infrastructure.services.bge_reranker_service import BgeRerankerService
+
 # Stubbing dependencies en sys.modules para permitir importar el servicio sin instalar dependencias pesadas
 sys.modules.setdefault("transformers", MagicMock())
 sys.modules.setdefault("onnxruntime", MagicMock())
 sys.modules.setdefault("huggingface_hub", MagicMock())
-
-from app.infrastructure.services.bge_reranker_service import BgeRerankerService
 
 
 @pytest.fixture
@@ -59,8 +59,15 @@ async def test_bge_reranker_initialization_and_rerank(
         mock_at.from_pretrained.assert_called_once_with(
             "onnx-community/bge-reranker-v2-m3-ONNX"
         )
+        # allow_patterns forma parte del contrato: sin él se descarga el
+        # repositorio completo (~7 GB de variantes cuantizadas sin usar).
         mock_sd.assert_called_once_with(
-            repo_id="onnx-community/bge-reranker-v2-m3-ONNX"
+            repo_id="onnx-community/bge-reranker-v2-m3-ONNX",
+            allow_patterns=[
+                "onnx/model.onnx",
+                "onnx/model.onnx_data",
+                "*.json",
+            ],
         )
 
         # Validamos con la misma concatenación de ruta usada en la clase concreta
