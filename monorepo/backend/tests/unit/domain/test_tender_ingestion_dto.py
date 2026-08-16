@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Union
 
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 
-DateInput = Union[str, datetime]
+DateInput = str | datetime
 
 
 def _build_dto(published: DateInput, closing: DateInput) -> TenderIngestaDTO:

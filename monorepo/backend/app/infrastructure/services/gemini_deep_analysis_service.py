@@ -166,7 +166,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         except httpx.HTTPError as e:
             raise DeepAnalysisServiceError(
                 f"Error de conexión con la API de Gemini: {e}"
-            )
+            ) from e
 
         # 5. Validar respuesta HTTP
         if response.status_code != 200:
@@ -183,7 +183,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         except (KeyError, IndexError, ValueError) as e:
             raise DeepAnalysisServiceError(
                 f"Estructura de respuesta inesperada de Gemini: {e}. Respuesta: {response.text}"
-            )
+            ) from e
 
         # 7. Parsear JSON de salida de compatibilidad
         try:
@@ -193,7 +193,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             raise DeepAnalysisServiceError(
                 f"No se pudo decodificar el JSON de compatibilidad retornado por Gemini: {e}. Texto: {json_text}"
-            )
+            ) from e
 
         # 8. Validar valores válidos de recomendación
         valid_recommendations = ["Postular", "Evaluar con cautela", "No recomendado"]
