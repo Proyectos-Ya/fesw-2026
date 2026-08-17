@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.question_repository import IQuestionRepository
@@ -23,8 +23,8 @@ class QuestionRepositoryImpl(IQuestionRepository):
     async def get_active_by_provider(self, provider_id: UUID) -> list[Question]:
         statement = select(QuestionModel).where(
             QuestionModel.provider_id == provider_id,
-            QuestionModel.answered == False,
-            QuestionModel.omitted == False,
+            col(QuestionModel.answered).is_(False),
+            col(QuestionModel.omitted).is_(False),
         )
         result = await self.session.exec(statement)
         models = result.all()
