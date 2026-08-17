@@ -11,8 +11,10 @@ def _build_dto(published: DateInput, closing: DateInput) -> TenderIngestaDTO:
         Nombre="Compra ágil de prueba",
         Descripcion=None,
         CodigoEstado=5,
-        FechaPublicacion=published,
-        FechaCierre=closing,
+        # El DTO declara datetime, pero estos tests verifican justamente la
+        # coerción que hace Pydantic sobre las fechas en string de la API.
+        FechaPublicacion=published,  # type: ignore[arg-type]
+        FechaCierre=closing,  # type: ignore[arg-type]
         RutComprador="60.000.000-0",
         NombreOrganismo="Municipalidad de Prueba",
         UnidadCompra="Unidad de Prueba",

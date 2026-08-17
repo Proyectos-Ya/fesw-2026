@@ -59,7 +59,7 @@ class UpdateSupplierUseCase:
                 }
             )
         except ValidationError as e:
-            raise SupplierValidationError(str(e.errors()[0]["msg"]))
+            raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
         saved = await self.repo.update(updated)
 

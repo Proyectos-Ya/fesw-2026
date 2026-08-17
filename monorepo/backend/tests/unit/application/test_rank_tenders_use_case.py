@@ -348,6 +348,7 @@ async def test_cache_miss_runs_full_pipeline_and_persists() -> None:
     assert results[0].tender_id == tender_id_1
     assert results[0].final_score == pytest.approx(0.95)
     assert results[1].final_score == pytest.approx(0.90)
+    assert results[0].tender is not None
     assert results[0].tender.id == tender_id_1
 
     # Asegura que se llamó a Qdrant y al Reranker
@@ -415,6 +416,7 @@ async def test_closed_tenders_are_filtered_out() -> None:
     # Verificaciones: Solo la activa debe ser retornada
     assert len(results) == 1
     assert results[0].tender_id == tender_id_active
+    assert results[0].tender is not None
     assert results[0].tender.id == tender_id_active
 
 

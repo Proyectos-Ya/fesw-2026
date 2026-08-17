@@ -32,14 +32,22 @@ class Settings(BaseSettings):
     auth_cookie_name: str = "access_token"
     # Cookie Secure solo en producción (requiere HTTPS); en local va en False
     auth_cookie_secure: bool = False
-    mercado_publico_ticket: str = ""
 
-    qdrant_host: str = "localhost"
-    qdrant_port: int = 6333
-    qdrant_collection: str = "licitaciones"
-
+    # --- Embeddings ---
     embedding_model: str = "BAAI/bge-m3"
     embedding_vector_size: int = 1024
+
+    # --- Mercado Público ---
+    mercado_publico_api_key: str
+
+    # --- Gemini ---
+    gemini_api_key: str
+    gemini_model: str
+
+    # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
+    # procesadas por ciclo. El valor por defecto es False para que un despliegue
+    # sin la variable no arranque en silencio ingestando una fracción de los datos.
+    is_dev: bool = False
 
     @property
     def database_url(self) -> str:
@@ -51,13 +59,6 @@ class Settings(BaseSettings):
     @property
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
-
-    mercado_publico_api_key: str
-    is_dev: bool = True
-
-    # --- Gemini ---
-    gemini_api_key: str
-    gemini_model: str
 
 
 settings = Settings()  # type: ignore

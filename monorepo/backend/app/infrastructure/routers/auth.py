@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -44,12 +45,15 @@ def create_auth_router(
     )
     async def register(
         data: RegisterSchema,
-        repo: IUserRepository = Depends(get_user_repo),
+        # repo: IUserRepository = Depends(get_user_repo),
+        repo: Annotated[IUserRepository, Depends(get_user_repo)],
     ):
         try:
             return await RegisterUserUseCase(repo, hasher).execute(data)
         except UserAlreadyExists as e:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
+            ) from e
 
     @router.post(
         "/login",
@@ -59,12 +63,15 @@ def create_auth_router(
     async def login(
         data: LoginSchema,
         response: Response,
-        repo: IUserRepository = Depends(get_user_repo),
+        # repo: IUserRepository = Depends(get_user_repo),
+        repo: Annotated[IUserRepository, Depends(get_user_repo)],
     ):
         try:
             token, _ = await LoginUserUseCase(repo, hasher, token_service).execute(data)
         except (InvalidCredentials, InactiveUser) as e:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
+            ) from e
 
         # Cookie httpOnly para el frontend; el token también va en el body para Swagger
         response.set_cookie(
@@ -84,7 +91,8 @@ def create_auth_router(
         return None
 
     @router.get("/me", response_model=UserPublicSchema)
-    async def me(current_user: User = Depends(get_current_user)):
+    # async def me(current_user: User = Depends(get_current_user)):
+    async def me(current_user: Annotated[User, Depends(get_current_user)]):
         return current_user
 
     return router

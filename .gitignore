@@ -1,21 +1,25 @@
 # Node.js
+# El frontend tiene su propio .gitignore, más cercano y por lo tanto prioritario
+# para sus rutas (.next/, out/, build/, coverage). Aquí queda lo que aplica a
+# cualquier paquete Node que se agregue al monorepo.
 node_modules/
-.next/
-out/
-build/
 dist/
 pnpm-debug.log*
 
 # Python
-.venv/
-venv/
-env/
-ENV/
+# Los patrones de directorio van anclados con "/" inicial: sin anclar coinciden a
+# cualquier profundidad, y "env/" llegaría a ignorar en silencio un app/env/ con
+# código adentro.
+/.venv/
+/venv/
+/env/
+/ENV/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -42,3 +46,4 @@ test-results/
 CLAUDE.md
 .claude
 
+PENDIENTES.md

@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from qdrant_client import QdrantClient
@@ -62,5 +63,18 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
             return None
         vector_data = records[0].vector
         if isinstance(vector_data, dict):
-            return next(iter(vector_data.values()))
-        return vector_data
+            vector_data = next(iter(vector_data.values()), None)
+        if vector_data is None:
+            return None
+
+        # Qdrant también puede devolver multivectores o vectores dispersos; el
+        # contrato de este repositorio es un vector denso simple.
+        if not isinstance(vector_data, list) or any(
+            not isinstance(value, float) for value in vector_data
+        ):
+            raise ValueError(
+                f"Formato de vector inesperado para el proveedor {supplier_id}: "
+                f"se esperaba un vector denso de floats."
+            )
+        # El isinstance dentro del generador no estrecha el tipo de la lista.
+        return cast(list[float], vector_data)

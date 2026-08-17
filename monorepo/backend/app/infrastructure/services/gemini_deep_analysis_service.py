@@ -3,7 +3,7 @@ import json
 import httpx
 
 from app.application.services.deep_analysis_service import IDeepAnalysisService
-from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.deep_analysis import VALID_RECOMMENDATIONS, DeepAnalysis
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.deep_analysis_errors import (
@@ -196,10 +196,9 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             ) from e
 
         # 8. Validar valores válidos de recomendación
-        valid_recommendations = ["Postular", "Evaluar con cautela", "No recomendado"]
-        if recommendation not in valid_recommendations:
+        if recommendation not in VALID_RECOMMENDATIONS:
             raise DeepAnalysisServiceError(
-                f"Recomendación inválida retornada por Gemini: '{recommendation}'. Valores permitidos: {valid_recommendations}"
+                f"Recomendación inválida retornada por Gemini: '{recommendation}'. Valores permitidos: {list(VALID_RECOMMENDATIONS)}"
             )
 
         # 9. Construir y retornar entidad de dominio DeepAnalysis (sobrescribiendo el score con matching_score)

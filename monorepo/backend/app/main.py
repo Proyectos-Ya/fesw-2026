@@ -32,13 +32,17 @@ async def lifespan(app: FastAPI):
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="suppliers",
-            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+            vectors_config=VectorParams(
+                size=settings.embedding_vector_size, distance=Distance.COSINE
+            ),
         )
     if "tenders" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="tenders",
             vectors_config={
-                "tender": VectorParams(size=1024, distance=Distance.COSINE)
+                "tender": VectorParams(
+                    size=settings.embedding_vector_size, distance=Distance.COSINE
+                )
             },
         )
 

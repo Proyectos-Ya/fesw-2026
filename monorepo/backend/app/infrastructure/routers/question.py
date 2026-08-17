@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -36,10 +37,10 @@ def create_question_router(
         },
     )
     async def get_smart_questions(
-        profileId: UUID = Query(
-            ..., description="ID del Supplier para obtener su cuestionario"
-        ),
-        use_case: SmartQuestionUseCase = Depends(get_smart_question_use_case),
+        profileId: Annotated[
+            UUID, Query(description="ID del Supplier para obtener su cuestionario")
+        ],
+        use_case: Annotated[SmartQuestionUseCase, Depends(get_smart_question_use_case)],
     ):
         """Retorna la cola de preguntas dinámicas para el Dashboard."""
         try:
@@ -49,7 +50,7 @@ def create_question_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al procesar el árbol dinámico de preguntas.",
-            )
+            ) from e
 
     class QuestionAnswerInput(BaseModel):
         supplier_id: UUID
@@ -60,7 +61,9 @@ def create_question_router(
     @router.post("/answer", status_code=status.HTTP_200_OK)
     async def answer_question(
         payload: QuestionAnswerInput,
-        use_case: AnswerQuestionUseCase = Depends(get_answer_question_use_case),
+        use_case: Annotated[
+            AnswerQuestionUseCase, Depends(get_answer_question_use_case)
+        ],
     ):
         try:
             await use_case.execute(
@@ -73,7 +76,9 @@ def create_question_router(
                 "detail": "Respuesta procesada y perfil actualizado en keywords con éxito.",
             }
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
         except Exception as e:
             print(
                 f"💥 [CRITICAL ERROR] Falló el POST /questions/answer. Motivo: {repr(e)}"
@@ -81,6 +86,6 @@ def create_question_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error interno al procesar la respuesta del cuestionario inteligente.",
-            )
+            ) from e
 
     return router

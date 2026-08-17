@@ -89,7 +89,13 @@ class TenderIngestionUseCase:
                 f"[Ingesta] Modo desarrollo activo. Procesando solo {limit} registros."
             )
 
-        stats = {"fetched": len(dtos), "saved": 0, "skipped": 0}
+        stats: dict[str, Any] = {
+            "fetched": len(dtos),
+            "saved": 0,
+            "skipped": 0,
+            "failed": 0,
+            "failed_codes": [],
+        }
 
         for dto in dtos:
             try:
@@ -107,11 +113,6 @@ class TenderIngestionUseCase:
                     safe_buyer_rut = dto.buyer_rut
 
                 region_id = self.REGION_MAP.get(dto.region_name, 7)
-                await self.repo.get_or_create_buyer(
-                    rut=safe_buyer_rut, name=dto.buyer_name, region_id=region_id
-                )
-
-                await self.repo.get_or_create_status(status_id=dto.status_code)
 
                 tender_id = uuid.uuid4()
                 now = utc_now_naive()
@@ -149,9 +150,22 @@ class TenderIngestionUseCase:
                 ]
 
                 text = self.text_builder.build_from_tender(new_tender, tender_items)
-                await self.repo.save_complex_tender(new_tender, tender_items)
                 vectors = await self.embedding_service.embed([text])
                 status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
+
+                # Qdrant antes que SQL, deliberadamente. Las dos escrituras no
+                # comparten transacción, así que una puede fallar tras la otra;
+                # lo que sí se elige es hacia qué lado queda el desbalance:
+                #
+                #   fila en SQL sin punto   → invisible para el matching de forma
+                #                             permanente (Qdrant es el único punto
+                #                             de entrada y get_by_code impide el
+                #                             reintento).
+                #   punto sin fila en SQL   → rank_tenders (3.3.1) lo elimina en
+                #                             cuanto aparece en una búsqueda.
+                #
+                # Escribiendo primero el vector, el único desbalance posible es
+                # el que el sistema ya reconcilia solo.
                 await self.tender_vector_repo.upsert(
                     tender_id=tender_id,
                     embedding=vectors[0],
@@ -161,13 +175,30 @@ class TenderIngestionUseCase:
                         "available_amount_clp": dto.available_amount_clp,
                     },
                 )
+
+                # Recién acá se abre la transacción SQL. Ambos get_or_create
+                # hacen flush, así que dejarlos antes del embedding mantendría
+                # los locks tomados durante toda la inferencia del modelo.
+                # Son las claves foráneas de new_tender: deben existir al commit.
+                await self.repo.get_or_create_buyer(
+                    rut=safe_buyer_rut, name=dto.buyer_name, region_id=region_id
+                )
+                await self.repo.get_or_create_status(status_id=dto.status_code)
+                await self.repo.save_complex_tender(new_tender, tender_items)
                 stats["saved"] += 1
 
             except Exception as e:
+                # get_or_create_buyer/status hacen flush dentro de la misma
+                # transacción: sin rollback quedarían pendientes en la sesión.
                 print(
                     f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}"
                 )
                 await self.repo.rollback()
+                stats["failed"] += 1
+                stats["failed_codes"].append(dto.code)
                 continue
 
-        return {"status": "success", "summary": stats}
+        # Un fallo sistémico (Qdrant caído, cuota agotada) debe distinguirse de
+        # una corrida limpia sin licitaciones nuevas: ambas dejaban saved=0.
+        status = "partial" if stats["failed"] else "success"
+        return {"status": status, "summary": stats}

@@ -254,6 +254,7 @@ async def test_create_new_analysis_success():
     )
 
     # Aserciones
+    assert result is not None
     assert result.compatibility_score == 85.0  # final_score * 100
     assert result.recommendation == "Postular"
     assert result.prompt_instruction == "Usar ISO"
@@ -316,6 +317,7 @@ async def test_return_existing_analysis_no_profile_change():
     result = await use_case.execute(tender_id=tender_id, user_id=user_id)
 
     # Debe retornar el existente directamente sin llamar a Gemini
+    assert result is not None
     assert result.recommendation == "Evaluar con cautela"
     assert result.justification == "Ya calculado"
     assert len(ai_service.calls) == 0
@@ -379,6 +381,7 @@ async def test_regenerate_automatically_on_profile_updated():
         85.0,
         "Instruccion previa guardada",
     )
+    assert result is not None
     assert result.recommendation == "Postular"
     assert result.prompt_instruction == "Instruccion previa guardada"
 
@@ -444,6 +447,7 @@ async def test_manual_force_regenerate_overwrites_prompt():
         85.0,
         "Priorizar certificaciones ISO 14001",
     )
+    assert result is not None
     assert result.prompt_instruction == "Priorizar certificaciones ISO 14001"
 
 

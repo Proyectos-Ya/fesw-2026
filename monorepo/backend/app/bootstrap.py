@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -58,7 +60,7 @@ from app.infrastructure.services.token_service import JwtTokenService
 
 
 def get_supplier_repo(
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ISupplierRepository:
     # Crea el repositorio concreto con la sesión de BD por petición
     return SupplierRepository(session)
@@ -70,7 +72,7 @@ def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
 
 
 def get_tender_repo(
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ITenderRepository:
     # Crea el repositorio concreto de licitaciones con la sesión de BD
     return TenderRepository(session)
@@ -96,17 +98,21 @@ def get_weighting_service(request: Request) -> IWeightingService:
 
 
 def get_matching_result_repo(
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> IMatchingResultRepository:
     return MatchingResultRepository(session)
 
 
 def get_rank_tenders_use_case(
-    session: AsyncSession = Depends(get_session),
-    supplier_vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
-    tender_vector_repo: ITenderVectorRepository = Depends(get_tender_vector_repo),
-    reranker_service: IRerankerService = Depends(get_reranker_service),
-    weighting_service: IWeightingService = Depends(get_weighting_service),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    supplier_vector_repo: Annotated[
+        ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+    ],
+    tender_vector_repo: Annotated[
+        ITenderVectorRepository, Depends(get_tender_vector_repo)
+    ],
+    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
+    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
@@ -120,7 +126,9 @@ def get_rank_tenders_use_case(
     )
 
 
-def get_user_repo(session: AsyncSession = Depends(get_session)) -> IUserRepository:
+def get_user_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IUserRepository:
     return UserRepository(session)
 
 
@@ -129,8 +137,10 @@ def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
 
 
 def get_get_or_create_deep_analysis_use_case(
-    session: AsyncSession = Depends(get_session),
-    deep_analysis_service: IDeepAnalysisService = Depends(get_deep_analysis_service),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    deep_analysis_service: Annotated[
+        IDeepAnalysisService, Depends(get_deep_analysis_service)
+    ],
 ) -> GetOrCreateDeepAnalysisUseCase:
     return GetOrCreateDeepAnalysisUseCase(
         supplier_repo=SupplierRepository(session),
@@ -141,20 +151,22 @@ def get_get_or_create_deep_analysis_use_case(
 
 
 def get_question_repo(
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> IQuestionRepository:
     return QuestionRepositoryImpl(session)
 
 
 def get_smart_question_service(
-    question_repo: IQuestionRepository = Depends(get_question_repo),
+    question_repo: Annotated[IQuestionRepository, Depends(get_question_repo)],
 ) -> ISmartQuestionService:
     return SmartQuestionServiceImpl(question_repository=question_repo)
 
 
 def get_smart_question_use_case(
-    smart_question_service: ISmartQuestionService = Depends(get_smart_question_service),
-    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
+    smart_question_service: Annotated[
+        ISmartQuestionService, Depends(get_smart_question_service)
+    ],
+    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
 ) -> SmartQuestionUseCase:
     return SmartQuestionUseCase(
         smart_question_service=smart_question_service,
@@ -163,7 +175,7 @@ def get_smart_question_use_case(
 
 
 def get_answer_question_use_case(
-    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
+    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
 ) -> AnswerQuestionUseCase:
     # Inyectar el caso de uso que procesa las respuestas
     return AnswerQuestionUseCase(supplier_repo=supplier_repo)

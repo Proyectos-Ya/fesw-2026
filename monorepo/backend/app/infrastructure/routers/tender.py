@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -55,7 +56,7 @@ def create_tender_router(
     )
 
     @router.get(
-        "/recomended",
+        "/recommended",
         response_model=list[MatchingResult],
         responses={
             404: {
@@ -65,8 +66,9 @@ def create_tender_router(
     )
     async def get_recommended_tenders(
         profile_id: UUID,
+        use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         force_refresh: bool = False,
-        use_case: RankTendersUseCase = Depends(get_rank_tenders_use_case),
+        # use_case: RankTendersUseCase = Depends(get_rank_tenders_use_case),
     ):
         """
         Retorna la lista de licitaciones recomendadas para el perfil de proveedor especificado.
@@ -76,9 +78,13 @@ def create_tender_router(
                 user_id=profile_id, force_refresh=force_refresh
             )
         except SupplierNotFoundForUser as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
         except SupplierVectorNotFound as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
 
     @router.post(
         "/{tender_id}/analysis",
@@ -98,11 +104,16 @@ def create_tender_router(
     )
     async def analyze_tender_compatibility(
         tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            GetOrCreateDeepAnalysisUseCase,
+            Depends(get_get_or_create_deep_analysis_use_case),
+        ],
         request_body: DeepAnalysisRequest | None = None,
-        current_user: User = Depends(get_current_user),
-        use_case: GetOrCreateDeepAnalysisUseCase = Depends(
-            get_get_or_create_deep_analysis_use_case
-        ),
+        # current_user: User = Depends(get_current_user),
+        # use_case: GetOrCreateDeepAnalysisUseCase = Depends(
+        #     get_get_or_create_deep_analysis_use_case
+        # ),
     ):
         """
         Genera u obtiene el análisis profundo de compatibilidad IA para una licitación.
@@ -128,14 +139,24 @@ def create_tender_router(
                 )
             return analysis
         except SupplierNotFoundForUser as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
         except TenderNotFound as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
         except ScoreMatchingNoEncontrado as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
         except InvalidPromptInstruction as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
         except DeepAnalysisServiceError as e:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
 
     return router

@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import cast
 from uuid import UUID
 
 import numpy as np
@@ -98,9 +99,14 @@ class BgeRerankerService(IRerankerService):
             input_feed["token_type_ids"] = inputs["token_type_ids"]
 
         # Ejecutamos la inferencia ONNX en un executor asíncrono
-        logits = await loop.run_in_executor(
-            None,
-            lambda: self.session.run(["logits"], input_feed)[0],
+        # `run` está tipado como una unión amplia (ndarray | SparseTensor | ...),
+        # pero al pedir la salida "logits" siempre es un ndarray denso.
+        logits = cast(
+            np.ndarray,
+            await loop.run_in_executor(
+                None,
+                lambda: self.session.run(["logits"], input_feed)[0],
+            ),
         )
 
         # Aplicamos la función Sigmoide a los logits para obtener probabilidades/scores (0 a 1)

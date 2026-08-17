@@ -1,6 +1,8 @@
 {
   "include": [
-    "app"
+    "app",
+    "tests",
+    "scripts"
   ],
   "exclude": [
     "**/__pycache__",
@@ -9,6 +11,5 @@
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",
-  "pythonPlatform": "Windows",
   "typeCheckingMode": "basic"
 }

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
@@ -13,9 +14,6 @@ class TenderFilters(BaseModel):
     ids: list[UUID] | None = None
     regions: list[str] | None = None  # Filter by Region Names (e.g. ['Metropolitana'])
     provinces: list[str] | None = None  # Filter by Province Names (e.g. ['Santiago'])
-
-
-from app.domain.entities.deep_analysis import DeepAnalysis
 
 
 class ITenderRepository(ABC):
