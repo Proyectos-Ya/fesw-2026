@@ -1,14 +1,14 @@
 import uuid
 
 from sqlalchemy.orm import selectinload
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
-from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.deep_analysis import VALID_RECOMMENDATIONS, DeepAnalysis
 from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 from app.infrastructure.repositories.tender_model import (
@@ -89,10 +89,15 @@ class TenderRepository(ITenderRepository):
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         """Retrieve tenders matching specified filters."""
+        # SQLModel anota las relaciones con el tipo de la entidad, no con el
+        # descriptor QueryableAttribute que SQLAlchemy instala en runtime, por lo
+        # que selectinload no puede tiparse sin ignorar el argumento.
         query = select(TenderModel).options(
-            selectinload(TenderModel.status),
-            selectinload(TenderModel.buyer).selectinload(BuyerInstitutionModel.region),
-            selectinload(TenderModel.items),
+            selectinload(TenderModel.status),  # type: ignore[arg-type]
+            selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
+                BuyerInstitutionModel.region  # type: ignore[arg-type]
+            ),
+            selectinload(TenderModel.items),  # type: ignore[arg-type]
         )
 
         # Apply join if region name filtering is requested
@@ -100,17 +105,20 @@ class TenderRepository(ITenderRepository):
             query = (
                 query.join(
                     BuyerInstitutionModel,
-                    TenderModel.buyer_rut == BuyerInstitutionModel.rut,
+                    col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
                 )
-                .join(RegionModel, BuyerInstitutionModel.region_id == RegionModel.id)
-                .where(RegionModel.name.in_(filters.regions))
+                .join(
+                    RegionModel,
+                    col(BuyerInstitutionModel.region_id) == col(RegionModel.id),
+                )
+                .where(col(RegionModel.name).in_(filters.regions))
             )
 
         if filters.ids:
-            query = query.where(TenderModel.id.in_(filters.ids))
+            query = query.where(col(TenderModel.id).in_(filters.ids))
 
         if filters.provinces:
-            query = query.where(TenderModel.province.in_(filters.provinces))
+            query = query.where(col(TenderModel.province).in_(filters.provinces))
 
         result = await self.session.exec(query)
         models = result.all()
@@ -182,12 +190,22 @@ class TenderRepository(ITenderRepository):
 
     def _to_deep_analysis_entity(self, model: DeepAnalysisModel) -> DeepAnalysis:
         """Convert DeepAnalysisModel to DeepAnalysis domain entity."""
+        # La columna es un str libre: validamos contra el dominio antes de
+        # construir la entidad para no violar su contrato con datos corruptos.
+        recommendation = model.recommendation
+        if recommendation not in VALID_RECOMMENDATIONS:
+            raise ValueError(
+                f"Recomendación inválida en la base de datos para el análisis "
+                f"{model.id}: '{recommendation}'. "
+                f"Valores permitidos: {list(VALID_RECOMMENDATIONS)}"
+            )
+
         return DeepAnalysis(
             id=model.id,
             tender_id=model.tender_id,
             supplier_id=model.supplier_id,
             compatibility_score=model.compatibility_score,
-            recommendation=model.recommendation,
+            recommendation=recommendation,
             justification=model.justification,
             prompt_instruction=model.prompt_instruction,
             created_at=model.created_at,

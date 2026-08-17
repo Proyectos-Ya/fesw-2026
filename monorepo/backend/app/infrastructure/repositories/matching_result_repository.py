@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlmodel import delete, select
+from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.matching_result_repository import (
@@ -63,7 +63,7 @@ class MatchingResultRepository(IMatchingResultRepository):
         """Elimina físicamente todas las recomendaciones de un proveedor."""
         await self.session.exec(
             delete(MatchingResultModel).where(
-                MatchingResultModel.supplier_id == supplier_id
+                col(MatchingResultModel.supplier_id) == supplier_id
             )
         )
         await self.session.commit()

@@ -99,10 +99,17 @@ class QdrantTenderRepository(ITenderVectorRepository):
             limit=limit,
         )
 
-        return [
-            (UUID(result.id) if isinstance(result.id, str) else result.id, result.score)
-            for result in response.points
-        ]
+        # Los puntos se insertan siempre con `str(uuid)`; un id entero indicaría
+        # datos escritos por otra ruta y no es representable como UUID.
+        results: list[tuple[UUID, float]] = []
+        for result in response.points:
+            if not isinstance(result.id, str):
+                raise ValueError(
+                    f"ID de punto inesperado en Qdrant: {result.id!r}. "
+                    f"Se esperaba un UUID en formato string."
+                )
+            results.append((UUID(result.id), result.score))
+        return results
 
     def _build_filter(self, filters: dict | None) -> Filter | None:
         """
