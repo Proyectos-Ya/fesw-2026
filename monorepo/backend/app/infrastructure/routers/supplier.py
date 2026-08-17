@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -58,10 +59,12 @@ def create_supplier_router(
     )
     async def create_supplier(
         data: CreateSupplierSchema,
-        current_user: User = Depends(get_current_user),
-        repo: ISupplierRepository = Depends(get_supplier_repo),
-        vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
-        embedding_service: IEmbeddingService = Depends(get_embedding_service),
+        current_user: Annotated[User, Depends(get_current_user)],
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        vector_repo: Annotated[
+            ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+        ],
+        embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
     ):
         # TEMPORAL solo para demo del CA de timeout (>1 min sin respuesta).
         # Descomentar para el primer intento: duerme 70s (el cliente aborta a los
@@ -91,8 +94,8 @@ def create_supplier_router(
         responses={404: {"description": "El usuario no tiene una empresa asociada"}},
     )
     async def get_my_supplier(
-        current_user: User = Depends(get_current_user),
-        repo: ISupplierRepository = Depends(get_supplier_repo),
+        current_user: Annotated[User, Depends(get_current_user)],
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
     ):
         # Devuelve la empresa del usuario autenticado (o 404 si aún no crea una)
         try:
@@ -112,10 +115,12 @@ def create_supplier_router(
     )
     async def update_my_supplier(
         data: UpdateSupplierSchema,
-        current_user: User = Depends(get_current_user),
-        repo: ISupplierRepository = Depends(get_supplier_repo),
-        vector_repo: ISupplierVectorRepository = Depends(get_supplier_vector_repo),
-        embedding_service: IEmbeddingService = Depends(get_embedding_service),
+        current_user: Annotated[User, Depends(get_current_user)],
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        vector_repo: Annotated[
+            ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+        ],
+        embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
     ):
         # Edita la empresa del usuario autenticado; re-indexa el vector si
         # cambian los campos que alimentan el matching
@@ -135,7 +140,7 @@ def create_supplier_router(
     @router.get("/rut-exists", response_model=RutExistsResponse)
     async def rut_exists(
         rut: str,
-        repo: ISupplierRepository = Depends(get_supplier_repo),
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
     ):
         # Verificación temprana de RUT duplicado para el wizard de creación.
         # Declarada antes de /{supplier_id} para que no se capture como id.
@@ -148,7 +153,7 @@ def create_supplier_router(
     )
     async def get_supplier(
         supplier_id: UUID,
-        repo: ISupplierRepository = Depends(get_supplier_repo),
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
     ):
         # Busca un proveedor por su id interno
         try:
