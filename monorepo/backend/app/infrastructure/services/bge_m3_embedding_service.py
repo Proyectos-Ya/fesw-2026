@@ -6,7 +6,6 @@ from app.application.services.embedding_service import IEmbeddingService
 
 
 class BgeM3EmbeddingService(IEmbeddingService):
-
     def __init__(self, model_name: str = "BAAI/bge-m3") -> None:
         self._model = SentenceTransformer(model_name)
 

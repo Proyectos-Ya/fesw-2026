@@ -1,4 +1,3 @@
-from typing import Optional
 from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
@@ -12,7 +11,9 @@ from qdrant_client.http.models import (
     VectorParams,
 )
 
-from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 
 
 class QdrantTenderRepository(ITenderVectorRepository):
@@ -81,7 +82,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
         self,
         supplier_vector: list[float],
         limit: int,
-        filters: Optional[dict] = None,
+        filters: dict | None = None,
     ) -> list[tuple[UUID, float]]:
         """
         Busca las licitaciones más similares al vector de perfil del proveedor,
@@ -103,7 +104,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
             for result in response.points
         ]
 
-    def _build_filter(self, filters: Optional[dict]) -> Optional[Filter]:
+    def _build_filter(self, filters: dict | None) -> Filter | None:
         """
         Construye el objeto Filter de Qdrant a partir de un diccionario de filtros de metadatos.
         """
@@ -111,7 +112,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
             return None
 
         conditions = []
-        
+
         # Atributos de filtro del payload:
         # code (str), region_id (int), province (str), available_amount_clp (float), status_code (str)
         if "code" in filters and filters["code"] is not None:
@@ -120,13 +121,20 @@ class QdrantTenderRepository(ITenderVectorRepository):
             )
         if "region_id" in filters and filters["region_id"] is not None:
             conditions.append(
-                FieldCondition(key="region_id", match=MatchValue(value=filters["region_id"]))
+                FieldCondition(
+                    key="region_id", match=MatchValue(value=filters["region_id"])
+                )
             )
         if "province" in filters and filters["province"] is not None:
             conditions.append(
-                FieldCondition(key="province", match=MatchValue(value=filters["province"]))
+                FieldCondition(
+                    key="province", match=MatchValue(value=filters["province"])
+                )
             )
-        if "available_amount_clp" in filters and filters["available_amount_clp"] is not None:
+        if (
+            "available_amount_clp" in filters
+            and filters["available_amount_clp"] is not None
+        ):
             conditions.append(
                 FieldCondition(
                     key="available_amount_clp",
@@ -135,7 +143,9 @@ class QdrantTenderRepository(ITenderVectorRepository):
             )
         if "status_code" in filters and filters["status_code"] is not None:
             conditions.append(
-                FieldCondition(key="status_code", match=MatchValue(value=filters["status_code"]))
+                FieldCondition(
+                    key="status_code", match=MatchValue(value=filters["status_code"])
+                )
             )
 
         return Filter(must=conditions) if conditions else None

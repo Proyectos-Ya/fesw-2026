@@ -72,9 +72,9 @@ def create_supplier_router(
         # Crea la empresa asociada al usuario autenticado:
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
-            return await CreateSupplierUseCase(repo, vector_repo, embedding_service).execute(
-                data, user_id=current_user.id
-            )
+            return await CreateSupplierUseCase(
+                repo, vector_repo, embedding_service
+            ).execute(data, user_id=current_user.id)
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
         except SupplierValidationError as e:
@@ -114,9 +114,9 @@ def create_supplier_router(
         # Edita la empresa del usuario autenticado; re-indexa el vector si
         # cambian los campos que alimentan el matching
         try:
-            return await UpdateSupplierUseCase(repo, vector_repo, embedding_service).execute(
-                current_user.id, data
-            )
+            return await UpdateSupplierUseCase(
+                repo, vector_repo, embedding_service
+            ).execute(current_user.id, data)
         except SupplierNotFoundForUser as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         except SupplierValidationError as e:

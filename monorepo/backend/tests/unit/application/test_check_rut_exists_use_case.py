@@ -4,6 +4,7 @@ Pruebas unitarias de CheckRutExistsUseCase.
 Verifica que el caso de uso informe si ya existe una empresa
 registrada con el RUT consultado.
 """
+
 from uuid import uuid4
 
 import pytest

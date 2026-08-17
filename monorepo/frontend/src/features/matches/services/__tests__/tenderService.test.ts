@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateDeepAnalysis, getDeepAnalysisOnly } from "../tenderService";
-import { ApiError } from "@/features/shared/api/client";
 import {
   getRecommendedTenders,
   generateDeepAnalysis,
@@ -25,20 +23,6 @@ const mockAnalysis: DeepAnalysis = {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
-
-describe("generateDeepAnalysis", () => {
-  it("hace POST a /tenders/{tenderId}/analysis con los parametros de prompt y forceRegenerate", async () => {
-    const mockAnalysis = {
-      id: "da-123",
-      tender_id: "tender-123",
-      supplier_id: "supplier-123",
-      compatibility_score: 95,
-      recommendation: "Postular",
-      justification: "Excelente match",
-      prompt_instruction: "ISO 9001",
-      created_at: "2026-06-11",
-      updated_at: "2026-06-11",
-    };
 
 describe("getRecommendedTenders", () => {
   it("hace GET a /tenders/recomended con profile_id", async () => {

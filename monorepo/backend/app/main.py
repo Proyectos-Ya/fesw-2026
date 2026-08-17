@@ -1,20 +1,21 @@
-from contextlib import asynccontextmanager
 import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.models import Distance, VectorParams
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-from qdrant_client import QdrantClient, AsyncQdrantClient
-from qdrant_client.models import VectorParams, Distance
-
-from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
-from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 from app.bootstrap import bootstrap
 from app.config import settings
 from app.infrastructure.db import engine
-from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.tenders.mercado_publico_client import (
+    MercadoPublicoClient,
+)
+from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 
 @asynccontextmanager
@@ -36,7 +37,9 @@ async def lifespan(app: FastAPI):
     if "tenders" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="tenders",
-            vectors_config={"tender": VectorParams(size=1024, distance=Distance.COSINE)},
+            vectors_config={
+                "tender": VectorParams(size=1024, distance=Distance.COSINE)
+            },
         )
 
     ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)

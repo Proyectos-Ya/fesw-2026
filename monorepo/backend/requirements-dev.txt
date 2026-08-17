@@ -1,0 +1,17 @@
+# Herramientas de desarrollo: solo para el entorno local, nunca en la imagen.
+# Incluye las de runtime, así que basta con instalar este archivo:
+#
+#   uv pip install -r requirements-dev.txt     (o: pip install -r requirements-dev.txt)
+
+-r requirements.txt
+
+# Linter y formateador (configurados en pyproject.toml)
+ruff>=0.3.0
+
+# Type checker (configurado en pyrightconfig.json)
+pyright>=1.1.350
+
+# Pruebas
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0

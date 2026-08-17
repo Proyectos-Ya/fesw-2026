@@ -1,14 +1,18 @@
-from typing import Optional
 from uuid import UUID
 
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.matching_result_repository import IMatchingResultRepository
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderNotFound
-from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 
 
 class GetOrCreateDeepAnalysisUseCase:
@@ -29,12 +33,12 @@ class GetOrCreateDeepAnalysisUseCase:
         tender_id: UUID,
         user_id: UUID,
         force_regenerate: bool = False,
-        prompt_instruction: Optional[str] = None,
+        prompt_instruction: str | None = None,
         only_if_exists: bool = False,
-    ) -> Optional[DeepAnalysis]:
+    ) -> DeepAnalysis | None:
         """
         Orquesta la recuperación o generación de un análisis de compatibilidad IA.
-        
+
         1. Obtiene el perfil de proveedor del usuario.
         2. Obtiene los detalles de la licitación.
         3. Obtiene el resultado de matching para extraer el score base.
@@ -52,8 +56,10 @@ class GetOrCreateDeepAnalysisUseCase:
         tender = tenders[0]
 
         # 3. Obtener el resultado de matching para rescatar el final_score (matching_score)
-        matching_result = await self.matching_result_repo.get_by_proveedor_and_licitacion(
-            proveedor_id=supplier.id, licitacion_id=tender_id
+        matching_result = (
+            await self.matching_result_repo.get_by_proveedor_and_licitacion(
+                proveedor_id=supplier.id, licitacion_id=tender_id
+            )
         )
         if not matching_result:
             raise ScoreMatchingNoEncontrado(str(supplier.id), str(tender_id))
@@ -79,8 +85,16 @@ class GetOrCreateDeepAnalysisUseCase:
             should_generate = True
         else:
             # Existe análisis: verificar si el perfil del proveedor se actualizó después de la última generación
-            sup_updated = supplier.updated_at.replace(tzinfo=None) if supplier.updated_at else None
-            ana_updated = existing_analysis.updated_at.replace(tzinfo=None) if existing_analysis.updated_at else None
+            sup_updated = (
+                supplier.updated_at.replace(tzinfo=None)
+                if supplier.updated_at
+                else None
+            )
+            ana_updated = (
+                existing_analysis.updated_at.replace(tzinfo=None)
+                if existing_analysis.updated_at
+                else None
+            )
 
             if sup_updated and ana_updated and sup_updated > ana_updated:
                 # Regeneración automática silenciosa por cambio de perfil.
@@ -93,7 +107,7 @@ class GetOrCreateDeepAnalysisUseCase:
                 tender=tender,
                 supplier=supplier,
                 matching_score=matching_score,
-                prompt_instruction=active_prompt
+                prompt_instruction=active_prompt,
             )
             saved_analysis = await self.tender_repo.save_deep_analysis(new_analysis)
             return saved_analysis

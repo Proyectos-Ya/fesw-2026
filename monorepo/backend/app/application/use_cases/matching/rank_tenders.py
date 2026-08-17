@@ -1,19 +1,29 @@
-from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.supplier_vector_repository import ISupplierVectorRepository
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.application.repositories.tender_vector_repository import ITenderVectorRepository
-from app.application.repositories.matching_result_repository import IMatchingResultRepository
+from app.application.repositories.supplier_vector_repository import (
+    ISupplierVectorRepository,
+)
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 from app.application.services.reranker_service import IRerankerService
-from app.application.services.weighting_service import IWeightingService
 from app.application.services.text_builder import TextBuilder
+from app.application.services.weighting_service import IWeightingService
 from app.domain.entities.matching_result import MatchingResult
-from app.domain.entities.tender import Tender
-from app.domain.errors.supplier_errors import SupplierNotFoundForUser, SupplierVectorNotFound
-from app.shared.constants import TENDER_STATUSES, ACTIVE_TENDER_STATUSES
+from app.domain.errors.supplier_errors import (
+    SupplierNotFoundForUser,
+    SupplierVectorNotFound,
+)
+from app.shared.constants import ACTIVE_TENDER_STATUSES, TENDER_STATUSES
+from app.shared.datetime_utils import utc_now_naive
 
 
 class RankTendersUseCase:
@@ -60,22 +70,30 @@ class RankTendersUseCase:
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now_naive()
 
         # 2. Si no es forzado, intentar obtener las recomendaciones del cache SQL
         if not force_refresh:
-            cached_matches = await self.matching_result_repo.get_by_supplier_id(supplier.id)
+            cached_matches = await self.matching_result_repo.get_by_supplier_id(
+                supplier.id
+            )
             if cached_matches:
                 # Hidratar las licitaciones desde SQL
                 tender_ids = [m.tender_id for m in cached_matches]
-                tenders = await self.tender_repo.get_tenders(TenderFilters(ids=tender_ids))
+                tenders = await self.tender_repo.get_tenders(
+                    TenderFilters(ids=tender_ids)
+                )
                 tender_dict = {t.id: t for t in tenders}
 
                 valid_results = []
                 for m in cached_matches:
                     t = tender_dict.get(m.tender_id)
                     # Descartar licitaciones cerradas o que no estén en estado activa/publicada
-                    if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
+                    if (
+                        t
+                        and t.closing_at > now
+                        and t.status_code in ACTIVE_TENDER_STATUSES
+                    ):
                         m.tender = t
                         valid_results.append(m)
 
@@ -149,7 +167,9 @@ class RankTendersUseCase:
         ]
 
         # 3.6 Ponderación manual (IWeightingService): retorna (tender_id, score_final)
-        weighted_results = self.weighting_service.calculate_scores(top_candidates, supplier)
+        weighted_results = self.weighting_service.calculate_scores(
+            top_candidates, supplier
+        )
 
         # 3.7 Construir entidades MatchingResult definitivas
         tender_by_id = {t.id: t for t in active_tenders}

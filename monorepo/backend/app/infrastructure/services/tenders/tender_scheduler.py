@@ -9,8 +9,11 @@ from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
-from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
+from app.infrastructure.repositories.qdrant_tender_repository import (
+    QdrantTenderRepository,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.shared.datetime_utils import CHILE_TZ
 
 
 class TenderScheduler:
@@ -50,12 +53,14 @@ class TenderScheduler:
         await self._execute_once(limit)
 
         while True:
-            ahora = datetime.now()
+            ahora = datetime.now(CHILE_TZ)
             manana_am = (ahora + timedelta(days=1)).replace(
                 hour=2, minute=0, second=0, microsecond=0
             )
             espera = (manana_am - ahora).total_seconds()
-            print(f"[Scheduler] Próxima ingesta en {espera/3600:.2f} horas (a las 02:00 AM)")
+            print(
+                f"[Scheduler] Próxima ingesta en {espera / 3600:.2f} horas (a las 02:00 AM)"
+            )
             await asyncio.sleep(espera)
             print("[Scheduler] Iniciando ingesta programada diaria...")
             await self._execute_once(limit)

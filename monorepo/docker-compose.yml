@@ -1,9 +1,49 @@
 # ============================================================
-# docker-compose.yml — Infraestructura local de ProyectosYA
-# Servicios: PostgreSQL (datos relacionales) + Qdrant (búsqueda vectorial)
+# docker-compose.yml — Entorno local de ProyectosYA
+# Servicios: API (FastAPI) + PostgreSQL (datos relacionales)
+#            + Qdrant (búsqueda vectorial)
+#
+# El frontend NO vive acá: corre nativo con `pnpm dev` en el host.
 # ============================================================
 
 services:
+
+  # ------------------------------------------------------------
+  # API: FastAPI en modo desarrollo (hot reload sobre bind mount)
+  # ------------------------------------------------------------
+  api:
+    build:
+      context: ./backend
+      target: dev
+    container_name: proyectosya_api
+    restart: unless-stopped
+    # Carga el .env compartido y luego pisa los hosts: dentro de la red de
+    # Docker, la BD no está en localhost sino en el contenedor `postgres`.
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      QDRANT_HOST: qdrant
+      QDRANT_HTTP_PORT: 6333
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Código montado desde el host: uvicorn --reload recoge los cambios
+      # sin reconstruir la imagen.
+      - ./backend:/app
+      # Caché de HuggingFace: sin esto, bge-m3 (~2 GB) se redescarga cada
+      # vez que se recrea el contenedor.
+      - models_cache:/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        # Qdrant no trae healthcheck (la imagen no incluye curl/wget), así
+        # que solo esperamos a que arranque, no a que esté listo.
+        condition: service_started
+    networks:
+      - proyectosya_network
 
   # ------------------------------------------------------------
   # Base de datos relacional: perfiles, usuarios y metadata
@@ -17,7 +57,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proyectosya_secret}
       POSTGRES_DB: ${POSTGRES_DB:-proyectosya_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Publicado solo en loopback: la API ya llega por la red interna, y
+      # esto evita exponer la BD a la red local.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       # Persistencia de datos entre reinicios del contenedor
       - postgres_data:/var/lib/postgresql/data
@@ -38,9 +80,9 @@ services:
     container_name: proyectosya_qdrant
     restart: unless-stopped
     ports:
-      # Puerto REST/gRPC HTTP
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
+      # Puerto REST/gRPC HTTP, solo en loopback (ver nota en postgres)
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -56,9 +98,12 @@ volumes:
     driver: local
   qdrant_data:
     driver: local
+  models_cache:
+    driver: local
 
 # ------------------------------------------------------------
-# Red interna compartida entre todos los servicios, se usa cuando al api este dentro del docker-compose y se conecta a postgres o qdrant usando el nombre del servicio como host (ej: "postgres" o "qdrant")
+# Red interna compartida: la API se conecta a postgres y qdrant usando el
+# nombre del servicio como host (POSTGRES_HOST=postgres, QDRANT_HOST=qdrant).
 # ------------------------------------------------------------
 networks:
   proyectosya_network:

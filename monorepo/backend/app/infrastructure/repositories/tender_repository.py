@@ -1,22 +1,23 @@
-from typing import List, Optional
+import uuid
+
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-import uuid
 
-from app.domain.entities.tender import utc_now_naive
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.domain.entities.tender import Tender, TenderItem
-
-from app.infrastructure.repositories.tender_model import (
-    TenderModel,
-    BuyerInstitutionModel,
-    RegionModel,
-    TenderStatusModel,
-    TenderItemModel,
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
+from app.infrastructure.repositories.tender_model import (
+    BuyerInstitutionModel,
+    RegionModel,
+    TenderItemModel,
+    TenderModel,
+    TenderStatusModel,
+)
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 
 
@@ -47,7 +48,9 @@ class TenderRepository(ITenderRepository):
             buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
             province=model.province,
-            region=model.buyer.region.name if model.buyer and model.buyer.region else None,
+            region=model.buyer.region.name
+            if model.buyer and model.buyer.region
+            else None,
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -64,7 +67,6 @@ class TenderRepository(ITenderRepository):
                 for item in (model.items or [])
             ],
         )
-
 
     def _to_model(self, entity: Tender) -> TenderModel:
         """Convert Domain Entity to DB Model."""
@@ -85,18 +87,21 @@ class TenderRepository(ITenderRepository):
             updated_at=entity.updated_at,
         )
 
-    async def get_tenders(self, filters: TenderFilters) -> List[Tender]:
+    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         """Retrieve tenders matching specified filters."""
         query = select(TenderModel).options(
             selectinload(TenderModel.status),
             selectinload(TenderModel.buyer).selectinload(BuyerInstitutionModel.region),
-            selectinload(TenderModel.items)
+            selectinload(TenderModel.items),
         )
 
         # Apply join if region name filtering is requested
         if filters.regions:
             query = (
-                query.join(BuyerInstitutionModel, TenderModel.buyer_rut == BuyerInstitutionModel.rut)
+                query.join(
+                    BuyerInstitutionModel,
+                    TenderModel.buyer_rut == BuyerInstitutionModel.rut,
+                )
                 .join(RegionModel, BuyerInstitutionModel.region_id == RegionModel.id)
                 .where(RegionModel.name.in_(filters.regions))
             )
@@ -112,21 +117,22 @@ class TenderRepository(ITenderRepository):
 
         return [self._to_entity(m) for m in models]
 
-    async def get_by_code(self, code: str) -> Optional[TenderModel]:
+    async def get_by_code(self, code: str) -> TenderModel | None:
         statement = select(TenderModel).where(TenderModel.code == code)
         result = await self.session.exec(statement)
         return result.first()
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
-        statement = select(BuyerInstitutionModel).where(BuyerInstitutionModel.rut == rut)
+        statement = select(BuyerInstitutionModel).where(
+            BuyerInstitutionModel.rut == rut
+        )
         result = await self.session.exec(statement)
         buyer = result.first()
-        
+
         if not buyer:
             now = utc_now_naive()
             buyer = BuyerInstitutionModel(
-                rut=rut, name=name, region_id=region_id,
-                created_at=now, updated_at=now
+                rut=rut, name=name, region_id=region_id, created_at=now, updated_at=now
             )
             self.session.add(buyer)
             await self.session.flush()
@@ -136,7 +142,7 @@ class TenderRepository(ITenderRepository):
         statement = select(TenderStatusModel).where(TenderStatusModel.id == status_id)
         result = await self.session.exec(statement)
         status = result.first()
-        
+
         if not status:
             ESTADOS_MAP = {
                 1: "Publicada",
@@ -144,7 +150,7 @@ class TenderRepository(ITenderRepository):
                 6: "Publicada",
                 7: "Cerrada",
                 8: "Desierta",
-                18: "Adjudicada"
+                18: "Adjudicada",
             }
 
             if status_id in ESTADOS_MAP:
@@ -156,17 +162,15 @@ class TenderRepository(ITenderRepository):
                 name_str = f"Estado Desconocido ({status_id})"
                 code_str = f"desconocido_{status_id}"
 
-            status = TenderStatusModel(
-                id=status_id,
-                code=code_str,
-                name=name_str
-            )
+            status = TenderStatusModel(id=status_id, code=code_str, name=name_str)
             self.session.add(status)
             await self.session.flush()
-            
+
         return status_id
 
-    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]):
+    async def save_complex_tender(
+        self, tender_model: TenderModel, items: list[TenderItemModel]
+    ):
         self.session.add(tender_model)
         for item in items:
             self.session.add(item)
@@ -204,10 +208,12 @@ class TenderRepository(ITenderRepository):
             updated_at=entity.updated_at,
         )
 
-    async def get_deep_analysis(self, tender_id: uuid.UUID, supplier_id: uuid.UUID) -> Optional[DeepAnalysis]:
+    async def get_deep_analysis(
+        self, tender_id: uuid.UUID, supplier_id: uuid.UUID
+    ) -> DeepAnalysis | None:
         statement = select(DeepAnalysisModel).where(
             DeepAnalysisModel.tender_id == tender_id,
-            DeepAnalysisModel.supplier_id == supplier_id
+            DeepAnalysisModel.supplier_id == supplier_id,
         )
         result = await self.session.exec(statement)
         model = result.first()
@@ -216,7 +222,7 @@ class TenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         statement = select(DeepAnalysisModel).where(
             DeepAnalysisModel.tender_id == deep_analysis.tender_id,
-            DeepAnalysisModel.supplier_id == deep_analysis.supplier_id
+            DeepAnalysisModel.supplier_id == deep_analysis.supplier_id,
         )
         result = await self.session.exec(statement)
         model = result.first()

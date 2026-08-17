@@ -1,31 +1,44 @@
-import pytest
-from datetime import datetime, timedelta, timezone
-from uuid import uuid4, UUID
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
-from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.application.repositories.tender_vector_repository import ITenderVectorRepository
-from app.application.repositories.matching_result_repository import IMatchingResultRepository
+import pytest
+
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
-from app.domain.entities.supplier import Supplier
-from app.domain.entities.tender import Tender, TenderItem
+from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
-from app.domain.errors.supplier_errors import SupplierNotFoundForUser, SupplierVectorNotFound
-from app.shared.constants import TENDER_STATUSES
-from tests.unit.application.fakes import InMemorySupplierRepository, FakeSupplierVectorRepository
-
+from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender import Tender
+from app.domain.errors.supplier_errors import (
+    SupplierNotFoundForUser,
+    SupplierVectorNotFound,
+)
 
 # ---------------------------------------------------------------------------
 # Implementaciones fake específicas para las pruebas unitarias de este caso de uso
 # ---------------------------------------------------------------------------
+from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
+from app.shared.constants import TENDER_STATUSES
+from tests.unit.application.fakes import (
+    FakeSupplierVectorRepository,
+    InMemorySupplierRepository,
+)
 
-from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
-from app.domain.entities.deep_analysis import DeepAnalysis
 
 class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
+
     def __init__(self) -> None:
         self.tenders: dict[UUID, Tender] = {}
 
@@ -40,13 +53,15 @@ class InMemoryTenderRepository(ITenderRepository):
             results.append(t)
         return results
 
-    async def get_by_code(self, code: str) -> Optional[TenderModel]:
+    async def get_by_code(self, code: str) -> TenderModel | None:
         return None
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
         return rut
 
-    async def save_complex_tender(self, tender_model: TenderModel, items: list[TenderItemModel]) -> None:
+    async def save_complex_tender(
+        self, tender_model: TenderModel, items: list[TenderItemModel]
+    ) -> None:
         pass
 
     async def get_or_create_status(self, status_id: int) -> int:
@@ -55,7 +70,9 @@ class InMemoryTenderRepository(ITenderRepository):
     async def rollback(self) -> None:
         pass
 
-    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+    async def get_deep_analysis(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> DeepAnalysis | None:
         return None
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
@@ -64,6 +81,7 @@ class InMemoryTenderRepository(ITenderRepository):
 
 class FakeTenderVectorRepository(ITenderVectorRepository):
     """Fake repository vectorial para buscar licitaciones."""
+
     def __init__(self) -> None:
         self.search_results: list[tuple[UUID, float]] = []
         self.searched_vectors: list[list[float]] = []
@@ -72,7 +90,9 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     async def ensure_collection(self) -> None:
         pass
 
-    async def upsert(self, tender_id: UUID, embedding: list[float], payload: dict) -> None:
+    async def upsert(
+        self, tender_id: UUID, embedding: list[float], payload: dict
+    ) -> None:
         pass
 
     async def delete(self, tender_id: UUID) -> None:
@@ -82,7 +102,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         self,
         supplier_vector: list[float],
         limit: int,
-        filters: Optional[dict] = None,
+        filters: dict | None = None,
     ) -> list[tuple[UUID, float]]:
         self.searched_vectors.append(supplier_vector)
         return self.search_results
@@ -90,6 +110,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
 
 class InMemoryMatchingResultRepository(IMatchingResultRepository):
     """Fake repository para caché de resultados de matching."""
+
     def __init__(self) -> None:
         self.results: dict[UUID, list[MatchingResult]] = {}
 
@@ -116,9 +137,9 @@ class InMemoryMatchingResultRepository(IMatchingResultRepository):
         return None
 
 
-
 class FakeRerankerService(IRerankerService):
     """Fake service para simular el re-ranker ONNX."""
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[tuple[UUID, str]], int]] = []
 
@@ -130,11 +151,14 @@ class FakeRerankerService(IRerankerService):
     ) -> list[tuple[UUID, float]]:
         self.calls.append((query_text, candidates, limit))
         # Retorna el mismo orden pero con un score simulado decreciente
-        return [(uid, 1.0 - (i * 0.05)) for i, (uid, _) in enumerate(candidates)][:limit]
+        return [(uid, 1.0 - (i * 0.05)) for i, (uid, _) in enumerate(candidates)][
+            :limit
+        ]
 
 
 class FakeWeightingService(IWeightingService):
     """Fake service para simular ponderación manual por campos."""
+
     def calculate_scores(
         self, candidates: list[tuple[Tender, float]], supplier: Supplier
     ) -> list[tuple[UUID, float]]:
@@ -146,13 +170,14 @@ class FakeWeightingService(IWeightingService):
 # Helpers para creación de entidades dummy
 # ---------------------------------------------------------------------------
 
+
 def create_dummy_tender(
     tender_id: UUID,
     closing_in_hours: int = 24,
     status_code: str = TENDER_STATUSES["PUBLISHED"],
 ) -> Tender:
     """Helper para crear una licitación dummy con parámetros de prueba."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Tender(
         id=tender_id,
         code=f"COT-{tender_id}",
@@ -173,6 +198,7 @@ def create_dummy_tender(
 # ---------------------------------------------------------------------------
 # Pruebas Unitarias
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_supplier_not_found_raises_exception() -> None:
@@ -253,7 +279,7 @@ async def test_cache_hit_returns_immediately_without_pipeline() -> None:
             reranker_score=0.88,
             final_score=0.89,
             model_version="bge-m3-v1",
-        )
+        ),
     ]
     await matching_result_repo.save_bulk(cached)
 
@@ -351,12 +377,18 @@ async def test_closed_tenders_are_filtered_out() -> None:
 
     tender_repo = InMemoryTenderRepository()
     # Activa
-    tender_repo.tenders[tender_id_active] = create_dummy_tender(tender_id_active, closing_in_hours=10)
+    tender_repo.tenders[tender_id_active] = create_dummy_tender(
+        tender_id_active, closing_in_hours=10
+    )
     # Expirada por fecha
-    tender_repo.tenders[tender_id_expired] = create_dummy_tender(tender_id_expired, closing_in_hours=-2)
+    tender_repo.tenders[tender_id_expired] = create_dummy_tender(
+        tender_id_expired, closing_in_hours=-2
+    )
     # Expirada por estado 'cerrada'
     tender_repo.tenders[tender_id_closed_status] = create_dummy_tender(
-        tender_id_closed_status, closing_in_hours=10, status_code=TENDER_STATUSES["CLOSED"]
+        tender_id_closed_status,
+        closing_in_hours=10,
+        status_code=TENDER_STATUSES["CLOSED"],
     )
 
     tender_vector_repo = FakeTenderVectorRepository()

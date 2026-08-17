@@ -1,25 +1,26 @@
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from uuid import uuid4
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.infrastructure.db import engine, SQLModel
-from app.infrastructure.repositories.tender_model import (
-    TenderModel,
-    BuyerInstitutionModel,
-    TenderStatusModel,
-    RegionModel,
-)
-from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.db import SQLModel, engine
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
+from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_model import (
+    BuyerInstitutionModel,
+    RegionModel,
+    TenderModel,
+    TenderStatusModel,
+)
 
 
 def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -118,7 +119,9 @@ async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession
     await db_session.commit()
 
     # Query back
-    result = await db_session.exec(select(DeepAnalysisModel).where(DeepAnalysisModel.id == analysis_id))
+    result = await db_session.exec(
+        select(DeepAnalysisModel).where(DeepAnalysisModel.id == analysis_id)
+    )
     retrieved = result.one()
 
     assert retrieved.id == analysis_id
@@ -126,7 +129,9 @@ async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession
     assert retrieved.supplier_id == supplier_id
     assert retrieved.compatibility_score == 88.5
     assert retrieved.recommendation == "Postular"
-    assert retrieved.justification == "Excelente alineación con el perfil del proveedor."
+    assert (
+        retrieved.justification == "Excelente alineación con el perfil del proveedor."
+    )
     assert retrieved.prompt_instruction == "Ignora cables de red"
     assert isinstance(retrieved.created_at, datetime)
     assert isinstance(retrieved.updated_at, datetime)
@@ -167,4 +172,3 @@ async def test_composite_unique_constraint_raises(db_session: AsyncSession):
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
-

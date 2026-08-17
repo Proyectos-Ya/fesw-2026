@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
-from typing import Optional, Literal
+from typing import Literal
 from uuid import UUID, uuid4
+
 from pydantic import BaseModel, Field, field_validator
+
+from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 
 class DeepAnalysis(BaseModel):
@@ -11,9 +13,9 @@ class DeepAnalysis(BaseModel):
     compatibility_score: float
     recommendation: Literal["Postular", "Evaluar con cautela", "No recomendado"]
     justification: str
-    prompt_instruction: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    prompt_instruction: str | None = None
+    created_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
     @field_validator("compatibility_score")
     @classmethod

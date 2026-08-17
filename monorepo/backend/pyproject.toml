@@ -18,8 +18,11 @@ exclude = [
 # B: flake8-bugbear
 # Q: flake8-quotes
 # UP: pyupgrade (modern Python syntax suggestions)
-lint.select = ["E", "F", "I", "B", "Q", "UP"]
-lint.ignore = []
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "Q", "UP"]
+ignore = ["E501"]
+
+
 
 [tool.ruff.lint.per-file-ignores]
 # FastAPI's Depends() in argument defaults is idiomatic — B008 is a false positive here.

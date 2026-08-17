@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -15,6 +14,7 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierValidationError,
 )
+from app.shared.datetime_utils import utc_now_naive
 
 # Campos que alimentan el texto del embedding: si cambian, hay que re-indexar
 _MATCHING_FIELDS = {"legal_name", "trade_name", "description", "sectors", "keywords"}
@@ -44,7 +44,7 @@ class UpdateSupplierUseCase:
         if not updates:
             return supplier
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now_naive()
         matching_changed = bool(_MATCHING_FIELDS & updates.keys())
 
         try:
@@ -53,7 +53,9 @@ class UpdateSupplierUseCase:
                     **supplier.model_dump(),
                     **updates,
                     "updated_at": now,
-                    "profile_changed_at": now if matching_changed else supplier.profile_changed_at,
+                    "profile_changed_at": now
+                    if matching_changed
+                    else supplier.profile_changed_at,
                 }
             )
         except ValidationError as e:

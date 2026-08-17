@@ -12,6 +12,7 @@ class SupplierAlreadyExists(Exception):
         super().__init__(f"Ya existe un proveedor con RUT {rut}")
         self.rut = rut
 
+
 class SupplierValidationError(Exception):
     def __init__(self, message: str):
         super().__init__(message)
@@ -25,12 +26,15 @@ class UserAlreadyHasSupplier(Exception):
 
 class SupplierNotFoundForUser(Exception):
     def __init__(self, user_id: UUID):
-        super().__init__(f"No se encontró un perfil de proveedor asociado al usuario {user_id}")
+        super().__init__(
+            f"No se encontró un perfil de proveedor asociado al usuario {user_id}"
+        )
         self.user_id = user_id
 
 
 class SupplierVectorNotFound(Exception):
     def __init__(self, supplier_id: UUID):
-        super().__init__(f"No se encontró el vector para el proveedor {supplier_id} en el almacén vectorial")
+        super().__init__(
+            f"No se encontró el vector para el proveedor {supplier_id} en el almacén vectorial"
+        )
         self.supplier_id = supplier_id
-

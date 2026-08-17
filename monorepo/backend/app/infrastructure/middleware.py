@@ -1,9 +1,10 @@
+import logging
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
-import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,9 @@ logger = logging.getLogger(__name__)
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Loguea cada request: método, ruta, status y tiempo de respuesta."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         # Registra el request entrante
         start_time = time.perf_counter()
         logger.info(f"→ {request.method} {request.url.path}")
@@ -20,7 +23,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         # Registra el response con el tiempo que tardó
         duration_ms = (time.perf_counter() - start_time) * 1000
-        logger.info(f"← {response.status_code} {request.url.path} ({duration_ms:.1f}ms)")
+        logger.info(
+            f"← {response.status_code} {request.url.path} ({duration_ms:.1f}ms)"
+        )
 
         return response
 

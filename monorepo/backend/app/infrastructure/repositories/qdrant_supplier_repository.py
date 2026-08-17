@@ -64,4 +64,3 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
         if isinstance(vector_data, dict):
             return next(iter(vector_data.values()))
         return vector_data
-

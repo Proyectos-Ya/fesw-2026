@@ -2,8 +2,8 @@ import asyncio
 import os
 from uuid import UUID
 
-from huggingface_hub import snapshot_download
 import numpy as np
+from huggingface_hub import snapshot_download
 
 from app.application.services.reranker_service import IRerankerService
 
@@ -13,15 +13,28 @@ class BgeRerankerService(IRerankerService):
     Implementación del servicio de re-ranking usando BGE-Reranker-v2-M3 en formato ONNX.
     """
 
-    def __init__(self, model_name: str = "onnx-community/bge-reranker-v2-m3-ONNX") -> None:
+    def __init__(
+        self, model_name: str = "onnx-community/bge-reranker-v2-m3-ONNX"
+    ) -> None:
         # Importaciones tardías para evitar fallas durante la carga de módulos si faltan dependencias pesadas
         import onnxruntime as ort
         from transformers import AutoTokenizer
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        # Descargamos el modelo desde Hugging Face usando huggingface_hub
-        model_dir = snapshot_download(repo_id=model_name)
+        # Descargamos el modelo desde Hugging Face usando huggingface_hub.
+        # allow_patterns evita bajar el repositorio completo: publica ocho
+        # variantes cuantizadas (fp16, int8, uint8, q4, bnb4...) de las que solo
+        # usamos una, y sin filtrar el caché ocupa ~7 GB en vez de ~2 GB.
+        # model.onnx_data son los pesos externos que acompañan a model.onnx.
+        model_dir = snapshot_download(
+            repo_id=model_name,
+            allow_patterns=[
+                "onnx/model.onnx",
+                "onnx/model.onnx_data",
+                "*.json",
+            ],
+        )
 
         # Buscamos el archivo ONNX en el directorio descargado
         possible_paths = [
@@ -41,7 +54,9 @@ class BgeRerankerService(IRerankerService):
                 f"No se encontró el archivo ONNX en el modelo {model_name}"
             )
 
-        self.session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(
+            onnx_path, providers=["CPUExecutionProvider"]
+        )
 
     async def rerank(
         self,
@@ -97,8 +112,7 @@ class BgeRerankerService(IRerankerService):
 
         # Mapeamos los resultados de vuelta a (tender_id, score)
         ranked_candidates = [
-            (candidates[i][0], float(scores_list[i]))
-            for i in range(len(candidates))
+            (candidates[i][0], float(scores_list[i])) for i in range(len(candidates))
         ]
 
         # Ordenamos los candidatos de mayor a menor score

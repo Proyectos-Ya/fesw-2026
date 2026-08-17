@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
-from sqlmodel import Field, SQLModel
+
 from sqlalchemy import UniqueConstraint
+from sqlmodel import Field, SQLModel
 
 
 class DeepAnalysisModel(SQLModel, table=True):
@@ -14,11 +14,12 @@ class DeepAnalysisModel(SQLModel, table=True):
     compatibility_score: float
     recommendation: str
     justification: str
-    prompt_instruction: Optional[str] = Field(default=None)
+    prompt_instruction: str | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
 
     __table_args__ = (
-        UniqueConstraint("tender_id", "supplier_id", name="uq_deep_analysis_tender_supplier"),
+        UniqueConstraint(
+            "tender_id", "supplier_id", name="uq_deep_analysis_tender_supplier"
+        ),
     )
-
