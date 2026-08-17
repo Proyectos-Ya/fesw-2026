@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.deep_analysis import DeepAnalysis, RecommendationLiteral
 
 
 def test_create_valid_deep_analysis():
@@ -35,7 +35,7 @@ def test_create_valid_deep_analysis():
 @pytest.mark.parametrize(
     "valid_rec", ["Postular", "Evaluar con cautela", "No recomendado"]
 )
-def test_valid_recommendations(valid_rec: str):
+def test_valid_recommendations(valid_rec: RecommendationLiteral):
     """Verifica que la entidad acepte los tres valores válidos para la recomendación."""
     analysis = DeepAnalysis(
         tender_id=uuid4(),
@@ -57,7 +57,8 @@ def test_invalid_recommendations_raises(invalid_rec: str):
             tender_id=uuid4(),
             supplier_id=uuid4(),
             compatibility_score=50.0,
-            recommendation=invalid_rec,
+            # El valor inválido es justamente lo que se está probando.
+            recommendation=invalid_rec,  # type: ignore[arg-type]
             justification="Test",
         )
 

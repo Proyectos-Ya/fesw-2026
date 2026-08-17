@@ -39,7 +39,9 @@ class TestToUtcNaive:
         assert to_utc_naive(aware) == datetime(2026, 7, 27, 21, 42, 0)
 
     def test_result_is_always_naive(self):
-        assert to_utc_naive(datetime(2026, 7, 27, 17, 42, 0)).tzinfo is None
+        result = to_utc_naive(datetime(2026, 7, 27, 17, 42, 0))
+        assert result is not None
+        assert result.tzinfo is None
 
     def test_none_returns_none(self):
         assert to_utc_naive(None) is None

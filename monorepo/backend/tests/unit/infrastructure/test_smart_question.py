@@ -6,6 +6,7 @@ Ubicar en: tests/test_smart_question.py
 Ejecutar con: pytest -v
 """
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -23,7 +24,9 @@ PROVIDER_ID = uuid4()
 
 
 def make_question(**kwargs) -> Question:
-    defaults = dict(
+    # Sin la anotación, el valor del dict se infiere como la unión de los tipos
+    # presentes y ningún campo de Question termina siendo asignable.
+    defaults: dict[str, Any] = dict(
         provider_id=PROVIDER_ID,
         question="¿Pregunta de prueba?",
         target_profile_field="campo_prueba",
@@ -396,14 +399,14 @@ class TestQuestionRepositoryMapping:
         repo = self._make_repo()
         questions = [make_question(), make_question(), make_question()]
         await repo.save_all(questions)
-        assert repo.session.flush.call_count == 3
+        assert cast(AsyncMock, repo.session).flush.call_count == 3
 
     async def test_save_all_adds_each_model_to_session(self):
         """save_all debe llamar a session.add por cada entidad."""
         repo = self._make_repo()
         questions = [make_question(), make_question()]
         await repo.save_all(questions)
-        assert repo.session.add.call_count == 2
+        assert cast(AsyncMock, repo.session).add.call_count == 2
 
     async def test_save_all_returns_same_count(self):
         """save_all debe retornar la misma cantidad de entidades que recibió."""
