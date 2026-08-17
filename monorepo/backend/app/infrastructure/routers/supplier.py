@@ -76,10 +76,14 @@ def create_supplier_router(
                 repo, vector_repo, embedding_service
             ).execute(data, user_id=current_user.id)
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
+            ) from e
         except SupplierValidationError as e:
             # Regla de negocio inválida (ej: RUT mal formateado por lógica interna)
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
 
     @router.get(
         "/me",
@@ -94,7 +98,9 @@ def create_supplier_router(
         try:
             return await GetSupplierByUserUseCase(repo).execute(current_user.id)
         except SupplierNotFoundForUser as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
 
     @router.patch(
         "/me",
@@ -118,9 +124,13 @@ def create_supplier_router(
                 repo, vector_repo, embedding_service
             ).execute(current_user.id, data)
         except SupplierNotFoundForUser as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
         except SupplierValidationError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
 
     @router.get("/rut-exists", response_model=RutExistsResponse)
     async def rut_exists(
@@ -144,6 +154,8 @@ def create_supplier_router(
         try:
             return await GetSupplierUseCase(repo).execute(supplier_id)
         except SupplierNotFound as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
 
     return router

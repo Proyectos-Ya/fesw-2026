@@ -46,7 +46,7 @@ class CreateSupplierUseCase:
         try:
             supplier = Supplier(**data.model_dump(), user_id=user_id)
         except ValidationError as e:
-            raise SupplierValidationError(str(e.errors()[0]["msg"]))
+            raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
         existing = await self.repo.get_by_rut(data.rut)
         if existing:

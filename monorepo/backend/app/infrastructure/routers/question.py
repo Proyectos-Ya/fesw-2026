@@ -49,7 +49,7 @@ def create_question_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al procesar el árbol dinámico de preguntas.",
-            )
+            ) from e
 
     class QuestionAnswerInput(BaseModel):
         supplier_id: UUID
@@ -73,7 +73,9 @@ def create_question_router(
                 "detail": "Respuesta procesada y perfil actualizado en keywords con éxito.",
             }
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
         except Exception as e:
             print(
                 f"💥 [CRITICAL ERROR] Falló el POST /questions/answer. Motivo: {repr(e)}"
@@ -81,6 +83,6 @@ def create_question_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error interno al procesar la respuesta del cuestionario inteligente.",
-            )
+            ) from e
 
     return router
