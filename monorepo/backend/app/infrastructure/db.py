@@ -8,7 +8,9 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.database_url,
-    echo=True,
+    # En producción, echo=True escribe cada sentencia SQL con sus parámetros en
+    # los logs: volumen enorme y datos en claro.
+    echo=settings.is_dev,
     pool_pre_ping=True,
 )
 
