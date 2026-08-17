@@ -48,6 +48,11 @@ async def run_test():
             client=AsyncQdrantClient(url=settings.qdrant_url),
             vector_size=settings.embedding_vector_size,
         )
+        # Este script corre standalone, sin el lifespan de la API que normalmente
+        # crea la colección. Sin esto, cada upsert falla y el caso de uso se traga
+        # el error: la licitación queda en Postgres sin vector y nunca se reintenta.
+        await tender_vector_repo.ensure_collection()
+
         use_case = TenderIngestionUseCase(
             ingestion_service=client,
             repository=repository,
