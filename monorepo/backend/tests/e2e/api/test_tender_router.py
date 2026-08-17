@@ -24,7 +24,7 @@ def clear_overrides():
 
 
 # ---------------------------------------------------------------------------
-# Pruebas para GET /tenders/recomended
+# Pruebas para GET /tenders/recommended
 # ---------------------------------------------------------------------------
 
 
@@ -57,7 +57,7 @@ async def test_get_recommended_tenders_success(api: AsyncClient) -> None:
         json={"email": register_data["email"], "password": register_data["password"]},
     )
 
-    response = await api.get(f"/tenders/recomended?profile_id={profile_id}")
+    response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -87,7 +87,7 @@ async def test_get_recommended_tenders_supplier_not_found(api: AsyncClient) -> N
         json={"email": register_data["email"], "password": register_data["password"]},
     )
 
-    response = await api.get(f"/tenders/recomended?profile_id={profile_id}")
+    response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
 
     assert response.status_code == 404
     data = response.json()
@@ -114,7 +114,7 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
         json={"email": register_data["email"], "password": register_data["password"]},
     )
 
-    response = await api.get(f"/tenders/recomended?profile_id={profile_id}")
+    response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
 
     assert response.status_code == 404
     data = response.json()
@@ -125,7 +125,7 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
 async def test_get_recommended_tenders_unauthorized(api: AsyncClient) -> None:
     """Valida que si la petición no está autenticada retorne un código 401."""
     profile_id = uuid4()
-    response = await api.get(f"/tenders/recomended?profile_id={profile_id}")
+    response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
     assert response.status_code == 401
 
 

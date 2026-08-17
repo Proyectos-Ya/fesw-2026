@@ -7,7 +7,7 @@ interface GetRecommendedOptions {
 }
 
 /**
- * Backend route: GET /tenders/recomended (sic — typo lives in the backend router).
+ * Backend route: GET /tenders/recommended
  * Returns matches sorted by final_score desc.
  */
 export function getRecommendedTenders(
@@ -16,7 +16,7 @@ export function getRecommendedTenders(
 ): Promise<MatchingResult[]> {
   const params = new URLSearchParams({ profile_id: userId });
   if (options.forceRefresh) params.set("force_refresh", "true");
-  return apiFetch<MatchingResult[]>(`/tenders/recomended?${params.toString()}`);
+  return apiFetch<MatchingResult[]>(`/tenders/recommended?${params.toString()}`);
 }
 
 /**

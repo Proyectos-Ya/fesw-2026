@@ -56,7 +56,7 @@ def create_tender_router(
     )
 
     @router.get(
-        "/recomended",
+        "/recommended",
         response_model=list[MatchingResult],
         responses={
             404: {

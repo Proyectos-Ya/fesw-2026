@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("getRecommendedTenders", () => {
-  it("hace GET a /tenders/recomended con profile_id", async () => {
+  it("hace GET a /tenders/recommended con profile_id", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -36,7 +36,7 @@ describe("getRecommendedTenders", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toContain("/tenders/recomended?profile_id=supplier-xyz");
+    expect(url).toContain("/tenders/recommended?profile_id=supplier-xyz");
   });
 });
 
