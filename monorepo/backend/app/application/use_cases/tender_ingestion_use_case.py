@@ -4,8 +4,8 @@ from typing import Dict, Any, Optional
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import ITenderVectorRepository
 from app.application.services.embedding_service import IEmbeddingService
-from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.services.text_builder import TextBuilder
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.domain.entities.tender import utc_now_naive
 from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
@@ -37,99 +37,83 @@ class TenderIngestionUseCase:
 
     def __init__(
         self,
-        ingestion_service: ITenderIngestionService,
         repository: ITenderRepository,
         embedding_service: IEmbeddingService,
         tender_vector_repo: ITenderVectorRepository,
     ):
-        self.service = ingestion_service
         self.repo = repository
         self.embedding_service = embedding_service
         self.tender_vector_repo = tender_vector_repo
         self.text_builder = TextBuilder()
 
-    async def execute(self, limit: Optional[int] = None) -> Dict[str, Any]:
-        dtos = await self.service.fetch_public_tenders()
-        
-        if limit:
-            dtos = dtos[:limit]
-            print(f"[Ingesta] Modo desarrollo activo. Procesando solo {limit} registros.")
+    async def execute(self, dto: TenderIngestaDTO) -> Dict[str, Any]:
+        # Procesamos la licitación de forma individual
+        try:
+            if await self.repo.get_by_code(dto.code):
+                return {"status": "skipped", "message": f"Tender {dto.code} already exists"}
 
-        stats = {"fetched": len(dtos), "saved": 0, "skipped": 0}
+            if not dto.buyer_rut or dto.buyer_rut.strip() == "" or dto.buyer_rut == "Sin RUT":
+                safe_buyer_rut = f"GENERIC-{dto.code}"
+            else:
+                safe_buyer_rut = dto.buyer_rut
 
-        for dto in dtos:
-            try:
-                if await self.repo.get_by_code(dto.code):
-                    stats["skipped"] += 1
-                    continue
+            region_id = self.REGION_MAP.get(dto.region_name, 7)
+            await self.repo.get_or_create_buyer(
+                rut=safe_buyer_rut,
+                name=dto.buyer_name,
+                region_id=region_id
+            )
 
-                if not dto.buyer_rut or dto.buyer_rut.strip() == "" or dto.buyer_rut == "Sin RUT":
-                    safe_buyer_rut = f"GENERIC-{dto.code}"
-                else:
-                    safe_buyer_rut = dto.buyer_rut
+            await self.repo.get_or_create_status(status_id=dto.status_code)
 
-                region_id = self.REGION_MAP.get(dto.region_name, 7)
-                await self.repo.get_or_create_buyer(
-                    rut=safe_buyer_rut,
-                    name=dto.buyer_name,
-                    region_id=region_id
-                )
+            tender_id = uuid.uuid4()
+            now = utc_now_naive()
 
-                await self.repo.get_or_create_status(status_id=dto.status_code)
+            new_tender = TenderModel(
+                id=tender_id,
+                code=dto.code,
+                name=dto.name,
+                description=dto.description,
+                status_id=dto.status_code,
+                published_at=dto.published_at,
+                closing_at=dto.closing_at,
+                last_change_at=now,
+                buyer_rut=safe_buyer_rut,
+                buyer_unit=dto.buyer_unit,
+                province=None, 
+                available_amount_clp=dto.available_amount_clp,
+                created_at=now,
+                updated_at=now
+            )
 
-                tender_id = uuid.uuid4()
-                now = utc_now_naive()
-
-                new_tender = TenderModel(
-                    id=tender_id,
-                    code=dto.code,
-                    name=dto.name,
-                    description=dto.description,
-                    status_id=dto.status_code,
-                    published_at=dto.published_at,
-                    closing_at=dto.closing_at,
-                    last_change_at=now,
-                    buyer_rut=safe_buyer_rut,
-                    buyer_unit=dto.buyer_unit,
-                    province=None, 
-                    available_amount_clp=dto.available_amount_clp,
-                    created_at=now,
-                    updated_at=now
-                )
-
-                tender_items = [
-                    TenderItemModel(
-                        id=uuid.uuid4(),
-                        tender_id=tender_id,
-                        product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
-                        name=item.nombre_producto,
-                        description=item.descripcion,
-                        quantity=item.cantidad,
-                        unit_of_measure=item.unidad_medida
-                    ) for item in dto.items
-                ]
-
-                text = self.text_builder.build_from_tender(new_tender, tender_items)
-                await self.repo.save_complex_tender(new_tender, tender_items)
-                vectors = await self.embedding_service.embed([text])
-                status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
-                await self.tender_vector_repo.upsert(
+            tender_items = [
+                TenderItemModel(
+                    id=uuid.uuid4(),
                     tender_id=tender_id,
-                    embedding=vectors[0],
-                    payload={
-                        "status_code": status_code,
-                        "region_id": region_id,
-                        "available_amount_clp": dto.available_amount_clp,
-                    },
-                )
-                stats["saved"] += 1
+                    product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
+                    name=item.nombre_producto,
+                    description=item.descripcion,
+                    quantity=item.cantidad,
+                    unit_of_measure=item.unidad_medida
+                ) for item in dto.items
+            ]
 
-            except Exception as e:
-                print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
-                await self.repo.rollback()
-                continue
+            text = self.text_builder.build_from_tender(new_tender, tender_items)
+            await self.repo.save_complex_tender(new_tender, tender_items)
+            vectors = await self.embedding_service.embed([text])
+            status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
+            await self.tender_vector_repo.upsert(
+                tender_id=tender_id,
+                embedding=vectors[0],
+                payload={
+                    "status_code": status_code,
+                    "region_id": region_id,
+                    "available_amount_clp": dto.available_amount_clp,
+                },
+            )
+            return {"status": "success", "tender_code": dto.code}
 
-        return {
-            "status": "success",
-            "summary": stats
-        }
+        except Exception as e:
+            print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
+            await self.repo.rollback()
+            raise e

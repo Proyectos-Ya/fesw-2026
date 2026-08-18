@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel
@@ -47,4 +48,9 @@ class ITenderRepository(ABC):
     @abstractmethod
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         """Save (create or update) the DeepAnalysis in the database."""
+        ...
+
+    @abstractmethod
+    async def get_latest_tender_created_at(self) -> Optional[datetime]:
+        """Retrieve the timestamp of the most recently created tender."""
         ...

@@ -64,7 +64,7 @@ async def test_bge_reranker_initialization_and_rerank(
         )
         
         # Validamos con la misma concatenación de ruta usada en la clase concreta
-        expected_path = os.path.join("/fake/model/dir", "onnx", "model.onnx")
+        expected_path = os.path.join("/fake/model/dir", "onnx", "model_quantized.onnx")
         mock_is.assert_called_once_with(
             expected_path,
             providers=["CPUExecutionProvider"],

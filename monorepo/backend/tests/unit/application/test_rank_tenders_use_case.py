@@ -61,6 +61,11 @@ class InMemoryTenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def get_latest_tender_created_at(self) -> Optional[datetime]:
+        if not self.tenders:
+            return None
+        return max((t.created_at for t in self.tenders.values() if t.created_at is not None), default=None)
+
 
 class FakeTenderVectorRepository(ITenderVectorRepository):
     """Fake repository vectorial para buscar licitaciones."""

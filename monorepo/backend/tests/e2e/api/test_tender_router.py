@@ -60,7 +60,11 @@ async def test_get_recommended_tenders_success(api: AsyncClient) -> None:
     assert len(data) == 1
     assert data[0]["supplier_id"] == str(profile_id)
     assert data[0]["final_score"] == 0.95
-    mock_uc.execute.assert_called_once_with(user_id=profile_id, force_refresh=False)
+    mock_uc.execute.assert_called_once()
+    kwargs = mock_uc.execute.call_args.kwargs
+    assert kwargs["user_id"] == profile_id
+    assert kwargs["force_refresh"] is False
+    assert "request" in kwargs
 
 
 @pytest.mark.asyncio

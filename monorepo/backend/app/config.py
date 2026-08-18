@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from app.shared.constants import DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT, DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
 
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
@@ -55,6 +57,10 @@ class Settings(BaseSettings):
     
     mercado_publico_api_key: str
     is_dev: bool = True
+    mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
+    mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
+    disable_reranker: bool = False
+    target_region: Optional[str] = None
 
     # --- Gemini ---
     gemini_api_key: str

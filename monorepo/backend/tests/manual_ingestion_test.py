@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.config import settings
 from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
+from app.infrastructure.services.tenders.tender_ingestion_service import TenderIngestionService
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
+from tests.unit.application.fakes import FakeEmbeddingService, FakeTenderVectorRepository
 
 async def run_test():
     print("[Test] Inicializando entorno de prueba relacional para ProyectosYA...")
@@ -33,19 +35,27 @@ async def run_test():
         
         # 5. Instanciar tus servicios e inyectar las dependencias reales
         client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-        repository = TenderRepository(session=session)
-        use_case = TenderIngestionUseCase(ingestion_service=client, repository=repository)
-
-        # 6. Ejecutar la ingesta usando el flag 'is_dev' de tus settings
-        # Si is_dev=True, limitamos a 5 registros para no saturar las llamadas locales
-        limit = 5 if settings.is_dev else None
-        print(f"[Ingesta] Iniciando fetch a Mercado Público (Limit: {limit})...")
+        embedding_service = FakeEmbeddingService()
+        tender_vector_repo = FakeTenderVectorRepository()
         
-        resultado = await use_case.execute(limit=limit)
+        ingestion_service = TenderIngestionService(
+            engine=engine,
+            client=client,
+            embedding_service=embedding_service,
+            qdrant_client=None,
+            tender_vector_repo=tender_vector_repo
+        )
+        
+        # 6. Sincronizar metadatos de las licitaciones en la base de datos
+        print("[Ingesta] Descargando y sincronizando metadatos...")
+        await ingestion_service.fetch_tenders_metadata()
+
+        # 7. Procesar los detalles pendientes de las licitaciones no procesadas
+        print("[Ingesta] Descargando detalles y procesando licitaciones pendientes...")
+        await ingestion_service.process_unprocessed_tenders()
         
         print("\n==========================================")
-        print("RESULTADO FINAL DE LA INGESTA EN POSTGRES:")
-        print(resultado)
+        print("INGESTA EN DOS FASES COMPLETADA.")
         print("==========================================\n")
 
 if __name__ == "__main__":

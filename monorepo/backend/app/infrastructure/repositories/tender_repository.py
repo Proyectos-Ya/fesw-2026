@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
@@ -234,3 +235,8 @@ class TenderRepository(ITenderRepository):
         await self.session.commit()
         await self.session.refresh(model)
         return self._to_deep_analysis_entity(model)
+
+    async def get_latest_tender_created_at(self) -> Optional[datetime]:
+        statement = select(TenderModel.created_at).order_by(TenderModel.created_at.desc()).limit(1)
+        result = await self.session.exec(statement)
+        return result.first()

@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import List
-from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 
+# Interfaz para el servicio de obtención de datos externos
 class ITenderIngestionService(ABC):
-    """
-    Interfaz para el servicio de obtención de datos externos.
-    Se ubica en application/services/tenders.
-    """
     @abstractmethod
-    async def fetch_public_tenders(self) -> List[TenderIngestaDTO]:
+    async def fetch_tenders_metadata(self) -> None:
         """
-        Define la lógica para pegarle a la API de Mercado Público 
-        y retornar los datos limpios en DTOs.
+        Consulta la API externa para obtener el listado reciente de licitaciones y guarda la metadata básica.
+        """
+        pass
+
+    @abstractmethod
+    async def process_unprocessed_tenders(self) -> None:
+        """
+        Procesa las licitaciones marcadas como no procesadas, descargando su detalle y ejecutando la ingesta.
         """
         pass

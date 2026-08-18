@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import GetOrCreateDeepAnalysisUseCase
@@ -57,6 +57,7 @@ def create_tender_router(
         },
     )
     async def get_recommended_tenders(
+        request: Request,
         profile_id: UUID,
         force_refresh: bool = False,
         use_case: RankTendersUseCase = Depends(get_rank_tenders_use_case),
@@ -65,7 +66,7 @@ def create_tender_router(
         Retorna la lista de licitaciones recomendadas para el perfil de proveedor especificado.
         """
         try:
-            return await use_case.execute(user_id=profile_id, force_refresh=force_refresh)
+            return await use_case.execute(user_id=profile_id, force_refresh=force_refresh, request=request)
         except SupplierNotFoundForUser as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         except SupplierVectorNotFound as e:

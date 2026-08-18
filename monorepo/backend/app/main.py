@@ -8,6 +8,7 @@ from qdrant_client import QdrantClient, AsyncQdrantClient
 from qdrant_client.models import VectorParams, Distance
 
 from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
+from app.infrastructure.services.tenders.tender_ingestion_service import TenderIngestionService
 from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 from app.bootstrap import bootstrap
@@ -39,19 +40,21 @@ async def lifespan(app: FastAPI):
             vectors_config={"tender": VectorParams(size=1024, distance=Distance.COSINE)},
         )
 
-    ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-    scheduler = TenderScheduler(
+    client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+    ingestion_service = TenderIngestionService(
         engine=engine,
-        ingestion_service=ingestion_service,
+        client=client,
         embedding_service=app.state.embedding_service,
         qdrant_client=app.state.qdrant_async_client,
-        is_dev=settings.is_dev,
     )
-    print("[Main] Iniciando scheduler de ingesta...")
-    ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion())
+    scheduler = TenderScheduler(ingestion_service=ingestion_service)
+    print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
+    metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
+    processing_task = asyncio.create_task(scheduler.start_processing_loop())
     yield
 
-    ingestion_task.cancel()
+    metadata_task.cancel()
+    processing_task.cancel()
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
 

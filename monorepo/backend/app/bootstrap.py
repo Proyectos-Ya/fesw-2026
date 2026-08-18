@@ -166,14 +166,21 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
-    try:
-        app.state.reranker_service = BgeRerankerService()
-    except Exception:
-        # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
+    if settings.disable_reranker:
+        print("[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService.")
         class MockRerankerService(IRerankerService):
             async def rerank(self, query_text, candidates, limit):
                 return [(c[0], 1.0) for c in candidates][:limit]
         app.state.reranker_service = MockRerankerService()
+    else:
+        try:
+            app.state.reranker_service = BgeRerankerService()
+        except Exception:
+            # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
+            class MockRerankerService(IRerankerService):
+                async def rerank(self, query_text, candidates, limit):
+                    return [(c[0], 1.0) for c in candidates][:limit]
+            app.state.reranker_service = MockRerankerService()
 
     app.state.weighting_service = FieldWeightingService(
         reranker_weight=0.5,

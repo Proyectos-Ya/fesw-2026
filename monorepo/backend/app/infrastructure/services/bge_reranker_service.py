@@ -25,8 +25,8 @@ class BgeRerankerService(IRerankerService):
 
         # Buscamos el archivo ONNX en el directorio descargado
         possible_paths = [
-            os.path.join(model_dir, "onnx", "model.onnx"),
             os.path.join(model_dir, "onnx", "model_quantized.onnx"),
+            os.path.join(model_dir, "onnx", "model.onnx"),
             os.path.join(model_dir, "model.onnx"),
         ]
 

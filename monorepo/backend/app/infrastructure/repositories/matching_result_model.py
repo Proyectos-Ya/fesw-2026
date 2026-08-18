@@ -2,12 +2,17 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
 
 
 class MatchingResultModel(SQLModel, table=True):
     """Modelo de base de datos para la tabla 'matching_result' en PostgreSQL."""
 
     __tablename__ = "matching_result"  # type: ignore
+
+    __table_args__ = (
+        UniqueConstraint("supplier_id", "tender_id", name="uq_matching_result_supplier_tender"),
+    )
 
     id: UUID = Field(primary_key=True)
     supplier_id: UUID = Field(foreign_key="supplier.id", index=True)  # Referencia al proveedor
