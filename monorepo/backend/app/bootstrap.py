@@ -7,6 +7,7 @@ from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
 from app.application.repositories.question_repository import IQuestionRepository
+from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -31,6 +32,11 @@ from app.application.use_cases.questions.answer_question_use_case import (
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
+from app.application.use_cases.saved_tenders.list_saved_tenders import (
+    ListSavedTendersUseCase,
+)
+from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
+from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import get_session
@@ -44,6 +50,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+from app.infrastructure.repositories.saved_tender_repository import (
+    SavedTenderRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
@@ -124,6 +133,36 @@ def get_rank_tenders_use_case(
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
     )
+
+
+def get_saved_tender_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ISavedTenderRepository:
+    return SavedTenderRepository(session)
+
+
+def get_list_saved_tenders_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListSavedTendersUseCase:
+    return ListSavedTendersUseCase(
+        saved_tender_repo=SavedTenderRepository(session),
+        tender_repo=TenderRepository(session),
+    )
+
+
+def get_save_tender_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SaveTenderUseCase:
+    return SaveTenderUseCase(
+        saved_tender_repo=SavedTenderRepository(session),
+        tender_repo=TenderRepository(session),
+    )
+
+
+def get_unsave_tender_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UnsaveTenderUseCase:
+    return UnsaveTenderUseCase(saved_tender_repo=SavedTenderRepository(session))
 
 
 def get_user_repo(
@@ -238,5 +277,8 @@ def bootstrap(app: FastAPI) -> None:
         cookie_secure=settings.auth_cookie_secure,
         cookie_max_age=settings.access_token_expire_minutes * 60,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
+        get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
+        get_save_tender_use_case=get_save_tender_use_case,
+        get_unsave_tender_use_case=get_unsave_tender_use_case,
     )
     app.include_router(router)

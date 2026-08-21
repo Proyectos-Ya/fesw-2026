@@ -2,9 +2,14 @@
 
 from uuid import UUID
 
+from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
+)
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
 )
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
@@ -13,9 +18,13 @@ from app.application.repositories.user_repository import IUserRepository
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
+from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import InvalidToken
+from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
 class InMemoryUserRepository(IUserRepository):
@@ -138,3 +147,71 @@ class FakeTokenService(ITokenService):
             return UUID(token.removeprefix("token::"))
         except ValueError as exc:
             raise InvalidToken() from exc
+
+
+class InMemoryTenderRepository(ITenderRepository):
+    """Fake repository en memoria para licitaciones."""
+
+    def __init__(self) -> None:
+        self.tenders: dict[UUID, Tender] = {}
+        # Registro de llamadas: permite verificar que un caso de uso NO consulte
+        # la base cuando no tiene ids que buscar.
+        self.get_tenders_calls: list[TenderFilters] = []
+
+    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
+        self.get_tenders_calls.append(filters)
+        results = []
+        for t in self.tenders.values():
+            if filters.ids and t.id not in filters.ids:
+                continue
+            if filters.regions:
+                # En memoria asumimos que coincide para simplificar
+                pass
+            results.append(t)
+        return results
+
+    async def get_by_code(self, code: str) -> TenderModel | None:
+        return None
+
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+        return rut
+
+    async def save_complex_tender(
+        self, tender_model: TenderModel, items: list[TenderItemModel]
+    ) -> None:
+        pass
+
+    async def get_or_create_status(self, status_id: int) -> int:
+        return status_id
+
+    async def rollback(self) -> None:
+        pass
+
+    async def get_deep_analysis(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> DeepAnalysis | None:
+        return None
+
+    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        return deep_analysis
+
+
+class InMemorySavedTenderRepository(ISavedTenderRepository):
+    """Fake repository en memoria para las licitaciones guardadas por un usuario."""
+
+    def __init__(self) -> None:
+        # La clave replica la constraint única (user_id, tender_id) de la tabla.
+        self.saved: dict[tuple[UUID, UUID], SavedTender] = {}
+
+    async def get_by_user_id(self, user_id: UUID) -> list[SavedTender]:
+        return [s for (uid, _), s in self.saved.items() if uid == user_id]
+
+    async def get(self, user_id: UUID, tender_id: UUID) -> SavedTender | None:
+        return self.saved.get((user_id, tender_id))
+
+    async def save(self, saved_tender: SavedTender) -> SavedTender:
+        self.saved[(saved_tender.user_id, saved_tender.tender_id)] = saved_tender
+        return saved_tender
+
+    async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
+        return self.saved.pop((user_id, tender_id), None) is not None

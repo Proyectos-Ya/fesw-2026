@@ -9,14 +9,22 @@ from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import 
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.saved_tenders.list_saved_tenders import (
+    ListSavedTendersUseCase,
+)
+from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
+from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
+from app.domain.entities.saved_tender import SavedTender
+from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
     InvalidPromptInstruction,
 )
 from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
+from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
@@ -44,6 +52,9 @@ def create_tender_router(
     get_rank_tenders_use_case: Callable,
     get_current_user: Callable,
     get_get_or_create_deep_analysis_use_case: Callable,
+    get_list_saved_tenders_use_case: Callable,
+    get_save_tender_use_case: Callable,
+    get_unsave_tender_use_case: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -82,6 +93,67 @@ def create_tender_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
         except SupplierVectorNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+
+    # Declarada antes que las rutas con `{tender_id}` para que el segmento
+    # estático "saved" nunca sea capturado como parámetro de path.
+    @router.get("/saved", response_model=list[Tender])
+    async def get_saved_tenders(
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ListSavedTendersUseCase, Depends(get_list_saved_tenders_use_case)
+        ],
+    ):
+        """
+        Retorna únicamente las licitaciones que el usuario autenticado marcó como de interés.
+        """
+        return await use_case.execute(user_id=current_user.id)
+
+    @router.post(
+        "/{tender_id}/saved",
+        response_model=SavedTender,
+        status_code=status.HTTP_201_CREATED,
+        responses={
+            404: {"description": "La licitación no existe"},
+        },
+    )
+    async def save_tender(
+        tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[SaveTenderUseCase, Depends(get_save_tender_use_case)],
+    ):
+        """
+        Marca una licitación como de interés para el usuario autenticado.
+
+        Es idempotente: repetir la llamada no duplica la licitación en la lista.
+        """
+        try:
+            return await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+        except TenderNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+
+    @router.delete(
+        "/{tender_id}/saved",
+        status_code=status.HTTP_204_NO_CONTENT,
+        responses={
+            404: {"description": "La licitación no está en la lista de guardadas"},
+        },
+    )
+    async def unsave_tender(
+        tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[UnsaveTenderUseCase, Depends(get_unsave_tender_use_case)],
+    ):
+        """
+        Retira una licitación de la lista de guardadas del usuario autenticado.
+        """
+        try:
+            await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+        except SavedTenderNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e

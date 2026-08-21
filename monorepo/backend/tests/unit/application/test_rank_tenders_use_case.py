@@ -6,17 +6,12 @@ import pytest
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
-from app.application.repositories.tender_repository import (
-    ITenderRepository,
-    TenderFilters,
-)
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
-from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -24,59 +19,16 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
+from app.shared.constants import TENDER_STATUSES
 
 # ---------------------------------------------------------------------------
 # Implementaciones fake específicas para las pruebas unitarias de este caso de uso
 # ---------------------------------------------------------------------------
-from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
-from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
+    InMemoryTenderRepository,
 )
-
-
-class InMemoryTenderRepository(ITenderRepository):
-    """Fake repository en memoria para licitaciones."""
-
-    def __init__(self) -> None:
-        self.tenders: dict[UUID, Tender] = {}
-
-    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
-        results = []
-        for t in self.tenders.values():
-            if filters.ids and t.id not in filters.ids:
-                continue
-            if filters.regions:
-                # En memoria asumimos que coincide para simplificar
-                pass
-            results.append(t)
-        return results
-
-    async def get_by_code(self, code: str) -> TenderModel | None:
-        return None
-
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
-        return rut
-
-    async def save_complex_tender(
-        self, tender_model: TenderModel, items: list[TenderItemModel]
-    ) -> None:
-        pass
-
-    async def get_or_create_status(self, status_id: int) -> int:
-        return status_id
-
-    async def rollback(self) -> None:
-        pass
-
-    async def get_deep_analysis(
-        self, tender_id: UUID, supplier_id: UUID
-    ) -> DeepAnalysis | None:
-        return None
-
-    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
-        return deep_analysis
 
 
 class FakeTenderVectorRepository(ITenderVectorRepository):
