@@ -1,15 +1,10 @@
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
-from sqlmodel import delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.tender_repository import TenderFilters
-from app.infrastructure.db import SQLModel, engine
-from app.infrastructure.repositories.supplier_model import SupplierModel
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -18,36 +13,13 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
 
+# `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
+# que apunta a la base de test y no a la de desarrollo.
+
 
 def utc_now_naive() -> datetime:
     """Returns a timezone-naive UTC datetime to avoid Python 3.12 deprecations and DB offset issues."""
     return datetime.now(UTC).replace(tzinfo=None)
-
-
-# Fixture que crea automáticamente todas las tablas antes de ejecutar cada prueba
-@pytest_asyncio.fixture(autouse=True)
-async def setup_db_tables():
-    # Asegura que todas las tablas estén creadas en la base de datos
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    yield
-
-
-# Fixture para manejar la sesión de la base de datos y limpiar las tablas al finalizar la prueba
-@pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSession(engine) as session:
-        yield session
-        # Limpieza de tablas para evitar interferencias entre pruebas
-        await session.exec(delete(TenderModel))
-        await session.exec(delete(BuyerInstitutionModel))
-        await session.exec(delete(TenderStatusModel))
-        await session.exec(delete(RegionModel))
-        await session.exec(delete(SupplierModel))
-        await session.commit()
-
-    # Libera los recursos del pool de conexiones para evitar problemas de event loop de asyncio
-    await engine.dispose()
 
 
 @pytest.mark.asyncio

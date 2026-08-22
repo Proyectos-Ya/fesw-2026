@@ -5,6 +5,12 @@ from pydantic import BaseModel
 
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
+
+# DEUDA (dirección de dependencias): la capa de aplicación no debería conocer
+# infraestructura. `get_by_code` y `save_complex_tender` exponen modelos de
+# SQLModel en una interfaz abstracta, lo que ata cualquier implementación futura
+# a ese ORM. Desenredarlo obliga a tocar la ingesta completa, así que se deja
+# anotado. **Los métodos nuevos deben hablar solo de entidades de dominio.**
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
