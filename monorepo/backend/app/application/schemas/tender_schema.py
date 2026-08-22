@@ -10,6 +10,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.domain.entities.tender import Tender
+
 
 class TenderFilterCriteria(BaseModel):
     """Condiciones absolutas que una licitación debe cumplir para ser elegible.
@@ -43,3 +45,21 @@ class TenderFilterCriteria(BaseModel):
     # el mismo criterio que ya aplica el dashboard.
     min_amount: float | None = None
     max_amount: float | None = None
+
+
+class TenderSearchResult(BaseModel):
+    """Respuesta de una búsqueda manual.
+
+    `total` no es `len(items)`: sale de contar cuántas licitaciones pasan los
+    filtros, así que no cambia aunque el resultado venga recortado. Es el número
+    de coincidencias que se le muestra al usuario.
+
+    `is_truncated` avisa que quedaron licitaciones fuera del corte. Sin él, el
+    frontend mostraría "137 coincidencias" junto a 500 tarjetas sin explicación;
+    con él puede sugerir afinar los filtros, que es lo correcto cuando alguien
+    pide un universo tan amplio.
+    """
+
+    items: list[Tender]
+    total: int
+    is_truncated: bool = False

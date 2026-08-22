@@ -54,6 +54,14 @@ class InMemoryTenderRepository(ITenderRepository):
             results.append(t)
         return results
 
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:  # noqa: ARG002
+        return ([], 0)
+
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None
 

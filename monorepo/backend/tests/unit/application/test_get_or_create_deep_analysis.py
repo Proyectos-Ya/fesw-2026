@@ -11,6 +11,7 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
@@ -41,6 +42,14 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
                 continue
             results.append(t)
         return results
+
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:  # noqa: ARG002
+        return ([], 0)
 
     async def get_by_code(self, code: str) -> Any | None:
         return None

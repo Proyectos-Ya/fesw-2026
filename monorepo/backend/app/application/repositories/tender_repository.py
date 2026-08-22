@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
 
@@ -29,6 +30,23 @@ class ITenderRepository(ABC):
     @abstractmethod
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         """Retrieve a list of tenders matching the specified filters."""
+        ...
+
+    @abstractmethod
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        """Busca licitaciones por filtros, ordenadas por fecha de cierre.
+
+        Respaldo del buscador manual para cuando no hay vector con que ordenar
+        por relevancia: proveedor recién registrado o perfil sin completar.
+
+        Devuelve `(licitaciones de esta página, total que cumple los filtros)`.
+        El total es independiente del corte, igual que en el camino vectorial.
+        """
         ...
 
     @abstractmethod
