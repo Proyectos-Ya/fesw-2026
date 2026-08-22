@@ -14,6 +14,7 @@ from app.application.repositories.tender_repository import (
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.text_builder import TextBuilder
 from app.application.services.weighting_service import IWeightingService
@@ -109,10 +110,10 @@ class RankTendersUseCase:
             raise SupplierVectorNotFound(supplier.id)
 
         # 3.2 Buscar licitaciones similares en Qdrant (filtrando por estado publicada)
-        search_results = await self.tender_vector_repo.search_by_supplier_vector(
-            supplier_vector=supplier_vector,
+        search_results = await self.tender_vector_repo.search_by_vector(
+            vector=supplier_vector,
             limit=self.vector_search_limit,
-            filters={"status_code": TENDER_STATUSES["PUBLISHED"]},
+            criteria=TenderFilterCriteria(status_codes=[TENDER_STATUSES["PUBLISHED"]]),
         )
         if not search_results:
             # Si no hay matches, limpiamos cache anterior y retornamos vacío

@@ -5,15 +5,18 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
-    MatchValue,
+    MatchAny,
     PointIdsList,
     PointStruct,
+    Range,
     VectorParams,
 )
 
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.shared.datetime_utils import to_utc_epoch
 
 
 class QdrantTenderRepository(ITenderVectorRepository):
@@ -101,25 +104,25 @@ class QdrantTenderRepository(ITenderVectorRepository):
             points_selector=PointIdsList(points=[str(tender_id)]),
         )
 
-    async def search_by_supplier_vector(
+    async def search_by_vector(
         self,
-        supplier_vector: list[float],
+        vector: list[float],
         limit: int,
-        filters: dict | None = None,
+        offset: int = 0,
+        criteria: TenderFilterCriteria | None = None,
     ) -> list[tuple[UUID, float]]:
         """
-        Busca las licitaciones más similares al vector de perfil del proveedor,
-        buscando en el vector nombrado 'tender' y aplicando los filtros indicados.
+        Busca las licitaciones más afines al vector, con los criterios aplicados
+        como pre-filtro durante el recorrido del grafo.
         """
-        query_filter = self._build_filter(filters)
-
         # qdrant-client >= 1.15 eliminó `search`; `query_points` es la API vigente
         response = await self._client.query_points(
             collection_name=self._COLLECTION_NAME,
-            query=supplier_vector,
+            query=vector,
             using=self._VECTOR_NAME,
-            query_filter=query_filter,
+            query_filter=self._build_filter(criteria),
             limit=limit,
+            offset=offset,
         )
 
         # Los puntos se insertan siempre con `str(uuid)`; un id entero indicaría
@@ -134,42 +137,71 @@ class QdrantTenderRepository(ITenderVectorRepository):
             results.append((UUID(result.id), result.score))
         return results
 
-    def _build_filter(self, filters: dict | None) -> Filter | None:
+    async def count(self, criteria: TenderFilterCriteria | None = None) -> int:
+        """Total de licitaciones que pasan los criterios, sin mirar similitud."""
+        # `exact=True` porque este número se le muestra al usuario como "N
+        # coincidencias"; la estimación aproximada de Qdrant serviría para
+        # planificar una consulta, no para informar.
+        response = await self._client.count(
+            collection_name=self._COLLECTION_NAME,
+            count_filter=self._build_filter(criteria),
+            exact=True,
+        )
+        return response.count
+
+    def _build_filter(self, criteria: TenderFilterCriteria | None) -> Filter | None:
+        """Traduce el criterio de la capa de aplicación al `Filter` de Qdrant.
+
+        Es el único punto donde el vocabulario de negocio se convierte en tipos
+        de Qdrant, y donde las fechas pasan a epoch.
         """
-        Construye el objeto Filter de Qdrant a partir de un diccionario de filtros de metadatos.
-        """
-        if not filters:
+        if criteria is None:
             return None
 
-        conditions = []
+        conditions: list[FieldCondition] = []
 
-        # Atributos de filtro del payload:
-        # code (str), region_id (int), available_amount_clp (float), status_code (str)
-        if "code" in filters and filters["code"] is not None:
-            conditions.append(
-                FieldCondition(key="code", match=MatchValue(value=filters["code"]))
-            )
-        if "region_id" in filters and filters["region_id"] is not None:
+        # Listas -> MatchAny. `MatchValue` compara contra un único valor, así que
+        # no sirve para "estado publicada o cerrada".
+        if criteria.status_codes:
             conditions.append(
                 FieldCondition(
-                    key="region_id", match=MatchValue(value=filters["region_id"])
+                    key="status_code", match=MatchAny(any=list(criteria.status_codes))
                 )
             )
-        if (
-            "available_amount_clp" in filters
-            and filters["available_amount_clp"] is not None
-        ):
+        if criteria.region_ids:
+            conditions.append(
+                FieldCondition(
+                    key="region_id", match=MatchAny(any=list(criteria.region_ids))
+                )
+            )
+
+        # Rangos. `gte`/`lte` mantienen ambos extremos inclusivos, igual que el
+        # filtro de presupuesto del frontend.
+        rangos = (
+            ("closing_at", criteria.closing_from, criteria.closing_to),
+            ("published_at", criteria.published_from, criteria.published_to),
+        )
+        for key, desde, hasta in rangos:
+            if desde is None and hasta is None:
+                continue
+            conditions.append(
+                FieldCondition(
+                    key=key,
+                    range=Range(
+                        gte=to_utc_epoch(desde) if desde else None,
+                        lte=to_utc_epoch(hasta) if hasta else None,
+                    ),
+                )
+            )
+
+        if criteria.min_amount is not None or criteria.max_amount is not None:
             conditions.append(
                 FieldCondition(
                     key="available_amount_clp",
-                    match=MatchValue(value=filters["available_amount_clp"]),
-                )
-            )
-        if "status_code" in filters and filters["status_code"] is not None:
-            conditions.append(
-                FieldCondition(
-                    key="status_code", match=MatchValue(value=filters["status_code"])
+                    range=Range(gte=criteria.min_amount, lte=criteria.max_amount),
                 )
             )
 
+        # `Filter(must=[])` en Qdrant no equivale a "sin filtro": devolver None
+        # es lo que deja la búsqueda sin restricciones.
         return Filter(must=conditions) if conditions else None
