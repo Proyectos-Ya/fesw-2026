@@ -25,6 +25,17 @@ class QdrantTenderRepository(ITenderVectorRepository):
     _COLLECTION_NAME = "tenders"
     _VECTOR_NAME = "tender"
 
+    # Campos del payload por los que se pre-filtra, con el tipo que Qdrant usa
+    # para indexarlos. El tipo importa: un rango sobre un campo indexado como
+    # `keyword` no compara como número.
+    _PAYLOAD_INDEXES: dict[str, str] = {
+        "status_code": "keyword",
+        "region_id": "integer",
+        "available_amount_clp": "float",
+        "closing_at": "integer",
+        "published_at": "integer",
+    }
+
     def __init__(
         self,
         client: AsyncQdrantClient,
@@ -35,7 +46,8 @@ class QdrantTenderRepository(ITenderVectorRepository):
 
     async def ensure_collection(self) -> None:
         """
-        Crea la colección en Qdrant si no existe, configurando un vector nombrado 'tender'.
+        Crea la colección en Qdrant si no existe, configurando un vector nombrado 'tender',
+        y asegura los índices de payload de los campos por los que se filtra.
         """
         result = await self._client.get_collections()
         existing = {c.name for c in result.collections}
@@ -48,6 +60,17 @@ class QdrantTenderRepository(ITenderVectorRepository):
                         distance=Distance.COSINE,
                     )
                 },
+            )
+
+        # Fuera del `if` a propósito: la colección ya existe en todos los entornos
+        # actuales, así que crear los índices solo al crearla significaría que
+        # nadie los tendría nunca sin borrar y reindexar. Qdrant los trata de
+        # forma idempotente.
+        for field_name, field_schema in self._PAYLOAD_INDEXES.items():
+            await self._client.create_payload_index(
+                collection_name=self._COLLECTION_NAME,
+                field_name=field_name,
+                field_schema=field_schema,  # type: ignore[arg-type]
             )
 
     async def upsert(

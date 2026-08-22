@@ -11,6 +11,9 @@ from app.bootstrap import bootstrap
 from app.config import settings
 from app.infrastructure.db import engine
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.repositories.qdrant_tender_repository import (
+    QdrantTenderRepository,
+)
 from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -36,15 +39,15 @@ async def lifespan(app: FastAPI):
                 size=settings.embedding_vector_size, distance=Distance.COSINE
             ),
         )
-    if "tenders" not in existing:
-        app.state.qdrant_client.create_collection(
-            collection_name="tenders",
-            vectors_config={
-                "tender": VectorParams(
-                    size=settings.embedding_vector_size, distance=Distance.COSINE
-                )
-            },
-        )
+
+    # La colección de licitaciones se delega al repositorio en vez de crearse
+    # inline: además de la colección, `ensure_collection` crea los índices de
+    # payload que el pre-filtrado del buscador necesita. Creándola aquí a mano,
+    # esos índices no existirían nunca en un entorno real.
+    await QdrantTenderRepository(
+        client=app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    ).ensure_collection()
 
     ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
     scheduler = TenderScheduler(

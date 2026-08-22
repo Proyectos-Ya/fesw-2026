@@ -84,6 +84,69 @@ async def test_ensure_collection_no_crea_si_ya_existe(
 
 
 @pytest.mark.anyio
+async def test_ensure_collection_crea_los_indices_de_payload(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Sin índice de payload, Qdrant no puede estimar la cardinalidad del filtro.
+
+    Esa estimación es la que decide entre recorrer el grafo HNSW enmascarando o
+    hacer fuerza bruta sobre los puntos que pasan el filtro. Sin ella elige mal y
+    el rendimiento se degrada en silencio, sin que ninguna consulta falle.
+    """
+    client.get_collections.return_value = _collections_response()
+
+    await repository.ensure_collection()
+
+    indexados = {
+        call.kwargs["field_name"] for call in client.create_payload_index.call_args_list
+    }
+    assert indexados == {
+        "status_code",
+        "region_id",
+        "available_amount_clp",
+        "closing_at",
+        "published_at",
+    }
+
+
+@pytest.mark.anyio
+async def test_los_indices_se_crean_aunque_la_coleccion_ya_exista(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """La colección ya existe en todos los entornos actuales.
+
+    Si los índices se crearan solo al crearla, nadie los tendría nunca sin borrar
+    y reindexar. Crearlos siempre es idempotente en Qdrant.
+    """
+    client.get_collections.return_value = _collections_response(COLLECTION)
+
+    await repository.ensure_collection()
+
+    client.create_collection.assert_not_called()
+    assert client.create_payload_index.call_count == 5
+
+
+@pytest.mark.anyio
+async def test_cada_indice_declara_su_tipo(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Un rango sobre un campo indexado como `keyword` no compara como número."""
+    client.get_collections.return_value = _collections_response(COLLECTION)
+
+    await repository.ensure_collection()
+
+    esquemas = {
+        call.kwargs["field_name"]: call.kwargs["field_schema"]
+        for call in client.create_payload_index.call_args_list
+    }
+    assert esquemas["status_code"] == "keyword"
+    assert esquemas["region_id"] == "integer"
+    assert esquemas["closing_at"] == "integer"
+    assert esquemas["published_at"] == "integer"
+    assert esquemas["available_amount_clp"] == "float"
+
+
+@pytest.mark.anyio
 async def test_upsert_con_vector_nombrado(
     repository: QdrantTenderRepository, client: AsyncMock
 ) -> None:

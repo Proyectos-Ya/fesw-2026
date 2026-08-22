@@ -11,6 +11,7 @@ from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
+from app.shared.datetime_utils import to_utc_epoch
 
 
 class TenderIngestionUseCase:
@@ -125,6 +126,13 @@ class TenderIngestionUseCase:
                         "status_code": status_code,
                         "region_id": region_id,
                         "available_amount_clp": dto.available_amount_clp,
+                        # Como epoch entero: Qdrant no compara `datetime`, y el
+                        # buscador manual pre-filtra por rango de fechas sobre el
+                        # payload. Sin esto, filtrar por fecha obligaría a traer
+                        # top-K y descartar después, que devuelve casi nada en
+                        # cuanto el filtro es algo específico.
+                        "closing_at": to_utc_epoch(dto.closing_at),
+                        "published_at": to_utc_epoch(dto.published_at),
                     },
                 )
 

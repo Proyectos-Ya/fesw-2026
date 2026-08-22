@@ -4,6 +4,7 @@ Verifican que tras guardar cada licitación en SQL se genera su embedding
 y se indexa en el repositorio vectorial (Qdrant).
 """
 
+import calendar
 from uuid import UUID
 
 from app.application.repositories.tender_repository import (
@@ -256,6 +257,40 @@ async def test_un_nombre_de_region_desconocido_ya_no_altera_el_id() -> None:
 
     assert repo.region_ids == [16]
     assert payload["region_id"] == 16
+
+
+# ---------------------------------------------------------------------------
+# Fechas en el payload: habilitan el pre-filtrado por rango en Qdrant
+# ---------------------------------------------------------------------------
+
+
+async def test_el_payload_lleva_las_fechas_como_epoch_utc() -> None:
+    """Qdrant no compara `datetime`; el filtro de rango necesita enteros.
+
+    El valor esperado se calcula con `timegm` —camino independiente del de la
+    implementación— sobre la fecha ya normalizada a UTC naive por el DTO.
+    """
+    dto = _make_dto()
+    _, payload = await _ingesta(dto)
+
+    assert payload["closing_at"] == calendar.timegm(dto.closing_at.timetuple())
+    assert payload["published_at"] == calendar.timegm(dto.published_at.timetuple())
+
+
+async def test_las_fechas_del_payload_son_enteros() -> None:
+    _, payload = await _ingesta(_make_dto())
+
+    assert isinstance(payload["closing_at"], int)
+    assert isinstance(payload["published_at"], int)
+
+
+async def test_el_payload_conserva_los_campos_previos() -> None:
+    """Agregar las fechas no debe alterar lo que ya se indexaba."""
+    _, payload = await _ingesta(_make_dto())
+
+    assert payload["status_code"] == "publicada"
+    assert payload["region_id"] == 13
+    assert payload["available_amount_clp"] == 50_000_000.0
 
 
 async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
