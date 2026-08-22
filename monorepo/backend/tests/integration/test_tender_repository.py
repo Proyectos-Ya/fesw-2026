@@ -160,6 +160,16 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_get_tenders_filter_by_province(db_session: AsyncSession):
+    """Prueba el mecanismo del filtro, no que sirva con datos reales.
+
+    Siembra `province` a mano porque la ingesta la escribe siempre como None: el
+    dato no existe en la API de Compra Ágil. Contra la base real este filtro
+    devuelve siempre cero resultados (PENDIENTES.md 6.17).
+
+    Es el mismo patrón que mantuvo invisible el bug de numeración de regiones —un
+    test que crea datos que la ingesta nunca produce—, así que queda dicho en vez
+    de dar la impresión de que la funcionalidad está cubierta.
+    """
     repo = TenderRepository(db_session)
 
     # Seed region
