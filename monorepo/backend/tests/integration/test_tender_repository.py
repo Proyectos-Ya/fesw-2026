@@ -12,6 +12,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderStatusModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.shared.constants import CHILE_REGIONS
 
 # `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
 # que apunta a la base de test y no a la de desarrollo.
@@ -35,7 +36,7 @@ async def test_get_by_id(db_session: AsyncSession):
     repo = TenderRepository(db_session)
 
     # 1. Seed region
-    region = RegionModel(id=13, name="Metropolitana")
+    region = RegionModel(id=13, name=CHILE_REGIONS[13])
     db_session.add(region)
 
     # 2. Seed status
@@ -80,7 +81,7 @@ async def test_get_by_id(db_session: AsyncSession):
     assert len(results) == 1
     assert results[0].id == tender_id
     assert results[0].name == "Materiales Eléctricos"
-    assert results[0].region == "Metropolitana"
+    assert results[0].region == CHILE_REGIONS[13]
 
 
 @pytest.mark.asyncio
@@ -88,8 +89,8 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     repo = TenderRepository(db_session)
 
     # Seed regions
-    r1 = RegionModel(id=13, name="Metropolitana")
-    r2 = RegionModel(id=5, name="Valparaíso")
+    r1 = RegionModel(id=13, name=CHILE_REGIONS[13])
+    r2 = RegionModel(id=5, name=CHILE_REGIONS[5])
     db_session.add(r1)
     db_session.add(r2)
 
@@ -150,11 +151,11 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     await db_session.commit()
 
     # Filter by region
-    filters = TenderFilters(regions=["Metropolitana"])
+    filters = TenderFilters(regions=[CHILE_REGIONS[13]])
     results = await repo.get_tenders(filters)
     assert len(results) == 1
     assert results[0].code == "COT-METRO"
-    assert results[0].region == "Metropolitana"
+    assert results[0].region == CHILE_REGIONS[13]
 
 
 @pytest.mark.asyncio
@@ -162,7 +163,7 @@ async def test_get_tenders_filter_by_province(db_session: AsyncSession):
     repo = TenderRepository(db_session)
 
     # Seed region
-    region = RegionModel(id=13, name="Metropolitana")
+    region = RegionModel(id=13, name=CHILE_REGIONS[13])
     db_session.add(region)
 
     # Seed status

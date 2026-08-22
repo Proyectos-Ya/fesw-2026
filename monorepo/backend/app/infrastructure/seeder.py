@@ -2,33 +2,28 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
+from app.shared.constants import (
+    CHILE_REGIONS,
+    UNKNOWN_REGION_ID,
+    UNKNOWN_REGION_NAME,
+)
 
 
 async def seed_database_metadata(session: AsyncSession):
-    # Seed de Regiones
-    regiones_data = {
-        1: "Arica y Parinacota",
-        2: "Tarapacá",
-        3: "Antofagasta",
-        4: "Atacama",
-        5: "Coquimbo",
-        6: "Valparaíso",
-        7: "Metropolitana de Santiago",
-        8: "Libertador General Bernardo O'Higgins",
-        9: "Maule",
-        10: "Ñuble",
-        11: "Biobío",
-        12: "La Araucanía",
-        13: "Los Ríos",
-        14: "Los Lagos",
-        15: "Aysén del General Carlos Ibáñez del Campo",
-        16: "Magallanes y de la Antártica Chilena",
-    }
+    # Seed de Regiones. La numeración vive en shared/constants para que la
+    # ingesta y esta tabla no puedan divergir: cuando eran dos listas separadas,
+    # no coincidían en ninguna región.
+    regiones_data = {UNKNOWN_REGION_ID: UNKNOWN_REGION_NAME, **CHILE_REGIONS}
 
     for r_id, r_name in regiones_data.items():
         exists = await session.get(RegionModel, r_id)
         if not exists:
             session.add(RegionModel(id=r_id, name=r_name))
+        elif exists.name != r_name:
+            # Corrige las bases sembradas con la numeración antigua. El seeder
+            # corre en cada arranque, así que es el punto natural para hacerlo
+            # sin pedirle una migración manual a nadie.
+            exists.name = r_name
 
     # Seed de Estados. El campo code tiene índice único, por lo que se usa str(id);
     # el código semántico ('publicada', ...) se deriva del status_id vía

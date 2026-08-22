@@ -1,3 +1,36 @@
+# Regiones de Chile en la numeración administrativa, que es la que Mercado
+# Público entrega en `institucion.region`. Verificado contra la API el 21 de
+# agosto de 2026: las 16 regiones aparecen con estos ids.
+#
+# Fuente de verdad única para el seeder y para cualquier traducción entre
+# nombre e id. Antes existían dos numeraciones —el seeder ordenaba de norte a
+# sur y la ingesta usaba esta— que no coincidían en ninguna región, así que una
+# licitación de la Metropolitana terminaba etiquetada como "Los Ríos".
+CHILE_REGIONS: dict[int, str] = {
+    1: "Tarapacá",
+    2: "Antofagasta",
+    3: "Atacama",
+    4: "Coquimbo",
+    5: "Valparaíso",
+    6: "Libertador General Bernardo O'Higgins",
+    7: "Maule",
+    8: "Biobío",
+    9: "La Araucanía",
+    10: "Los Lagos",
+    11: "Aysén del General Carlos Ibáñez del Campo",
+    12: "Magallanes y de la Antártica Chilena",
+    13: "Metropolitana de Santiago",
+    14: "Los Ríos",
+    15: "Arica y Parinacota",
+    16: "Ñuble",
+}
+
+# Fila de respaldo para licitaciones cuya región no llega en la respuesta.
+# `buyer_institution.region_id` es clave foránea, así que necesita apuntar a algo;
+# un id propio deja el caso visible en vez de disfrazarlo de una región real.
+UNKNOWN_REGION_ID = 0
+UNKNOWN_REGION_NAME = "Desconocida"
+
 # Diccionario con los códigos de estado de las licitaciones (Compra Ágil v2)
 # Las claves están en inglés y los valores correspondientes en español según la API.
 TENDER_STATUSES = {

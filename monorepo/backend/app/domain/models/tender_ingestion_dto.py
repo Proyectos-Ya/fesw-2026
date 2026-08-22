@@ -29,6 +29,11 @@ class TenderIngestaDTO(BaseModel):
     buyer_rut: str = Field(..., alias="RutComprador")
     buyer_name: str = Field(..., alias="NombreOrganismo")
     buyer_unit: str = Field(..., alias="UnidadCompra")
+    # La API entrega el id de región como entero (`institucion.region`). Se toma
+    # ese dato en vez de deducirlo del nombre: deducirlo obligaba a mantener una
+    # tabla de alias con acentos y variantes, y a inventar un valor por defecto
+    # cuando ninguna calzaba.
+    region_id: int = Field(..., alias="RegionId")
     region_name: str = Field(..., alias="RegionUnidad")
 
     available_amount_clp: float | None = Field(None, alias="MontoEstimado")
@@ -36,6 +41,12 @@ class TenderIngestaDTO(BaseModel):
 
     class Config:
         populate_by_name = True
+
+    @field_validator("region_name", mode="after")
+    @classmethod
+    def strip_region_name(cls, value: str) -> str:
+        """La API entrega el nombre con espacios sobrantes ("Región de Tarapacá  ")."""
+        return value.strip()
 
     @field_validator("published_at", "closing_at", mode="after")
     @classmethod

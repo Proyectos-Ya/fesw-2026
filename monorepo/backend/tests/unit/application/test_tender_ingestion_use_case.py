@@ -69,7 +69,12 @@ class FakeTenderRepository(ITenderRepository):
         return deep_analysis
 
 
-def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
+def _make_dto(
+    code: str = "LIC-001",
+    status_code: int = 1,
+    region_id: int = 13,
+    region_name: str = "Región Metropolitana de Santiago",
+) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
         {
             "CodigoExterno": code,
@@ -81,7 +86,8 @@ def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
             "RutComprador": "12.345.678-9",
             "NombreOrganismo": "Municipalidad de Santiago",
             "UnidadCompra": "Depto. Obras",
-            "RegionUnidad": "Región Metropolitana de Santiago",
+            "RegionId": region_id,
+            "RegionUnidad": region_name,
             "MontoEstimado": 50_000_000.0,
             "items": [
                 {
@@ -192,6 +198,64 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
 
     _, _, payload = vector_repo.upserts[0]
     assert payload["status_code"] == "publicada"
+
+
+# ---------------------------------------------------------------------------
+# Región: el id viene del DTO, no se deduce del nombre
+# ---------------------------------------------------------------------------
+
+
+class _RepoQueRegistraRegion(FakeTenderRepository):
+    """Captura el region_id con que se crea la institución compradora."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.region_ids: list[int] = []
+
+    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+        self.region_ids.append(region_id)
+        return await super().get_or_create_buyer(rut, name, region_id)
+
+
+async def _ingesta(dto: TenderIngestaDTO) -> tuple[_RepoQueRegistraRegion, dict]:
+    repo = _RepoQueRegistraRegion()
+    vector_repo = FakeTenderVectorRepository()
+    use_case = TenderIngestionUseCase(
+        ingestion_service=FakeIngestionService([dto]),
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=vector_repo,
+    )
+    await use_case.execute()
+    _, _, payload = vector_repo.upserts[0]
+    return repo, payload
+
+
+async def test_la_institucion_usa_el_region_id_del_dto() -> None:
+    repo, _ = await _ingesta(_make_dto(region_id=13))
+
+    assert repo.region_ids == [13]
+
+
+async def test_el_payload_de_qdrant_usa_el_region_id_del_dto() -> None:
+    _, payload = await _ingesta(_make_dto(region_id=13))
+
+    assert payload["region_id"] == 13
+
+
+async def test_un_nombre_de_region_desconocido_ya_no_altera_el_id() -> None:
+    """La regresión que motivó el cambio.
+
+    Antes el id salía de buscar el nombre en una tabla de alias; cualquier
+    grafía no contemplada caía en el valor por defecto (7, "Maule"). Ahora el
+    nombre es solo para mostrar y el id viaja aparte.
+    """
+    repo, payload = await _ingesta(
+        _make_dto(region_id=16, region_name="NOMBRE QUE NO ESTÁ EN NINGUNA TABLA")
+    )
+
+    assert repo.region_ids == [16]
+    assert payload["region_id"] == 16
 
 
 async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:

@@ -7,7 +7,22 @@ import httpx
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.config import settings
 from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
+from app.shared.constants import CHILE_REGIONS, UNKNOWN_REGION_ID
 from app.shared.datetime_utils import CHILE_TZ
+
+
+def _to_region_id(raw: object) -> int:
+    """Normaliza `institucion.region` a un id de región conocido.
+
+    Un valor ausente, no numérico o fuera del rango de las 16 regiones cae en
+    `UNKNOWN_REGION_ID`: es preferible que el caso se vea a que la licitación
+    quede archivada bajo una región real que no le corresponde.
+    """
+    try:
+        region_id = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return UNKNOWN_REGION_ID
+    return region_id if region_id in CHILE_REGIONS else UNKNOWN_REGION_ID
 
 
 class MercadoPublicoClient(ITenderIngestionService):
@@ -126,8 +141,12 @@ class MercadoPublicoClient(ITenderIngestionService):
                             UnidadCompra=str(
                                 institucion.get("unidad_compra", "Sin Unidad")
                             ),
+                            # La API entrega el id de región como entero. Si
+                            # faltara, se usa el id de "Desconocida" en vez de
+                            # atribuirle una región real a la licitación.
+                            RegionId=_to_region_id(institucion.get("region")),
                             RegionUnidad=str(
-                                institucion.get("nombre_region", "Región Metropolitana")
+                                institucion.get("nombre_region", "Sin Región")
                             ),
                             MontoEstimado=presupuesto.get("monto_disponible_clp"),
                         )

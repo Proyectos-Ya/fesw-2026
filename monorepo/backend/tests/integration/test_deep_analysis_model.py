@@ -14,6 +14,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     TenderStatusModel,
 )
+from app.shared.constants import CHILE_REGIONS
 
 # `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
 # que apunta a la base de test y no a la de desarrollo.
@@ -26,7 +27,7 @@ def utc_now_naive() -> datetime:
 async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
     """Crea y persiste las entidades relacionadas (Region, Status, Buyer, Supplier, Tender) necesarias para probar DeepAnalysisModel."""
     # 1. Seed region
-    region = RegionModel(id=13, name="Metropolitana")
+    region = RegionModel(id=13, name=CHILE_REGIONS[13])
     session.add(region)
 
     # 2. Seed status
