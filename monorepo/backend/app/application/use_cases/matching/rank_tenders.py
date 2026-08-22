@@ -15,12 +15,13 @@ from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.tender import Tender
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser, SupplierVectorNotFound
 from app.shared.constants import TENDER_STATUSES, ACTIVE_TENDER_STATUSES
+from app.shared.region_normalizer import are_regions_matching
 
 
 class RankTendersUseCase:
     """
     Caso de uso que orquesta el flujo completo de recomendación de licitaciones (tenders)
-    para un proveedor, implementando persistencia/caching y re-ranking.
+    para un proveedor, implementando persistencia/caching, re-ranking y filtrado estricto por región.
     """
 
     def __init__(
@@ -34,7 +35,7 @@ class RankTendersUseCase:
         matching_result_repo: IMatchingResultRepository,
         model_version: str = "bge-m3-v1",
         vector_search_limit: int = 50,
-        reranker_limit: int = 15,
+        reranker_limit: int = 12,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -98,17 +99,8 @@ class RankTendersUseCase:
                         # Descartar licitaciones cerradas o que no estén en estado activa/publicada
                         if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
                             # Filtrar estrictamente por región si el proveedor tiene regiones configuradas
-                            if supplier.regions:
-                                region_matched = False
-                                tender_region = t.region or t.province
-                                if tender_region:
-                                    reg_lower = tender_region.strip().lower()
-                                    for r in supplier.regions:
-                                        if r.strip().lower() in reg_lower or reg_lower in r.strip().lower():
-                                            region_matched = True
-                                            break
-                                if not region_matched:
-                                    continue
+                            if supplier.regions and not are_regions_matching(t.region or t.province, supplier.regions):
+                                continue
                             m.tender = t
                             valid_results.append(m)
 
@@ -152,24 +144,15 @@ class RankTendersUseCase:
             if uid not in tender_dict:
                 await self.tender_vector_repo.delete(uid)
 
-        # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL)
+        # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL y región estricta)
         active_tenders = []
         similarity_scores = {}
         for uid, sim_score in search_results:
             t = tender_dict.get(uid)
             if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
-                # Filtrar estrictamente por región si el proveedor tiene regiones configuradas
-                if supplier.regions:
-                    region_matched = False
-                    tender_region = t.region or t.province
-                    if tender_region:
-                        reg_lower = tender_region.strip().lower()
-                        for r in supplier.regions:
-                            if r.strip().lower() in reg_lower or reg_lower in r.strip().lower():
-                                region_matched = True
-                                break
-                    if not region_matched:
-                        continue
+                # Filtrar estrictamente por región canónica si el proveedor tiene regiones configuradas
+                if supplier.regions and not are_regions_matching(t.region or t.province, supplier.regions):
+                    continue
                 active_tenders.append(t)
                 similarity_scores[uid] = sim_score
 

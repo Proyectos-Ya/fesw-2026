@@ -91,12 +91,3 @@ class TenderMetadataModel(SQLModel, table=True):
     is_processed: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-# Tabla para almacenar el JSON crudo del detalle de cada licitación obtenida de la API
-class TenderDetailModel(SQLModel, table=True):
-    __tablename__ = "tender_detail"  # type: ignore
-    id: UUID = Field(primary_key=True)
-    code: str = Field(unique=True, index=True)
-    raw_data: dict = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)

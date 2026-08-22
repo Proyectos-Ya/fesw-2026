@@ -48,13 +48,21 @@ async def lifespan(app: FastAPI):
         qdrant_client=app.state.qdrant_async_client,
     )
     scheduler = TenderScheduler(ingestion_service=ingestion_service)
-    print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
-    metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
-    processing_task = asyncio.create_task(scheduler.start_processing_loop())
+    metadata_task = None
+    processing_task = None
+    if settings.run_auto_ingestion:
+        print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
+        metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
+        processing_task = asyncio.create_task(scheduler.start_processing_loop())
+    else:
+        print("[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local.")
+
     yield
 
-    metadata_task.cancel()
-    processing_task.cancel()
+    if metadata_task:
+        metadata_task.cancel()
+    if processing_task:
+        processing_task.cancel()
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
 

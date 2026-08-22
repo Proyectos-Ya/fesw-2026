@@ -14,7 +14,7 @@ from app.application.services.embedding_service import IEmbeddingService
 from app.application.repositories.tender_vector_repository import ITenderVectorRepository
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO, ItemLicitacionDTO
-from app.infrastructure.repositories.tender_model import TenderMetadataModel, TenderDetailModel
+from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.qdrant_tender_repository import QdrantTenderRepository
 from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
@@ -151,15 +151,6 @@ class TenderIngestionService(ITenderIngestionService):
                             session.add(metadata_item)
                         await session.commit()
                         continue
-
-                    # Persistir en tender_detail
-                    detail_model = TenderDetailModel(
-                        id=uuid.uuid4(),
-                        code=code,
-                        raw_data=detail_payload,
-                        created_at=datetime.now(UTC).replace(tzinfo=None)
-                    )
-                    session.add(detail_model)
 
                     # Convertir a DTO e ingestar en SQL y Vector DB
                     dto = self._parse_to_dto(detail_payload)

@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
     mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
     disable_reranker: bool = False
+    run_auto_ingestion: bool = True
     target_region: Optional[str] = None
 
     # --- Gemini ---
