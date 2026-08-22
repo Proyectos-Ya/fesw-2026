@@ -22,6 +22,7 @@ from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
+from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
@@ -410,3 +411,82 @@ async def test_sin_resultados_devuelve_lista_vacia_y_no_hidrata() -> None:
     assert resultado.items == []
     assert resultado.total == 0
     assert resultado.is_truncated is False
+
+
+# ---------------------------------------------------------------------------
+# Validación de criterios incoherentes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_rango_de_cierre_invertido() -> None:
+    """Un rango invertido no devuelve nada nunca; conviene decirlo, no fingir
+    una búsqueda vacía que el usuario interpretaría como 'no hay licitaciones'."""
+    use_case, user_id, _, _, _ = await _build()
+    base = datetime(2026, 9, 1)
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(
+            user_id=user_id,
+            criteria=TenderFilterCriteria(
+                closing_from=base + timedelta(days=5), closing_to=base
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_rango_de_publicacion_invertido() -> None:
+    use_case, user_id, _, _, _ = await _build()
+    base = datetime(2026, 9, 1)
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(
+            user_id=user_id,
+            criteria=TenderFilterCriteria(
+                published_from=base + timedelta(days=5), published_to=base
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_rango_de_monto_invertido() -> None:
+    use_case, user_id, _, _, _ = await _build()
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(
+            user_id=user_id,
+            criteria=TenderFilterCriteria(min_amount=500_000, max_amount=100_000),
+        )
+
+
+@pytest.mark.asyncio
+async def test_rechaza_montos_negativos() -> None:
+    use_case, user_id, _, _, _ = await _build()
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(
+            user_id=user_id, criteria=TenderFilterCriteria(min_amount=-1)
+        )
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_offset_negativo() -> None:
+    use_case, user_id, _, _, _ = await _build()
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(user_id=user_id, q="cables", offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_acepta_un_rango_con_extremos_iguales() -> None:
+    """Los límites son inclusivos, así que un rango de un solo punto es válido."""
+    use_case, user_id, vector_repo, _, _ = await _build()
+    base = datetime(2026, 9, 1)
+
+    await use_case.execute(
+        user_id=user_id,
+        q="cables",
+        criteria=TenderFilterCriteria(closing_from=base, closing_to=base),
+    )
+
+    assert len(vector_repo.searched_vectors) == 1

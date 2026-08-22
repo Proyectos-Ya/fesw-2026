@@ -1,14 +1,22 @@
 from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from qdrant_client.http.exceptions import UnexpectedResponse as QdrantException
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.schemas.tender_schema import (
+    TenderFilterCriteria,
+    TenderSearchResult,
+)
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.user import User
@@ -21,7 +29,28 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
-from app.domain.errors.tender_errors import TenderNotFound
+from app.domain.errors.tender_errors import InvalidSearchCriteria, TenderNotFound
+from app.shared.constants import region_id_by_name
+
+
+def _resolve_region_ids(regions: list[str] | None) -> list[int] | None:
+    """Traduce nombres de región a ids en el borde HTTP.
+
+    El frontend filtra por nombre —es lo que muestra al usuario— y el criterio de
+    búsqueda usa ids, que es lo que guarda el payload de Qdrant. Un nombre
+    desconocido se rechaza en vez de ignorarse: ignorarlo ensancharía la búsqueda
+    en silencio y el usuario vería resultados de regiones que no pidió.
+    """
+    if not regions:
+        return None
+
+    ids: list[int] = []
+    for nombre in regions:
+        region_id = region_id_by_name(nombre)
+        if region_id is None:
+            raise InvalidSearchCriteria(f"Región desconocida: {nombre!r}.")
+        ids.append(region_id)
+    return ids
 
 
 class DeepAnalysisRequest(BaseModel):
@@ -44,6 +73,7 @@ def create_tender_router(
     get_rank_tenders_use_case: Callable,
     get_current_user: Callable,
     get_get_or_create_deep_analysis_use_case: Callable,
+    get_search_tenders_use_case: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -54,6 +84,91 @@ def create_tender_router(
         tags=["Tenders"],
         dependencies=[Depends(get_current_user)],
     )
+
+    # `/search` va antes que cualquier ruta con parámetro de path: declarada
+    # después de un `/{tender_id}`, FastAPI intentaría interpretar "search" como
+    # UUID. Hoy no hay conflicto, pero lo habrá al agregar el detalle (HdU 17).
+    @router.get(
+        "/search",
+        response_model=TenderSearchResult,
+        responses={
+            422: {"description": "Criterios de búsqueda inválidos"},
+            503: {
+                "description": "No se pudo completar la búsqueda: el motor de "
+                "búsqueda o la base de datos no están disponibles"
+            },
+        },
+    )
+    async def search_tenders(
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[SearchTendersUseCase, Depends(get_search_tenders_use_case)],
+        q: Annotated[
+            str | None,
+            Query(
+                max_length=200,
+                description="Texto libre. Se busca por significado, no por "
+                "coincidencia literal. Vacío ordena por afinidad con la empresa.",
+            ),
+        ] = None,
+        regions: Annotated[
+            list[str] | None,
+            Query(description="Nombres de región, tal como los expone la API."),
+        ] = None,
+        status_codes: Annotated[
+            list[str] | None,
+            Query(description="Estados: publicada, cerrada, desierta, adjudicada..."),
+        ] = None,
+        closing_from: Annotated[datetime | None, Query()] = None,
+        closing_to: Annotated[datetime | None, Query()] = None,
+        published_from: Annotated[datetime | None, Query()] = None,
+        published_to: Annotated[datetime | None, Query()] = None,
+        min_amount: Annotated[float | None, Query(ge=0)] = None,
+        max_amount: Annotated[float | None, Query(ge=0)] = None,
+        offset: Annotated[
+            int,
+            Query(ge=0, description="Para pedir el bloque siguiente si se truncó."),
+        ] = 0,
+    ):
+        """
+        Busca licitaciones combinando matching semántico con filtros absolutos.
+
+        Los filtros se aplican **dentro** de la búsqueda, no sobre el resultado,
+        así que acotan el corpus completo y no solo lo que ya se había traído.
+
+        Cero coincidencias es una respuesta válida: devuelve 200 con `items`
+        vacío y `total` en 0, no un 404.
+        """
+        try:
+            # Dentro del try: `_resolve_region_ids` también levanta
+            # InvalidSearchCriteria y debe traducirse a 422, no escaparse como 500.
+            criteria = TenderFilterCriteria(
+                region_ids=_resolve_region_ids(regions),
+                status_codes=status_codes,
+                closing_from=closing_from,
+                closing_to=closing_to,
+                published_from=published_from,
+                published_to=published_to,
+                min_amount=min_amount,
+                max_amount=max_amount,
+            )
+            return await use_case.execute(
+                user_id=current_user.id, q=q, criteria=criteria, offset=offset
+            )
+        except InvalidSearchCriteria as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
+        except (SQLAlchemyError, QdrantException, OSError) as e:
+            # El criterio pide avisar que la búsqueda no se pudo completar, sin
+            # bloquear el resto de la plataforma. Un 503 acotado a este endpoint
+            # deja el resto de la navegación intacta.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "No se pudo completar la búsqueda en este momento. "
+                    "Inténtalo nuevamente en unos minutos."
+                ),
+            ) from e
 
     @router.get(
         "/recommended",

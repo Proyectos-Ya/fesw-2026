@@ -17,6 +17,7 @@ from app.application.schemas.tender_schema import (
 )
 from app.application.services.embedding_service import IEmbeddingService
 from app.domain.entities.tender import Tender
+from app.domain.errors.tender_errors import InvalidSearchCriteria
 
 # Tope de resultados por petición. Con la semántica no existe un corte natural:
 # toda licitación tiene algún grado de similitud con la consulta, así que "todos
@@ -72,6 +73,7 @@ class SearchTendersUseCase:
         offset: int = 0,
     ) -> TenderSearchResult:
         criteria = criteria or TenderFilterCriteria()
+        self._validate(criteria, offset)
         query_text = (q or "").strip()
 
         vector = await self._resolve_vector(user_id, query_text)
@@ -92,6 +94,44 @@ class SearchTendersUseCase:
             total=total,
             is_truncated=total > offset + len(hits),
         )
+
+    @staticmethod
+    def _validate(criteria: TenderFilterCriteria, offset: int) -> None:
+        """Rechaza criterios que no pueden cumplirse.
+
+        Un rango invertido devolvería una lista vacía, y el usuario la leería
+        como "no hay licitaciones" en vez de "escribiste el filtro al revés".
+        Los extremos iguales sí son válidos: los límites son inclusivos.
+        """
+        if offset < 0:
+            raise InvalidSearchCriteria("El desplazamiento no puede ser negativo.")
+
+        rangos_de_fecha = (
+            ("cierre", criteria.closing_from, criteria.closing_to),
+            ("publicación", criteria.published_from, criteria.published_to),
+        )
+        for nombre, desde, hasta in rangos_de_fecha:
+            if desde is not None and hasta is not None and desde > hasta:
+                raise InvalidSearchCriteria(
+                    f"El rango de {nombre} está invertido: "
+                    f"la fecha inicial es posterior a la final."
+                )
+
+        for nombre, monto in (
+            ("mínimo", criteria.min_amount),
+            ("máximo", criteria.max_amount),
+        ):
+            if monto is not None and monto < 0:
+                raise InvalidSearchCriteria(f"El monto {nombre} no puede ser negativo.")
+
+        if (
+            criteria.min_amount is not None
+            and criteria.max_amount is not None
+            and criteria.min_amount > criteria.max_amount
+        ):
+            raise InvalidSearchCriteria(
+                "El rango de monto está invertido: el mínimo supera al máximo."
+            )
 
     async def _resolve_vector(
         self, user_id: UUID, query_text: str

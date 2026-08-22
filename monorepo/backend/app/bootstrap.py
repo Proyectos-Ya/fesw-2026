@@ -31,6 +31,7 @@ from app.application.use_cases.questions.answer_question_use_case import (
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
+from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import get_session
@@ -123,6 +124,25 @@ def get_rank_tenders_use_case(
         weighting_service=weighting_service,
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
+    )
+
+
+def get_search_tenders_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    supplier_vector_repo: Annotated[
+        ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+    ],
+    tender_vector_repo: Annotated[
+        ITenderVectorRepository, Depends(get_tender_vector_repo)
+    ],
+    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+) -> SearchTendersUseCase:
+    return SearchTendersUseCase(
+        supplier_repo=SupplierRepository(session),
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=TenderRepository(session),
+        embedding_service=embedding_service,
     )
 
 
@@ -238,5 +258,6 @@ def bootstrap(app: FastAPI) -> None:
         cookie_secure=settings.auth_cookie_secure,
         cookie_max_age=settings.access_token_expire_minutes * 60,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
+        get_search_tenders_use_case=get_search_tenders_use_case,
     )
     app.include_router(router)

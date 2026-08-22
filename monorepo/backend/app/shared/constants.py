@@ -57,3 +57,16 @@ TENDER_STATUS_CODE_BY_ID = {
     8: TENDER_STATUSES["DESERTED"],
     18: "adjudicada",
 }
+
+
+# Índice inverso para traducir nombre -> id en el borde HTTP: el frontend filtra
+# por nombre de región y el criterio de búsqueda usa ids. Se normaliza porque los
+# nombres viajan en una query string y no hay garantía de grafía exacta.
+_REGION_ID_BY_NORMALIZED_NAME = {
+    name.strip().casefold(): region_id for region_id, name in CHILE_REGIONS.items()
+}
+
+
+def region_id_by_name(name: str) -> int | None:
+    """Resuelve el id de una región por su nombre. `None` si no existe."""
+    return _REGION_ID_BY_NORMALIZED_NAME.get(name.strip().casefold())

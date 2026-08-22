@@ -9,7 +9,11 @@ Los ids son los que entrega Mercado Público en `institucion.region`, verificado
 contra la API el 21 de agosto de 2026 sobre las 16 regiones.
 """
 
-from app.shared.constants import CHILE_REGIONS, UNKNOWN_REGION_ID
+from app.shared.constants import (
+    CHILE_REGIONS,
+    UNKNOWN_REGION_ID,
+    region_id_by_name,
+)
 
 
 class TestChileRegions:
@@ -38,3 +42,27 @@ class TestChileRegions:
 
     def test_el_id_de_region_desconocida_no_pisa_una_real(self):
         assert UNKNOWN_REGION_ID not in CHILE_REGIONS
+
+
+class TestRegionIdByName:
+    """El frontend filtra por nombre de región; el criterio de búsqueda usa ids.
+
+    La traducción ocurre en el borde HTTP. Es tolerante a mayúsculas y espacios
+    porque los nombres viajan en una query string escrita por otro equipo.
+    """
+
+    def test_resuelve_un_nombre_exacto(self):
+        assert region_id_by_name("Metropolitana de Santiago") == 13
+
+    def test_ignora_mayusculas_y_espacios(self):
+        assert region_id_by_name("  metropolitana DE santiago ") == 13
+
+    def test_devuelve_none_si_no_existe(self):
+        assert region_id_by_name("Región Inventada") is None
+
+    def test_devuelve_none_con_texto_vacio(self):
+        assert region_id_by_name("   ") is None
+
+    def test_resuelve_todas_las_regiones_de_la_constante(self):
+        for r_id, nombre in CHILE_REGIONS.items():
+            assert region_id_by_name(nombre) == r_id
