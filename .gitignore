@@ -38,7 +38,9 @@ Thumbs.db
 playwright-report/
 test-results/
 
-# Claude Code
+# Claude Code / Agents / Graphify
 CLAUDE.md
 .claude
+.agents/
+graphify-out/
 
