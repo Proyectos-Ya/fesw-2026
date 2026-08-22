@@ -18,19 +18,9 @@ class TenderFilters(BaseModel):
     """Filters class to query tenders by multiple dynamic parameters."""
 
     ids: list[UUID] | None = None
+    # La granularidad geográfica llega hasta la región: ninguna de las dos APIs de
+    # Mercado Público entrega provincia. Ver PENDIENTES.md 6.17.
     regions: list[str] | None = None  # Filter by Region Names (e.g. ['Metropolitana'])
-
-    # INOPERANTE: `tender.province` es NULL en todas las filas. La ingesta la
-    # escribe siempre como None porque el dato **no existe en la fuente**: la API
-    # de Compra Ágil solo entrega región (`institucion.region` y `nombre_region`).
-    # Lo único geográfico adicional es `entrega.direccion_entrega`, texto libre y
-    # además dirección de entrega, no ubicación del comprador.
-    #
-    # Este filtro devuelve siempre cero resultados. Se conserva para no romper a
-    # quien lo llame, pero no construir encima: ver PENDIENTES.md 6.17. La API de
-    # licitaciones sí trae `ComunaUnidad`, así que se destraba si se amplía la
-    # ingesta (6.16).
-    provinces: list[str] | None = None
 
 
 class ITenderRepository(ABC):

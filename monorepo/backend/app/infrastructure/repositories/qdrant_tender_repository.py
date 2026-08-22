@@ -121,7 +121,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
         conditions = []
 
         # Atributos de filtro del payload:
-        # code (str), region_id (int), province (str), available_amount_clp (float), status_code (str)
+        # code (str), region_id (int), available_amount_clp (float), status_code (str)
         if "code" in filters and filters["code"] is not None:
             conditions.append(
                 FieldCondition(key="code", match=MatchValue(value=filters["code"]))
@@ -130,12 +130,6 @@ class QdrantTenderRepository(ITenderVectorRepository):
             conditions.append(
                 FieldCondition(
                     key="region_id", match=MatchValue(value=filters["region_id"])
-                )
-            )
-        if "province" in filters and filters["province"] is not None:
-            conditions.append(
-                FieldCondition(
-                    key="province", match=MatchValue(value=filters["province"])
                 )
             )
         if (

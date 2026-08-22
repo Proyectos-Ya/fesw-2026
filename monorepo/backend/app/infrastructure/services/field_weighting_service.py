@@ -38,7 +38,7 @@ class FieldWeightingService(IWeightingService):
 
             # 2. Coincidencia de región (region de la licitación con regions del proveedor)
             region_matched = False
-            tender_region = tender.region or tender.province
+            tender_region = tender.region
             if supplier.regions and tender_region:
                 reg_lower = tender_region.strip().lower()
                 for region in supplier.regions:

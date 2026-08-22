@@ -67,7 +67,6 @@ async def test_get_by_id(db_session: AsyncSession):
         last_change_at=utc_now_naive(),
         buyer_rut="12.345.678-9",
         buyer_unit="Operaciones",
-        province="Santiago",
         available_amount_clp=500000.0,
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),
@@ -128,7 +127,6 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
         last_change_at=utc_now_naive(),
         buyer_rut="11.111.111-1",
         buyer_unit="IT",
-        province="Santiago",
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),
     )
@@ -142,7 +140,6 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
         last_change_at=utc_now_naive(),
         buyer_rut="22.222.222-2",
         buyer_unit="IT",
-        province="Valparaíso",
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),
     )
@@ -156,76 +153,3 @@ async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     assert len(results) == 1
     assert results[0].code == "COT-METRO"
     assert results[0].region == CHILE_REGIONS[13]
-
-
-@pytest.mark.asyncio
-async def test_get_tenders_filter_by_province(db_session: AsyncSession):
-    """Prueba el mecanismo del filtro, no que sirva con datos reales.
-
-    Siembra `province` a mano porque la ingesta la escribe siempre como None: el
-    dato no existe en la API de Compra Ágil. Contra la base real este filtro
-    devuelve siempre cero resultados (PENDIENTES.md 6.17).
-
-    Es el mismo patrón que mantuvo invisible el bug de numeración de regiones —un
-    test que crea datos que la ingesta nunca produce—, así que queda dicho en vez
-    de dar la impresión de que la funcionalidad está cubierta.
-    """
-    repo = TenderRepository(db_session)
-
-    # Seed region
-    region = RegionModel(id=13, name=CHILE_REGIONS[13])
-    db_session.add(region)
-
-    # Seed status
-    status = TenderStatusModel(id=1, code="publicada", name="Publicada")
-    db_session.add(status)
-
-    # Seed buyer
-    buyer = BuyerInstitutionModel(
-        rut="12.345.678-9",
-        name="Comprador Regional",
-        region_id=13,
-        created_at=utc_now_naive(),
-        updated_at=utc_now_naive(),
-    )
-    db_session.add(buyer)
-    await db_session.commit()
-
-    # Create tenders with different provinces
-    t1 = TenderModel(
-        id=uuid4(),
-        code="T1",
-        name="Tender 1",
-        status_id=1,
-        published_at=utc_now_naive(),
-        closing_at=utc_now_naive(),
-        last_change_at=utc_now_naive(),
-        buyer_rut="12.345.678-9",
-        buyer_unit="Operations",
-        province="Santiago",
-        created_at=utc_now_naive(),
-        updated_at=utc_now_naive(),
-    )
-    t2 = TenderModel(
-        id=uuid4(),
-        code="T2",
-        name="Tender 2",
-        status_id=1,
-        published_at=utc_now_naive(),
-        closing_at=utc_now_naive(),
-        last_change_at=utc_now_naive(),
-        buyer_rut="12.345.678-9",
-        buyer_unit="Operations",
-        province="Chacabuco",
-        created_at=utc_now_naive(),
-        updated_at=utc_now_naive(),
-    )
-    db_session.add(t1)
-    db_session.add(t2)
-    await db_session.commit()
-
-    # Filter by province
-    filters = TenderFilters(provinces=["Chacabuco"])
-    results = await repo.get_tenders(filters)
-    assert len(results) == 1
-    assert results[0].code == "T2"

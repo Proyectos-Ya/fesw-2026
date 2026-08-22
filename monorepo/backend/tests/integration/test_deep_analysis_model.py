@@ -66,7 +66,6 @@ async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
         last_change_at=utc_now_naive(),
         buyer_rut="12.345.678-9",
         buyer_unit="Operaciones",
-        province="Santiago",
         available_amount_clp=500000.0,
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),

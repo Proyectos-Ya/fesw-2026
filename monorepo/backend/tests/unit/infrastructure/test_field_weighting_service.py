@@ -49,7 +49,7 @@ def test_calculate_scores_con_coincidencia_completa(
         last_change_at=now,
         buyer_rut="11.111.111-1",
         buyer_unit="TI",
-        province="Santiago, Metropolitana",  # Coincide con región Metropolitana
+        region="Santiago, Metropolitana",  # Coincide con región Metropolitana
         available_amount_clp=5000000.0,
         items=[
             TenderItem(
@@ -88,7 +88,7 @@ def test_calculate_scores_sin_coincidencias(
         last_change_at=now,
         buyer_rut="22.222.222-2",
         buyer_unit="Obras",
-        province="Concepción",  # No coincide con regiones Metropolitana/Valparaíso
+        region="Concepción",  # No coincide con regiones Metropolitana/Valparaíso
         available_amount_clp=100000.0,
         items=[
             TenderItem(
@@ -125,7 +125,7 @@ def test_calculate_scores_ordena_resultados_descendente(
         last_change_at=now,
         buyer_rut="2",
         buyer_unit="X",
-        province="Biobío",
+        region="Biobío",
     )  # Score final esperado: 0.2 * 0.5 = 0.1
 
     t_high = Tender(
@@ -138,7 +138,7 @@ def test_calculate_scores_ordena_resultados_descendente(
         last_change_at=now,
         buyer_rut="1",
         buyer_unit="X",
-        province="Santiago",
+        region="Santiago",
     )  # Score final esperado: (0.9 * 0.5) + 0.2 (region) + 0.2 (sector) = 0.45 + 0.4 = 0.85
 
     results = service.calculate_scores([(t_low, 0.2), (t_high, 0.9)], supplier)

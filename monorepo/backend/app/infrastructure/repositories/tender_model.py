@@ -47,7 +47,6 @@ class TenderModel(SQLModel, table=True):
     last_change_at: datetime
     buyer_rut: str = Field(foreign_key="buyer_institution.rut")
     buyer_unit: str
-    province: str | None = None
     available_amount_clp: float | None = None
     created_at: datetime
     updated_at: datetime

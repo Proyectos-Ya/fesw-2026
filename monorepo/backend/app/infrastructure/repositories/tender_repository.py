@@ -47,7 +47,6 @@ class TenderRepository(ITenderRepository):
             buyer_rut=model.buyer_rut,
             buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
-            province=model.province,
             region=model.buyer.region.name
             if model.buyer and model.buyer.region
             else None,
@@ -81,7 +80,6 @@ class TenderRepository(ITenderRepository):
             last_change_at=entity.last_change_at,
             buyer_rut=entity.buyer_rut,
             buyer_unit=entity.buyer_unit,
-            province=entity.province,
             available_amount_clp=entity.available_amount_clp,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -116,9 +114,6 @@ class TenderRepository(ITenderRepository):
 
         if filters.ids:
             query = query.where(col(TenderModel.id).in_(filters.ids))
-
-        if filters.provinces:
-            query = query.where(col(TenderModel.province).in_(filters.provinces))
 
         result = await self.session.exec(query)
         models = result.all()

@@ -81,7 +81,6 @@ class TenderIngestionUseCase:
                     last_change_at=now,
                     buyer_rut=safe_buyer_rut,
                     buyer_unit=dto.buyer_unit,
-                    province=None,
                     available_amount_clp=dto.available_amount_clp,
                     created_at=now,
                     updated_at=now,

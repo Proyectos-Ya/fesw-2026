@@ -168,7 +168,6 @@ async def test_search_by_supplier_vector_con_filtros(
     filters = {
         "code": "XYZ",
         "region_id": 16,
-        "province": "Santiago",
         "available_amount_clp": 1500000.0,
         "status_code": "publicada",
     }
