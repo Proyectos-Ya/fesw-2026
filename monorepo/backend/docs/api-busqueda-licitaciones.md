@@ -12,19 +12,13 @@ que hacer nada especial.
 
 ---
 
-## ⚠️ Antes de empezar: un cambio que te afecta
+## Nota sobre ubicación
 
-**El campo `province` ya no existe.** Hay que quitarlo de `Tender` en
-`src/features/matches/tenderTypes.ts`:
+**El campo `province` ya no existe** — ninguna de las dos APIs de Mercado Público lo
+entrega, así que siempre llegaba `null`. La granularidad geográfica llega hasta **región**.
 
-```diff
-  buyer_unit: string;
-- province: string | null;
-  region: string | null;
-```
-
-Ninguna de las dos APIs de Mercado Público entrega provincia, así que siempre venía
-`null`. La granularidad geográfica llega hasta **región**.
+Ya está quitado del frontend (tipo, tarjeta y vista de detalle), así que no tienes que
+hacer nada. Solo tenlo presente al filtrar: `regions` es el único filtro geográfico.
 
 ---
 
