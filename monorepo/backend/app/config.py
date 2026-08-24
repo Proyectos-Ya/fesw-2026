@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.shared.constants import (
@@ -8,6 +9,22 @@ from app.shared.constants import (
 )
 
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+# Largo mínimo de la clave de firma, en bytes. Es lo que exige el RFC 7518 §3.2
+# para HS256: una clave más corta que el hash no aporta más seguridad que su
+# propio largo y vuelve la fuerza bruta viable.
+#
+# Va a nivel de módulo y no dentro de Settings porque Pydantic convierte los
+# atributos con guion bajo inicial en ModelPrivateAttr, no en el entero.
+MIN_JWT_SECRET_BYTES = 32
+
+# La clave de ejemplo que estuvo publicada en el repositorio como valor por
+# defecto de `jwt_secret_key`. Se rechaza explícitamente: sin esto, alguien
+# podría recuperarla del historial de git, ponerla en su .env y quedar tan
+# expuesto como antes, pero ahora en silencio.
+_CLAVE_PUBLICADA = "dev-insecure-secret-change-me"
+
+_COMO_GENERAR = 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
 
 
 class Settings(BaseSettings):
@@ -28,9 +45,13 @@ class Settings(BaseSettings):
     qdrant_grpc_port: int = 6334
 
     # --- Auth / JWT ---
-    # Valores por defecto para no romper si el .env no carga; en producción
-    # jwt_secret_key DEBE venir del entorno.
-    jwt_secret_key: str = "dev-insecure-secret-change-me"
+    # Sin valor por defecto a propósito. Antes había uno ("dev-insecure-secret
+    # -change-me") que además estaba publicado en el repositorio: como la
+    # variable no llegaba por entorno, la aplicación firmaba las sesiones reales
+    # con una cadena que cualquiera podía leer. Un default cómodo convierte un
+    # fallo de configuración en un agujero silencioso, así que ahora la
+    # aplicación no arranca sin clave.
+    jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     # Nombre de la cookie httpOnly donde viaja el token
@@ -73,6 +94,29 @@ class Settings(BaseSettings):
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.
     is_dev: bool = False
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _validar_clave_de_firma(cls, value: str) -> str:
+        """Rechaza claves cortas y la que estuvo publicada en el repositorio.
+
+        Se valida acá y no en el borde HTTP porque el momento correcto para
+        fallar es el arranque: una clave débil no produce ningún error visible
+        en runtime, solo tokens falsificables.
+        """
+        if value == _CLAVE_PUBLICADA:
+            raise ValueError(
+                "JWT_SECRET_KEY es la clave de ejemplo que estuvo publicada en el "
+                f"repositorio. Genera una propia:\n  {_COMO_GENERAR}"
+            )
+        largo = len(value.encode("utf-8"))
+        if largo < MIN_JWT_SECRET_BYTES:
+            raise ValueError(
+                f"JWT_SECRET_KEY debe tener al menos {MIN_JWT_SECRET_BYTES} bytes "
+                f"para HS256 (RFC 7518 §3.2); tiene {largo}. Genera una con:\n"
+                f"  {_COMO_GENERAR}"
+            )
+        return value
 
     @property
     def database_url(self) -> str:
