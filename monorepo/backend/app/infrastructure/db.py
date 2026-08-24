@@ -6,12 +6,33 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 
+
+def _connect_args() -> dict[str, object]:
+    """Ajustes de asyncpg según se hable con Postgres directo o con un pooler.
+
+    Detrás de un pooler en modo transacción (Supavisor de Supabase en el 6543,
+    PgBouncer) cada consulta puede caer en una conexión distinta del backend, así
+    que una sentencia preparada en otra sesión no existe. asyncpg las usa por
+    defecto, y el resultado son errores intermitentes de "prepared statement
+    ... does not exist" — no un fallo limpio y reproducible.
+    """
+    if not settings.db_disable_prepared_statements:
+        return {}
+    return {
+        "statement_cache_size": 0,
+        # asyncpg también cachea las descripciones de tipo de cada sentencia;
+        # desactivar solo lo primero deja el problema a medias.
+        "prepared_statement_cache_size": 0,
+    }
+
+
 engine = create_async_engine(
     settings.database_url,
     # En producción, echo=True escribe cada sentencia SQL con sus parámetros en
     # los logs: volumen enorme y datos en claro.
     echo=settings.is_dev,
     pool_pre_ping=True,
+    connect_args=_connect_args(),
 )
 
 async_session_maker = async_sessionmaker(

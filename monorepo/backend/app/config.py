@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.shared.constants import (
@@ -30,10 +30,29 @@ _COMO_GENERAR = 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore"
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # Necesario porque database_url_override declara alias DATABASE_URL y aun
+        # así debe poder construirse por nombre en los tests.
+        populate_by_name=True,
     )
 
     # --- PostgreSQL ---
+    # Cadena de conexión completa. Tiene prioridad sobre los POSTGRES_* de abajo,
+    # que siguen sirviendo para el compose local. Los proveedores gestionados
+    # (Supabase, Neon, RDS) entregan la URL armada, y con el pooler el usuario
+    # viene en formato `postgres.<project-ref>`: descomponerla en piezas para
+    # volver a componerla es una fuente de errores gratuita.
+    database_url_override: str | None = Field(default=None, alias="DATABASE_URL")
+
+    # Desactiva el caché de sentencias preparadas de asyncpg. Obligatorio detrás
+    # de un pooler en modo transacción (Supavisor de Supabase en el puerto 6543,
+    # PgBouncer): ahí cada consulta puede caer en una conexión distinta, y una
+    # sentencia preparada en otra sesión no existe. El síntoma son errores
+    # intermitentes de "prepared statement does not exist", no un fallo limpio.
+    db_disable_prepared_statements: bool = False
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "proyectosya"
@@ -157,6 +176,26 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """URL de conexión, con el driver asyncpg garantizado.
+
+        Los proveedores entregan la URL con esquema `postgresql://` o
+        `postgres://`, que SQLAlchemy resuelve al driver **síncrono**. Pegarla
+        tal cual en el `.env` produce un error confuso sobre greenlets en la
+        primera consulta, así que se normaliza acá.
+        """
+        if self.database_url_override:
+            url = self.database_url_override
+            for prefijo in ("postgresql+asyncpg://", "postgres+asyncpg://"):
+                if url.startswith(prefijo):
+                    return url
+            for viejo, nuevo in (
+                ("postgresql://", "postgresql+asyncpg://"),
+                ("postgres://", "postgresql+asyncpg://"),
+            ):
+                if url.startswith(viejo):
+                    return nuevo + url[len(viejo) :]
+            return url
+
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

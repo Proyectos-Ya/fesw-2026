@@ -103,3 +103,54 @@ class TestCorsOrigins:
         """Una coma sobrante no debe producir un origen vacío en la lista."""
         s = _construir(CLAVE_VALIDA, cors_origins="https://a.cl,,")
         assert s.cors_origins_list == ["https://a.cl"]
+
+
+class TestUrlDeBaseDeDatos:
+    """`DATABASE_URL` gana sobre los POSTGRES_* y llega siempre con driver async.
+
+    Los proveedores gestionados entregan la URL con esquema `postgresql://`, que
+    SQLAlchemy resuelve al driver SÍNCRONO. Pegarla tal cual produce un error
+    confuso sobre greenlets en la primera consulta, no al configurar.
+    """
+
+    def test_sin_override_se_compone_desde_las_piezas(self):
+        url = _construir(CLAVE_VALIDA, postgres_host="db", postgres_db="x").database_url
+        assert url == "postgresql+asyncpg://postgres:x@db:5432/x"
+
+    def test_el_override_gana_sobre_las_piezas(self):
+        s = _construir(
+            CLAVE_VALIDA,
+            postgres_host="ignorado",
+            database_url_override="postgresql+asyncpg://u:p@real:5432/d",
+        )
+        assert "real" in s.database_url and "ignorado" not in s.database_url
+
+    @pytest.mark.parametrize(
+        "entrada",
+        [
+            "postgresql://u:p@db.abc.supabase.co:5432/postgres",
+            "postgres://u:p@db.abc.supabase.co:5432/postgres",
+            "postgresql+asyncpg://u:p@db.abc.supabase.co:5432/postgres",
+        ],
+    )
+    def test_siempre_termina_en_asyncpg(self, entrada: str):
+        s = _construir(CLAVE_VALIDA, database_url_override=entrada)
+        assert s.database_url.startswith("postgresql+asyncpg://")
+        # La contraseña y el host tienen que sobrevivir a la normalización.
+        assert "u:p@db.abc.supabase.co:5432/postgres" in s.database_url
+
+
+class TestSentenciasPreparadas:
+    def test_por_defecto_no_se_tocan(self):
+        assert _construir(CLAVE_VALIDA).db_disable_prepared_statements is False
+
+    def test_desactivarlas_apaga_los_dos_caches_de_asyncpg(self, monkeypatch):
+        """Apagar solo statement_cache_size deja el problema a medias."""
+        import app.infrastructure.db as db
+
+        monkeypatch.setattr(
+            db.settings, "db_disable_prepared_statements", True, raising=False
+        )
+        args = db._connect_args()
+        assert args["statement_cache_size"] == 0
+        assert args["prepared_statement_cache_size"] == 0
