@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import sys
 from typing import Any
@@ -6,6 +7,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import numpy as np
+import numpy.typing as npt
 
 # Asegurar sys.path
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -13,9 +15,9 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 # Forzar UTF-8 en Windows
-if hasattr(sys.stdout, "reconfigure"):
+if isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
+if isinstance(sys.stderr, io.TextIOWrapper):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from qdrant_client import AsyncQdrantClient
@@ -108,10 +110,14 @@ class MultiVectorTextBuilder:
         return overview, items, requirements
 
 
-def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
-    dot = np.dot(vec_a, vec_b)
-    norm_a = np.linalg.norm(vec_a)
-    norm_b = np.linalg.norm(vec_b)
+def cosine_similarity(vec_a: npt.ArrayLike, vec_b: npt.ArrayLike) -> float:
+    # `SentenceTransformer.encode` está tipado como `ndarray | Tensor`; se
+    # normaliza acá para no arrastrar la unión a cada llamada.
+    a = np.asarray(vec_a, dtype=np.float32)
+    b = np.asarray(vec_b, dtype=np.float32)
+    dot = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
     if norm_a == 0 or norm_b == 0:
         return 0.0
     return float(dot / (norm_a * norm_b))

@@ -2,6 +2,7 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import (
+    Condition,
     Distance,
     FieldCondition,
     Filter,
@@ -158,7 +159,9 @@ class QdrantTenderRepository(ITenderVectorRepository):
         if criteria is None:
             return None
 
-        conditions: list[FieldCondition] = []
+        # `Condition` y no `FieldCondition`: `Filter.must` es invariante en el
+        # tipo del elemento y no acepta la lista del subtipo.
+        conditions: list[Condition] = []
 
         # Listas -> MatchAny. `MatchValue` compara contra un único valor, así que
         # no sirve para "estado publicada o cerrada".

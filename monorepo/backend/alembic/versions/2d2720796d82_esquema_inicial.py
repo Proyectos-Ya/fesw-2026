@@ -9,7 +9,11 @@ Create Date: 2026-08-24 03:58:17.245599
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import sqlmodel
+
+# El submódulo se importa explícitamente: `sqlmodel/__init__.py` no expone
+# `sql`, así que el `import sqlmodel` que genera alembic deja
+# `sqlmodel.sql.sqltypes.AutoString` sin resolver para el type checker.
+import sqlmodel.sql.sqltypes
 from sqlalchemy.dialects import postgresql
 
 from alembic import op

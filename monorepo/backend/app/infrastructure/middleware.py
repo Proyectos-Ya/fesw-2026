@@ -48,7 +48,7 @@ class CookieCleanupMiddleware(BaseHTTPMiddleware):
             response.delete_cookie(
                 key=cookie_name,
                 path="/",
-                secure=settings.auth_cookie_secure,
+                secure=bool(settings.auth_cookie_secure),
                 samesite=settings.auth_cookie_samesite,
             )
         return response

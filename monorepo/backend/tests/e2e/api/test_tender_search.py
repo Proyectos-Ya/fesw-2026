@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Headers
 from qdrant_client.http.exceptions import UnexpectedResponse
 from sqlalchemy.exc import OperationalError
 
@@ -229,7 +229,7 @@ async def test_qdrant_caido_responde_503(api: AsyncClient) -> None:
     """El criterio pide avisar sin bloquear el resto de la plataforma."""
     mock = _mock_use_case()
     mock.execute.side_effect = UnexpectedResponse(
-        status_code=500, reason_phrase="", content=b"", headers=None
+        status_code=500, reason_phrase="", content=b"", headers=Headers()
     )
     await _login(api)
 

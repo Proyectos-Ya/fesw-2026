@@ -201,6 +201,13 @@ def get_answer_question_use_case(
     return AnswerQuestionUseCase(supplier_repo=supplier_repo)
 
 
+class MockRerankerService(IRerankerService):
+    """Reranker neutro para cuando está desactivado o falta ONNX en local/tests."""
+
+    async def rerank(self, query_text, candidates, limit):
+        return [(c[0], 1.0) for c in candidates][:limit]
+
+
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
     hasher = BcryptPasswordHasher()
@@ -224,20 +231,12 @@ def bootstrap(app: FastAPI) -> None:
             "[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService."
         )
 
-        class MockRerankerService(IRerankerService):
-            async def rerank(self, query_text, candidates, limit):
-                return [(c[0], 1.0) for c in candidates][:limit]
-
         app.state.reranker_service = MockRerankerService()
     else:
         try:
             app.state.reranker_service = BgeRerankerService()
         except Exception:
             # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
-            class MockRerankerService(IRerankerService):
-                async def rerank(self, query_text, candidates, limit):
-                    return [(c[0], 1.0) for c in candidates][:limit]
-
             app.state.reranker_service = MockRerankerService()
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
@@ -271,7 +270,9 @@ def bootstrap(app: FastAPI) -> None:
         hasher=hasher,
         token_service=token_service,
         cookie_name=settings.auth_cookie_name,
-        cookie_secure=settings.auth_cookie_secure,
+        # `_derivar_cookie_secure` ya le dio valor; el `bool()` solo cierra el
+        # `bool | None` que el tipo del campo deja abierto.
+        cookie_secure=bool(settings.auth_cookie_secure),
         cookie_max_age=settings.access_token_expire_minutes * 60,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
         get_search_tenders_use_case=get_search_tenders_use_case,
