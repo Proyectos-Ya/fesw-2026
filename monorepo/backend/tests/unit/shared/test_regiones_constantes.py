@@ -9,7 +9,7 @@ Los ids son los que entrega Mercado Público en `institucion.region`, verificado
 contra la API el 21 de agosto de 2026 sobre las 16 regiones.
 """
 
-from app.shared.constants import (
+from app.shared.regions import (
     CHILE_REGIONS,
     UNKNOWN_REGION_ID,
     region_id_by_name,

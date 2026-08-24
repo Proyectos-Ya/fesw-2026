@@ -2,6 +2,11 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.shared.constants import (
+    DEFAULT_MERCADOPUBLICO_DETAIL_DELAY,
+    DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT,
+)
+
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
@@ -39,6 +44,26 @@ class Settings(BaseSettings):
 
     # --- Mercado Público ---
     mercado_publico_api_key: str
+    mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
+    mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
+    # Ingesta automática al arrancar y región a la que acotarla (None = todas).
+    run_auto_ingestion: bool = True
+    target_region: str | None = None
+
+    # --- Matching ---
+    # Escape para entornos sin RAM suficiente para el reranker ONNX.
+    disable_reranker: bool = False
+    # Variante ONNX del reranker a descargar y usar. El repositorio publica el
+    # mismo modelo en ocho precisiones; bajarlas todas son 8,3 GB.
+    #   model_quantized.onnx -> INT8, 571 MB (por defecto; es sobre la que se
+    #                           calibraron reranker_temperature y reranker_bias)
+    #   model.onnx           -> fp32, 2,3 GB (arrastra model.onnx_data)
+    #   model_fp16.onnx      -> fp16, 1,1 GB
+    # Cambiar de variante cambia la distribución de los logits, así que la
+    # calibración debería re-medirse con tests/matching_evaluation.
+    reranker_onnx_variant: str = "model_quantized.onnx"
+    reranker_temperature: float = 1.5
+    reranker_bias: float = 1.5
 
     # --- Gemini ---
     gemini_api_key: str

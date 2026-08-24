@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -346,3 +347,13 @@ class TenderRepository(ITenderRepository):
         await self.session.commit()
         await self.session.refresh(model)
         return self._to_deep_analysis_entity(model)
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        """Fecha de la licitación más reciente, para saber si la caché quedó atrás."""
+        statement = (
+            select(TenderModel.created_at)
+            .order_by(col(TenderModel.created_at).desc())
+            .limit(1)
+        )
+        result = await self.session.exec(statement)
+        return result.first()

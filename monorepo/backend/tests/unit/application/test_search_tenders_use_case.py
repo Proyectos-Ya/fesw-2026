@@ -133,6 +133,9 @@ class FakeTenderRepo(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        return None
+
 
 async def _build(
     *,

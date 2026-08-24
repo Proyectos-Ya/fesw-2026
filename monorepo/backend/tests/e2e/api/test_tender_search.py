@@ -14,7 +14,7 @@ from app.bootstrap import get_search_tenders_use_case
 from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.main import app
-from app.shared.constants import CHILE_REGIONS
+from app.shared.regions import CHILE_REGIONS
 
 
 @pytest.fixture(autouse=True)

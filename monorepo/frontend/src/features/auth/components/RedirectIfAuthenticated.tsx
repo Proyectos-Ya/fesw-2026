@@ -14,9 +14,9 @@ export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/");
+      window.location.replace("/");
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated]);
 
   if (isLoading || isAuthenticated) {
     return (

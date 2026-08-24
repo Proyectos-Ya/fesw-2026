@@ -2,7 +2,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
-from app.shared.constants import (
+from app.shared.regions import (
     CHILE_REGIONS,
     UNKNOWN_REGION_ID,
     UNKNOWN_REGION_NAME,

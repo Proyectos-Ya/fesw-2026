@@ -41,41 +41,57 @@ export function MatchesDashboard() {
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
   const [region, setRegion] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [budget, region]);
 
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      router.replace("/login");
+      window.location.replace("/login");
       return;
     }
     if (!user) return;
 
     let cancelled = false;
-    setState({ kind: "loading" });
-    void (async () => {
+    setState((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
+
+    const fetchMatches = async (isBackground = false) => {
       try {
         const matches = await getRecommendedTenders(user.id);
         if (cancelled) return;
         setState({ kind: "ready", matches });
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiError && isSupplierMissing(err)) {
-          setState({ kind: "no-supplier" });
-          return;
+        if (!isBackground) {
+          if (err instanceof ApiError && isSupplierMissing(err)) {
+            setState({ kind: "no-supplier" });
+            return;
+          }
+          if (err instanceof ApiError || err instanceof TimeoutError) {
+            setState({ kind: "error", message: err.message });
+            return;
+          }
+          setState({
+            kind: "error",
+            message: "No pudimos cargar tus matches. Inténtalo nuevamente.",
+          });
         }
-        if (err instanceof ApiError || err instanceof TimeoutError) {
-          setState({ kind: "error", message: err.message });
-          return;
-        }
-        setState({
-          kind: "error",
-          message: "No pudimos cargar tus matches. Inténtalo nuevamente.",
-        });
       }
-    })();
+    };
+
+    void fetchMatches(false);
+
+    const intervalId = setInterval(() => {
+      void fetchMatches(true);
+    }, 180000);
 
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
     };
   }, [authLoading, isAuthenticated, user, router, retryNonce]);
 
@@ -147,6 +163,12 @@ export function MatchesDashboard() {
     : matches;
   const shown = visible.length;
 
+  const totalPages = Math.ceil(shown / ITEMS_PER_PAGE);
+  const paginatedVisible = visible.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
   let countLine: string;
   if (total === 0) {
     countLine = "Aún no hay matches nuevos. Vuelve a revisar en unas horas.";
@@ -185,9 +207,36 @@ export function MatchesDashboard() {
         />
       ) : (
         <div className="flex flex-col gap-4">
-          {visible.map((m) => (
-            <TenderCard key={m.id} match={m} />
-          ))}
+          <div className="flex flex-col gap-4">
+            {paginatedVisible.map((m) => (
+              <TenderCard key={m.id} match={m} />
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between border-t border-border-subtle pt-6">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-4 py-2 text-sm font-semibold text-text-strong hover:bg-surface-hover disabled:opacity-50 disabled:hover:bg-surface-card transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                <Icon name="chevron-left" size={16} />
+                Anterior
+              </button>
+              <span className="text-sm font-medium text-text-muted">
+                Página {currentPage} de {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-4 py-2 text-sm font-semibold text-text-strong hover:bg-surface-hover disabled:opacity-50 disabled:hover:bg-surface-card transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                Siguiente
+                <Icon name="chevron-right" size={16} />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>

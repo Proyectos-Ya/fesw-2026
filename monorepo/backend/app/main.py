@@ -18,6 +18,9 @@ from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
 )
+from app.infrastructure.services.tenders.tender_ingestion_service import (
+    TenderIngestionService,
+)
 from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 
@@ -49,19 +52,29 @@ async def lifespan(app: FastAPI):
         vector_size=settings.embedding_vector_size,
     ).ensure_collection()
 
-    ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-    scheduler = TenderScheduler(
+    client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+    ingestion_service = TenderIngestionService(
         engine=engine,
-        ingestion_service=ingestion_service,
+        client=client,
         embedding_service=app.state.embedding_service,
         qdrant_client=app.state.qdrant_async_client,
-        is_dev=settings.is_dev,
     )
-    print("[Main] Iniciando scheduler de ingesta...")
-    ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion())
+    scheduler = TenderScheduler(ingestion_service=ingestion_service)
+    metadata_task = None
+    processing_task = None
+    if settings.run_auto_ingestion:
+        print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
+        metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
+        processing_task = asyncio.create_task(scheduler.start_processing_loop())
+    else:
+        print("[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local.")
+
     yield
 
-    ingestion_task.cancel()
+    if metadata_task:
+        metadata_task.cancel()
+    if processing_task:
+        processing_task.cancel()
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
 

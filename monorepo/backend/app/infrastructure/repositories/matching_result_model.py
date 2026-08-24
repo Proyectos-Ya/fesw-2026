@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -8,6 +9,10 @@ class MatchingResultModel(SQLModel, table=True):
     """Modelo de base de datos para la tabla 'matching_result' en PostgreSQL."""
 
     __tablename__ = "matching_result"  # type: ignore
+
+    __table_args__ = (
+        UniqueConstraint("supplier_id", "tender_id", name="uq_matching_result_supplier_tender"),
+    )
 
     id: UUID = Field(primary_key=True)
     supplier_id: UUID = Field(

@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.shared.datetime_utils import utc_now_naive
+
 
 class RegionModel(SQLModel, table=True):
     __tablename__ = "region"  # type: ignore
@@ -82,3 +84,15 @@ class TenderAIAnalysisModel(SQLModel, table=True):
     generated_at: datetime
 
     tender: TenderModel | None = Relationship(back_populates="ai_analysis")
+
+
+# Cola de ingesta: guarda qué licitaciones se detectaron y cuáles ya se
+# procesaron. Al ser persistente, una caída o un 429 de Mercado Público no
+# pierde el rastro de lo que falta bajar.
+class TenderMetadataModel(SQLModel, table=True):
+    __tablename__ = "tender_metadata"  # type: ignore
+    id: UUID = Field(primary_key=True)
+    code: str = Field(unique=True, index=True)
+    is_processed: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    updated_at: datetime = Field(default_factory=utc_now_naive)

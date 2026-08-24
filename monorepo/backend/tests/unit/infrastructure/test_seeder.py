@@ -9,7 +9,7 @@ from typing import Any
 
 from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
 from app.infrastructure.seeder import seed_database_metadata
-from app.shared.constants import CHILE_REGIONS, UNKNOWN_REGION_ID
+from app.shared.regions import CHILE_REGIONS, UNKNOWN_REGION_ID
 
 
 class _FakeResult:

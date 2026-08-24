@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from qdrant_client.http.exceptions import UnexpectedResponse as QdrantException
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,7 +34,7 @@ from app.domain.errors.supplier_errors import (
     SupplierVectorNotFound,
 )
 from app.domain.errors.tender_errors import InvalidSearchCriteria, TenderNotFound
-from app.shared.constants import region_id_by_name
+from app.shared.regions import region_id_by_name
 
 
 def _resolve_region_ids(regions: list[str] | None) -> list[int] | None:
@@ -198,6 +198,7 @@ def create_tender_router(
         },
     )
     async def get_recommended_tenders(
+        request: Request,
         profile_id: UUID,
         use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         force_refresh: bool = False,
@@ -207,8 +208,10 @@ def create_tender_router(
         Retorna la lista de licitaciones recomendadas para el perfil de proveedor especificado.
         """
         try:
+            # Se pasa el request para que el caso de uso pueda abortar el
+            # pipeline si el cliente ya cerró la conexión.
             return await use_case.execute(
-                user_id=profile_id, force_refresh=force_refresh
+                user_id=profile_id, force_refresh=force_refresh, request=request
             )
         except SupplierNotFoundForUser as e:
             raise HTTPException(

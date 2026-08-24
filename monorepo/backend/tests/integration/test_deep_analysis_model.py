@@ -14,7 +14,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     TenderStatusModel,
 )
-from app.shared.constants import CHILE_REGIONS
+from app.shared.regions import CHILE_REGIONS
 
 # `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
 # que apunta a la base de test y no a la de desarrollo.
