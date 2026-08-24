@@ -14,6 +14,7 @@ from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.application.use_cases.auth.login_user import LoginUserUseCase
 from app.application.use_cases.auth.register_user import RegisterUserUseCase
+from app.config import settings
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import (
     InactiveUser,
@@ -79,7 +80,7 @@ def create_auth_router(
             value=token,
             httponly=True,
             secure=cookie_secure,
-            samesite="lax",
+            samesite=settings.auth_cookie_samesite,
             max_age=cookie_max_age,
         )
         return TokenSchema(access_token=token)

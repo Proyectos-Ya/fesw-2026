@@ -12,10 +12,6 @@ from httpx import ASGITransport, AsyncClient
 # environment; the stubs prevent ImportError during module collection.
 for _name in [
     "sentence_transformers",
-    "qdrant_client",
-    "qdrant_client.http",
-    "qdrant_client.http.models",
-    "qdrant_client.models",
 ]:
     sys.modules.setdefault(_name, MagicMock())
 

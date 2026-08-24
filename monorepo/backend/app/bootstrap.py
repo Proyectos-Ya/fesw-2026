@@ -37,6 +37,7 @@ from app.application.use_cases.saved_tenders.list_saved_tenders import (
 )
 from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
 from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
+from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import get_session
@@ -165,6 +166,25 @@ def get_unsave_tender_use_case(
     return UnsaveTenderUseCase(saved_tender_repo=SavedTenderRepository(session))
 
 
+def get_search_tenders_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    supplier_vector_repo: Annotated[
+        ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+    ],
+    tender_vector_repo: Annotated[
+        ITenderVectorRepository, Depends(get_tender_vector_repo)
+    ],
+    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+) -> SearchTendersUseCase:
+    return SearchTendersUseCase(
+        supplier_repo=SupplierRepository(session),
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=TenderRepository(session),
+        embedding_service=embedding_service,
+    )
+
+
 def get_user_repo(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> IUserRepository:
@@ -238,21 +258,37 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
-    try:
-        app.state.reranker_service = BgeRerankerService()
-    except Exception:
-        # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
+    if settings.disable_reranker:
+        print(
+            "[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService."
+        )
+
         class MockRerankerService(IRerankerService):
             async def rerank(self, query_text, candidates, limit):
                 return [(c[0], 1.0) for c in candidates][:limit]
 
         app.state.reranker_service = MockRerankerService()
+    else:
+        try:
+            app.state.reranker_service = BgeRerankerService()
+        except Exception:
+            # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
+            class MockRerankerService(IRerankerService):
+                async def rerank(self, query_text, candidates, limit):
+                    return [(c[0], 1.0) for c in candidates][:limit]
 
+            app.state.reranker_service = MockRerankerService()
+
+    # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
+    # fuera de las regiones del proveedor, así que un bono adicional se lo
+    # llevarían todas las que sobreviven al filtro y no ordenaría nada.
+    # Estos son los pesos con que se calibró el reranker en
+    # tests/matching_evaluation.
     app.state.weighting_service = FieldWeightingService(
-        reranker_weight=0.5,
-        region_weight=0.2,
-        sector_weight=0.2,
-        keyword_weight=0.1,
+        reranker_weight=0.50,
+        sector_weight=0.25,
+        keyword_weight=0.25,
+        region_weight=0.0,
     )
 
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
@@ -280,5 +316,6 @@ def bootstrap(app: FastAPI) -> None:
         get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
         get_save_tender_use_case=get_save_tender_use_case,
         get_unsave_tender_use_case=get_unsave_tender_use_case,
+        get_search_tenders_use_case=get_search_tenders_use_case,
     )
     app.include_router(router)

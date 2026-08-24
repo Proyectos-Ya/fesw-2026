@@ -1,3 +1,6 @@
+import asyncio
+from datetime import timedelta
+from typing import Protocol
 from uuid import UUID
 
 from app.application.repositories.matching_result_repository import (
@@ -14,6 +17,7 @@ from app.application.repositories.tender_repository import (
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.text_builder import TextBuilder
 from app.application.services.weighting_service import IWeightingService
@@ -24,12 +28,25 @@ from app.domain.errors.supplier_errors import (
 )
 from app.shared.constants import ACTIVE_TENDER_STATUSES, TENDER_STATUSES
 from app.shared.datetime_utils import utc_now_naive
+from app.shared.regions import are_regions_matching
+
+
+class ClientConnection(Protocol):
+    """Lo único que este caso de uso necesita saber del cliente HTTP.
+
+    Se declara como Protocol en vez de recibir un `fastapi.Request` para no
+    arrastrar el framework hasta la capa de aplicación: el pipeline completo es
+    caro y conviene abortarlo si el usuario ya cerró la pestaña, pero eso no
+    justifica invertir la dirección de dependencias.
+    """
+
+    async def is_disconnected(self) -> bool: ...
 
 
 class RankTendersUseCase:
     """
     Caso de uso que orquesta el flujo completo de recomendación de licitaciones (tenders)
-    para un proveedor, implementando persistencia/caching y re-ranking.
+    para un proveedor, implementando persistencia/caching, re-ranking y filtrado estricto por región.
     """
 
     def __init__(
@@ -43,7 +60,7 @@ class RankTendersUseCase:
         matching_result_repo: IMatchingResultRepository,
         model_version: str = "bge-m3-v1",
         vector_search_limit: int = 50,
-        reranker_limit: int = 15,
+        reranker_limit: int = 12,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -61,10 +78,14 @@ class RankTendersUseCase:
         self,
         user_id: UUID,
         force_refresh: bool = False,
+        request: ClientConnection | None = None,
     ) -> list[MatchingResult]:
         """
         Ejecuta el flujo de recomendación y retorna el listado de resultados ordenados por score final.
         """
+        if request is not None and await request.is_disconnected():
+            raise asyncio.CancelledError()
+
         # 1. Obtener perfil de proveedor asociado al usuario
         supplier = await self.supplier_repo.get_by_user_id(user_id)
         if supplier is None:
@@ -78,29 +99,66 @@ class RankTendersUseCase:
                 supplier.id
             )
             if cached_matches:
-                # Hidratar las licitaciones desde SQL
-                tender_ids = [m.tender_id for m in cached_matches]
-                tenders = await self.tender_repo.get_tenders(
-                    TenderFilters(ids=tender_ids)
+                latest_cache_time = max(
+                    (m.calculated_at for m in cached_matches), default=None
                 )
-                tender_dict = {t.id: t for t in tenders}
+                latest_tender_time = (
+                    await self.tender_repo.get_latest_tender_created_at()
+                )
+                supplier_changed_time = (
+                    supplier.profile_changed_at or supplier.updated_at
+                )
 
-                valid_results = []
-                for m in cached_matches:
-                    t = tender_dict.get(m.tender_id)
-                    # Descartar licitaciones cerradas o que no estén en estado activa/publicada
+                cache_is_stale = False
+                if latest_cache_time is not None:
+                    cache_age = now - latest_cache_time
+                    # Para no saturar el servidor con re-rankings en cada ingesta continua de 2s,
+                    # solo invalidamos por nuevas licitaciones si la caché tiene más de 30 segundos de antigüedad.
                     if (
-                        t
-                        and t.closing_at > now
-                        and t.status_code in ACTIVE_TENDER_STATUSES
+                        latest_tender_time
+                        and latest_tender_time > latest_cache_time
+                        and cache_age > timedelta(seconds=30)
                     ):
-                        m.tender = t
-                        valid_results.append(m)
+                        cache_is_stale = True
+                    # Si el proveedor actualizó su perfil, invalidamos de inmediato
+                    if (
+                        supplier_changed_time
+                        and supplier_changed_time > latest_cache_time
+                    ):
+                        cache_is_stale = True
 
-                # Si el cache aún contiene recomendaciones válidas, las retornamos ordenadas
-                if valid_results:
-                    valid_results.sort(key=lambda x: x.final_score, reverse=True)
-                    return valid_results
+                if not cache_is_stale:
+                    # Hidratar las licitaciones desde SQL
+                    tender_ids = [m.tender_id for m in cached_matches]
+                    tenders = await self.tender_repo.get_tenders(
+                        TenderFilters(ids=tender_ids)
+                    )
+                    tender_dict = {t.id: t for t in tenders}
+
+                    valid_results = []
+                    for m in cached_matches:
+                        t = tender_dict.get(m.tender_id)
+                        # Descartar licitaciones cerradas o que no estén en estado activa/publicada
+                        if (
+                            t
+                            and t.closing_at > now
+                            and t.status_code in ACTIVE_TENDER_STATUSES
+                        ):
+                            # Filtrar estrictamente por región si el proveedor tiene regiones configuradas
+                            if supplier.regions and not are_regions_matching(
+                                t.region, supplier.regions
+                            ):
+                                continue
+                            m.tender = t
+                            valid_results.append(m)
+
+                    # Si el cache aún contiene recomendaciones válidas y frescas, las retornamos ordenadas
+                    if valid_results:
+                        valid_results.sort(key=lambda x: x.final_score, reverse=True)
+                        return valid_results
+
+        if request is not None and await request.is_disconnected():
+            raise asyncio.CancelledError()
 
         # 3. Cache vacío, inválido o force_refresh=True: ejecutar el pipeline de recomendación completo
         # 3.1 Obtener vector del proveedor desde Qdrant
@@ -109,15 +167,18 @@ class RankTendersUseCase:
             raise SupplierVectorNotFound(supplier.id)
 
         # 3.2 Buscar licitaciones similares en Qdrant (filtrando por estado publicada)
-        search_results = await self.tender_vector_repo.search_by_supplier_vector(
-            supplier_vector=supplier_vector,
+        search_results = await self.tender_vector_repo.search_by_vector(
+            vector=supplier_vector,
             limit=self.vector_search_limit,
-            filters={"status_code": TENDER_STATUSES["PUBLISHED"]},
+            criteria=TenderFilterCriteria(status_codes=[TENDER_STATUSES["PUBLISHED"]]),
         )
         if not search_results:
             # Si no hay matches, limpiamos cache anterior y retornamos vacío
             await self.matching_result_repo.delete_by_supplier_id(supplier.id)
             return []
+
+        if request is not None and await request.is_disconnected():
+            raise asyncio.CancelledError()
 
         # 3.3 Hidratar las licitaciones desde SQL
         tender_ids = [uid for uid, _ in search_results]
@@ -131,18 +192,26 @@ class RankTendersUseCase:
             if uid not in tender_dict:
                 await self.tender_vector_repo.delete(uid)
 
-        # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL)
+        # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL y región estricta)
         active_tenders = []
         similarity_scores = {}
         for uid, sim_score in search_results:
             t = tender_dict.get(uid)
             if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
+                # Filtrar estrictamente por región canónica si el proveedor tiene regiones configuradas
+                if supplier.regions and not are_regions_matching(
+                    t.region, supplier.regions
+                ):
+                    continue
                 active_tenders.append(t)
                 similarity_scores[uid] = sim_score
 
         if not active_tenders:
             await self.matching_result_repo.delete_by_supplier_id(supplier.id)
             return []
+
+        if request is not None and await request.is_disconnected():
+            raise asyncio.CancelledError()
 
         # 3.5 Re-ranking con cross-encoder (ONNX)
         supplier_text = self.text_builder.build_from_supplier(supplier)
@@ -192,6 +261,9 @@ class RankTendersUseCase:
 
         # Ordenar por final_score descendente
         new_matches.sort(key=lambda x: x.final_score, reverse=True)
+
+        if request is not None and await request.is_disconnected():
+            raise asyncio.CancelledError()
 
         # 3.8 Persistir en la base de datos SQL (caching)
         await self.matching_result_repo.delete_by_supplier_id(supplier.id)

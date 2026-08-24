@@ -29,6 +29,7 @@ def create_router(
     get_list_saved_tenders_use_case: Callable,
     get_save_tender_use_case: Callable,
     get_unsave_tender_use_case: Callable,
+    get_search_tenders_use_case: Callable,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
@@ -68,6 +69,7 @@ def create_router(
             get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
             get_save_tender_use_case=get_save_tender_use_case,
             get_unsave_tender_use_case=get_unsave_tender_use_case,
+            get_search_tenders_use_case=get_search_tenders_use_case,
         )
     )
 
