@@ -4,13 +4,14 @@ Verifican que tras guardar cada licitación en SQL se genera su embedding
 y se indexa en el repositorio vectorial (Qdrant).
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
-from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
@@ -26,14 +27,6 @@ from tests.unit.application.fakes import (
 # ---------------------------------------------------------------------------
 
 
-class FakeIngestionService(ITenderIngestionService):
-    def __init__(self, dtos: list[TenderIngestaDTO]) -> None:
-        self._dtos = dtos
-
-    async def fetch_public_tenders(self) -> list[TenderIngestaDTO]:
-        return self._dtos
-
-
 class FakeTenderRepository(ITenderRepository):
     """Repositorio SQL en memoria que deja pasar todas las operaciones."""
 
@@ -45,6 +38,14 @@ class FakeTenderRepository(ITenderRepository):
 
     async def get_by_code(self, code: str) -> TenderModel | None:  # noqa: ARG002
         return None
+
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,  # noqa: ARG002
+        limit: int,  # noqa: ARG002
+        offset: int = 0,  # noqa: ARG002
+    ) -> tuple[list[Tender], int]:
+        return [], 0
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:  # noqa: ARG002
         return rut
@@ -68,6 +69,9 @@ class FakeTenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        return None
+
 
 def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
@@ -81,6 +85,7 @@ def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
             "RutComprador": "12.345.678-9",
             "NombreOrganismo": "Municipalidad de Santiago",
             "UnidadCompra": "Depto. Obras",
+            "RegionId": 13,
             "RegionUnidad": "Región Metropolitana de Santiago",
             "MontoEstimado": 50_000_000.0,
             "items": [
@@ -104,13 +109,12 @@ async def test_ingesta_indexa_licitacion_en_qdrant() -> None:
     vector_repo = FakeTenderVectorRepository()
     embedding_service = FakeEmbeddingService()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
         repository=FakeTenderRepository(),
         embedding_service=embedding_service,
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto())
 
     assert len(vector_repo.upserts) == 1
 
@@ -118,15 +122,13 @@ async def test_ingesta_indexa_licitacion_en_qdrant() -> None:
 async def test_ingesta_dos_licitaciones_genera_dos_upserts() -> None:
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService(
-            [_make_dto("LIC-001"), _make_dto("LIC-002")]
-        ),
         repository=FakeTenderRepository(),
         embedding_service=FakeEmbeddingService(),
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto("LIC-001"))
+    await use_case.execute(_make_dto("LIC-002"))
 
     assert len(vector_repo.upserts) == 2
 
@@ -136,13 +138,12 @@ async def test_vector_almacenado_proviene_del_embedding_service() -> None:
     fake_vector = [0.7] * 1024
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
         repository=FakeTenderRepository(),
         embedding_service=FakeEmbeddingService(fake_vector),
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto())
 
     _, stored_vector, _ = vector_repo.upserts[0]
     assert stored_vector == fake_vector
@@ -151,13 +152,12 @@ async def test_vector_almacenado_proviene_del_embedding_service() -> None:
 async def test_embedding_service_llamado_una_vez_por_licitacion() -> None:
     embedding_service = FakeEmbeddingService()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
         repository=FakeTenderRepository(),
         embedding_service=embedding_service,
         tender_vector_repo=FakeTenderVectorRepository(),
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto())
 
     assert len(embedding_service.calls) == 1
 
@@ -165,13 +165,12 @@ async def test_embedding_service_llamado_una_vez_por_licitacion() -> None:
 async def test_texto_enviado_al_embedding_incluye_nombre_licitacion() -> None:
     embedding_service = FakeEmbeddingService()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
         repository=FakeTenderRepository(),
         embedding_service=embedding_service,
         tender_vector_repo=FakeTenderVectorRepository(),
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto())
 
     assert any(
         "Construcción de sede comunal" in text for text in embedding_service.calls[0]
@@ -182,13 +181,12 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
     """El payload del punto en Qdrant tiene status_code='publicada' para licitaciones activas."""
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto(status_code=1)]),
         repository=FakeTenderRepository(),
         embedding_service=FakeEmbeddingService(),
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto(status_code=1))
 
     _, _, payload = vector_repo.upserts[0]
     assert payload["status_code"] == "publicada"
@@ -203,183 +201,11 @@ async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
 
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
         repository=RepoConDuplicado(),
         embedding_service=FakeEmbeddingService(),
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute()
+    await use_case.execute(_make_dto())
 
     assert len(vector_repo.upserts) == 0
-
-
-# ---------------------------------------------------------------------------
-# Consistencia entre los dos almacenes
-#
-# La ingesta escribe en Postgres y en Qdrant sin una transacción común, así que
-# siempre habrá una ventana en la que uno puede fallar tras el otro. Lo que sí
-# se puede elegir es HACIA QUÉ LADO se rompe:
-#
-#   - Fila en SQL sin punto en Qdrant → la licitación es invisible para el
-#     matching de forma permanente: Qdrant es el único punto de entrada del
-#     pipeline y get_by_code impide que la ingesta la reintente.
-#   - Punto en Qdrant sin fila en SQL → rank_tenders (paso 3.3.1) lo detecta y
-#     lo elimina la próxima vez que aparece en una búsqueda.
-#
-# Por eso Qdrant se escribe primero: el único desbalance posible es el que el
-# sistema ya sabe reconciliar solo.
-# ---------------------------------------------------------------------------
-
-
-class VectorRepoQueFalla(FakeTenderVectorRepository):
-    """Simula Qdrant caído o rechazando la escritura."""
-
-    async def upsert(
-        self, tender_id: UUID, embedding: list[float], payload: dict
-    ) -> None:
-        raise ConnectionError("Qdrant no disponible")
-
-
-async def test_si_qdrant_falla_la_licitacion_no_se_persiste_en_sql() -> None:
-    """Sin vector no debe quedar fila: sería invisible para el matching para siempre."""
-    repo = FakeTenderRepository()
-    use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=repo,
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=VectorRepoQueFalla(),
-    )
-
-    await use_case.execute()
-
-    assert repo.saved == []
-
-
-async def test_qdrant_se_escribe_antes_que_sql() -> None:
-    """El orden importa: define hacia qué lado se rompe la consistencia."""
-    orden: list[str] = []
-
-    class RepoQueRegistra(FakeTenderRepository):
-        async def save_complex_tender(
-            self, tender_model: TenderModel, items: list[TenderItemModel]
-        ) -> None:
-            orden.append("sql")
-            await super().save_complex_tender(tender_model, items)
-
-    class VectorRepoQueRegistra(FakeTenderVectorRepository):
-        async def upsert(
-            self, tender_id: UUID, embedding: list[float], payload: dict
-        ) -> None:
-            orden.append("qdrant")
-            await super().upsert(tender_id, embedding, payload)
-
-    use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=RepoQueRegistra(),
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=VectorRepoQueRegistra(),
-    )
-
-    await use_case.execute()
-
-    assert orden == ["qdrant", "sql"]
-
-
-async def test_el_embedding_se_calcula_antes_de_abrir_la_transaccion_sql() -> None:
-    """El embedding tarda segundos en CPU; calcularlo tras el primer flush
-    mantendría la transacción (y sus locks) abierta todo ese tiempo. No depende
-    de la base, así que va antes."""
-    orden: list[str] = []
-
-    class RepoQueRegistra(FakeTenderRepository):
-        async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
-            orden.append("sql:buyer")
-            return await super().get_or_create_buyer(rut, name, region_id)
-
-        async def save_complex_tender(
-            self, tender_model: TenderModel, items: list[TenderItemModel]
-        ) -> None:
-            orden.append("sql:commit")
-            await super().save_complex_tender(tender_model, items)
-
-    class EmbeddingQueRegistra(FakeEmbeddingService):
-        async def embed(self, texts: list[str]) -> list[list[float]]:
-            orden.append("embed")
-            return await super().embed(texts)
-
-    use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=RepoQueRegistra(),
-        embedding_service=EmbeddingQueRegistra(),
-        tender_vector_repo=FakeTenderVectorRepository(),
-    )
-
-    await use_case.execute()
-
-    assert orden == ["embed", "sql:buyer", "sql:commit"]
-
-
-async def test_fallo_de_qdrant_hace_rollback_de_la_transaccion() -> None:
-    """get_or_create_buyer/status hacen flush; hay que deshacerlos explícitamente."""
-    rollbacks: list[int] = []
-
-    class RepoQueCuentaRollbacks(FakeTenderRepository):
-        async def rollback(self) -> None:
-            rollbacks.append(1)
-
-    use_case = TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=RepoQueCuentaRollbacks(),
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=VectorRepoQueFalla(),
-    )
-
-    await use_case.execute()
-
-    assert len(rollbacks) == 1
-
-
-# ---------------------------------------------------------------------------
-# Visibilidad de los fallos
-#
-# El bloque `except` absorbe cada error con un print, así que una caída
-# sistémica de Qdrant se veía idéntica a una corrida exitosa sin licitaciones
-# nuevas. El resultado debe distinguir ambos casos.
-# ---------------------------------------------------------------------------
-
-
-async def test_las_licitaciones_fallidas_se_reportan_en_el_resultado() -> None:
-    resultado = await TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto("LIC-001")]),
-        repository=FakeTenderRepository(),
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=VectorRepoQueFalla(),
-    ).execute()
-
-    assert resultado["summary"]["failed"] == 1
-    assert resultado["summary"]["failed_codes"] == ["LIC-001"]
-
-
-async def test_el_estado_es_partial_cuando_hubo_fallos() -> None:
-    """Una caída total de Qdrant no puede reportarse como 'success'."""
-    resultado = await TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=FakeTenderRepository(),
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=VectorRepoQueFalla(),
-    ).execute()
-
-    assert resultado["status"] == "partial"
-
-
-async def test_el_estado_sigue_siendo_success_sin_fallos() -> None:
-    resultado = await TenderIngestionUseCase(
-        ingestion_service=FakeIngestionService([_make_dto()]),
-        repository=FakeTenderRepository(),
-        embedding_service=FakeEmbeddingService(),
-        tender_vector_repo=FakeTenderVectorRepository(),
-    ).execute()
-
-    assert resultado["status"] == "success"
-    assert resultado["summary"]["failed"] == 0

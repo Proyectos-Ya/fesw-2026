@@ -1,11 +1,19 @@
 import os
-from unittest.mock import MagicMock, patch
+import sys
+from unittest.mock import ANY, MagicMock, patch
 from uuid import uuid4
 
 import numpy as np
 import pytest
 
-from app.infrastructure.services.bge_reranker_service import BgeRerankerService
+# Stubbing dependencies en sys.modules para permitir importar el servicio sin instalar dependencias pesadas
+sys.modules.setdefault("transformers", MagicMock())
+sys.modules.setdefault("onnxruntime", MagicMock())
+sys.modules.setdefault("huggingface_hub", MagicMock())
+
+from app.infrastructure.services.bge_reranker_service import (  # noqa: E402
+    BgeRerankerService,
+)
 
 
 @pytest.fixture
@@ -32,7 +40,7 @@ def mock_session() -> MagicMock:
 async def test_bge_reranker_initialization_and_rerank(
     mock_tokenizer: MagicMock, mock_session: MagicMock
 ) -> None:
-    # Comprueba la inicialización correcta del modelo ONNX y el cálculo de afinidad de rerank en español.
+    # Comprueba la inicialización correcta del modelo ONNX y el cálculo de afinidad de rerank con Platt Scaling.
     _bge = "app.infrastructure.services.bge_reranker_service"
 
     # Patch local de transformers y onnxruntime ya que se importan tardíamente dentro del constructor
@@ -47,27 +55,24 @@ async def test_bge_reranker_initialization_and_rerank(
         mock_exists.return_value = True
         mock_is.return_value = mock_session
 
-        service = BgeRerankerService()
+        service = BgeRerankerService(temperature=1.0, bias=1.5)
 
         # Valida que se inicialice con el modelo correcto en la capa de infraestructura
         mock_at.from_pretrained.assert_called_once_with(
             "onnx-community/bge-reranker-v2-m3-ONNX"
         )
-        # allow_patterns forma parte del contrato: sin él se descarga el
-        # repositorio completo (~7 GB de variantes cuantizadas sin usar).
+        # Solo se baja la variante configurada: el repositorio publica el mismo
+        # modelo en ocho precisiones que suman 8,3 GB.
         mock_sd.assert_called_once_with(
             repo_id="onnx-community/bge-reranker-v2-m3-ONNX",
-            allow_patterns=[
-                "onnx/model.onnx",
-                "onnx/model.onnx_data",
-                "*.json",
-            ],
+            allow_patterns=["onnx/model_quantized.onnx", "*.json"],
         )
 
         # Validamos con la misma concatenación de ruta usada en la clase concreta
-        expected_path = os.path.join("/fake/model/dir", "onnx", "model.onnx")
+        expected_path = os.path.join("/fake/model/dir", "onnx", "model_quantized.onnx")
         mock_is.assert_called_once_with(
             expected_path,
+            sess_options=ANY,
             providers=["CPUExecutionProvider"],
         )
 
@@ -86,9 +91,9 @@ async def test_bge_reranker_initialization_and_rerank(
             max_length=512,
         )
 
-        # Valida que los logits se conviertan a probabilidades con Sigmoide y se ordene/recorte
-        # Sigmoide(2.0) = 0.880797
-        # Sigmoide(-1.0) = 0.268941
+        # Valida que los logits se conviertan a probabilidades con Sigmoide Platt Scaling y se ordene/recorte
+        # Sigmoide((2.0 + 1.5) / 1.0) = Sigmoide(3.5) = 0.97067
+        # Sigmoide((-1.0 + 1.5) / 1.0) = Sigmoide(0.5) = 0.622459
         assert len(results) == 1
         assert results[0][0] == c1
-        assert pytest.approx(results[0][1], rel=1e-3) == 0.880797
+        assert pytest.approx(results[0][1], rel=1e-3) == 0.97067

@@ -41,6 +41,22 @@ def to_utc_naive(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
+def to_utc_epoch(value: datetime) -> int:
+    """Convierte a segundos epoch UTC, para los filtros de rango de Qdrant.
+
+    El payload de Qdrant no guarda `datetime`: guarda enteros comparables.
+
+    Un valor naive se asume ya en UTC (invariante de persistencia). El
+    `replace(tzinfo=UTC)` no es redundante: `datetime.timestamp()` sobre un naive
+    lo interpreta en la zona horaria **del sistema**, así que en Chile el
+    resultado se correría 3 o 4 horas y el mismo dato daría epochs distintos en
+    una máquina local y en el contenedor.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return int(value.timestamp())
+
+
 def serialize_utc(value: datetime) -> str:
     """Serializa a ISO-8601 UTC con sufijo ``Z``.
 

@@ -10,6 +10,7 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
@@ -99,10 +100,17 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
             (tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id
         ]
 
-    async def search_by_supplier_vector(
-        self, supplier_vector: list[float], limit: int, filters: dict | None = None
+    async def search_by_vector(
+        self,
+        vector: list[float],
+        limit: int,
+        offset: int = 0,
+        criteria: TenderFilterCriteria | None = None,
     ) -> list[tuple[UUID, float]]:  # noqa: ARG002
         return []
+
+    async def count(self, criteria: TenderFilterCriteria | None = None) -> int:  # noqa: ARG002
+        return 0
 
 
 class FakeEmbeddingService(IEmbeddingService):

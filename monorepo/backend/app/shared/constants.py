@@ -1,3 +1,8 @@
+"""Constantes compartidas del dominio de licitaciones.
+
+Las regiones viven en `app.shared.regions`, que es su fuente de verdad única.
+"""
+
 # Diccionario con los códigos de estado de las licitaciones (Compra Ágil v2)
 # Las claves están en inglés y los valores correspondientes en español según la API.
 TENDER_STATUSES = {
@@ -24,3 +29,8 @@ TENDER_STATUS_CODE_BY_ID = {
     8: TENDER_STATUSES["DESERTED"],
     18: "adjudicada",
 }
+
+
+# Valores por defecto para la API de Mercado Público
+DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT = 2000
+DEFAULT_MERCADOPUBLICO_DETAIL_DELAY = 2.0

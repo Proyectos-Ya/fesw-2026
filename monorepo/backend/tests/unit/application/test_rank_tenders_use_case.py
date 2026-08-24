@@ -13,6 +13,7 @@ from app.application.repositories.tender_repository import (
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
@@ -53,6 +54,14 @@ class InMemoryTenderRepository(ITenderRepository):
             results.append(t)
         return results
 
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:  # noqa: ARG002
+        return ([], 0)
+
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None
 
@@ -78,6 +87,14 @@ class InMemoryTenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        if not self.tenders:
+            return None
+        return max(
+            (t.created_at for t in self.tenders.values() if t.created_at is not None),
+            default=None,
+        )
+
 
 class FakeTenderVectorRepository(ITenderVectorRepository):
     """Fake repository vectorial para buscar licitaciones."""
@@ -85,6 +102,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     def __init__(self) -> None:
         self.search_results: list[tuple[UUID, float]] = []
         self.searched_vectors: list[list[float]] = []
+        self.search_criteria: list[TenderFilterCriteria | None] = []
         self.deleted: list[UUID] = []
 
     async def ensure_collection(self) -> None:
@@ -98,14 +116,19 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     async def delete(self, tender_id: UUID) -> None:
         self.deleted.append(tender_id)
 
-    async def search_by_supplier_vector(
+    async def search_by_vector(
         self,
-        supplier_vector: list[float],
+        vector: list[float],
         limit: int,
-        filters: dict | None = None,
+        offset: int = 0,
+        criteria: TenderFilterCriteria | None = None,
     ) -> list[tuple[UUID, float]]:
-        self.searched_vectors.append(supplier_vector)
+        self.searched_vectors.append(vector)
+        self.search_criteria.append(criteria)
         return self.search_results
+
+    async def count(self, criteria: TenderFilterCriteria | None = None) -> int:  # noqa: ARG002
+        return len(self.search_results)
 
 
 class InMemoryMatchingResultRepository(IMatchingResultRepository):
@@ -460,3 +483,77 @@ async def test_orphan_vectors_are_deleted_from_vector_store() -> None:
     assert len(results) == 1
     assert results[0].tender_id == tender_id_valid
     assert tender_vector_repo.deleted == [tender_id_orphan]
+
+
+@pytest.mark.asyncio
+async def test_el_pipeline_sigue_filtrando_por_estado_publicada() -> None:
+    """Fija el criterio con que el dashboard consulta Qdrant.
+
+    Al unificar `search_by_supplier_vector` en `search_by_vector`, el filtro pasó
+    de un dict suelto a un criterio tipado. Si esa traducción se perdiera, el
+    motor recomendaría licitaciones ya cerradas y el síntoma aparecería recién en
+    el dashboard del usuario.
+    """
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    vector_repo.upsert(supplier.id, [0.5] * 1024)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = []
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=InMemoryTenderRepository(),
+        reranker_service=FakeRerankerService(),
+        weighting_service=FakeWeightingService(),
+        matching_result_repo=InMemoryMatchingResultRepository(),
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    criterio = tender_vector_repo.search_criteria[0]
+    assert criterio is not None
+    assert criterio.status_codes == [TENDER_STATUSES["PUBLISHED"]]
+    # El dashboard no acota por región ni por fecha: eso es del buscador manual.
+    assert criterio.region_ids is None
+    assert criterio.closing_from is None
+
+
+@pytest.mark.asyncio
+async def test_el_pipeline_busca_con_el_vector_del_proveedor() -> None:
+    """El vector que se manda es el del perfil, no uno cualquiera.
+
+    Es lo que distingue este uso de `search_by_vector` del que hará el buscador
+    con el vector de la consulta del usuario.
+    """
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_del_proveedor = [0.42] * 1024
+    vector_repo = FakeSupplierVectorRepository()
+    vector_repo.upsert(supplier.id, vector_del_proveedor)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = []
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=InMemoryTenderRepository(),
+        reranker_service=FakeRerankerService(),
+        weighting_service=FakeWeightingService(),
+        matching_result_repo=InMemoryMatchingResultRepository(),
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert tender_vector_repo.searched_vectors == [vector_del_proveedor]

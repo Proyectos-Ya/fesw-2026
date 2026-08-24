@@ -1,10 +1,18 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
+
+# DEUDA (dirección de dependencias): la capa de aplicación no debería conocer
+# infraestructura. `get_by_code` y `save_complex_tender` exponen modelos de
+# SQLModel en una interfaz abstracta, lo que ata cualquier implementación futura
+# a ese ORM. Desenredarlo obliga a tocar la ingesta completa, así que se deja
+# anotado. **Los métodos nuevos deben hablar solo de entidades de dominio.**
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
@@ -12,8 +20,9 @@ class TenderFilters(BaseModel):
     """Filters class to query tenders by multiple dynamic parameters."""
 
     ids: list[UUID] | None = None
+    # La granularidad geográfica llega hasta la región: ninguna de las dos APIs de
+    # Mercado Público entrega provincia. Ver PENDIENTES.md 6.17.
     regions: list[str] | None = None  # Filter by Region Names (e.g. ['Metropolitana'])
-    provinces: list[str] | None = None  # Filter by Province Names (e.g. ['Santiago'])
 
 
 class ITenderRepository(ABC):
@@ -22,6 +31,23 @@ class ITenderRepository(ABC):
     @abstractmethod
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         """Retrieve a list of tenders matching the specified filters."""
+        ...
+
+    @abstractmethod
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        """Busca licitaciones por filtros, ordenadas por fecha de cierre.
+
+        Respaldo del buscador manual para cuando no hay vector con que ordenar
+        por relevancia: proveedor recién registrado o perfil sin completar.
+
+        Devuelve `(licitaciones de esta página, total que cumple los filtros)`.
+        El total es independiente del corte, igual que en el camino vectorial.
+        """
         ...
 
     @abstractmethod
@@ -52,4 +78,9 @@ class ITenderRepository(ABC):
     @abstractmethod
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         """Save (create or update) the DeepAnalysis in the database."""
+        ...
+
+    @abstractmethod
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        """Retrieve the timestamp of the most recently created tender."""
         ...

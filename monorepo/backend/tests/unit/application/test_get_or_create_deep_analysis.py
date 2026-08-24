@@ -11,6 +11,7 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
@@ -42,6 +43,14 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
             results.append(t)
         return results
 
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:  # noqa: ARG002
+        return ([], 0)
+
     async def get_by_code(self, code: str) -> Any | None:
         return None
 
@@ -63,9 +72,18 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
         return self.analyses.get((tender_id, supplier_id))
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
-        key = (deep_analysis.tender_id, deep_analysis.supplier_id)
-        self.analyses[key] = deep_analysis
+        self.analyses[(deep_analysis.tender_id, deep_analysis.supplier_id)] = (
+            deep_analysis
+        )
         return deep_analysis
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        if not self.tenders:
+            return None
+        return max(
+            (t.created_at for t in self.tenders.values() if t.created_at is not None),
+            default=None,
+        )
 
 
 class FakeMatchingResultRepositoryForAnalysis(IMatchingResultRepository):

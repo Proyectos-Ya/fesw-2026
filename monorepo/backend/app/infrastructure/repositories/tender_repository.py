@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -8,6 +10,7 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.domain.entities.deep_analysis import VALID_RECOMMENDATIONS, DeepAnalysis
 from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
@@ -47,7 +50,6 @@ class TenderRepository(ITenderRepository):
             buyer_rut=model.buyer_rut,
             buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
-            province=model.province,
             region=model.buyer.region.name
             if model.buyer and model.buyer.region
             else None,
@@ -81,7 +83,6 @@ class TenderRepository(ITenderRepository):
             last_change_at=entity.last_change_at,
             buyer_rut=entity.buyer_rut,
             buyer_unit=entity.buyer_unit,
-            province=entity.province,
             available_amount_clp=entity.available_amount_clp,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -117,13 +118,101 @@ class TenderRepository(ITenderRepository):
         if filters.ids:
             query = query.where(col(TenderModel.id).in_(filters.ids))
 
-        if filters.provinces:
-            query = query.where(col(TenderModel.province).in_(filters.provinces))
-
         result = await self.session.exec(query)
         models = result.all()
 
         return [self._to_entity(m) for m in models]
+
+    def _search_conditions(self, criteria: TenderFilterCriteria) -> list:
+        """Traduce el criterio de búsqueda a condiciones de SQLModel.
+
+        Todo pasa por `col(...) == valor`, que genera parámetros ligados: los
+        valores nunca se concatenan a la sentencia. Ahí está la defensa real
+        contra inyección, no en sanitizar cadenas.
+        """
+        conditions = []
+
+        if criteria.status_codes:
+            # La tabla guarda `status_id`; el código semántico ('publicada') se
+            # deriva de él. Varios ids comparten código —1, 2 y 6 son todos
+            # 'publicada'— así que la traducción es de uno a muchos.
+            status_ids = [
+                status_id
+                for status_id, code in TENDER_STATUS_CODE_BY_ID.items()
+                if code in criteria.status_codes
+            ]
+            conditions.append(col(TenderModel.status_id).in_(status_ids))
+
+        if criteria.closing_from is not None:
+            conditions.append(col(TenderModel.closing_at) >= criteria.closing_from)
+        if criteria.closing_to is not None:
+            conditions.append(col(TenderModel.closing_at) <= criteria.closing_to)
+        if criteria.published_from is not None:
+            conditions.append(col(TenderModel.published_at) >= criteria.published_from)
+        if criteria.published_to is not None:
+            conditions.append(col(TenderModel.published_at) <= criteria.published_to)
+
+        # Una licitación sin monto queda fuera cuando el filtro está activo: en
+        # SQL la comparación contra NULL no es verdadera, que es la misma
+        # semántica del payload de Qdrant y la del filtro del frontend.
+        if criteria.min_amount is not None:
+            conditions.append(
+                col(TenderModel.available_amount_clp) >= criteria.min_amount
+            )
+        if criteria.max_amount is not None:
+            conditions.append(
+                col(TenderModel.available_amount_clp) <= criteria.max_amount
+            )
+
+        return conditions
+
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        """Respaldo del buscador cuando no hay vector con que ordenar.
+
+        Ordena por fecha de cierre ascendente: sin relevancia que calcular, lo
+        más útil es lo que vence primero.
+        """
+        conditions = self._search_conditions(criteria)
+
+        # La región vive en la institución compradora, así que necesita join. Se
+        # aplica a las dos consultas para que el total corresponda a los mismos
+        # resultados que se devuelven.
+        def _with_region(query):
+            if not criteria.region_ids:
+                return query.where(*conditions) if conditions else query
+            query = query.join(
+                BuyerInstitutionModel,
+                col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
+            ).where(col(BuyerInstitutionModel.region_id).in_(criteria.region_ids))
+            return query.where(*conditions) if conditions else query
+
+        total_result = await self.session.exec(
+            _with_region(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
+        )
+        total = total_result.one()
+
+        page_query = _with_region(
+            select(TenderModel).options(
+                selectinload(TenderModel.status),  # type: ignore[arg-type]
+                selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
+                    BuyerInstitutionModel.region  # type: ignore[arg-type]
+                ),
+                selectinload(TenderModel.items),  # type: ignore[arg-type]
+            )
+        )
+        page_query = (
+            page_query.order_by(col(TenderModel.closing_at).asc())
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result = await self.session.exec(page_query)
+        return [self._to_entity(m) for m in result.all()], total
 
     async def get_by_code(self, code: str) -> TenderModel | None:
         statement = select(TenderModel).where(TenderModel.code == code)
@@ -258,3 +347,13 @@ class TenderRepository(ITenderRepository):
         await self.session.commit()
         await self.session.refresh(model)
         return self._to_deep_analysis_entity(model)
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        """Fecha de la licitación más reciente, para saber si la caché quedó atrás."""
+        statement = (
+            select(TenderModel.created_at)
+            .order_by(col(TenderModel.created_at).desc())
+            .limit(1)
+        )
+        result = await self.session.exec(statement)
+        return result.first()

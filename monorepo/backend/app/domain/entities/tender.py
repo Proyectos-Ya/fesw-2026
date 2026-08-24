@@ -72,7 +72,6 @@ class Tender(BaseModel):
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora
     buyer_unit: str
-    province: str | None = None  # Calculated geographical province
     region: str | None = None  # Region name derived from the buyer institution
     available_amount_clp: float | None = None  # Budget normalized to CLP
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)

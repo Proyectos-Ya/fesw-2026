@@ -214,12 +214,12 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
                 <span>{tender.buyer_unit}</span>
               </>
             )}
-            {tender.province && (
+            {tender.region && (
               <>
                 <span className="text-border-strong">·</span>
                 <span className="inline-flex items-center gap-1.5">
                   <Icon name="map-pin" size={15} color="var(--text-subtle)" />
-                  <span>{tender.province}</span>
+                  <span>{tender.region}</span>
                 </span>
               </>
             )}
