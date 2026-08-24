@@ -40,7 +40,9 @@ SRC_USER = "postgres"
 SRC_PASSWORD = "1234"
 SRC_DB = "chiripa"
 
-EXCEL_PATH = os.path.abspath(os.path.join(BASE_DIR, "../../project-data/chiripa_tenders.xlsx"))
+EXCEL_PATH = os.path.abspath(
+    os.path.join(BASE_DIR, "../../project-data/chiripa_tenders.xlsx")
+)
 
 # Destino Docker
 DST_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -81,17 +83,21 @@ async def export_chiripa_to_excel():
     print("=" * 80)
     print(f"📊 EXPORTANDO DATA DE CHIRIPA A EXCEL: {EXCEL_PATH}")
     print("=" * 80)
-    
+
     # Asegurar que el directorio de destino existe
     os.makedirs(os.path.dirname(EXCEL_PATH), exist_ok=True)
 
     # Conectar usando asyncpg
     src_conn = await asyncpg.connect(
-        database=SRC_DB, user=SRC_USER, password=SRC_PASSWORD, host=SRC_HOST, port=SRC_PORT
+        database=SRC_DB,
+        user=SRC_USER,
+        password=SRC_PASSWORD,
+        host=SRC_HOST,
+        port=SRC_PORT,
     )
 
     tables = ["region", "tender_status", "buyer_institution", "tender", "tender_item"]
-    
+
     try:
         with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
             for table in tables:
@@ -116,7 +122,11 @@ async def import_excel_to_docker():
     print(f"[DST] Conectando a {DST_DB} en {DST_HOST}:{DST_PORT}...")
     try:
         dst_conn = await asyncpg.connect(
-            database=DST_DB, user=DST_USER, password=DST_PASSWORD, host=DST_HOST, port=DST_PORT
+            database=DST_DB,
+            user=DST_USER,
+            password=DST_PASSWORD,
+            host=DST_HOST,
+            port=DST_PORT,
         )
     except Exception as e:
         print(f"❌ Error al conectar a la base de datos de Docker ({DST_DB}): {e}")
@@ -127,10 +137,12 @@ async def import_excel_to_docker():
         excel_file = pd.ExcelFile(EXCEL_PATH)
 
         # Helper para insertar dataframes con tipos correctos
-        async def insert_df(table_name: str, query: str, string_columns: list[int] = None):
+        async def insert_df(
+            table_name: str, query: str, string_columns: list[int] = None
+        ):
             df = excel_file.parse(table_name)
             print(f"[IMPORT] Insertando filas en la tabla '{table_name}'...")
-            
+
             success_count = 0
             fail_count = 0
             for idx, row in df.iterrows():
@@ -144,23 +156,28 @@ async def import_excel_to_docker():
                     success_count += 1
                 except Exception as e:
                     # Mostrar error real si no es una violación de clave única
-                    if "unique constraint" not in str(e).lower() and "duplicate key" not in str(e).lower():
+                    if (
+                        "unique constraint" not in str(e).lower()
+                        and "duplicate key" not in str(e).lower()
+                    ):
                         print(f"      [ERR] Fila {idx}: {e}")
                     fail_count += 1
-            print(f"   ✓ Tabla '{table_name}': {success_count} insertados exitosamente, {fail_count} omitidos/duplicados.")
+            print(
+                f"   ✓ Tabla '{table_name}': {success_count} insertados exitosamente, {fail_count} omitidos/duplicados."
+            )
 
         # 1. region
         await insert_df(
             "region",
             "INSERT INTO region (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;",
-            string_columns=[1]
+            string_columns=[1],
         )
 
         # 2. tender_status
         await insert_df(
             "tender_status",
             "INSERT INTO tender_status (id, code, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;",
-            string_columns=[1, 2]
+            string_columns=[1, 2],
         )
 
         # 3. buyer_institution
@@ -171,7 +188,7 @@ async def import_excel_to_docker():
             VALUES ($1, $2, $3, $4, $5) 
             ON CONFLICT (rut) DO NOTHING;
             """,
-            string_columns=[0, 1]
+            string_columns=[0, 1],
         )
 
         # 4. tender
@@ -184,7 +201,7 @@ async def import_excel_to_docker():
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
             ON CONFLICT (id) DO NOTHING;
             """,
-            string_columns=[0, 1, 2, 3, 8, 9, 10]
+            string_columns=[0, 1, 2, 3, 8, 9, 10],
         )
 
         # 5. tender_item
@@ -195,7 +212,7 @@ async def import_excel_to_docker():
             VALUES ($1, $2, $3, $4, $5, $6, $7) 
             ON CONFLICT (id) DO NOTHING;
             """,
-            string_columns=[0, 1, 2, 3, 4, 6]
+            string_columns=[0, 1, 2, 3, 4, 6],
         )
 
     finally:
@@ -211,7 +228,11 @@ async def generate_qdrant_embeddings():
     print("=" * 80)
 
     dst_conn = await asyncpg.connect(
-        database=DST_DB, user=DST_USER, password=DST_PASSWORD, host=DST_HOST, port=DST_PORT
+        database=DST_DB,
+        user=DST_USER,
+        password=DST_PASSWORD,
+        host=DST_HOST,
+        port=DST_PORT,
     )
     qdrant_client = AsyncQdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
@@ -254,7 +275,9 @@ async def generate_qdrant_embeddings():
             "description": r["description"],
             "region": r["region_name"],
             "buyer_name": r["buyer_name"],
-            "available_amount_clp": float(r["available_amount_clp"]) if r["available_amount_clp"] is not None else None,
+            "available_amount_clp": float(r["available_amount_clp"])
+            if r["available_amount_clp"] is not None
+            else None,
             "items": [],
         }
 
@@ -271,7 +294,9 @@ async def generate_qdrant_embeddings():
                     product_code="",
                     name=it["name"] or "",
                     description=it["description"],
-                    quantity=float(it["quantity"]) if it["quantity"] is not None else 1.0,
+                    quantity=float(it["quantity"])
+                    if it["quantity"] is not None
+                    else 1.0,
                     unit_of_measure=it["unit_of_measure"] or "UN",
                 )
             )
@@ -301,7 +326,9 @@ async def generate_qdrant_embeddings():
                 buyer_unit="TI",
                 items=t["items"],
             )
-            texts.append(text_builder.build_from_tender(tender=tender_obj, items=t["items"]))
+            texts.append(
+                text_builder.build_from_tender(tender=tender_obj, items=t["items"])
+            )
 
         embeddings = await loop.run_in_executor(
             None, lambda: model.encode(texts, normalize_embeddings=True).tolist()
@@ -322,7 +349,9 @@ async def generate_qdrant_embeddings():
             points.append(point)
 
         await qdrant_client.upsert(collection_name=QDRANT_COLLECTION, points=points)
-        print(f"   [OK] Lote {i + 1} - {min(i + len(batch), total)} / {total} indexado.")
+        print(
+            f"   [OK] Lote {i + 1} - {min(i + len(batch), total)} / {total} indexado."
+        )
 
     await dst_conn.close()
     await qdrant_client.close()

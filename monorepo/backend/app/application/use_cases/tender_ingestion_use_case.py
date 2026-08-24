@@ -31,7 +31,6 @@ class TenderIngestionUseCase:
         self.tender_vector_repo = tender_vector_repo
         self.text_builder = TextBuilder()
 
-
     async def execute(self, dto: TenderIngestaDTO) -> dict[str, Any]:
         """Ingesta una licitación. La cola de pendientes la maneja el servicio."""
         try:

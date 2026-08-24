@@ -11,7 +11,9 @@ class MatchingResultModel(SQLModel, table=True):
     __tablename__ = "matching_result"  # type: ignore
 
     __table_args__ = (
-        UniqueConstraint("supplier_id", "tender_id", name="uq_matching_result_supplier_tender"),
+        UniqueConstraint(
+            "supplier_id", "tender_id", name="uq_matching_result_supplier_tender"
+        ),
     )
 
     id: UUID = Field(primary_key=True)

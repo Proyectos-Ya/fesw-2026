@@ -70,7 +70,10 @@ def build_items_text(items: list[dict[str, Any]]) -> str:
 # ==========================================================
 async def fetch_tenders_from_db() -> list[dict[str, Any]]:
     """Extrae las licitaciones y sus items de 'chiripa' garantizando SOLO operaciones SELECT."""
-    print(f"[POSTGRES] Conectando en modo SOLO LECTURA a PostgreSQL ({PG_DB}@{PG_HOST}:{PG_PORT})...", flush=True)
+    print(
+        f"[POSTGRES] Conectando en modo SOLO LECTURA a PostgreSQL ({PG_DB}@{PG_HOST}:{PG_PORT})...",
+        flush=True,
+    )
 
     conn = await asyncpg.connect(
         database=PG_DB,
@@ -87,11 +90,17 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
         tables_query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';"
         table_records = await conn.fetch(tables_query)
         existing_tables = {row["table_name"] for row in table_records}
-        print(f"[POSTGRES] Tablas encontradas en '{PG_DB}': {sorted(list(existing_tables))}", flush=True)
+        print(
+            f"[POSTGRES] Tablas encontradas en '{PG_DB}': {sorted(list(existing_tables))}",
+            flush=True,
+        )
 
         # 2. Consultar según la estructura de tablas disponible
         if "tender" in existing_tables:
-            print("[POSTGRES] Extrayendo desde tablas 'tender' y 'tender_item'...", flush=True)
+            print(
+                "[POSTGRES] Extrayendo desde tablas 'tender' y 'tender_item'...",
+                flush=True,
+            )
             has_items = "tender_item" in existing_tables
             has_buyer = "buyer_institution" in existing_tables
             has_region = "region" in existing_tables
@@ -154,21 +163,27 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
                         "name": row["tender_name"] or "",
                         "description": row["tender_description"],
                         "status_id": row["status_id"],
-                        "available_amount_clp": float(row["available_amount_clp"]) if row["available_amount_clp"] is not None else None,
+                        "available_amount_clp": float(row["available_amount_clp"])
+                        if row["available_amount_clp"] is not None
+                        else None,
                         "buyer_name": row["buyer_name"],
                         "region": row["region_name"],
                         "items": [],
                     }
 
                 if row["item_id"] is not None:
-                    tenders_dict[t_id]["items"].append({
-                        "id": str(row["item_id"]),
-                        "product_code": row["item_product_code"] or "",
-                        "name": row["item_name"] or "",
-                        "description": row["item_description"],
-                        "quantity": float(row["item_quantity"]) if row["item_quantity"] is not None else 1.0,
-                        "unit_of_measure": row["item_unit_of_measure"] or "UN",
-                    })
+                    tenders_dict[t_id]["items"].append(
+                        {
+                            "id": str(row["item_id"]),
+                            "product_code": row["item_product_code"] or "",
+                            "name": row["item_name"] or "",
+                            "description": row["item_description"],
+                            "quantity": float(row["item_quantity"])
+                            if row["item_quantity"] is not None
+                            else 1.0,
+                            "unit_of_measure": row["item_unit_of_measure"] or "UN",
+                        }
+                    )
 
         elif "licitacion" in existing_tables:
             print("[POSTGRES] Extrayendo desde tabla 'licitacion'...", flush=True)
@@ -192,7 +207,9 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
                     "name": row["nombre"] or "",
                     "description": row["descripcion"],
                     "status_id": 1,
-                    "available_amount_clp": float(row["monto_estimado"]) if row["monto_estimado"] is not None else None,
+                    "available_amount_clp": float(row["monto_estimado"])
+                    if row["monto_estimado"] is not None
+                    else None,
                     "buyer_name": row["organismo_nombre"],
                     "region": row["region"],
                     "items": [],
@@ -201,7 +218,10 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
         await conn.close()
 
     result = list(tenders_dict.values())
-    print(f"[POSTGRES] Se extrajeron exitosamente {len(result)} licitaciones de PostgreSQL (Base de datos: {PG_DB}).", flush=True)
+    print(
+        f"[POSTGRES] Se extrajeron exitosamente {len(result)} licitaciones de PostgreSQL (Base de datos: {PG_DB}).",
+        flush=True,
+    )
     return result
 
 
@@ -210,7 +230,10 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
 # ==========================================================
 async def setup_qdrant_collection(client: AsyncQdrantClient):
     """Crea la colección con vectores nombrados 'overview' e 'items'."""
-    print(f"[QDRANT] Preparando coleccion '{TEST_COLLECTION_NAME}' en Qdrant ({QDRANT_HOST}:{QDRANT_PORT})...", flush=True)
+    print(
+        f"[QDRANT] Preparando coleccion '{TEST_COLLECTION_NAME}' en Qdrant ({QDRANT_HOST}:{QDRANT_PORT})...",
+        flush=True,
+    )
 
     result = await client.get_collections()
     collections = [c.name for c in result.collections]
@@ -225,7 +248,10 @@ async def setup_qdrant_collection(client: AsyncQdrantClient):
             "items": VectorParams(size=VECTOR_DIM, distance=Distance.COSINE),
         },
     )
-    print(f"[QDRANT] Coleccion '{TEST_COLLECTION_NAME}' creada con vectores nombrados: 'overview' e 'items' ({VECTOR_DIM} dim).", flush=True)
+    print(
+        f"[QDRANT] Coleccion '{TEST_COLLECTION_NAME}' creada con vectores nombrados: 'overview' e 'items' ({VECTOR_DIM} dim).",
+        flush=True,
+    )
 
 
 async def generate_and_upload_named_vectors(
@@ -235,18 +261,24 @@ async def generate_and_upload_named_vectors(
 ):
     """Genera embeddings por aspecto semántico y realiza el upsert a Qdrant."""
     total = len(tenders)
-    print(f"[EMBEDDINGS] Generando Named Vectors para {total} licitaciones en lotes de {BATCH_SIZE}...", flush=True)
+    print(
+        f"[EMBEDDINGS] Generando Named Vectors para {total} licitaciones en lotes de {BATCH_SIZE}...",
+        flush=True,
+    )
     loop = asyncio.get_running_loop()
 
     for i in range(0, total, BATCH_SIZE):
         batch = tenders[i : i + BATCH_SIZE]
 
-        overview_texts = [build_overview_text(t["name"], t["description"]) for t in batch]
+        overview_texts = [
+            build_overview_text(t["name"], t["description"]) for t in batch
+        ]
         items_texts = [build_items_text(t["items"]) for t in batch]
 
         # Generar embeddings de ambos aspectos en ejecutor de hilo
         overview_vectors = await loop.run_in_executor(
-            None, lambda: model.encode(overview_texts, normalize_embeddings=True).tolist()
+            None,
+            lambda: model.encode(overview_texts, normalize_embeddings=True).tolist(),
         )
         items_vectors = await loop.run_in_executor(
             None, lambda: model.encode(items_texts, normalize_embeddings=True).tolist()
@@ -272,9 +304,15 @@ async def generate_and_upload_named_vectors(
             points.append(point)
 
         await client.upsert(collection_name=TEST_COLLECTION_NAME, points=points)
-        print(f"   [OK] Lote {i + 1} - {min(i + len(batch), total)} / {total} cargado en Qdrant.", flush=True)
+        print(
+            f"   [OK] Lote {i + 1} - {min(i + len(batch), total)} / {total} cargado en Qdrant.",
+            flush=True,
+        )
 
-    print(f"[QDRANT] Carga finalizada: {total} licitaciones indexadas con Named Vectors en Qdrant.", flush=True)
+    print(
+        f"[QDRANT] Carga finalizada: {total} licitaciones indexadas con Named Vectors en Qdrant.",
+        flush=True,
+    )
 
 
 # ==========================================================
@@ -283,7 +321,10 @@ async def generate_and_upload_named_vectors(
 async def run_search_demo(client: AsyncQdrantClient, model: SentenceTransformer):
     """Demuestra una búsqueda multi-vector con ponderación en la colección recién creada."""
     print("\n" + "=" * 70, flush=True)
-    print("[SEARCH] PRUEBA DE BUSQUEDA MULTI-VECTOR PONDERADA (70% Items / 30% Overview)", flush=True)
+    print(
+        "[SEARCH] PRUEBA DE BUSQUEDA MULTI-VECTOR PONDERADA (70% Items / 30% Overview)",
+        flush=True,
+    )
     print("=" * 70, flush=True)
 
     query_overview = "Servicios generales de mantencion, aseo y obras menores"
@@ -293,12 +334,16 @@ async def run_search_demo(client: AsyncQdrantClient, model: SentenceTransformer)
     w_items = 0.70
 
     loop = asyncio.get_running_loop()
-    v_overview = (await loop.run_in_executor(
-        None, lambda: model.encode([query_overview], normalize_embeddings=True)
-    ))[0].tolist()
-    v_items = (await loop.run_in_executor(
-        None, lambda: model.encode([query_items], normalize_embeddings=True)
-    ))[0].tolist()
+    v_overview = (
+        await loop.run_in_executor(
+            None, lambda: model.encode([query_overview], normalize_embeddings=True)
+        )
+    )[0].tolist()
+    v_items = (
+        await loop.run_in_executor(
+            None, lambda: model.encode([query_items], normalize_embeddings=True)
+        )
+    )[0].tolist()
 
     res_overview = await client.query_points(
         collection_name=TEST_COLLECTION_NAME,
@@ -338,7 +383,10 @@ async def run_search_demo(client: AsyncQdrantClient, model: SentenceTransformer)
     for rank, (tid, data) in enumerate(ranking[:3], 1):
         payload = data["payload"]
         print(f"  {rank}. [{payload.get('code')}] {payload.get('name')}", flush=True)
-        print(f"     Score Final: {data['score']:.4f} | Organismo: {payload.get('buyer_name')} | Items: {payload.get('items_count')}", flush=True)
+        print(
+            f"     Score Final: {data['score']:.4f} | Organismo: {payload.get('buyer_name')} | Items: {payload.get('items_count')}",
+            flush=True,
+        )
 
 
 # ==========================================================
@@ -346,13 +394,19 @@ async def run_search_demo(client: AsyncQdrantClient, model: SentenceTransformer)
 # ==========================================================
 async def main():
     print("=" * 70, flush=True)
-    print("[INIT] INICIANDO SINCRONIZACION DE LICITACIONES A QDRANT (NAMED VECTORS)", flush=True)
+    print(
+        "[INIT] INICIANDO SINCRONIZACION DE LICITACIONES A QDRANT (NAMED VECTORS)",
+        flush=True,
+    )
     print("=" * 70, flush=True)
 
     # 1. Extraer licitaciones (SOLO SELECT)
     tenders = await fetch_tenders_from_db()
     if not tenders:
-        print("[WARN] No se encontraron licitaciones en la base de datos 'chiripa'.", flush=True)
+        print(
+            "[WARN] No se encontraron licitaciones en la base de datos 'chiripa'.",
+            flush=True,
+        )
         return
 
     # 2. Conectar a Qdrant y preparar colección

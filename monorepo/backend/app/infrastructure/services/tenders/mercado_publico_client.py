@@ -41,7 +41,9 @@ class MercadoPublicoClient:
                         self.base_url, headers=headers, params=params, timeout=30.0
                     )
                     if response.status_code == 429:
-                        print("[API MP] Cuota agotada (Error 429). Deteniendo paginación.")
+                        print(
+                            "[API MP] Cuota agotada (Error 429). Deteniendo paginación."
+                        )
                         break
                     response.raise_for_status()
 

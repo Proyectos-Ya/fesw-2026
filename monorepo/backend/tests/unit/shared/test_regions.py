@@ -46,18 +46,28 @@ def test_normalize_region_name_various_formats() -> None:
 def test_are_regions_matching_strict() -> None:
     """Verifica que la función de coincidencia estricta valide pertenencia geográfica de forma robusta."""
     # Coincidencia con variantes de nombre
-    assert are_regions_matching("Los Ríos", ["Región de Los Ríos", "Región de Los Lagos"]) is True
+    assert (
+        are_regions_matching("Los Ríos", ["Región de Los Ríos", "Región de Los Lagos"])
+        is True
+    )
     assert are_regions_matching("Región de Los Ríos", ["Los Rios"]) is True
-    assert are_regions_matching("Metropolitana", ["Región Metropolitana de Santiago"]) is True
+    assert (
+        are_regions_matching("Metropolitana", ["Región Metropolitana de Santiago"])
+        is True
+    )
     assert are_regions_matching("Santiago", ["RM"]) is True
 
     # No coincidencia
     assert are_regions_matching("Antofagasta", ["Región de Valparaíso", "RM"]) is False
-    assert are_regions_matching("Los Ríos", ["Región Metropolitana de Santiago"]) is False
+    assert (
+        are_regions_matching("Los Ríos", ["Región Metropolitana de Santiago"]) is False
+    )
 
     # Casos borde
     assert are_regions_matching(None, ["Metropolitana"]) is False
-    assert are_regions_matching("Metropolitana", []) is True  # Sin filtro de proveedor -> permite todo
+    assert (
+        are_regions_matching("Metropolitana", []) is True
+    )  # Sin filtro de proveedor -> permite todo
     assert are_regions_matching("Metropolitana", None) is True  # type: ignore
 
 

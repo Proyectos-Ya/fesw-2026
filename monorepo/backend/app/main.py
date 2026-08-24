@@ -67,7 +67,9 @@ async def lifespan(app: FastAPI):
         metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
         processing_task = asyncio.create_task(scheduler.start_processing_loop())
     else:
-        print("[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local.")
+        print(
+            "[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local."
+        )
 
     yield
 

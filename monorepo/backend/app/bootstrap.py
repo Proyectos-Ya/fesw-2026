@@ -220,7 +220,10 @@ def bootstrap(app: FastAPI) -> None:
 
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
     if settings.disable_reranker:
-        print("[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService.")
+        print(
+            "[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService."
+        )
+
         class MockRerankerService(IRerankerService):
             async def rerank(self, query_text, candidates, limit):
                 return [(c[0], 1.0) for c in candidates][:limit]
@@ -234,6 +237,7 @@ def bootstrap(app: FastAPI) -> None:
             class MockRerankerService(IRerankerService):
                 async def rerank(self, query_text, candidates, limit):
                     return [(c[0], 1.0) for c in candidates][:limit]
+
             app.state.reranker_service = MockRerankerService()
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones

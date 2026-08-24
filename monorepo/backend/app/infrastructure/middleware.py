@@ -33,18 +33,21 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 class CookieCleanupMiddleware(BaseHTTPMiddleware):
     """Limpia la cookie de sesión si el backend responde con 401 Unauthorized."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
-        
+
         # Si la respuesta es 401 y el cliente envió la cookie, la borramos para evitar bucles de redirección
         from app.config import settings
+
         cookie_name = settings.auth_cookie_name
         if response.status_code == 401 and request.cookies.get(cookie_name):
             response.delete_cookie(
                 key=cookie_name,
                 path="/",
                 secure=settings.auth_cookie_secure,
-                samesite="lax"
+                samesite="lax",
             )
         return response
 

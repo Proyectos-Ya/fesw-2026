@@ -71,7 +71,9 @@ class BgeRerankerService(IRerankerService):
 
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = min(os.cpu_count() or 4, 8)
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.graph_optimization_level = (
+            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        )
 
         self.session = ort.InferenceSession(
             onnx_path,

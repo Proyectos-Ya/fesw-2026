@@ -130,14 +130,20 @@ class RankTendersUseCase:
                 if not cache_is_stale:
                     # Hidratar las licitaciones desde SQL
                     tender_ids = [m.tender_id for m in cached_matches]
-                    tenders = await self.tender_repo.get_tenders(TenderFilters(ids=tender_ids))
+                    tenders = await self.tender_repo.get_tenders(
+                        TenderFilters(ids=tender_ids)
+                    )
                     tender_dict = {t.id: t for t in tenders}
 
                     valid_results = []
                     for m in cached_matches:
                         t = tender_dict.get(m.tender_id)
                         # Descartar licitaciones cerradas o que no estén en estado activa/publicada
-                        if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
+                        if (
+                            t
+                            and t.closing_at > now
+                            and t.status_code in ACTIVE_TENDER_STATUSES
+                        ):
                             # Filtrar estrictamente por región si el proveedor tiene regiones configuradas
                             if supplier.regions and not are_regions_matching(
                                 t.region, supplier.regions
@@ -194,8 +200,8 @@ class RankTendersUseCase:
             if t and t.closing_at > now and t.status_code in ACTIVE_TENDER_STATUSES:
                 # Filtrar estrictamente por región canónica si el proveedor tiene regiones configuradas
                 if supplier.regions and not are_regions_matching(
-                                t.region, supplier.regions
-                            ):
+                    t.region, supplier.regions
+                ):
                     continue
                 active_tenders.append(t)
                 similarity_scores[uid] = sim_score

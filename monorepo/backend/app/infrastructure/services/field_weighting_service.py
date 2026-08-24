@@ -51,7 +51,7 @@ class FieldWeightingService(IWeightingService):
 
             # Texto global de la licitación (título + descripción)
             tender_overview = f"{tender.name} {tender.description or ''}"
-            
+
             # Texto de los ítems/partidas
             items_texts = []
             if tender.items:
@@ -66,15 +66,21 @@ class FieldWeightingService(IWeightingService):
                     sec_clean = sector.strip()
                     if not sec_clean:
                         continue
-                    
+
                     # Intentar coincidencia de frase completa
                     pattern_full = rf"\b{re.escape(sec_clean)}\b"
                     if re.search(pattern_full, all_tender_text, re.IGNORECASE):
                         sector_matches += 1
                         continue
-                    
+
                     # Si no coincide la frase completa, evaluar tokens significativos (len >= 4)
-                    tokens = [t for t in re.split(r"\s+", sec_clean) if len(t) >= 4 and t.lower() not in ("para", "sobre", "entre", "desde", "hasta")]
+                    tokens = [
+                        t
+                        for t in re.split(r"\s+", sec_clean)
+                        if len(t) >= 4
+                        and t.lower()
+                        not in ("para", "sobre", "entre", "desde", "hasta")
+                    ]
                     for tok in tokens:
                         pattern_tok = rf"\b{re.escape(tok)}\b"
                         if re.search(pattern_tok, tender_overview, re.IGNORECASE):

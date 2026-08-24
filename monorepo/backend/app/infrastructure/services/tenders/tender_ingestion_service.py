@@ -49,7 +49,9 @@ class TenderIngestionService(ITenderIngestionService):
             from_date = to_date - timedelta(days=1)
             limit = settings.mercadopublico_fetching_limit
 
-            print(f"[IngestionService] Consultando licitaciones recientes (límite: {limit})...")
+            print(
+                f"[IngestionService] Consultando licitaciones recientes (límite: {limit})..."
+            )
             try:
                 items = await self.client.get_tenders(from_date, to_date, limit)
                 new_count = 0
@@ -64,7 +66,11 @@ class TenderIngestionService(ITenderIngestionService):
                     codigo_estado = str(estado.get("codigo", "")).lower()
                     glosa_estado = str(estado.get("glosa", "")).lower()
                     ACTIVE_STATUS_IDS = {1, 2, 5, 6}
-                    is_active_status = (id_estado in ACTIVE_STATUS_IDS) or ("publicada" in codigo_estado) or ("publicada" in glosa_estado)
+                    is_active_status = (
+                        (id_estado in ACTIVE_STATUS_IDS)
+                        or ("publicada" in codigo_estado)
+                        or ("publicada" in glosa_estado)
+                    )
                     if not is_active_status:
                         continue
 
@@ -75,9 +81,13 @@ class TenderIngestionService(ITenderIngestionService):
                         try:
                             fc_clean = fecha_cierre_str.replace("Z", "+00:00")
                             if " " in fc_clean and "T" not in fc_clean:
-                                closing_dt = datetime.strptime(fc_clean, "%Y-%m-%d %H:%M")
+                                closing_dt = datetime.strptime(
+                                    fc_clean, "%Y-%m-%d %H:%M"
+                                )
                             else:
-                                closing_dt = datetime.fromisoformat(fc_clean).replace(tzinfo=None)
+                                closing_dt = datetime.fromisoformat(fc_clean).replace(
+                                    tzinfo=None
+                                )
 
                             now_naive = datetime.now(UTC).replace(tzinfo=None)
                             if closing_dt <= now_naive:
@@ -92,11 +102,16 @@ class TenderIngestionService(ITenderIngestionService):
                         if nombre_region:
                             target_reg = settings.target_region.strip().lower()
                             item_reg = nombre_region.strip().lower()
-                            if target_reg not in item_reg and item_reg not in target_reg:
+                            if (
+                                target_reg not in item_reg
+                                and item_reg not in target_reg
+                            ):
                                 continue
 
                     # Comprobar si ya existe en metadata para no duplicar
-                    stmt = select(TenderMetadataModel).where(TenderMetadataModel.code == code)
+                    stmt = select(TenderMetadataModel).where(
+                        TenderMetadataModel.code == code
+                    )
                     existing = (await session.exec(stmt)).first()
                     if not existing:
                         metadata = TenderMetadataModel(
@@ -104,7 +119,7 @@ class TenderIngestionService(ITenderIngestionService):
                             code=code,
                             is_processed=False,
                             created_at=datetime.now(UTC).replace(tzinfo=None),
-                            updated_at=datetime.now(UTC).replace(tzinfo=None)
+                            updated_at=datetime.now(UTC).replace(tzinfo=None),
                         )
                         session.add(metadata)
                         new_count += 1
@@ -129,7 +144,9 @@ class TenderIngestionService(ITenderIngestionService):
             if not unprocessed_list:
                 return
 
-            print(f"[IngestionService] Encontradas {len(unprocessed_list)} licitaciones sin procesar.")
+            print(
+                f"[IngestionService] Encontradas {len(unprocessed_list)} licitaciones sin procesar."
+            )
 
             repo = TenderRepository(session)
             if self._tender_vector_repo:
@@ -137,12 +154,12 @@ class TenderIngestionService(ITenderIngestionService):
             else:
                 tender_vector_repo = QdrantTenderRepository(
                     client=self.qdrant_client,  # type: ignore
-                    vector_size=settings.embedding_vector_size
+                    vector_size=settings.embedding_vector_size,
                 )
             use_case = TenderIngestionUseCase(
                 repository=repo,
                 embedding_service=self.embedding_service,
-                tender_vector_repo=tender_vector_repo
+                tender_vector_repo=tender_vector_repo,
             )
 
             # Extraemos los datos necesarios antes de iterar para evitar expiración por commits intermedios
@@ -155,11 +172,17 @@ class TenderIngestionService(ITenderIngestionService):
                     # Descargar JSON crudo desde el cliente de Mercado Público
                     detail_payload = await self.client.get_tender_detail(code)
                     if not detail_payload:
-                        print(f"[IngestionService] Detalle de {code} vacío o inválido. Marcando como procesado.")
-                        metadata_item = await session.get(TenderMetadataModel, metadata_id)
+                        print(
+                            f"[IngestionService] Detalle de {code} vacío o inválido. Marcando como procesado."
+                        )
+                        metadata_item = await session.get(
+                            TenderMetadataModel, metadata_id
+                        )
                         if metadata_item:
                             metadata_item.is_processed = True
-                            metadata_item.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                            metadata_item.updated_at = datetime.now(UTC).replace(
+                                tzinfo=None
+                            )
                             session.add(metadata_item)
                         await session.commit()
                         continue
@@ -171,13 +194,19 @@ class TenderIngestionService(ITenderIngestionService):
                         target_reg = settings.target_region.strip().lower()
                         dto_reg = dto.region_name.strip().lower()
                         if target_reg not in dto_reg and dto_reg not in target_reg:
-                            metadata_item = await session.get(TenderMetadataModel, metadata_id)
+                            metadata_item = await session.get(
+                                TenderMetadataModel, metadata_id
+                            )
                             if metadata_item:
                                 metadata_item.is_processed = True
-                                metadata_item.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                                metadata_item.updated_at = datetime.now(UTC).replace(
+                                    tzinfo=None
+                                )
                                 session.add(metadata_item)
                             await session.commit()
-                            print(f"[IngestionService] Omitiendo {code}: región '{dto.region_name}' no coincide con TARGET_REGION '{settings.target_region}'.")
+                            print(
+                                f"[IngestionService] Omitiendo {code}: región '{dto.region_name}' no coincide con TARGET_REGION '{settings.target_region}'."
+                            )
                             continue
 
                     await use_case.execute(dto)
@@ -186,7 +215,9 @@ class TenderIngestionService(ITenderIngestionService):
                     metadata_item = await session.get(TenderMetadataModel, metadata_id)
                     if metadata_item:
                         metadata_item.is_processed = True
-                        metadata_item.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                        metadata_item.updated_at = datetime.now(UTC).replace(
+                            tzinfo=None
+                        )
                         session.add(metadata_item)
 
                     await session.commit()
@@ -199,13 +230,19 @@ class TenderIngestionService(ITenderIngestionService):
                     await session.rollback()
                     raise
                 except Exception as e:
-                    print(f"[IngestionService] Error al procesar licitación {code}: {e}. Marcando como procesado para continuar.")
+                    print(
+                        f"[IngestionService] Error al procesar licitación {code}: {e}. Marcando como procesado para continuar."
+                    )
                     await session.rollback()
                     try:
-                        metadata_item = await session.get(TenderMetadataModel, metadata_id)
+                        metadata_item = await session.get(
+                            TenderMetadataModel, metadata_id
+                        )
                         if metadata_item:
                             metadata_item.is_processed = True
-                            metadata_item.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                            metadata_item.updated_at = datetime.now(UTC).replace(
+                                tzinfo=None
+                            )
                             session.add(metadata_item)
                             await session.commit()
                     except Exception:
@@ -218,13 +255,15 @@ class TenderIngestionService(ITenderIngestionService):
         for prod in raw_products:
             items_dto.append(
                 ItemLicitacionDTO(
-                    codigo_unspsc=int(prod.get("codigo_producto", 0)) if prod.get("codigo_producto") is not None else None,
+                    codigo_unspsc=int(prod.get("codigo_producto", 0))
+                    if prod.get("codigo_producto") is not None
+                    else None,
                     codigo_categoria=None,
                     categoria=None,
                     nombre_producto=str(prod.get("nombre", "Sin nombre")),
                     descripcion=prod.get("descripcion"),
                     cantidad=float(prod.get("cantidad", 1.0)),
-                    unidad_medida=str(prod.get("unidad_medida", "UN"))
+                    unidad_medida=str(prod.get("unidad_medida", "UN")),
                 )
             )
 
@@ -237,7 +276,9 @@ class TenderIngestionService(ITenderIngestionService):
             if not date_str:
                 return datetime.utcnow()
             try:
-                return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
+                    tzinfo=None
+                )
             except Exception:
                 return datetime.utcnow()
 
@@ -255,5 +296,5 @@ class TenderIngestionService(ITenderIngestionService):
             # id de "Desconocida" en vez de atribuirle una región real.
             RegionId=to_region_id(institucion.get("region")),
             RegionUnidad=str(institucion.get("nombre_region", "Sin Región")),
-            MontoEstimado=presupuesto.get("monto_disponible_clp")
+            MontoEstimado=presupuesto.get("monto_disponible_clp"),
         )
