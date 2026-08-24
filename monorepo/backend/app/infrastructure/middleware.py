@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +49,7 @@ class CookieCleanupMiddleware(BaseHTTPMiddleware):
                 key=cookie_name,
                 path="/",
                 secure=settings.auth_cookie_secure,
-                samesite="lax",
+                samesite=settings.auth_cookie_samesite,
             )
         return response
 
@@ -55,10 +57,12 @@ class CookieCleanupMiddleware(BaseHTTPMiddleware):
 def register_middleware(app: FastAPI) -> None:
     """Registra todos los middlewares de la aplicación en orden."""
 
-    # CORS — permite llamadas desde el frontend Next.js
+    # CORS — orígenes desde configuración (CORS_ORIGINS, separados por coma).
+    # Nunca "*": con allow_credentials=True el navegador rechaza el comodín, y
+    # aunque lo aceptara sería abrir la API con cookies a cualquier sitio.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

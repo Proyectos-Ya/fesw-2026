@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.shared.constants import (
@@ -56,8 +57,21 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     # Nombre de la cookie httpOnly donde viaja el token
     auth_cookie_name: str = "access_token"
-    # Cookie Secure solo en producción (requiere HTTPS); en local va en False
-    auth_cookie_secure: bool = False
+    # Atributo Secure de la cookie de sesión: el navegador solo la manda por
+    # HTTPS. El valor por defecto se deriva de `is_dev` (ver el validador de más
+    # abajo) en vez de ser un `False` fijo, porque ese `False` viajaba tal cual a
+    # cualquier despliegue y dejaba la cookie de sesión expuesta a interceptación.
+    auth_cookie_secure: bool | None = None
+    # SameSite de la cookie. "lax" sirve mientras frontend y backend compartan
+    # sitio; si quedan en dominios distintos hace falta "none", que el navegador
+    # solo acepta junto con Secure.
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+    # --- CORS ---
+    # Orígenes autorizados, separados por coma. Estaba hardcodeado en
+    # middleware.py, así que no había forma de desplegar a otro dominio sin
+    # tocar código.
+    cors_origins: str = "http://localhost:3000"
 
     # --- Embeddings ---
     embedding_model: str = "BAAI/bge-m3"
@@ -117,6 +131,29 @@ class Settings(BaseSettings):
                 f"  {_COMO_GENERAR}"
             )
         return value
+
+    @model_validator(mode="after")
+    def _derivar_cookie_secure(self) -> "Settings":
+        """Si no se declaró, Secure sigue a `is_dev`: apagado en local, encendido fuera.
+
+        Se deriva en vez de tener un valor por defecto fijo para que el caso
+        peligroso —desplegar sin declarar la variable— caiga del lado seguro.
+        """
+        if self.auth_cookie_secure is None:
+            self.auth_cookie_secure = not self.is_dev
+        # El navegador descarta SameSite=None sin Secure, así que la sesión
+        # dejaría de viajar y el síntoma sería "no puedo entrar", sin pista.
+        if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
+            raise ValueError(
+                "AUTH_COOKIE_SAMESITE=none exige AUTH_COOKIE_SECURE=true: los "
+                "navegadores rechazan esa combinación y la sesión no se envía."
+            )
+        return self
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Orígenes de CORS como lista, desde la cadena separada por comas."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def database_url(self) -> str:

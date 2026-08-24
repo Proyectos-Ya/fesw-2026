@@ -23,8 +23,9 @@ BASE = {
 CLAVE_VALIDA = "K" * 32
 
 
-def _construir(secreto: str) -> Settings:
-    return Settings(jwt_secret_key=secreto, **BASE)  # type: ignore[arg-type]
+def _construir(secreto: str, **extra) -> Settings:
+    """Construye Settings aislado del `.env` del desarrollador."""
+    return Settings(_env_file=None, jwt_secret_key=secreto, **BASE, **extra)  # type: ignore[arg-type,call-arg]
 
 
 class TestClaveDeFirma:
@@ -59,3 +60,46 @@ class TestClaveDeFirma:
         monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
         with pytest.raises(ValidationError, match="jwt_secret_key"):
             Settings(_env_file=None, **BASE)  # type: ignore[arg-type,call-arg]
+
+
+class TestCookieDeSesion:
+    """`auth_cookie_secure` tenía `False` fijo y viajaba así a cualquier despliegue.
+
+    Ahora se deriva de `is_dev`, para que el caso peligroso —desplegar sin
+    declarar la variable— caiga del lado seguro.
+    """
+
+    def test_en_desarrollo_secure_queda_apagado(self):
+        assert _construir(CLAVE_VALIDA, is_dev=True).auth_cookie_secure is False
+
+    def test_fuera_de_desarrollo_secure_queda_encendido(self):
+        assert _construir(CLAVE_VALIDA, is_dev=False).auth_cookie_secure is True
+
+    def test_se_puede_declarar_explicitamente(self):
+        """Un despliegue tras un proxy que termina TLS puede necesitar forzarlo."""
+        s = _construir(CLAVE_VALIDA, is_dev=False, auth_cookie_secure=False)
+        assert s.auth_cookie_secure is False
+
+    def test_samesite_none_exige_secure(self):
+        """El navegador descarta SameSite=None sin Secure y la sesión no viaja."""
+        with pytest.raises(ValidationError, match="AUTH_COOKIE_SAMESITE=none"):
+            _construir(
+                CLAVE_VALIDA,
+                is_dev=True,
+                auth_cookie_samesite="none",
+                auth_cookie_secure=False,
+            )
+
+
+class TestCorsOrigins:
+    def test_por_defecto_solo_el_front_local(self):
+        assert _construir(CLAVE_VALIDA).cors_origins_list == ["http://localhost:3000"]
+
+    def test_acepta_varios_separados_por_coma_y_recorta_espacios(self):
+        s = _construir(CLAVE_VALIDA, cors_origins="https://a.cl, https://b.cl ")
+        assert s.cors_origins_list == ["https://a.cl", "https://b.cl"]
+
+    def test_ignora_entradas_vacias(self):
+        """Una coma sobrante no debe producir un origen vacío en la lista."""
+        s = _construir(CLAVE_VALIDA, cors_origins="https://a.cl,,")
+        assert s.cors_origins_list == ["https://a.cl"]
