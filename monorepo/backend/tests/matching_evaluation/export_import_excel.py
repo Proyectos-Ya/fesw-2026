@@ -179,7 +179,7 @@ async def import_excel_to_docker():
             "tender",
             """
             INSERT INTO tender (id, code, name, description, status_id, published_at, closing_at, 
-                                last_change_at, buyer_rut, buyer_unit, province, available_amount_clp, 
+                                last_change_at, buyer_rut, buyer_unit, available_amount_clp, 
                                 created_at, updated_at) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
             ON CONFLICT (id) DO NOTHING;
@@ -236,7 +236,7 @@ async def generate_qdrant_embeddings():
     # 3. Obtener licitaciones
     tenders_rows = await dst_conn.fetch(
         """
-        SELECT t.id, t.code, t.name, t.description, t.status_id, t.province, t.available_amount_clp,
+        SELECT t.id, t.code, t.name, t.description, t.status_id, t.available_amount_clp,
                b.name AS buyer_name, r.name AS region_name
         FROM tender t
         LEFT JOIN buyer_institution b ON t.buyer_rut = b.rut
@@ -252,7 +252,6 @@ async def generate_qdrant_embeddings():
             "code": r["code"],
             "name": r["name"],
             "description": r["description"],
-            "province": r["province"],
             "region": r["region_name"],
             "buyer_name": r["buyer_name"],
             "available_amount_clp": float(r["available_amount_clp"]) if r["available_amount_clp"] is not None else None,
@@ -316,7 +315,6 @@ async def generate_qdrant_embeddings():
                 payload={
                     "code": t["code"],
                     "region": t["region"],
-                    "province": t["province"],
                     "available_amount_clp": t["available_amount_clp"],
                     "status_code": "publicada",
                 },

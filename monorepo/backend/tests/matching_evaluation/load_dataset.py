@@ -104,7 +104,6 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
                     t.description AS tender_description,
                     t.status_id,
                     t.available_amount_clp,
-                    t.province
             """
             if has_buyer:
                 select_sql += ", b.name AS buyer_name"
@@ -156,7 +155,6 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
                         "description": row["tender_description"],
                         "status_id": row["status_id"],
                         "available_amount_clp": float(row["available_amount_clp"]) if row["available_amount_clp"] is not None else None,
-                        "province": row["province"],
                         "buyer_name": row["buyer_name"],
                         "region": row["region_name"],
                         "items": [],
@@ -195,7 +193,6 @@ async def fetch_tenders_from_db() -> list[dict[str, Any]]:
                     "description": row["descripcion"],
                     "status_id": 1,
                     "available_amount_clp": float(row["monto_estimado"]) if row["monto_estimado"] is not None else None,
-                    "province": row["comuna"],
                     "buyer_name": row["organismo_nombre"],
                     "region": row["region"],
                     "items": [],
@@ -268,7 +265,6 @@ async def generate_and_upload_named_vectors(
                     "name": t["name"],
                     "buyer_name": t["buyer_name"],
                     "region": t["region"],
-                    "province": t["province"],
                     "available_amount_clp": t["available_amount_clp"],
                     "items_count": len(t["items"]),
                 },

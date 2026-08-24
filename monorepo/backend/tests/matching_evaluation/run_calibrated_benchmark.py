@@ -88,7 +88,7 @@ async def evaluate_profile_calibrated(
     for p in res.points:
         uid = UUID(str(p.id))
         t = tenders_dict.get(uid)
-        if t and (not supplier.regions or are_regions_matching(t.region or t.province, supplier.regions)):
+        if t and (not supplier.regions or are_regions_matching(t.region, supplier.regions)):
             valid_candidates.append(t)
 
     # 3. Named Vectors de candidatos
@@ -154,7 +154,7 @@ async def evaluate_profile_calibrated(
             "code": t.code,
             "name": t.name,
             "buyer": t.buyer_name,
-            "region": t.region or t.province,
+            "region": t.region,
             "amount_clp": t.available_amount_clp,
             "final_percentage": f"{percentage}%",
             "final_score": round(final_score, 4),

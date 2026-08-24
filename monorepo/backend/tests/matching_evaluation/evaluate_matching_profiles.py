@@ -178,7 +178,6 @@ async def load_all_tenders_from_db() -> dict[UUID, Tender]:
                 t.last_change_at,
                 t.buyer_rut,
                 t.buyer_unit,
-                t.province,
                 t.available_amount_clp,
                 t.created_at,
                 t.updated_at,
@@ -214,7 +213,6 @@ async def load_all_tenders_from_db() -> dict[UUID, Tender]:
                     buyer_rut=row["buyer_rut"] or "60.000.000-1",
                     buyer_name=row["buyer_name"],
                     buyer_unit=row["buyer_unit"] or "",
-                    province=row["province"],
                     region=row["region_name"],
                     available_amount_clp=float(row["available_amount_clp"]) if row["available_amount_clp"] is not None else None,
                     created_at=row["created_at"],
@@ -283,7 +281,7 @@ async def evaluate_profile(
         tender = tenders_dict.get(uid)
         if tender:
             # Filtro estricto por región canónica
-            if supplier.regions and not are_regions_matching(tender.region or tender.province, supplier.regions):
+            if supplier.regions and not are_regions_matching(tender.region, supplier.regions):
                 continue
             hydrated_tenders[uid] = tender
             valid_candidates.append((uid, float(p.score)))
@@ -325,7 +323,7 @@ async def evaluate_profile(
         rr_score = rerank_map.get(tid, 0.0)
         percentage = round(final_score * 100)
 
-        region_match = are_regions_matching(t.region or t.province, supplier.regions)
+        region_match = are_regions_matching(t.region, supplier.regions)
         tender_full_text = f"{t.name} {t.description or ''}"
         sector_match = any(s.lower() in tender_full_text.lower() for s in (supplier.sectors or []))
         kw_match = any(kw.lower() in " ".join([i.name.lower() for i in t.items]) for kw in (supplier.keywords or []))
@@ -336,7 +334,7 @@ async def evaluate_profile(
             "code": t.code,
             "name": t.name,
             "buyer": t.buyer_name,
-            "region": t.region or t.province,
+            "region": t.region,
             "items_count": len(t.items),
             "amount_clp": t.available_amount_clp,
             "reranker_score": round(rr_score, 4),

@@ -103,7 +103,7 @@ async def load_all_tenders() -> dict[UUID, Tender]:
     rows = await conn.fetch("""
         SELECT t.id AS tender_id, t.code AS tender_code, t.name AS tender_name, t.description AS tender_description,
                t.status_id, t.published_at, t.closing_at, t.last_change_at, t.buyer_rut, t.buyer_unit,
-               t.province, t.available_amount_clp, t.created_at, t.updated_at,
+               t.available_amount_clp, t.created_at, t.updated_at,
                b.name AS buyer_name, r.name AS region_name,
                ti.id AS item_id, ti.product_code AS item_product_code, ti.name AS item_name,
                ti.description AS item_description, ti.quantity AS item_quantity, ti.unit_of_measure AS item_unit_of_measure
@@ -132,7 +132,6 @@ async def load_all_tenders() -> dict[UUID, Tender]:
                 buyer_rut=row["buyer_rut"] or "60.000.000-1",
                 buyer_name=row["buyer_name"],
                 buyer_unit=row["buyer_unit"] or "",
-                province=row["province"],
                 region=row["region_name"],
                 available_amount_clp=float(row["available_amount_clp"]) if row["available_amount_clp"] is not None else None,
                 created_at=row["created_at"],
@@ -195,7 +194,7 @@ async def evaluate_with_named_vectors(
         uid = UUID(str(p.id))
         t = tenders_dict.get(uid)
         if t:
-            if supplier.regions and not are_regions_matching(t.region or t.province, supplier.regions):
+            if supplier.regions and not are_regions_matching(t.region, supplier.regions):
                 continue
             hydrated_tenders[uid] = t
             valid_candidates.append(t)
@@ -273,7 +272,7 @@ async def evaluate_with_named_vectors(
             "code": t.code,
             "name": t.name,
             "buyer": t.buyer_name,
-            "region": t.region or t.province,
+            "region": t.region,
             "amount_clp": t.available_amount_clp,
             "final_percentage": f"{percentage}%",
             "final_score": round(final_score, 4),

@@ -75,7 +75,6 @@ async def main():
         t_close = future_date # Activamos todas las licitaciones por 30 días
         t_buyer_rut = str(row["buyer_rut"]) if not pd.isna(row["buyer_rut"]) else None
         t_buyer_unit = str(row["buyer_unit"]) if not pd.isna(row["buyer_unit"]) else None
-        t_prov = str(row["province"]) if not pd.isna(row["province"]) else None
         t_amount = float(row["available_amount_clp"]) if not pd.isna(row["available_amount_clp"]) else None
         t_created = clean_val(row.get("created_at")) or now_naive
         t_updated = clean_val(row.get("updated_at")) or now_naive
@@ -83,10 +82,10 @@ async def main():
         await conn.execute("""
             INSERT INTO tender (
                 id, code, name, description, status_id, published_at, closing_at,
-                last_change_at, buyer_rut, buyer_unit, province, available_amount_clp, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                last_change_at, buyer_rut, buyer_unit, available_amount_clp, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (id) DO UPDATE SET closing_at = EXCLUDED.closing_at;
-        """, t_id, t_code, t_name, t_desc, t_status, t_pub, t_close, t_last, t_buyer_rut, t_buyer_unit, t_prov, t_amount, t_created, t_updated)
+        """, t_id, t_code, t_name, t_desc, t_status, t_pub, t_close, t_last, t_buyer_rut, t_buyer_unit, t_amount, t_created, t_updated)
         t_count += 1
     print(f"✓ {t_count} Licitaciones cargadas en tender")
 

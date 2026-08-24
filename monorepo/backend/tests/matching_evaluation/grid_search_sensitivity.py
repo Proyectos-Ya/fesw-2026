@@ -101,7 +101,7 @@ async def run_sensitivity_analysis():
     for p in res.points:
         uid = UUID(str(p.id))
         t = tenders_dict.get(uid)
-        if t and (not supplier.regions or are_regions_matching(t.region or t.province, supplier.regions)):
+        if t and (not supplier.regions or are_regions_matching(t.region, supplier.regions)):
             valid_candidates.append(t)
 
     print(f"[CANDIDATOS] {len(valid_candidates)} licitaciones candidatas recuperadas de Qdrant.", flush=True)
