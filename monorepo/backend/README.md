@@ -7,6 +7,11 @@ Este es el backend de ProyectosYA construido con FastAPI.
 - Python 3.12+
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo,
   con al menos **4 GB de memoria asignados**
+- [Supabase CLI](https://supabase.com/docs/guides/local-development) — provee la base de
+  datos, en local y en producción:
+  ```bash
+  brew install supabase/tap/supabase   # macOS
+  ```
 
 > El contenedor de la API consume ~3 GB cuando termina de cargar el modelo de embeddings.
 > Con menos memoria, Docker lo mata durante el arranque sin un mensaje claro.
@@ -35,11 +40,19 @@ aplicación no arranca:
 
 | Variable | Para qué sirve |
 |---|---|
-| `POSTGRES_PASSWORD` | Credencial de la base de datos |
+| `DATABASE_URL` | Conexión a la base. Con Supabase local: `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | `MERCADO_PUBLICO_API_KEY` | Ticket de la API de Mercado Público |
 | `GEMINI_API_KEY` | Clave del servicio de análisis |
 | `GEMINI_MODEL` | Modelo de Gemini a utilizar |
 | `JWT_SECRET_KEY` | Firma de los tokens de sesión |
+| `POSTGRES_PASSWORD` | Solo respaldo si no defines `DATABASE_URL`; aun así hay que declararla |
+
+`JWT_SECRET_KEY` es una credencial y **cada desarrollador genera la suya**. La
+aplicación se niega a arrancar sin ella, y rechaza claves de menos de 32 bytes:
+
+```bash
+python -c "import secrets; print(f'JWT_SECRET_KEY={secrets.token_urlsafe(48)}')" >> ../.env
+```
 
 El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
 
@@ -100,47 +113,48 @@ Aunque la aplicación corra dentro de Docker, **el venv local sigue haciendo fal
 ### Flujo A (recomendado): la API en Docker
 
 ```bash
-# Terminal 1 — desde monorepo/
+# 1. Desde la raíz del repositorio — la base de datos
+supabase start
+
+# 2. Desde monorepo/ — API y Qdrant
 docker compose up -d
 
-# Terminal 2 — desde monorepo/frontend/
+# 3. Desde monorepo/frontend/
 pnpm dev
 ```
 
-- API en [http://localhost:8000](http://localhost:8000) — Swagger en `/docs`
-- Frontend en [http://localhost:3000](http://localhost:3000)
-- Los cambios en archivos `.py` se recargan solos: el código está montado desde tu
-  máquina y `uvicorn` corre con `--reload`.
+El orden importa: `docker compose` ya no levanta Postgres, así que si Supabase no está
+corriendo la API falla al aplicar las migraciones.
 
-**El primer arranque tarda varios minutos** porque descarga los modelos de embeddings
-y reranking (~11 GB en total). Quedan guardados en un volumen de Docker, así que los
-siguientes arranques toman ~20 segundos.
+| Servicio | URL |
+|---|---|
+| Frontend | [http://localhost:3000](http://localhost:3000) |
+| API | [http://localhost:8000](http://localhost:8000) — Swagger en `/docs` |
+| Supabase Studio | [http://localhost:54323](http://localhost:54323) |
+| Postgres | `127.0.0.1:54322` — usuario y contraseña `postgres` |
+| Qdrant | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
+| Correos de prueba | [http://localhost:54324](http://localhost:54324) |
+
+Los cambios en archivos `.py` se recargan solos: el código está montado desde tu máquina
+y `uvicorn` corre con `--reload`.
+
+**El primer arranque tarda varios minutos** porque descarga los modelos de embeddings y
+reranking (~4,9 GB: bge-m3 4,3 GB y el reranker INT8 588 MB). Quedan guardados en un
+volumen de Docker, así que los siguientes arranques toman ~20 segundos.
 
 Comandos útiles:
 
 ```bash
 docker compose logs -f api    # ver qué está pasando
 docker compose ps             # estado de los servicios
-docker compose down           # bajar todo (los datos persisten)
+docker compose down           # bajar API y Qdrant
+supabase stop                 # bajar la base (conserva los datos)
 ```
 
 > Nunca uses `docker compose down -v` salvo que quieras empezar de cero: la bandera `-v`
-> borra los volúmenes, y con ellos la base de datos, los vectores de Qdrant y los modelos
-> descargados.
+> borra los volúmenes, y con ellos los vectores de Qdrant y los modelos descargados.
+> El equivalente para la base es `supabase stop --no-backup`.
 
-### Flujo B (alternativo): la API nativa
-
-Útil para depurar con breakpoints del editor o si prefieres no usar el contenedor.
-
-```bash
-# 1. Desde monorepo/ — solo la infraestructura
-docker compose up -d postgres qdrant
-
-# 2. Desde monorepo/backend/ — con el venv activado
-uvicorn app.main:app --reload
-```
-
-> **No uses los dos flujos a la vez**: ambos ocupan el puerto 8000 y el segundo va a fallar.
 
 ---
 
@@ -169,6 +183,7 @@ al archivo correspondiente, reconstruir la imagen, y actualizar tu venv local co
 
 ---
 
+
 ## Calidad de código
 
 Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.
@@ -194,6 +209,10 @@ Ambos vienen en `requirements-dev.txt`, así que están disponibles con el venv 
 La arquitectura del backend sigue los principios de **Clean Architecture** (Arquitectura Limpia), separando la lógica de negocio de los detalles tecnológicos e infraestructura. La estructura del directorio `app/` es la siguiente:
 
 ```text
+alembic/                    # Migraciones de esquema (ver "Base de datos y migraciones")
+├── env.py                  # Toma la URL de app.config y el metadata de SQLModel
+└── versions/               # Una migración por cambio de esquema
+
 app/
 ├── main.py                 # Punto de entrada de la aplicación FastAPI y configuración global
 ├── domain/                 # Capa de Dominio: Lógica y conceptos fundamentales de negocio
@@ -207,6 +226,7 @@ app/
 │   └── rules/              # Reglas y validaciones específicas de la aplicación
 └── infrastructure/         # Capa de Infraestructura: Detalles técnicos y adaptadores externos
     ├── repositories/       # Implementaciones concretas de las interfaces de repositories
+    │   └── models.py       # Registro único de los modelos SQLModel, que Alembic necesita
     └── services/           # Implementaciones de servicios externos (APIs, LLM, notificaciones)
 ```
 
@@ -312,7 +332,18 @@ pytest tests/e2e/api/test_main.py
 
 # Ejecutar pruebas con reporte de cobertura (coverage)
 pytest --cov=app
+
+# Omitir los que necesitan base de datos
+pytest -m "not integration"
 ```
+
+Los tests marcados `integration` necesitan la base corriendo (`supabase start`). Si no
+está, **se saltan** con un mensaje que lo explica, en vez de fallar. Trabajan contra una
+base `<nombre>_test` aparte, que el propio conftest crea: la de desarrollo queda intacta.
+
+No hace falta un `.env` completo para correr la suite. Las variables obligatorias que
+falten se rellenan con valores de prueba (`conftest.py` en la raíz del backend), sin
+pisar las que sí tengas definidas.
 
 
 
