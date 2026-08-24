@@ -6,10 +6,6 @@ import pytest
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
-from app.application.repositories.tender_repository import (
-    ITenderRepository,
-    TenderFilters,
-)
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
@@ -17,7 +13,6 @@ from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
-from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -25,15 +20,15 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
+from app.shared.constants import TENDER_STATUSES
 
 # ---------------------------------------------------------------------------
 # Implementaciones fake específicas para las pruebas unitarias de este caso de uso
 # ---------------------------------------------------------------------------
-from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
-from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
+    InMemoryTenderRepository,
 )
 
 

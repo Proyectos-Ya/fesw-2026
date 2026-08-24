@@ -1,14 +1,22 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
 
-from app.bootstrap import get_rank_tenders_use_case
+from app.bootstrap import (
+    get_list_saved_tenders_use_case,
+    get_rank_tenders_use_case,
+    get_save_tender_use_case,
+    get_unsave_tender_use_case,
+)
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
+from app.domain.entities.saved_tender import SavedTender
+from app.domain.entities.tender import Tender
 from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
+from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
@@ -396,3 +404,165 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     assert data["compatibility_score"] == 75.0
     assert data["recommendation"] == "Postular"
     mock_uc.execute.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Pruebas para las licitaciones guardadas (HdU 09)
+# ---------------------------------------------------------------------------
+
+
+def _build_tender(tender_id: UUID) -> Tender:
+    """Construye una licitación de prueba con los campos que muestra el dashboard."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    return Tender(
+        id=tender_id,
+        code=f"COT-{tender_id}",
+        name="Licitación Guardada",
+        description="Descripción de prueba",
+        status_id=1,
+        published_at=now - timedelta(days=1),
+        closing_at=now + timedelta(days=5),
+        last_change_at=now,
+        buyer_rut="12.345.678-9",
+        buyer_name="Municipalidad de Santiago",
+        buyer_unit="TI",
+        region="Metropolitana",
+        available_amount_clp=5_000_000.0,
+        items=[],
+    )
+
+
+async def _login(api: AsyncClient, email: str, full_name: str) -> None:
+    """Registra e inicia sesión: deja la cookie httpOnly en el cliente."""
+    password = "supersecretpassword"
+    await api.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": full_name},
+    )
+    await api.post("/auth/login", json={"email": email, "password": password})
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_success(api: AsyncClient) -> None:
+    """Valida que el endpoint retorne solo las licitaciones guardadas por el usuario."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = [_build_tender(tender_id)]
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "guardadas@example.com", "Sofía Rojas")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["id"] == str(tender_id)
+    assert data[0]["buyer_name"] == "Municipalidad de Santiago"
+    assert data[0]["region"] == "Metropolitana"
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_empty(api: AsyncClient) -> None:
+    """Valida que un usuario sin licitaciones guardadas reciba una lista vacía."""
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = []
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "sin_guardadas@example.com", "Diego Muñoz")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_unauthorized(api: AsyncClient) -> None:
+    """Valida que sin sesión iniciada el listado retorne un código 401."""
+    response = await api.get("/tenders/saved")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_save_tender_success(api: AsyncClient) -> None:
+    """Valida que marcar una licitación de interés retorne un código 201."""
+    tender_id = uuid4()
+    user_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = SavedTender(user_id=user_id, tender_id=tender_id)
+    app.dependency_overrides[get_save_tender_use_case] = lambda: mock_uc
+
+    await _login(api, "guardar@example.com", "Camila Vera")
+
+    response = await api.post(f"/tenders/{tender_id}/saved")
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["tender_id"] == str(tender_id)
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_save_tender_not_found(api: AsyncClient) -> None:
+    """Valida que marcar una licitación inexistente retorne un código 404."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderNotFound(tender_id)
+    app.dependency_overrides[get_save_tender_use_case] = lambda: mock_uc
+
+    await _login(api, "guardar_404@example.com", "Tomás Bravo")
+
+    response = await api.post(f"/tenders/{tender_id}/saved")
+
+    assert response.status_code == 404
+    assert "no encontrada" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_save_tender_unauthorized(api: AsyncClient) -> None:
+    """Valida que sin sesión iniciada marcar una licitación retorne un código 401."""
+    response = await api.post(f"/tenders/{uuid4()}/saved")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_unsave_tender_success(api: AsyncClient) -> None:
+    """Valida que retirar una licitación guardada retorne un código 204 sin cuerpo."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = None
+    app.dependency_overrides[get_unsave_tender_use_case] = lambda: mock_uc
+
+    await _login(api, "quitar@example.com", "Valentina Soto")
+
+    response = await api.delete(f"/tenders/{tender_id}/saved")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_unsave_tender_not_saved(api: AsyncClient) -> None:
+    """Valida que retirar una licitación que no estaba guardada retorne un código 404."""
+    tender_id = uuid4()
+    user_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = SavedTenderNotFound(user_id, tender_id)
+    app.dependency_overrides[get_unsave_tender_use_case] = lambda: mock_uc
+
+    await _login(api, "quitar_404@example.com", "Ignacio Fuentes")
+
+    response = await api.delete(f"/tenders/{tender_id}/saved")
+
+    assert response.status_code == 404
+    assert "no está en la lista de guardadas" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_unsave_tender_unauthorized(api: AsyncClient) -> None:
+    """Valida que sin sesión iniciada retirar una licitación retorne un código 401."""
+    response = await api.delete(f"/tenders/{uuid4()}/saved")
+    assert response.status_code == 401

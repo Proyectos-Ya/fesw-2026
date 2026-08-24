@@ -26,6 +26,9 @@ def create_router(
     cookie_secure: bool,
     cookie_max_age: int,
     get_get_or_create_deep_analysis_use_case: Callable,
+    get_list_saved_tenders_use_case: Callable,
+    get_save_tender_use_case: Callable,
+    get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
@@ -63,6 +66,9 @@ def create_router(
             get_rank_tenders_use_case=get_rank_tenders_use_case,
             get_current_user=get_current_user,
             get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
+            get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
+            get_save_tender_use_case=get_save_tender_use_case,
+            get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
         )
     )
