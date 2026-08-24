@@ -42,6 +42,7 @@ Todos opcionales. Todos van en la query string.
 | `published_to` | fecha ISO | |
 | `min_amount` | número (CLP) | `min_amount=100000` |
 | `max_amount` | número (CLP) | `max_amount=5000000` |
+| `limit` | número, 1 a 500 | por defecto **100** |
 | `offset` | número | ver *truncado* abajo |
 
 Estados válidos: `publicada`, `cerrada`, `desierta`, `cancelada`, `adjudicada`.
@@ -86,14 +87,18 @@ Las fechas vienen en UTC con `Z` al final, así que `new Date(...)` las conviert
 
 ## Cuatro cosas a tener en cuenta
 
-**1. La paginación la haces tú.** El backend manda hasta 500 resultados de una vez y tú
-los repartes de 20 en 20. Ventaja: cambiar de página es instantáneo, sin llamar de nuevo
-a la API.
+**1. La paginación la puedes hacer tú.** Por defecto el backend manda 100 resultados y tú
+los repartes en 5 páginas de 20: cambiar de página es instantáneo, sin llamar de nuevo a
+la API.
+
+Si prefieres que el backend pagine, usa `limit=20&offset=40` y pides página por página.
+Funciona, pero **cada petición vuelve a procesar el texto de búsqueda** (~70 ms o más),
+así que cada clic tiene latencia. Por eso el valor por defecto trae 100 de una vez.
 
 **2. Muestra `total`, no `items.length`.** Son distintos cuando hay truncado.
 
-**3. Si `is_truncated` es `true`**, algo como *"mostrando 500 de 1.340, afina tus
-filtros"*. Si el usuario insiste, repite la búsqueda con `offset=500`.
+**3. Si `is_truncated` es `true`**, algo como *"mostrando 100 de 1.340, afina tus
+filtros"*. Si el usuario insiste, repite la búsqueda con `offset=100`.
 
 **4. Cero resultados llega como 200**, con `items: []` y `total: 0`. No es un error: hay
 que avisarlo y sugerir sacar algún filtro.

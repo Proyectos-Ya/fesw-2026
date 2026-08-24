@@ -140,6 +140,7 @@ async def _build(
     con_vector: bool = True,
     vector_proveedor: list[float] | None = None,
     result_limit: int = 500,
+    max_limit: int = 500,
 ):
     user_id = uuid4()
     supplier_repo = InMemorySupplierRepository()
@@ -162,6 +163,7 @@ async def _build(
         tender_repo=tender_repo,
         embedding_service=embedding,
         result_limit=result_limit,
+        max_result_limit=max_limit,
     )
     return use_case, user_id, vector_repo, tender_repo, embedding
 
@@ -490,3 +492,72 @@ async def test_acepta_un_rango_con_extremos_iguales() -> None:
     )
 
     assert len(vector_repo.searched_vectors) == 1
+
+
+# ---------------------------------------------------------------------------
+# `limit`: cuántos resultados entrega una petición
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sin_limite_explicito_usa_el_por_defecto() -> None:
+    use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
+
+    await use_case.execute(user_id=user_id, q="cables")
+
+    assert vector_repo.search_limits == [100]
+
+
+@pytest.mark.asyncio
+async def test_el_limite_pedido_llega_a_qdrant() -> None:
+    """Permite que el cliente pida páginas chicas y pagine contra el backend."""
+    use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
+
+    await use_case.execute(user_id=user_id, q="cables", limit=20)
+
+    assert vector_repo.search_limits == [20]
+
+
+@pytest.mark.asyncio
+async def test_el_limite_se_recorta_al_maximo() -> None:
+    """El tope es una defensa de recursos, así que no depende de que el borde
+    HTTP valide bien: pedir 5.000 no puede traducirse en 5.000 hidrataciones."""
+    use_case, user_id, vector_repo, _, _ = await _build(result_limit=100, max_limit=500)
+
+    await use_case.execute(user_id=user_id, q="cables", limit=5000)
+
+    assert vector_repo.search_limits == [500]
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_limite_menor_a_uno() -> None:
+    use_case, user_id, _, _, _ = await _build()
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(user_id=user_id, q="cables", limit=0)
+
+
+@pytest.mark.asyncio
+async def test_el_limite_tambien_aplica_al_camino_sql() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build(con_vector=False)
+
+    await use_case.execute(user_id=user_id, limit=20)
+
+    _, limite, _ = tender_repo.sql_search_calls[0]
+    assert limite == 20
+
+
+@pytest.mark.asyncio
+async def test_el_truncado_se_calcula_con_el_limite_pedido() -> None:
+    """Pedir menos no cambia el total, solo si quedó algo fuera."""
+    use_case, user_id, vector_repo, tender_repo, _ = await _build(result_limit=100)
+    ids = [uuid4(), uuid4()]
+    for i in ids:
+        tender_repo.tenders[i] = _make_tender(i)
+    vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
+    vector_repo.total = 50
+
+    resultado = await use_case.execute(user_id=user_id, q="cables", limit=2)
+
+    assert resultado.total == 50
+    assert resultado.is_truncated is True

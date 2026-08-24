@@ -16,7 +16,11 @@ from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import 
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
-from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
+from app.application.use_cases.tender.search_tenders import (
+    DEFAULT_RESULT_LIMIT,
+    MAX_RESULT_LIMIT,
+    SearchTendersUseCase,
+)
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.user import User
@@ -124,6 +128,16 @@ def create_tender_router(
         published_to: Annotated[datetime | None, Query()] = None,
         min_amount: Annotated[float | None, Query(ge=0)] = None,
         max_amount: Annotated[float | None, Query(ge=0)] = None,
+        limit: Annotated[
+            int,
+            Query(
+                ge=1,
+                le=MAX_RESULT_LIMIT,
+                description="Cuántas licitaciones devolver. Pedir pocas y paginar "
+                "contra el backend cuesta un embedding por página; pedir muchas y "
+                "repartirlas en el cliente cuesta uno solo.",
+            ),
+        ] = DEFAULT_RESULT_LIMIT,
         offset: Annotated[
             int,
             Query(ge=0, description="Para pedir el bloque siguiente si se truncó."),
@@ -152,7 +166,11 @@ def create_tender_router(
                 max_amount=max_amount,
             )
             return await use_case.execute(
-                user_id=current_user.id, q=q, criteria=criteria, offset=offset
+                user_id=current_user.id,
+                q=q,
+                criteria=criteria,
+                limit=limit,
+                offset=offset,
             )
         except InvalidSearchCriteria as e:
             raise HTTPException(

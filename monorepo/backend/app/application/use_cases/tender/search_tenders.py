@@ -25,7 +25,12 @@ from app.domain.errors.tender_errors import InvalidSearchCriteria
 # nada que ver. El tope acota el payload —cada licitación son ~1,5 KB con sus
 # ítems— y solo se alcanza cuando el usuario prácticamente no filtró, que es
 # justo el caso donde pedirle que acote es lo correcto.
-DEFAULT_RESULT_LIMIT = 500
+DEFAULT_RESULT_LIMIT = 100
+
+# Tope absoluto por petición. A mayor profundidad, Qdrant recupera y ordena
+# `offset + limit` para descartar los primeros, así que el costo crece; y cada
+# licitación pesa ~1,5 KB con sus ítems.
+MAX_RESULT_LIMIT = 500
 
 
 class SearchTendersUseCase:
@@ -57,6 +62,7 @@ class SearchTendersUseCase:
         tender_repo: ITenderRepository,
         embedding_service: IEmbeddingService,
         result_limit: int = DEFAULT_RESULT_LIMIT,
+        max_result_limit: int = MAX_RESULT_LIMIT,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -64,25 +70,32 @@ class SearchTendersUseCase:
         self.tender_repo = tender_repo
         self.embedding_service = embedding_service
         self.result_limit = result_limit
+        self.max_result_limit = max_result_limit
 
     async def execute(
         self,
         user_id: UUID,
         q: str | None = None,
         criteria: TenderFilterCriteria | None = None,
+        limit: int | None = None,
         offset: int = 0,
     ) -> TenderSearchResult:
         criteria = criteria or TenderFilterCriteria()
-        self._validate(criteria, offset)
+        self._validate(criteria, limit, offset)
+        # El recorte no depende de que el borde HTTP valide bien: es una defensa
+        # de recursos, y pedir 5.000 no puede traducirse en 5.000 hidrataciones.
+        effective_limit = min(
+            limit if limit is not None else self.result_limit, self.max_result_limit
+        )
         query_text = (q or "").strip()
 
         vector = await self._resolve_vector(user_id, query_text)
         if vector is None:
-            return await self._search_without_ranking(criteria, offset)
+            return await self._search_without_ranking(criteria, effective_limit, offset)
 
         hits = await self.tender_vector_repo.search_by_vector(
             vector=vector,
-            limit=self.result_limit,
+            limit=effective_limit,
             offset=offset,
             criteria=criteria,
         )
@@ -96,7 +109,9 @@ class SearchTendersUseCase:
         )
 
     @staticmethod
-    def _validate(criteria: TenderFilterCriteria, offset: int) -> None:
+    def _validate(
+        criteria: TenderFilterCriteria, limit: int | None, offset: int
+    ) -> None:
         """Rechaza criterios que no pueden cumplirse.
 
         Un rango invertido devolvería una lista vacía, y el usuario la leería
@@ -105,6 +120,9 @@ class SearchTendersUseCase:
         """
         if offset < 0:
             raise InvalidSearchCriteria("El desplazamiento no puede ser negativo.")
+
+        if limit is not None and limit < 1:
+            raise InvalidSearchCriteria("El límite debe ser al menos 1.")
 
         rangos_de_fecha = (
             ("cierre", criteria.closing_from, criteria.closing_to),
@@ -147,11 +165,11 @@ class SearchTendersUseCase:
         return self.supplier_vector_repo.get_vector(supplier.id)
 
     async def _search_without_ranking(
-        self, criteria: TenderFilterCriteria, offset: int
+        self, criteria: TenderFilterCriteria, limit: int, offset: int
     ) -> TenderSearchResult:
         """Sin vector no hay relevancia que calcular: se ordena por fecha de cierre."""
         items, total = await self.tender_repo.search_tenders(
-            criteria=criteria, limit=self.result_limit, offset=offset
+            criteria=criteria, limit=limit, offset=offset
         )
         return TenderSearchResult(
             items=items,

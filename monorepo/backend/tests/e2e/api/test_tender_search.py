@@ -248,3 +248,53 @@ async def test_postgres_caido_responde_503(api: AsyncClient) -> None:
     response = await api.get("/tenders/search")
 
     assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# limit: permite paginar contra el backend (issue #123)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_limit_por_defecto_es_100(api: AsyncClient) -> None:
+    mock = _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?q=cables")
+
+    assert response.status_code == 200
+    assert mock.execute.call_args.kwargs["limit"] == 100
+
+
+@pytest.mark.asyncio
+async def test_permite_paginar_contra_el_backend(api: AsyncClient) -> None:
+    """`limit=20&offset=40` es la página 3 servida por el servidor."""
+    mock = _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?q=cables&limit=20&offset=40")
+
+    assert response.status_code == 200
+    kwargs = mock.execute.call_args.kwargs
+    assert kwargs["limit"] == 20
+    assert kwargs["offset"] == 40
+
+
+@pytest.mark.asyncio
+async def test_un_limit_sobre_el_maximo_se_rechaza(api: AsyncClient) -> None:
+    _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?limit=501")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_un_limit_de_cero_se_rechaza(api: AsyncClient) -> None:
+    _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?limit=0")
+
+    assert response.status_code == 422
