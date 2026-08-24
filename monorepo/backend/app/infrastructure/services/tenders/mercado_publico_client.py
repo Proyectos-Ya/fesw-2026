@@ -22,7 +22,13 @@ class MercadoPublicoClient:
         if time_window_ms <= 0:
             time_window_ms = 86400000  # Por defecto 24 horas si el delta no es positivo
 
-        api_page_size = 50  # Usamos el tamaño máximo permitido por request (50) para optimizar llamadas
+        # 50 es el máximo que acepta la API, pero medido tarda ~21 s por página y
+        # su gateway corta cerca de los 30: el 504 aparece de forma
+        # intermitente. Con 20 la respuesta baja a unos pocos segundos y es
+        # estable. Son más llamadas al endpoint de listado, pero ese cuesta una
+        # petición por página frente a una por licitación en el de detalle, así
+        # que el impacto en la cuota es marginal.
+        api_page_size = 20
         all_items: list[dict[str, Any]] = []
         current_page = 1
 
@@ -37,9 +43,17 @@ class MercadoPublicoClient:
                     print(
                         f"[API MP] Consultando página {current_page} (listado de cambios) a {self.base_url}..."
                     )
-                    response = await client.get(
-                        self.base_url, headers=headers, params=params, timeout=30.0
-                    )
+                    response = await self._get_con_reintentos(client, headers, params)
+                    if response is None:
+                        # Agotados los reintentos. Se corta, pero avisando: antes
+                        # un 5xx pasajero detenía la paginación en silencio y la
+                        # ingesta parecía haber terminado bien.
+                        print(
+                            f"[API MP] Página {current_page} no respondió tras varios "
+                            "intentos. Se detiene la paginación con "
+                            f"{len(all_items)} licitaciones listadas."
+                        )
+                        break
                     if response.status_code == 429:
                         print(
                             "[API MP] Cuota agotada (Error 429). Deteniendo paginación."
@@ -78,6 +92,40 @@ class MercadoPublicoClient:
                     break
 
         return all_items[:quantity]
+
+    async def _get_con_reintentos(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        params: dict[str, Any],
+        intentos: int = 3,
+    ) -> httpx.Response | None:
+        """GET al listado, reintentando ante fallas pasajeras del servidor.
+
+        La API devuelve 504 de forma intermitente cuando la consulta tarda
+        demasiado de su lado. No es un error nuestro ni de cuota, así que
+        rendirse al primero descarta licitaciones que sí están disponibles.
+        Un 429 se devuelve tal cual: ahí no hay que insistir, la cuota se agotó.
+        """
+        for intento in range(1, intentos + 1):
+            try:
+                respuesta = await client.get(
+                    self.base_url, headers=headers, params=params, timeout=60.0
+                )
+                if respuesta.status_code == 429 or respuesta.status_code < 500:
+                    return respuesta
+                motivo = f"HTTP {respuesta.status_code}"
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                motivo = type(e).__name__
+
+            if intento < intentos:
+                espera = 2**intento
+                print(
+                    f"[API MP] {motivo} en el listado. Reintento {intento}/{intentos - 1} "
+                    f"en {espera}s..."
+                )
+                await asyncio.sleep(espera)
+        return None
 
     # Obtiene el detalle crudo de una licitación específica
     async def get_tender_detail(self, id: str) -> dict[str, Any]:

@@ -297,4 +297,10 @@ class TenderIngestionService(ITenderIngestionService):
             RegionId=to_region_id(institucion.get("region")),
             RegionUnidad=str(institucion.get("nombre_region", "Sin Región")),
             MontoEstimado=presupuesto.get("monto_disponible_clp"),
+            # Las partidas se armaban arriba y no se asignaban, así que toda
+            # licitación ingestada entraba sin ítems. No fallaba nada: el campo
+            # tiene [] por defecto. El costo era invisible y grande — TextBuilder
+            # arma el texto del embedding con nombre + descripción + partidas, y
+            # son las partidas las que dicen qué se está pidiendo de verdad.
+            items=items_dto,
         )

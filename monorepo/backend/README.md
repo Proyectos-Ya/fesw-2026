@@ -224,6 +224,170 @@ docker compose build --no-cache api
 ---
 
 
+## Corpus de licitaciones: dump o ingesta
+
+Hay dos formas de tener licitaciones en la base, y se alternan con **una sola
+variable** en `monorepo/.env`:
+
+```bash
+RUN_AUTO_INGESTION=false   # Modo A: usas el dump del repositorio. No consume cuota.
+RUN_AUTO_INGESTION=true    # Modo B: la aplicación ingesta desde Mercado Público.
+```
+
+|  | Modo A (dump) | Modo B (ingesta) |
+|---|---|---|
+| De dónde salen los datos | `project-data/chiripa_tenders.xlsx` | API de Mercado Público |
+| Cuota del ticket | cero | ~1 petición por licitación |
+| Reproducible entre personas | sí | no |
+| Para qué sirve | evaluar el matching, comparar resultados | probar el flujo real de ingesta |
+
+La cuota de 10.000 peticiones diarias es **del ticket, no de tu máquina**: si tres
+personas dejan la ingesta encendida, se agota entre todas. Por eso el Modo A es el
+recomendado para el día a día.
+
+> Los comandos de abajo asumen el entorno virtual **activado** (ver "Configuración
+> inicial"), así que `python` es el del venv. Si prefieres no activarlo, reemplaza
+> `python` por `.venv/bin/python` en macOS/Linux o `.venv\Scripts\python.exe` en
+> Windows.
+
+### Usar el dump (Modo A)
+
+**1.** En `monorepo/.env`, deja `RUN_AUTO_INGESTION=false`.
+
+**2.** Levanta la infraestructura y crea el esquema:
+
+```bash
+supabase start
+docker compose up -d qdrant
+```
+
+```bash
+cd monorepo/backend
+alembic upgrade head
+```
+
+**3.** Carga el dump. El primer comando llena PostgreSQL; el segundo genera los
+embeddings e indexa en Qdrant, y tarda un par de minutos.
+
+```bash
+python tests/matching_evaluation/load_postgres_robust.py
+python tests/matching_evaluation/load_dataset.py
+```
+
+**4.** Crea las tres cuentas de prueba (rubros distintos, contraseña `demo1234`):
+
+```bash
+python tests/matching_evaluation/crear_perfiles_demo.py
+```
+
+**5.** Levanta la aplicación:
+
+```bash
+cd monorepo && docker compose up -d
+cd frontend && pnpm dev
+```
+
+**Espera a que la API esté lista antes de abrir el navegador** — tarda porque carga
+el modelo de embeddings. Si entras antes, el frontend muestra `Failed to fetch`:
+
+```bash
+curl http://localhost:8000/health
+```
+
+En Windows (PowerShell), `curl` es un alias de `Invoke-WebRequest`:
+
+```powershell
+curl.exe http://localhost:8000/health
+```
+
+Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
+
+### Volver a la ingesta (Modo B)
+
+```bash
+RUN_AUTO_INGESTION=true
+```
+
+y **reinicia el contenedor**:
+
+```bash
+docker compose restart api
+```
+
+`uvicorn --reload` recarga el código, **no** el `.env`. Sin reiniciar, el cambio no
+se aplica y es la confusión más común.
+
+No hay que deshacer nada del dump: los dos modos escriben en las mismas tablas e
+insertan con `ON CONFLICT DO NOTHING`, así que la ingesta agrega licitaciones nuevas
+sobre las que ya cargaste. Lo único que pierdes es la reproducibilidad.
+
+Para comprobar qué modo quedó activo:
+
+```bash
+docker compose logs api | Select-String -Pattern "ingesta"   # PowerShell
+docker compose logs api | grep -i ingesta                    # macOS/Linux
+```
+
+Con `true` aparece `[Scheduler] Iniciando loop de descarga de metadatos...`; con
+`false`, `Ingesta automática desactivada`.
+
+Si quieres partir solo con lo que traiga la API:
+
+```bash
+docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
+curl -X DELETE http://localhost:6333/collections/tenders
+```
+
+### Regenerar el dump
+
+Lo hace **una sola persona** cuando el dump caduca, porque consume cuota compartida.
+
+Las compras ágiles duran unos diez días, así que el dump se llena de licitaciones
+cerradas en un par de semanas. Y el matching **descarta todo lo que ya cerró**: el
+síntoma es un dashboard vacío aunque la base tenga miles de filas.
+
+```bash
+python tests/matching_evaluation/generar_dataset.py --limite 300
+python tests/matching_evaluation/export_import_excel.py --exportar
+```
+
+El primero trae licitaciones vigentes desde la API (~1 petición por licitación, unos
+11 segundos cada una). El segundo sobrescribe el xlsx **solo con las vigentes**, sin
+acumular cerradas.
+
+Después se comparte por git:
+
+```bash
+git add project-data/chiripa_tenders.xlsx
+git commit -m "data(dataset): actualizar dump de licitaciones vigentes"
+```
+
+### Comprobar que el corpus sirve
+
+Lo único que importa es cuántas están vigentes:
+
+```bash
+docker exec supabase_db_fesw-2026 psql -U postgres -c "select count(*) total, count(*) filter (where closing_at > now()) vigentes from tender;"
+```
+
+Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya: hay que
+regenerar el dump.
+
+Y si el dashboard sale vacío con licitaciones vigentes, casi siempre es el **filtro
+por región**, que es estricto: un proveedor solo ve licitaciones de las regiones que
+declaró.
+
+```bash
+docker exec supabase_db_fesw-2026 psql -U postgres -c "select r.name, count(*) from tender t join buyer_institution b on b.rut=t.buyer_rut join region r on r.id=b.region_id group by r.name order by 2 desc;"
+```
+
+> **Sobre los porcentajes bajos.** Es esperable ver compatibilidades de 1%–5%, y no
+> es culpa del dump: la mitad del puntaje depende de coincidencias léxicas literales
+> que casi nunca ocurren.
+
+
+---
+
 ## Calidad de código
 
 Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.
