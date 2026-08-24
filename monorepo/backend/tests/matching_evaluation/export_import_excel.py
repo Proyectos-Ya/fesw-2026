@@ -1,8 +1,10 @@
 import asyncio
+import io
 import math
 import os
 import sys
 import time
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -13,9 +15,9 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 # Forzar UTF-8 en Windows
-if hasattr(sys.stdout, "reconfigure"):
+if isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
+if isinstance(sys.stderr, io.TextIOWrapper):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import asyncpg
@@ -31,14 +33,21 @@ from app.domain.entities.tender import Tender, TenderItem
 DOTENV_PATH = os.path.abspath(os.path.join(BASE_DIR, "../.env"))
 load_dotenv(dotenv_path=DOTENV_PATH)
 
+
 # ==========================================================
 # CONFIGURACIÓN
 # ==========================================================
-SRC_HOST = "localhost"
-SRC_PORT = 5432
-SRC_USER = "postgres"
-SRC_PASSWORD = "1234"
-SRC_DB = "chiripa"
+# El origen de la exportación es la base configurada en el .env, no una local
+# fija: así se exporta lo que la aplicación realmente tiene.
+def _dsn() -> str:
+    """DSN para asyncpg, que no entiende el prefijo `+asyncpg` de SQLAlchemy."""
+    from sqlalchemy.engine import make_url
+
+    from app.config import settings
+
+    url = make_url(settings.database_url)
+    return url.set(drivername="postgresql").render_as_string(hide_password=False)
+
 
 EXCEL_PATH = os.path.abspath(
     os.path.join(BASE_DIR, "../../project-data/chiripa_tenders.xlsx")
@@ -87,22 +96,37 @@ async def export_chiripa_to_excel():
     # Asegurar que el directorio de destino existe
     os.makedirs(os.path.dirname(EXCEL_PATH), exist_ok=True)
 
-    # Conectar usando asyncpg
-    src_conn = await asyncpg.connect(
-        database=SRC_DB,
-        user=SRC_USER,
-        password=SRC_PASSWORD,
-        host=SRC_HOST,
-        port=SRC_PORT,
-    )
+    src_conn = await asyncpg.connect(_dsn())
 
-    tables = ["region", "tender_status", "buyer_institution", "tender", "tender_item"]
+    # Solo licitaciones VIGENTES. Un dump con cerradas es inútil: el matching
+    # descarta todo lo que tenga `closing_at` en el pasado, así que el equipo
+    # cargaría miles de filas para ver un dashboard vacío. Además las cerradas
+    # ocupan cupo en las 50 candidatas que devuelve Qdrant, desplazando a las
+    # que sí sirven.
+    #
+    # Los compradores y las partidas se acotan a las que quedan referenciadas,
+    # para no arrastrar filas huérfanas.
+    tables = {
+        "region": "SELECT * FROM region",
+        "tender_status": "SELECT * FROM tender_status",
+        "buyer_institution": """
+            SELECT DISTINCT b.* FROM buyer_institution b
+            JOIN tender t ON t.buyer_rut = b.rut
+            WHERE t.closing_at > now()
+        """,
+        "tender": "SELECT * FROM tender WHERE closing_at > now()",
+        "tender_item": """
+            SELECT ti.* FROM tender_item ti
+            JOIN tender t ON t.id = ti.tender_id
+            WHERE t.closing_at > now()
+        """,
+    }
 
     try:
         with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
-            for table in tables:
-                print(f"[EXPORT] Leyendo tabla '{table}' desde chiripa...")
-                rows = await src_conn.fetch(f"SELECT * FROM {table};")
+            for table, consulta in tables.items():
+                print(f"[EXPORT] Leyendo tabla '{table}'...")
+                rows = await src_conn.fetch(consulta)
                 data = [dict(r) for r in rows]
                 df = pd.DataFrame(data)
                 df.to_excel(writer, sheet_name=table, index=False)
@@ -138,9 +162,11 @@ async def import_excel_to_docker():
 
         # Helper para insertar dataframes con tipos correctos
         async def insert_df(
-            table_name: str, query: str, string_columns: list[int] = None
+            table_name: str, query: str, string_columns: list[int] | None = None
         ):
-            df = excel_file.parse(table_name)
+            # `parse` está tipado como `DataFrame | dict[...]`; con un solo
+            # nombre de hoja siempre devuelve el DataFrame.
+            df = cast(pd.DataFrame, excel_file.parse(table_name))
             print(f"[IMPORT] Insertando filas en la tabla '{table_name}'...")
 
             success_count = 0
@@ -358,12 +384,31 @@ async def generate_qdrant_embeddings():
     print("✅ Indexación de embeddings completada.")
 
 
-async def main():
+async def main(solo_exportar: bool) -> None:
     await export_chiripa_to_excel()
+    if solo_exportar:
+        print("\n[LISTO] Dataset actualizado. El equipo lo carga con:")
+        print("  python tests/matching_evaluation/load_postgres_robust.py")
+        print("  python tests/matching_evaluation/load_dataset.py")
+        return
     success = await import_excel_to_docker()
     if success:
         await generate_qdrant_embeddings()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Exporta la base al xlsx del dataset, y opcionalmente la reimporta."
+    )
+    parser.add_argument(
+        "--exportar",
+        action="store_true",
+        help=(
+            "Solo exporta base -> xlsx. Sin esta bandera además reimporta y "
+            "reindexa, que es lo que hacen load_postgres_robust.py y "
+            "load_dataset.py de forma más acotada."
+        ),
+    )
+    asyncio.run(main(parser.parse_args().exportar))

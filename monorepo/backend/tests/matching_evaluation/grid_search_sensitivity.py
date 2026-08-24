@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import sys
 from uuid import UUID, uuid4
@@ -10,9 +11,9 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-if hasattr(sys.stdout, "reconfigure"):
+if isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
+if isinstance(sys.stderr, io.TextIOWrapper):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from qdrant_client import AsyncQdrantClient

@@ -1,5 +1,6 @@
 {
   "include": [
+    "alembic",
     "app",
     "tests",
     "scripts"

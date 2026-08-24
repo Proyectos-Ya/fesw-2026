@@ -24,11 +24,15 @@ __pycache__/
 htmlcov/
 
 # Environment files
+# El comodín es a propósito: ".env" a secas solo coincide con ese nombre exacto,
+# y dejaba fuera las copias que uno hace a mano —.env.bak, .env.old, .env.prod,
+# .env.copia—. Todas llevan credenciales reales adentro, y este repositorio es
+# público. Con ".env.*" se ignoran todas por defecto y hay que declarar
+# explícitamente la excepción, en vez de ir persiguiendo cada variante nueva.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+# Única excepción: la plantilla, que solo tiene placeholders y sí debe versionarse.
+!.env.example
 .envrc
 .direnv
 

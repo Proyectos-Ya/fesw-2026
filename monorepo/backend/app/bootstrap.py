@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -240,6 +241,58 @@ def get_answer_question_use_case(
     return AnswerQuestionUseCase(supplier_repo=supplier_repo)
 
 
+class MockRerankerService(IRerankerService):
+    """Reranker neutro para cuando está desactivado o falta ONNX en local/tests."""
+
+    async def rerank(self, query_text, candidates, limit):
+        return [(c[0], 1.0) for c in candidates][:limit]
+
+
+logger = logging.getLogger(__name__)
+
+
+def build_reranker_service() -> IRerankerService:
+    """Construye el reranker, o decide qué hacer si no se puede.
+
+    `MockRerankerService` devuelve 1.0 para todas las candidatas: con él la
+    aplicación responde igual, pero el orden de las recomendaciones es
+    arbitrario. Es una degradación que no se nota desde afuera, así que la
+    única defensa es que quede escrita en los logs.
+
+    Por eso el fallback vive solo en desarrollo. Fuera de ahí un reranker que
+    no arranca es un fallo de arranque: mejor no levantar que servir
+    recomendaciones en orden aleatorio sin que nadie se entere.
+    """
+    if settings.disable_reranker:
+        logger.warning(
+            "Reranker desactivado por configuración (DISABLE_RERANKER). "
+            "Se usa MockRerankerService y las recomendaciones no van ordenadas."
+        )
+        return MockRerankerService()
+
+    try:
+        return BgeRerankerService()
+    except Exception as exc:
+        # En producción no se traga: relanza y el arranque falla con la traza.
+        if not settings.is_dev:
+            logger.exception(
+                "El reranker no se pudo construir (%s) y IS_DEV=false, así que "
+                "la aplicación no arranca. Degradarse en silencio serviría "
+                "recomendaciones en orden arbitrario.",
+                exc,
+            )
+            raise
+
+        # En local sí: falta de RAM u ONNX no debería impedir levantar la API.
+        logger.exception(
+            "El reranker no se pudo construir (%s). Se continúa con "
+            "MockRerankerService porque IS_DEV=true, pero las recomendaciones "
+            "van en orden arbitrario hasta que esto se resuelva.",
+            exc,
+        )
+        return MockRerankerService()
+
+
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
     hasher = BcryptPasswordHasher()
@@ -257,27 +310,7 @@ def bootstrap(app: FastAPI) -> None:
         model_name=settings.gemini_model,
     )
 
-    # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
-    if settings.disable_reranker:
-        print(
-            "[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService."
-        )
-
-        class MockRerankerService(IRerankerService):
-            async def rerank(self, query_text, candidates, limit):
-                return [(c[0], 1.0) for c in candidates][:limit]
-
-        app.state.reranker_service = MockRerankerService()
-    else:
-        try:
-            app.state.reranker_service = BgeRerankerService()
-        except Exception:
-            # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
-            class MockRerankerService(IRerankerService):
-                async def rerank(self, query_text, candidates, limit):
-                    return [(c[0], 1.0) for c in candidates][:limit]
-
-            app.state.reranker_service = MockRerankerService()
+    app.state.reranker_service = build_reranker_service()
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
@@ -310,7 +343,9 @@ def bootstrap(app: FastAPI) -> None:
         hasher=hasher,
         token_service=token_service,
         cookie_name=settings.auth_cookie_name,
-        cookie_secure=settings.auth_cookie_secure,
+        # `_derivar_cookie_secure` ya le dio valor; el `bool()` solo cierra el
+        # `bool | None` que el tipo del campo deja abierto.
+        cookie_secure=bool(settings.auth_cookie_secure),
         cookie_max_age=settings.access_token_expire_minutes * 60,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
         get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,

@@ -52,9 +52,11 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
-        # Qdrant no trae healthcheck (la imagen no incluye curl/wget), así
-        # que solo esperamos a que arranque, no a que esté listo.
-        condition: service_started
+        # Espera a que Qdrant esté listo, no solo a que el proceso exista: el
+        # healthcheck de más abajo pregunta por /readyz. Sin esto, la API podía
+        # arrancar y disparar sus primeras consultas contra un Qdrant que
+        # todavía estaba cargando las colecciones desde disco.
+        condition: service_healthy
     networks:
       - proyectosya_network
 
@@ -73,6 +75,27 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       QDRANT__SERVICE__ENABLE_CORS: "true"
+    healthcheck:
+      # La imagen de Qdrant no incluye curl ni wget, que es lo que se usaría
+      # normalmente acá. Pero sí trae bash, y bash abre sockets TCP por
+      # /dev/tcp, así que la petición HTTP se escribe a mano: se pide /readyz
+      # y se comprueba que la respuesta traiga el 200.
+      #
+      # /readyz y no /healthz a propósito: healthz responde apenas el proceso
+      # está vivo, readyz solo cuando las colecciones ya están cargadas. Esa
+      # diferencia es justamente la que hace útil el healthcheck.
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf "GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "200 OK" <&3'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Margen para cargar del disco las colecciones ya existentes. Mientras
+      # corre, un fallo no cuenta como intento perdido ni marca al servicio
+      # como unhealthy.
+      start_period: 30s
     networks:
       - proyectosya_network
 
