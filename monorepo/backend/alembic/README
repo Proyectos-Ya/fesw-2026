@@ -1,0 +1,51 @@
+# Migraciones de base de datos
+
+El esquema lo gestiona Alembic. **Ya no se crea al arrancar la aplicación**: antes
+`main.py` llamaba a `SQLModel.metadata.create_all`, que agrega las tablas que faltan
+pero **no altera las existentes**, así que toda columna o restricción nueva quedaba
+fuera en silencio.
+
+## Uso diario
+
+    alembic upgrade head                      # aplicar lo pendiente
+    alembic revision --autogenerate -m "..."  # crear una migración desde los modelos
+    alembic check                             # ¿el esquema calza con los modelos?
+    alembic downgrade -1                      # revertir la última
+
+`alembic check` es la red de seguridad: falla si alguien tocó un modelo sin generar
+la migración correspondiente.
+
+## Al agregar un modelo nuevo
+
+Impórtalo en `app/infrastructure/repositories/models.py`. Alembic solo ve las tablas
+registradas en `SQLModel.metadata`, y SQLModel las registra al importar su módulo. Si
+falta, `--autogenerate` no la ve y genera una migración que **la borra**.
+
+## Bases que ya existían (creadas con el viejo create_all)
+
+No corras `upgrade head`: las tablas ya están y fallaría. Márcala como migrada:
+
+    alembic stamp head
+
+**Ojo:** `stamp` no verifica nada, solo anota la revisión. Si la base arrastra deriva
+—esquema viejo respecto de los modelos— la estarías declarando al día sin serlo.
+Después de marcar, comprueba:
+
+    alembic check
+
+Si reporta operaciones pendientes, aplícalas a mano y vuelve a comprobar. Eso ya pasó
+una vez: las bases creadas antes del merge de DT-matching tenían `tender_metadata`
+pero les faltaba la restricción de unicidad de `matching_result`:
+
+    ALTER TABLE matching_result
+      ADD CONSTRAINT uq_matching_result_supplier_tender UNIQUE (supplier_id, tender_id);
+
+Si esa sentencia falla por duplicados, hay que resolverlos antes:
+
+    SELECT supplier_id, tender_id, count(*) FROM matching_result
+    GROUP BY 1,2 HAVING count(*) > 1;
+
+## Nota sobre SQLModel
+
+Las migraciones autogeneradas referencian `sqlmodel.sql.sqltypes.AutoString`, así que
+necesitan `import sqlmodel`. Ya está en `script.py.mako`; no lo quites.

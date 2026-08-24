@@ -4,12 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Distance, VectorParams
-from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.bootstrap import bootstrap
 from app.config import settings
-from app.infrastructure.db import engine
+from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
@@ -26,8 +25,18 @@ from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    # El esquema ya NO se crea acá. Antes esto era `SQLModel.metadata.create_all`,
+    # con dos problemas: `create_all` agrega las tablas que faltan pero **no
+    # altera las existentes**, así que cualquier columna o restricción nueva
+    # quedaba fuera en silencio; y con dos réplicas arrancando a la vez, ambas
+    # intentaban crear el esquema al mismo tiempo.
+    #
+    # Ahora lo hace Alembic, como paso previo y explícito:
+    #     alembic upgrade head
+    # Verificamos que se haya corrido para fallar acá, con un mensaje claro, en
+    # vez de más adelante con un error de "relation does not exist".
+    await verificar_esquema_migrado()
+
     app.state.qdrant_client = QdrantClient(url=settings.qdrant_url)
     app.state.qdrant_async_client = AsyncQdrantClient(url=settings.qdrant_url)
 
