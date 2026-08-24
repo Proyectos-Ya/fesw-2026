@@ -4,22 +4,6 @@ from typing import Any, cast
 
 import httpx
 
-from app.shared.regions import CHILE_REGIONS, UNKNOWN_REGION_ID
-
-
-def to_region_id(raw: object) -> int:
-    """Normaliza `institucion.region` a un id de región conocido.
-
-    Un valor ausente, no numérico o fuera del rango de las 16 regiones cae en
-    `UNKNOWN_REGION_ID`: es preferible que el caso se vea a que la licitación
-    quede archivada bajo una región real que no le corresponde.
-    """
-    try:
-        region_id = int(raw)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return UNKNOWN_REGION_ID
-    return region_id if region_id in CHILE_REGIONS else UNKNOWN_REGION_ID
-
 
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
 class MercadoPublicoClient:

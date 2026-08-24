@@ -22,8 +22,8 @@ from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
-    to_region_id,
 )
+from app.shared.regions import to_region_id
 
 
 # Implementación del servicio de ingesta de licitaciones
