@@ -9,9 +9,7 @@ Este es el backend de ProyectosYA construido con FastAPI.
   con al menos **4 GB de memoria asignados**
 - [Supabase CLI](https://supabase.com/docs/guides/local-development) — provee la base de
   datos, en local y en producción:
-  ```bash
-  brew install supabase/tap/supabase   # macOS
-  ```
+
 
 > El contenedor de la API consume ~3 GB cuando termina de cargar el modelo de embeddings.
 > Con menos memoria, Docker lo mata durante el arranque sin un mensaje claro.
@@ -180,6 +178,48 @@ docker compose up -d --build
 Y recuerda que una dependencia nueva hay que instalarla **en los dos entornos**: agregarla
 al archivo correspondiente, reconstruir la imagen, y actualizar tu venv local con
 `pip install -r requirements-dev.txt`.
+
+### Síntoma típico: `alembic: not found` al levantar la API
+
+```text
+proyectosya_api  | sh: 1: alembic: not found
+proyectosya_api exited with code 127
+```
+
+Es el caso anterior en su forma más común, y confunde porque el directorio `alembic/` sí
+está ahí dentro del contenedor. Lo que falta no es el directorio sino el ejecutable.
+
+Pasa cuando construiste la imagen **antes** de que `alembic` entrara a
+`requirements.txt`, y después hiciste `git pull`. Ahí conviven tres cosas de distinta
+edad dentro del mismo contenedor:
+
+| Qué | De dónde sale | Qué versión te tocó |
+|---|---|---|
+| El comando `alembic upgrade head` | `docker-compose.yml`, en cada arranque | La nueva |
+| El código y el directorio `alembic/` | Bind mount `./backend:/app` | La nueva |
+| El venv `/opt/venv` con las dependencias | La imagen, solo al construir | **La vieja** |
+
+El bind mount trae el código nuevo desde tu máquina, pero **no monta el venv**: ese vive
+dentro de la imagen. Entonces el comando nuevo se ejecuta contra un venv que nunca
+instaló alembic, y `sh` responde `not found`.
+
+Para confirmarlo antes de reconstruir:
+
+```bash
+docker compose run --rm --entrypoint sh api -c "which alembic"
+```
+
+Si no imprime nada, es exactamente esto. La solución es reconstruir:
+
+```bash
+docker compose up -d --build
+```
+
+Si aun así persiste, forzar el rebuild sin reutilizar capas:
+
+```bash
+docker compose build --no-cache api
+```
 
 ---
 
