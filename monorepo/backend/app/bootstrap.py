@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -208,6 +209,51 @@ class MockRerankerService(IRerankerService):
         return [(c[0], 1.0) for c in candidates][:limit]
 
 
+logger = logging.getLogger(__name__)
+
+
+def build_reranker_service() -> IRerankerService:
+    """Construye el reranker, o decide qué hacer si no se puede.
+
+    `MockRerankerService` devuelve 1.0 para todas las candidatas: con él la
+    aplicación responde igual, pero el orden de las recomendaciones es
+    arbitrario. Es una degradación que no se nota desde afuera, así que la
+    única defensa es que quede escrita en los logs.
+
+    Por eso el fallback vive solo en desarrollo. Fuera de ahí un reranker que
+    no arranca es un fallo de arranque: mejor no levantar que servir
+    recomendaciones en orden aleatorio sin que nadie se entere.
+    """
+    if settings.disable_reranker:
+        logger.warning(
+            "Reranker desactivado por configuración (DISABLE_RERANKER). "
+            "Se usa MockRerankerService y las recomendaciones no van ordenadas."
+        )
+        return MockRerankerService()
+
+    try:
+        return BgeRerankerService()
+    except Exception as exc:
+        # En producción no se traga: relanza y el arranque falla con la traza.
+        if not settings.is_dev:
+            logger.exception(
+                "El reranker no se pudo construir (%s) y IS_DEV=false, así que "
+                "la aplicación no arranca. Degradarse en silencio serviría "
+                "recomendaciones en orden arbitrario.",
+                exc,
+            )
+            raise
+
+        # En local sí: falta de RAM u ONNX no debería impedir levantar la API.
+        logger.exception(
+            "El reranker no se pudo construir (%s). Se continúa con "
+            "MockRerankerService porque IS_DEV=true, pero las recomendaciones "
+            "van en orden arbitrario hasta que esto se resuelva.",
+            exc,
+        )
+        return MockRerankerService()
+
+
 def bootstrap(app: FastAPI) -> None:
     # Servicios sin estado: se construyen una vez
     hasher = BcryptPasswordHasher()
@@ -225,19 +271,7 @@ def bootstrap(app: FastAPI) -> None:
         model_name=settings.gemini_model,
     )
 
-    # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
-    if settings.disable_reranker:
-        print(
-            "[Bootstrap] Reranker desactivado por configuración. Usando MockRerankerService."
-        )
-
-        app.state.reranker_service = MockRerankerService()
-    else:
-        try:
-            app.state.reranker_service = BgeRerankerService()
-        except Exception:
-            # Fallback en caso de que falten dependencias u ONNX en ambiente local/tests
-            app.state.reranker_service = MockRerankerService()
+    app.state.reranker_service = build_reranker_service()
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
