@@ -27,6 +27,62 @@ buscar debe funcionar aunque no haya texto**.
 
 ---
 
+## Cómo interactúan front y back
+
+El backend **no manda de 20 en 20**. Manda 100 de una vez y el frontend los reparte en 5
+páginas de 20. Cambiar de página no llama a la API.
+
+```mermaid
+sequenceDiagram
+    actor U as Usuario
+    participant F as Frontend
+    participant A as API
+    participant E as Embeddings
+    participant Q as Qdrant
+    participant P as Postgres
+
+    U->>F: escribe "muebles de cocina" + filtros
+    U->>F: clic en Buscar
+    F->>A: GET /tenders/search?q=...&regions=...
+
+    A->>E: convertir el texto en vector
+    E-->>A: vector
+    A->>Q: buscar por vector, con los filtros aplicados (limit 100)
+    Q-->>A: 100 x (id, score) ordenados por relevancia
+    A->>Q: contar cuántas cumplen los filtros
+    Q-->>A: total = 137
+    A->>P: traer esas 100 licitaciones completas
+    P-->>A: datos completos
+    A-->>F: items (100), total 137, is_truncated true
+
+    F->>U: "137 coincidencias" + paginador 1..5, muestra las primeras 20
+
+    Note over U,F: Cambiar de página no llama a la API
+    U->>F: clic en página 2
+    F->>U: muestra items[20..40]
+
+    Note over F,A: Solo al agotar las 100 se pide más
+    U->>F: clic en "ver más resultados"
+    F->>A: GET /tenders/search?...&offset=100
+    A-->>F: las siguientes 100
+```
+
+### El modo alternativo
+
+Si prefieres que el backend pagine, pide `limit=20&offset=40` y recibes exactamente esa
+página. Funciona igual de bien, pero cada clic es una petición **y cada petición vuelve a
+convertir el texto en vector**, que es la parte cara (~70 ms o más). Por eso el modo por
+defecto trae 100 de una vez: se paga una sola conversión y los cambios de página son
+instantáneos.
+
+| | Traer 100 (por defecto) | Pedir 20 por página |
+|---|---|---|
+| Peticiones para ver 5 páginas | 1 | 5 |
+| Latencia al cambiar de página | 0 ms | ~70-200 ms |
+| Datos transferidos | ~150 KB de una vez | ~30 KB por página |
+
+---
+
 ## Parámetros
 
 Todos opcionales. Todos van en la query string.
