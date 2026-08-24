@@ -15,6 +15,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
@@ -22,22 +23,25 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 
-# Deriva el nombre de la base de test del de desarrollo, para que un `.env` que
-# apunte a otra instancia siga aislando en la misma instancia.
-TEST_DB_NAME = f"{settings.postgres_db}_test"
+# La conexión se deriva de `settings.database_url`, no de los POSTGRES_* sueltos:
+# desde que existe DATABASE_URL —la forma de apuntar a Supabase— las piezas
+# pueden no reflejar dónde está la base de verdad.
+_BASE_URL = make_url(settings.database_url)
+
+# El nombre de la base de test sale del de desarrollo, para que un entorno que
+# apunte a otra instancia siga aislando dentro de esa misma instancia.
+TEST_DB_NAME = f"{_BASE_URL.database}_test"
 
 _SKIP_REASON = (
-    f"Postgres no está disponible en {settings.postgres_host}:{settings.postgres_port}. "
-    "Levántalo desde monorepo/ con `docker compose up -d postgres` para correr los "
-    "tests de integración."
+    f"Postgres no está disponible en {_BASE_URL.host}:{_BASE_URL.port}. "
+    "Levanta la base con `supabase start` (o revisa DATABASE_URL) para correr "
+    "los tests de integración."
 )
 
 
 def _url_for(database: str) -> str:
-    return (
-        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}"
-        f"@{settings.postgres_host}:{settings.postgres_port}/{database}"
-    )
+    """La misma conexión, apuntando a otra base de la misma instancia."""
+    return _BASE_URL.set(database=database).render_as_string(hide_password=False)
 
 
 async def _ensure_test_database() -> None:

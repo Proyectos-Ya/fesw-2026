@@ -17,13 +17,19 @@ services:
       target: dev
     container_name: proyectosya_api
     restart: unless-stopped
-    # Carga el .env compartido y luego pisa los hosts: dentro de la red de
-    # Docker, la BD no está en localhost sino en el contenedor `postgres`.
+    # Carga el .env compartido y luego pisa lo que cambia dentro de Docker.
     env_file:
       - .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      # La base la pone Supabase, no este compose: en local con `supabase start`
+      # y en producción con el proyecto gestionado. Por eso ya no hay servicio
+      # `postgres` acá. Supabase corre en su propia red de Docker, así que desde
+      # este contenedor se llega por host.docker.internal, no por localhost.
+      # El 54322 es el Postgres de Supabase local; el 54321 es su API REST.
+      # Variable propia y NO ${DATABASE_URL}: Compose interpola desde este mismo
+      # .env, y ahí la URL dice 127.0.0.1 —correcto para correr alembic y pytest
+      # desde el host, pero dentro del contenedor apunta a su propio loopback.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
       QDRANT_HOST: qdrant
       QDRANT_HTTP_PORT: 6333
     ports:
@@ -41,40 +47,14 @@ services:
       # Caché de HuggingFace: sin esto, bge-m3 (~2 GB) se redescarga cada
       # vez que se recrea el contenedor.
       - models_cache:/models
+    extra_hosts:
+      # En Linux no se resuelve solo; en macOS y Windows Docker ya lo provee.
+      - "host.docker.internal:host-gateway"
     depends_on:
-      postgres:
-        condition: service_healthy
       qdrant:
         # Qdrant no trae healthcheck (la imagen no incluye curl/wget), así
         # que solo esperamos a que arranque, no a que esté listo.
         condition: service_started
-    networks:
-      - proyectosya_network
-
-  # ------------------------------------------------------------
-  # Base de datos relacional: perfiles, usuarios y metadata
-  # ------------------------------------------------------------
-  postgres:
-    image: postgres:16-alpine
-    container_name: proyectosya_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-proyectosya}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proyectosya_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-proyectosya_db}
-    ports:
-      # Publicado solo en loopback: la API ya llega por la red interna, y
-      # esto evita exponer la BD a la red local.
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      # Persistencia de datos entre reinicios del contenedor
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proyectosya} -d ${POSTGRES_DB:-proyectosya_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     networks:
       - proyectosya_network
 
@@ -100,16 +80,14 @@ services:
 # Volúmenes nombrados para persistencia de datos
 # ------------------------------------------------------------
 volumes:
-  postgres_data:
-    driver: local
   qdrant_data:
     driver: local
   models_cache:
     driver: local
 
 # ------------------------------------------------------------
-# Red interna compartida: la API se conecta a postgres y qdrant usando el
-# nombre del servicio como host (POSTGRES_HOST=postgres, QDRANT_HOST=qdrant).
+# Red interna compartida: la API llega a qdrant por el nombre del servicio
+# (QDRANT_HOST=qdrant). Postgres queda fuera de esta red: lo sirve Supabase.
 # ------------------------------------------------------------
 networks:
   proyectosya_network:
