@@ -21,6 +21,8 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.services.tenders.mercado_publico_client import (
+    CuotaAgotadaError,
+    ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
 from app.shared.regions import to_region_id
@@ -229,6 +231,25 @@ class TenderIngestionService(ITenderIngestionService):
                 except asyncio.CancelledError:
                     await session.rollback()
                     raise
+                except CuotaAgotadaError as e:
+                    # Sin cuota no hay nada que hacer: cada intento extra es una
+                    # petición perdida. Se corta dejando el resto pendiente.
+                    await session.rollback()
+                    print(
+                        f"[IngestionService] {e} Se detiene la ingesta; quedan "
+                        "licitaciones pendientes para el próximo intento."
+                    )
+                    break
+                except ErrorTransitorioMercadoPublico as e:
+                    # No se marca como procesada: la licitación existe y el
+                    # próximo intento la recupera. Marcarla la perdería para
+                    # siempre, porque el listado deduplica por código.
+                    await session.rollback()
+                    print(
+                        f"[IngestionService] {e} Queda pendiente para el próximo "
+                        "intento."
+                    )
+                    continue
                 except Exception as e:
                     print(
                         f"[IngestionService] Error al procesar licitación {code}: {e}. Marcando como procesado para continuar."
