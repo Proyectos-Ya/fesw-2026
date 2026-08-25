@@ -78,13 +78,15 @@ El corpus de bases y anexos **no se puede automatizar con la API**. Queda:
 
 ---
 
-## Hallazgo 2 — No hay fuente oficial de datos de empresa por RUT en Mercado Público
+## Hallazgo 2 — Sí existe consulta oficial de empresa por RUT
 
-**Estado:** parcial. Descarta una fuente, faltan las demás (ver `1.1-onboarding.md`).
+**Estado:** resuelto para identidad, pendiente para vigencia. Detalle en `1.1-onboarding.md`.
 
-Se probaron `empresas/fichaempresa`, `empresas/FichaEmpresa` y `proveedores/fichaproveedor`
-en la API v1: las tres devuelven **404**. Quedan por evaluar ChileProveedores, SII,
-Registro de Empresas y Sociedades, y proveedores de datos comerciales.
+`GET /servicios/v1/Publico/Empresas/BuscarProveedor?rutempresaproveedor=76.086.428-5`
+devuelve el nombre de la empresa, usando el mismo ticket del proyecto. El RUT **debe ir
+con puntos**; sin ellos responde lo mismo que para una empresa inexistente.
+
+Cubre 2 de 10 campos del perfil y **no entrega vigencia**.
 
 ---
 
