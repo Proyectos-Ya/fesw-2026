@@ -1,0 +1,4 @@
+# Los documentos del corpus llevan datos de empresas reales y no se versionan.
+# En el repo queda solo el inventario (../inventario.md).
+*
+!.gitignore
