@@ -1,3 +1,6 @@
+export { ApiError, TimeoutError } from "./errors";
+import { ApiError, TimeoutError } from "./errors";
+
 // El fallback a localhost solo vale en desarrollo. En un build de producción,
 // caer a localhost en silencio hace que el frontend desplegado llame al equipo
 // del propio visitante: no falla al construir, falla en la cara del usuario y
@@ -16,27 +19,7 @@ function resolverApiUrl(): string {
 }
 
 const API_URL = resolverApiUrl();
-const REQUEST_TIMEOUT_MS = 60_000; 
-// Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
-
-/** Error de una respuesta HTTP no exitosa del backend. */
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-/** Error lanzado cuando el servidor no responde dentro del tiempo límite. */
-export class TimeoutError extends Error {
-  constructor() {
-    super("La solicitud tardó demasiado. Por favor, inténtalo nuevamente.");
-    this.name = "TimeoutError";
-  }
-}
+const REQUEST_TIMEOUT_MS = 60_000;
 
 /**
  * Cliente fetch tipado contra la API de ProyectosYA.

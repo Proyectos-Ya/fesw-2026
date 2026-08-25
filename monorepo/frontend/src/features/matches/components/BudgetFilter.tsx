@@ -8,10 +8,15 @@ import { LocationFilter } from "./LocationFilter";
 interface BudgetFilterProps {
   value: BudgetRange;
   onChange: (next: BudgetRange) => void;
-  /** Regiones disponibles para el filtro de ubicación. */
   regions: string[];
   region: string | null;
   onRegionChange: (next: string | null) => void;
+  provinces: string[];
+  province: string | null;
+  onProvinceChange: (next: string | null) => void;
+  communes: string[];
+  commune: string | null;
+  onCommuneChange: (next: string | null) => void;
 }
 
 function parseAmount(raw: string): number | null {
@@ -68,22 +73,31 @@ export function BudgetFilter({
   regions,
   region,
   onRegionChange,
+  provinces,
+  province,
+  onProvinceChange,
+  communes,
+  commune,
+  onCommuneChange,
 }: BudgetFilterProps) {
-  const active = isBudgetFilterActive(value) || region !== null;
+  const active = isBudgetFilterActive(value) || region !== null || province !== null || commune !== null;
 
   return (
     <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs sm:flex-nowrap">
-      <div className="inline-flex shrink-0 items-center gap-2 self-end pb-2.5 pr-1 text-sm font-semibold text-text-strong">
+      <div className="inline-flex shrink-0 items-center self-end pb-2.5 pr-1">
         <Icon name="sliders-horizontal" size={16} color="var(--primary)" />
-        Filtrar
       </div>
-      <div className="min-w-0 flex-[1.4] basis-full sm:basis-0">
-        <LocationFilter
-          regions={regions}
-          value={region}
-          onChange={onRegionChange}
-        />
-      </div>
+      <LocationFilter
+        regions={regions}
+        region={region}
+        onRegionChange={onRegionChange}
+        provinces={provinces}
+        province={province}
+        onProvinceChange={onProvinceChange}
+        communes={communes}
+        commune={commune}
+        onCommuneChange={onCommuneChange}
+      />
       <BudgetInput
         label="Desde"
         id="budget-min"
@@ -104,6 +118,8 @@ export function BudgetFilter({
           onClick={() => {
             onChange({ min: null, max: null });
             onRegionChange(null);
+            onProvinceChange(null);
+            onCommuneChange(null);
           }}
           className="inline-flex shrink-0 items-center gap-1.5 self-end px-2 py-2 text-xs font-bold text-text-muted hover:text-primary transition-colors"
         >
