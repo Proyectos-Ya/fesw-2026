@@ -18,6 +18,11 @@ entrega Mercado Público (Tarapacá=1 ... Metropolitana=13). **Las 16 difieren**
 que cargar los ids tal cual dejaría cada licitación en la región equivocada — y
 como el matching filtra por región, los resultados saldrían vacíos o absurdos.
 Por eso se traducen por nombre.
+
+**Fechas revividas.** El xlsx es una foto con fecha de vencimiento: al mes ya no
+queda ninguna licitación vigente y el matching, que descarta lo cerrado, no
+devuelve nada. Antes de insertar, a cada licitación vencida se le suman los meses
+necesarios (ver `date_shift.py`), así el dataset sirve igual de aquí a un año.
 """
 
 import asyncio
@@ -39,6 +44,9 @@ from app.config import settings  # noqa: E402
 from app.infrastructure.db import engine  # noqa: E402
 from app.infrastructure.seeder import seed_database_metadata  # noqa: E402
 from app.shared.regions import UNKNOWN_REGION_ID, normalize_region_name  # noqa: E402
+from tests.matching_evaluation.date_shift import (  # noqa: E402
+    desplazar_licitaciones_vencidas,
+)
 
 EXCEL_PATH = BASE_DIR.parents[1] / "project-data" / "chiripa_tenders.xlsx"
 
@@ -116,6 +124,17 @@ async def main() -> None:
     compradores = pd.read_excel(libro, "buyer_institution")
     licitaciones = pd.read_excel(libro, "tender")
     partidas = pd.read_excel(libro, "tender_item")
+
+    vencidas = int(
+        (pd.to_datetime(licitaciones["closing_at"]) <= pd.Timestamp.now()).sum()
+    )
+    licitaciones = desplazar_licitaciones_vencidas(licitaciones)
+    if vencidas:
+        print(
+            f"[DATASET] {vencidas} licitaciones cerradas revividas (+1 mes o los "
+            "que hicieran falta)",
+            flush=True,
+        )
 
     traduccion = _mapa_de_regiones(regiones)
     print(
