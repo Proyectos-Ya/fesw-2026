@@ -274,6 +274,13 @@ python tests/matching_evaluation/load_postgres_robust.py
 python tests/matching_evaluation/load_dataset.py
 ```
 
+Las licitaciones del dump que ya cerraron se cargan con sus fechas corridas un mes
+hacia adelante (los meses que hagan falta si el dump es más viejo), manteniendo la
+separación entre publicación, cierre y último cambio. Es lo que mantiene el corpus de
+prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
+dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
+para probar la aplicación da lo mismo.
+
 **4.** Crea las tres cuentas de prueba (rubros distintos, contraseña `demo1234`):
 
 ```bash
@@ -340,22 +347,51 @@ curl -X DELETE http://localhost:6333/collections/tenders
 
 ### Regenerar el dump
 
-Lo hace **una sola persona** cuando el dump caduca, porque consume cuota compartida.
+Lo hace **una sola persona**, porque consume cuota compartida del ticket.
 
-Las compras ágiles duran unos diez días, así que el dump se llena de licitaciones
-cerradas en un par de semanas. Y el matching **descarta todo lo que ya cerró**: el
-síntoma es un dashboard vacío aunque la base tenga miles de filas.
+**No es parte del día a día.** El dump es un corpus de prueba y las compras ágiles
+duran unos diez días, así que sus licitaciones se cierran solas; para eso está el
+desplazamiento de fechas al cargarlo, que las mantiene visibles en la app
+indefinidamente. Regenerar sirve cuando quieres **otro** corpus: más licitaciones,
+de otras regiones o de otros rubros.
+
+**1. Infraestructura arriba.** `generar_dataset.py` no es autónomo: escribe en la
+base del `.env`, indexa en Qdrant y necesita `MERCADO_PUBLICO_API_KEY`.
+
+```bash
+supabase start              # desde la raíz del repositorio
+docker compose up -d qdrant # desde monorepo/
+alembic upgrade head        # desde monorepo/backend/
+```
+
+**2. Base limpia (opcional).** El export saca del `.env` todo lo que tenga
+`closing_at > now()`, así que si ahí quedó un dump cargado, sus licitaciones —con la
+fecha ya desplazada— entran también al xlsx nuevo. Para un corpus de prueba eso no
+molesta; solo ten en cuenta que cada ciclo de cargar y volver a exportar les corre
+otro mes. Vacía la base si quieres el corpus nuevo limpio, o sáltate este paso si
+prefieres acumular sobre lo que ya tienes.
+
+```bash
+docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
+curl -X DELETE http://localhost:6333/collections/tenders
+```
+
+**3. Traer licitaciones y volcarlas al xlsx.**
 
 ```bash
 python tests/matching_evaluation/generar_dataset.py --limite 300
-python tests/matching_evaluation/export_import_excel.py --exportar
+python tests/matching_evaluation/export_dataset.py
 ```
 
-El primero trae licitaciones vigentes desde la API (~1 petición por licitación, unos
-11 segundos cada una). El segundo sobrescribe el xlsx **solo con las vigentes**, sin
-acumular cerradas.
+El primero trae compras ágiles vigentes desde la API (~1 petición por licitación) y
+las deja en la base y en Qdrant. Al terminar imprime cuántas quedaron vigentes; si
+son 0, no sigas: el xlsx saldría vacío. El segundo lee la base del `.env` y
+**sobrescribe** el xlsx solo con las vigentes, sin acumular cerradas.
 
-Después se comparte por git:
+Ese es el único script que escribe el dump. La dirección contraria —dump a base— es
+de `load_postgres_robust.py` y `load_dataset.py`, que nunca tocan el archivo.
+
+**4. Compartirlo por git.**
 
 ```bash
 git add project-data/chiripa_tenders.xlsx
@@ -370,8 +406,9 @@ Lo único que importa es cuántas están vigentes:
 docker exec supabase_db_fesw-2026 psql -U postgres -c "select count(*) total, count(*) filter (where closing_at > now()) vigentes from tender;"
 ```
 
-Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya: hay que
-regenerar el dump.
+Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya. Cargando el
+dump no debería pasar, porque las cerradas entran con la fecha corrida; si pasa,
+revisa que la carga haya sido con `load_postgres_robust.py`.
 
 Y si el dashboard sale vacío con licitaciones vigentes, casi siempre es el **filtro
 por región**, que es estricto: un proveedor solo ve licitaciones de las regiones que

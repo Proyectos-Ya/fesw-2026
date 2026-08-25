@@ -4,7 +4,7 @@ Primer paso para **regenerar** el dataset de prueba. El ciclo completo:
 
     # 1. Una persona, una vez (consume cuota del ticket):
     python tests/matching_evaluation/generar_dataset.py --limite 300
-    python tests/matching_evaluation/export_import_excel.py --exportar
+    python tests/matching_evaluation/export_dataset.py
 
     # 2. El resto del equipo (cuota: cero):
     python tests/matching_evaluation/load_postgres_robust.py
@@ -103,7 +103,7 @@ async def main(limite: int, retardo: float) -> None:
             "[AVISO] Ninguna vigente: el matching no va a mostrar resultados.",
             flush=True,
         )
-    print("Siguiente paso: export_import_excel.py --exportar")
+    print("Siguiente paso: export_dataset.py")
 
     await qdrant.close()
     await engine.dispose()
