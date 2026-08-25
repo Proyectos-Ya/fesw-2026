@@ -164,17 +164,31 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+# `localhost` y no `127.0.0.1`: el frontend se sirve en http://localhost:3000
+# (ver CORS_ORIGINS en monorepo/.env.example) y para el navegador son orígenes
+# distintos. Con el host equivocado acá, Supabase descarta el `redirectTo` y
+# manda de vuelta a este site_url sin decir por qué.
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# Van las dos formas del host porque cualquiera de las dos puede quedar en la
+# barra de direcciones, y el frontend arma el redirectTo con el origin real.
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://127.0.0.1:3000/auth/callback",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
-# signing_keys_path = "./signing_keys.json"
+# Sin esto GoTrue firma con el secreto HS256 heredado, que es simétrico: quien
+# lo tenga puede emitir sesiones de cualquier usuario. Con una clave asimétrica
+# el backend solo necesita la pública, que recoge del JWKS. Genera la tuya con:
+#   supabase gen signing-key --algorithm ES256 > supabase/signing_keys.json
+# (está en .gitignore; cada quien tiene la suya y no hay nada que compartir)
+signing_keys_path = "./signing_keys.json"
 # If disabled, the refresh token will never expire.
 enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
@@ -340,6 +354,27 @@ url = ""
 # If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
+email_optional = false
+
+# --- Google (ProyectosYA) -------------------------------------------------
+# Las credenciales salen de un OAuth client "Web application" de Google Cloud
+# Console. En sus "Authorized redirect URIs" va la URL de SUPABASE, no la de la
+# aplicación: Google redirige acá, y recién después Supabase redirige a
+# `/auth/callback` del frontend (autorizado en additional_redirect_urls).
+#   local:      http://127.0.0.1:54321/auth/v1/callback
+#   producción: https://<project-ref>.supabase.co/auth/v1/callback
+#
+# Las dos variables las toma el CLI del entorno al hacer `supabase start`;
+# expórtalas en tu shell antes de arrancar. Nunca el secreto literal acá.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+# Requerido para el login con Google en local, según el comentario del propio
+# proveedor de ejemplo de más arriba.
+skip_nonce_check = true
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.

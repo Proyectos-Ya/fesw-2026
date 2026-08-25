@@ -84,6 +84,45 @@ pip install -r requirements-dev.txt
 
 Ese archivo ya incluye `requirements.txt`, así que un solo comando deja el entorno completo.
 
+### 5. Autenticación: clave de firma y Google
+
+Las sesiones las emite **Supabase Auth**, no esta API. Hacen falta dos cosas antes del
+primer `supabase start`.
+
+**a) La clave con que GoTrue firma los JWT.** Es asimétrica: Supabase guarda la privada y
+publica la pública en su JWKS, que es lo único que el backend necesita para validar una
+sesión. Genera la tuya —no se comparte ni se sube, está en `supabase/.gitignore`:
+
+```bash
+echo '[]' > supabase/signing_keys.json
+supabase gen signing-key --algorithm ES256 --append
+```
+
+Son dos pasos y no una redirección: como `supabase/config.toml` ya declara
+`signing_keys_path`, el CLI abre ese archivo para agregarle la clave y falla si todavía no
+existe. La primera línea lo siembra vacío.
+
+Sin ese archivo, GoTrue firma con el secreto HS256 heredado. Ese secreto es *simétrico*:
+quien lo tenga puede emitir sesiones de cualquier usuario, y además el backend rechazaría
+esos tokens porque solo acepta ES256/RS256.
+
+**b) Las credenciales de Google**, para el botón "Continuar con Google". Se piden al
+equipo o se crean en Google Cloud Console (OAuth client de tipo *Web application*). El CLI
+de Supabase las lee del entorno al arrancar, así que van exportadas en tu shell —no en el
+`.env`, que lo lee la API y no el CLI:
+
+```bash
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
+```
+
+Y el secreto en la misma forma, con `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`. Si las dejas
+sin definir, todo lo demás funciona: solo el login con Google falla.
+
+> Al crear el OAuth client en Google, la *Authorized redirect URI* es la de **Supabase**,
+> `http://127.0.0.1:54321/auth/v1/callback`, no la del frontend. Google redirige a
+> Supabase, y recién ahí Supabase redirige a `/auth/callback` de la aplicación. Poner la
+> URL del frontend es el error más común y da `redirect_uri_mismatch`.
+
 ---
 
 ## Entornos de trabajo: venv y Docker

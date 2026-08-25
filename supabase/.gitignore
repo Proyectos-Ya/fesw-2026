@@ -2,6 +2,13 @@
 .branches
 .temp
 
+# Claves privadas con que GoTrue firma los JWT de sesión. Cada quien genera las
+# suyas con `supabase gen signing-key --algorithm ES256`; no hay nada que
+# compartir, porque el backend recoge las públicas por JWKS. Este patrón va
+# antes de que el archivo exista a propósito: una clave de firma commiteada no
+# se arregla borrándola del repositorio, hay que rotarla.
+signing_keys.json
+
 # dotenvx
 .env.keys
 .env.local
