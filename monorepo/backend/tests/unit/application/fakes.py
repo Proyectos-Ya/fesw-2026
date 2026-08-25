@@ -36,7 +36,7 @@ from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
-from app.domain.errors.auth_errors import InvalidToken
+from app.domain.errors.auth_errors import InvalidToken, UserAlreadyExists
 from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
@@ -57,7 +57,20 @@ class InMemoryUserRepository(IUserRepository):
     async def get_by_id(self, user_id: UUID) -> User | None:
         return self.users.get(user_id)
 
+    async def get_by_auth_provider_id(self, subject: str) -> User | None:
+        for user in self.users.values():
+            if user.auth_provider_id == subject:
+                return user
+        return None
+
     async def save(self, user: User) -> User:
+        # Imita el UNIQUE de auth_provider_id en la base: sin esto, el doble
+        # aceptaría en silencio dos perfiles para la misma identidad y los tests
+        # de la carrera de aprovisionamiento no probarían nada.
+        if user.auth_provider_id is not None:
+            existente = await self.get_by_auth_provider_id(user.auth_provider_id)
+            if existente is not None and existente.id != user.id:
+                raise UserAlreadyExists(user.email)
         self.users[user.id] = user
         return user
 

@@ -18,6 +18,15 @@ def is_valid_email(email: str) -> bool:
 class User(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     email: str
+    # Identificador de este usuario en el proveedor de identidad (el `sub` del
+    # JWT de Supabase). Va aparte del `id` y no lo reemplaza: `supabase db
+    # reset` borra `auth.users` en local, y si compartieran identificador todos
+    # los proveedores y licitaciones guardadas quedarían colgando de alguien que
+    # ya no existe. Es `str` porque el `sub` de OIDC es una cadena opaca; que
+    # Supabase emita UUIDs es un detalle suyo.
+    #
+    # Nullable mientras convivan el login propio y Supabase Auth.
+    auth_provider_id: str | None = None
     hashed_password: str
     full_name: str
     phone: str | None = None

@@ -18,6 +18,11 @@ BASE = {
     "gemini_api_key": "x",
     "gemini_model": "x",
     "mercado_publico_api_key": "x",
+    # Obligatoria desde que las sesiones las emite Supabase. Va explícita y no
+    # heredada del entorno porque estos tests usan `_env_file=None`: si se
+    # dejara al relleno de `conftest`, el resultado dependería de si el `.env`
+    # del desarrollador la declara o no.
+    "supabase_url": "https://supabase-de-pruebas.local",
 }
 
 CLAVE_VALIDA = "K" * 32

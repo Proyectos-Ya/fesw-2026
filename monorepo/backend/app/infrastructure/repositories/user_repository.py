@@ -29,6 +29,13 @@ class UserRepository(IUserRepository):
         model = await self.session.get(UserModel, user_id)
         return self._to_entity(model) if model else None
 
+    async def get_by_auth_provider_id(self, subject: str) -> User | None:
+        result = await self.session.exec(
+            select(UserModel).where(UserModel.auth_provider_id == subject)
+        )
+        model = result.first()
+        return self._to_entity(model) if model else None
+
     async def save(self, user: User) -> User:
         model = self._to_model(user)
         self.session.add(model)
