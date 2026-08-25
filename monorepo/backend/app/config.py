@@ -109,6 +109,24 @@ class Settings(BaseSettings):
     # solo acepta junto con Secure.
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
 
+    # --- Supabase Auth ---
+    # Las sesiones las emite Supabase, no esta API: acá solo se verifican. Para
+    # eso hacen falta la URL donde vive el JWKS, el emisor que se acepta y la
+    # audiencia. Sin valor por defecto a propósito: uno apuntando a localhost
+    # dejaría arrancar un despliegue mal configurado que rechaza todas las
+    # sesiones, y eso es más difícil de diagnosticar que no arrancar.
+    supabase_url: str
+    # Normalmente se deriva de `supabase_url`. Se declara aparte para el caso en
+    # que el host que alcanza a Supabase no sea el que firma: dentro de Docker
+    # el contenedor llega por `host.docker.internal`, pero GoTrue emite
+    # `iss: http://127.0.0.1:54321/auth/v1`. Con una sola variable, o falla la
+    # descarga del JWKS o falla la validación del emisor.
+    supabase_jwt_issuer: str | None = None
+    # El claim `aud` que Supabase pone en el token de un usuario conectado.
+    supabase_jwt_audience: str = "authenticated"
+    # Cuánto se conservan las claves públicas antes de volver a pedirlas.
+    supabase_jwks_cache_seconds: int = 600
+
     # --- CORS ---
     # Orígenes autorizados, separados por coma. Estaba hardcodeado en
     # middleware.py, así que no había forma de desplegar a otro dominio sin
@@ -242,6 +260,44 @@ class Settings(BaseSettings):
                 "navegadores rechazan esa combinación y la sesión no se envía."
             )
         return self
+
+    @model_validator(mode="after")
+    def _exigir_https_en_supabase(self) -> "Settings":
+        """Fuera de desarrollo, el JWKS tiene que viajar por TLS.
+
+        Sobre HTTP cualquiera en la red puede responder con su propia clave
+        pública, y a partir de ahí firmar sesiones de cualquier usuario sin que
+        nada falle. Es el mismo agujero silencioso que una clave de firma
+        publicada, así que se cierra igual: al arrancar.
+        """
+        if not self.is_dev and not self.supabase_url.startswith("https://"):
+            raise ValueError(
+                "SUPABASE_URL debe usar https fuera de desarrollo; llegó "
+                f"'{self.supabase_url}'. Por esa conexión se descargan las "
+                "claves con que se valida cada sesión."
+            )
+        return self
+
+    @property
+    def jwt_issuer(self) -> str:
+        """Emisor que se acepta en el claim `iss` de los tokens.
+
+        El `rstrip` importa: una barra final en la variable produciría
+        `.../auth//v1`, que no coincide con lo que emite Supabase, y el síntoma
+        sería un 401 en todo sin ninguna pista de por qué.
+        """
+        if self.supabase_jwt_issuer:
+            return self.supabase_jwt_issuer
+        return f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def jwks_url(self) -> str:
+        """Dónde publica Supabase las claves públicas de firma.
+
+        Se arma desde `supabase_url` y no desde `jwt_issuer`, porque son
+        justamente las dos cosas que pueden no coincidir dentro de Docker.
+        """
+        return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
     @property
     def cors_origins_list(self) -> list[str]:

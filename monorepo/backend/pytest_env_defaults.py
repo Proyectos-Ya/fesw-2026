@@ -21,4 +21,9 @@ RELLENO_ENV = {
     # Es una clave de pruebas y se nota; firmar con ella fuera de los tests no
     # protege nada.
     "JWT_SECRET_KEY": "clave-de-pruebas-no-usar-en-produccion",
+    # Host inexistente a propósito: ningún test debe llegar a la red para
+    # verificar un token. Los que ejercitan la verificación inyectan el JWKS.
+    # Va en https porque `is_dev` es False por defecto y la configuración exige
+    # TLS fuera de desarrollo: el relleno tiene que ser válido sin ayuda.
+    "SUPABASE_URL": "https://supabase-de-pruebas.local",
 }
