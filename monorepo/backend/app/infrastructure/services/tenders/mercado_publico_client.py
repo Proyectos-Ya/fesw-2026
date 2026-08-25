@@ -5,6 +5,19 @@ from typing import Any, cast
 import httpx
 
 
+class ErrorTransitorioMercadoPublico(Exception):
+    """Falla pasajera de la API: el dato existe, pero ahora no se pudo traer.
+
+    Se distingue del detalle vacío porque el servicio de ingesta reacciona
+    distinto: un detalle vacío marca la licitación como procesada, un fallo
+    pasajero la deja en la cola para el próximo intento.
+    """
+
+
+class CuotaAgotadaError(ErrorTransitorioMercadoPublico):
+    """429: se acabaron las peticiones del día. Insistir solo gasta más."""
+
+
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
 class MercadoPublicoClient:
     def __init__(self, api_key: str):
@@ -129,19 +142,43 @@ class MercadoPublicoClient:
 
     # Obtiene el detalle crudo de una licitación específica
     async def get_tender_detail(self, id: str) -> dict[str, Any]:
+        """Detalle de una licitación. `{}` solo si de verdad no hay nada que traer.
+
+        Un 429, un 5xx o un timeout **no** devuelven `{}`: levantan
+        `ErrorTransitorioMercadoPublico`. Devolverlos como vacío hacía que la
+        ingesta los tomara por "esta licitación no tiene detalle" y la marcara
+        procesada para siempre, perdiéndola sin posibilidad de reintento.
+        """
         headers = {"ticket": self.api_key}
         detail_url = f"{self.base_url}/{id}"
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(detail_url, headers=headers, timeout=15.0)
+                if response.status_code == 429:
+                    raise CuotaAgotadaError(
+                        f"Cuota diaria agotada al pedir el detalle de {id}."
+                    )
+                if response.status_code >= 500:
+                    raise ErrorTransitorioMercadoPublico(
+                        f"HTTP {response.status_code} al pedir el detalle de {id}."
+                    )
                 response.raise_for_status()
                 detail_envelope = cast(dict[str, Any], response.json())
                 return cast(dict[str, Any], detail_envelope.get("payload", {}))
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                # La licitación está: fue la conexión la que falló.
+                raise ErrorTransitorioMercadoPublico(
+                    f"{type(e).__name__} al pedir el detalle de {id}."
+                ) from e
             except httpx.HTTPStatusError as http_err:
+                # 4xx que no es 429: la licitación no está disponible y volver a
+                # pedirla daría lo mismo.
                 print(
                     f"[HTTP Error MP] Error al obtener detalle de {id}: {http_err.response.status_code}"
                 )
                 return {}
+            except ErrorTransitorioMercadoPublico:
+                raise
             except Exception as e:
                 print(f"[Error MP] Falla inesperada al obtener detalle de {id}: {e}")
                 return {}
