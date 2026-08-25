@@ -149,6 +149,8 @@ def get_list_saved_tenders_use_case(
     return ListSavedTendersUseCase(
         saved_tender_repo=SavedTenderRepository(session),
         tender_repo=TenderRepository(session),
+        supplier_repo=SupplierRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
     )
 
 

@@ -26,6 +26,7 @@ export interface Tender {
   created_at: string;
   updated_at: string;
   items: TenderItem[];
+  is_saved?: boolean;
 }
 
 export interface MatchingResult {
