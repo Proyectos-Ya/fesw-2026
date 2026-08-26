@@ -1,7 +1,13 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
 
+from datetime import datetime
 from uuid import UUID
 
+from app.application.repositories.notification_repository import (
+    INotificationDeliveryRepository,
+    INotificationPreferenceRepository,
+    INotificationRepository,
+)
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
@@ -16,15 +22,25 @@ from app.application.repositories.tender_vector_repository import (
 )
 from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.notification import (
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
+)
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import InvalidToken
+from app.domain.errors.notification_errors import (
+    PermanentEmailError,
+    TransientEmailError,
+)
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
@@ -64,6 +80,9 @@ class InMemorySupplierRepository(ISupplierRepository):
             if supplier.user_id == user_id:
                 return supplier
         return None
+
+    async def list_user_ids_with_profile(self) -> list[UUID]:
+        return [s.user_id for s in self.suppliers.values() if s.user_id is not None]
 
     async def save(self, supplier: Supplier) -> Supplier:
         self.suppliers[supplier.rut] = supplier
@@ -192,6 +211,22 @@ class InMemoryTenderRepository(ITenderRepository):
     async def get_or_create_status(self, status_id: int) -> int:
         return status_id
 
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,  # noqa: ARG002
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        # Sin filtrar: los casos de uso que se prueban acá no dependen de los
+        # criterios, solo de que el método exista y respete el paginado.
+        todas = list(self.tenders.values())
+        return todas[offset : offset + limit], len(todas)
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        if not self.tenders:
+            return None
+        return max(t.created_at for t in self.tenders.values())
+
     async def rollback(self) -> None:
         pass
 
@@ -223,3 +258,135 @@ class InMemorySavedTenderRepository(ISavedTenderRepository):
 
     async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
         return self.saved.pop((user_id, tender_id), None) is not None
+
+
+class InMemoryNotificationPreferenceRepository(INotificationPreferenceRepository):
+    def __init__(self) -> None:
+        self.preferences: dict[UUID, NotificationPreference] = {}
+
+    async def get_by_user_id(self, user_id: UUID) -> NotificationPreference | None:
+        return self.preferences.get(user_id)
+
+    async def list_by_delivery_mode(
+        self, delivery_mode: str
+    ) -> list[NotificationPreference]:
+        return [
+            p
+            for p in self.preferences.values()
+            if p.delivery_mode == delivery_mode and p.enabled
+        ]
+
+    async def save(self, preference: NotificationPreference) -> NotificationPreference:
+        self.preferences[preference.user_id] = preference
+        return preference
+
+
+class InMemoryNotificationRepository(INotificationRepository):
+    def __init__(self) -> None:
+        self.notifications: dict[UUID, Notification] = {}
+
+    async def get(self, notification_id: UUID) -> Notification | None:
+        return self.notifications.get(notification_id)
+
+    async def list_by_user(
+        self, user_id: UUID, only_unread: bool = False, limit: int = 50
+    ) -> list[Notification]:
+        avisos = [n for n in self.notifications.values() if n.user_id == user_id]
+        if only_unread:
+            avisos = [n for n in avisos if n.read_at is None]
+        avisos.sort(key=lambda n: n.created_at, reverse=True)
+        return avisos[:limit]
+
+    async def list_by_ids(self, notification_ids: list[UUID]) -> list[Notification]:
+        return [
+            self.notifications[i] for i in notification_ids if i in self.notifications
+        ]
+
+    async def count_unread(self, user_id: UUID) -> int:
+        return len(
+            [
+                n
+                for n in self.notifications.values()
+                if n.user_id == user_id and n.read_at is None
+            ]
+        )
+
+    async def get_notified_tender_ids(self, user_id: UUID) -> set[UUID]:
+        return {
+            n.tender_id for n in self.notifications.values() if n.user_id == user_id
+        }
+
+    async def save_bulk(self, notifications: list[Notification]) -> list[Notification]:
+        for n in notifications:
+            self.notifications[n.id] = n
+        return notifications
+
+    async def save(self, notification: Notification) -> Notification:
+        self.notifications[notification.id] = notification
+        return notification
+
+    async def mark_all_read(self, user_id: UUID) -> int:
+        from app.shared.datetime_utils import utc_now_naive
+
+        cambiados = 0
+        for n in self.notifications.values():
+            if n.user_id == user_id and n.read_at is None:
+                n.read_at = utc_now_naive()
+                cambiados += 1
+        return cambiados
+
+
+class InMemoryNotificationDeliveryRepository(INotificationDeliveryRepository):
+    def __init__(self) -> None:
+        self.deliveries: dict[UUID, NotificationDelivery] = {}
+
+    async def save(self, delivery: NotificationDelivery) -> NotificationDelivery:
+        self.deliveries[delivery.id] = delivery
+        return delivery
+
+    async def list_due(self, now, limit: int = 20) -> list[NotificationDelivery]:
+        vencidas = [d for d in self.deliveries.values() if d.is_due(now)]
+        vencidas.sort(key=lambda d: d.next_attempt_at)
+        return vencidas[:limit]
+
+    async def list_by_user(
+        self, user_id: UUID, limit: int = 50
+    ) -> list[NotificationDelivery]:
+        entregas = [d for d in self.deliveries.values() if d.user_id == user_id]
+        entregas.sort(key=lambda d: d.created_at, reverse=True)
+        return entregas[:limit]
+
+    async def list_pending_notification_ids(self, user_id: UUID) -> set[UUID]:
+        ids: set[UUID] = set()
+        for d in self.deliveries.values():
+            if d.user_id == user_id:
+                ids.update(d.notification_ids)
+        return ids
+
+
+class FakeEmailService(IEmailService):
+    """Servicio de correo que registra los envíos y puede simular fallos.
+
+    `fail_with` permite reproducir los dos escenarios que la HdU distingue:
+    servicio caído (transitorio) y dirección inexistente (permanente).
+    """
+
+    def __init__(self, fail_with: Exception | None = None) -> None:
+        self.sent: list[EmailMessage] = []
+        self.fail_with = fail_with
+
+    async def send(self, message: EmailMessage) -> None:
+        if self.fail_with is not None:
+            raise self.fail_with
+        self.sent.append(message)
+
+    def simular_caida(self, motivo: str = "conexión rechazada") -> None:
+        self.fail_with = TransientEmailError(motivo)
+
+    def simular_destinatario_invalido(
+        self, motivo: str = "la dirección no existe"
+    ) -> None:
+        self.fail_with = PermanentEmailError(motivo)
+
+    def restablecer(self) -> None:
+        self.fail_with = None

@@ -32,65 +32,6 @@ from tests.unit.application.fakes import (
 )
 
 
-class InMemoryTenderRepository(ITenderRepository):
-    """Fake repository en memoria para licitaciones."""
-
-    def __init__(self) -> None:
-        self.tenders: dict[UUID, Tender] = {}
-
-    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
-        results = []
-        for t in self.tenders.values():
-            if filters.ids and t.id not in filters.ids:
-                continue
-            if filters.regions:
-                # En memoria asumimos que coincide para simplificar
-                pass
-            results.append(t)
-        return results
-
-    async def search_tenders(
-        self,
-        criteria: TenderFilterCriteria,
-        limit: int,
-        offset: int = 0,
-    ) -> tuple[list[Tender], int]:  # noqa: ARG002
-        return ([], 0)
-
-    async def get_by_code(self, code: str) -> TenderModel | None:
-        return None
-
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
-        return rut
-
-    async def save_complex_tender(
-        self, tender_model: TenderModel, items: list[TenderItemModel]
-    ) -> None:
-        pass
-
-    async def get_or_create_status(self, status_id: int) -> int:
-        return status_id
-
-    async def rollback(self) -> None:
-        pass
-
-    async def get_deep_analysis(
-        self, tender_id: UUID, supplier_id: UUID
-    ) -> DeepAnalysis | None:
-        return None
-
-    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
-        return deep_analysis
-
-    async def get_latest_tender_created_at(self) -> datetime | None:
-        if not self.tenders:
-            return None
-        return max(
-            (t.created_at for t in self.tenders.values() if t.created_at is not None),
-            default=None,
-        )
-
-
 class FakeTenderVectorRepository(ITenderVectorRepository):
     """Fake repository vectorial para buscar licitaciones."""
 
