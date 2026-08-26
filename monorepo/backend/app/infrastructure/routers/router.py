@@ -5,6 +5,9 @@ from fastapi import APIRouter
 from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.infrastructure.routers.auth import create_auth_router
+from app.infrastructure.routers.document_processing_mock import (
+    create_document_processing_mock_router,
+)
 from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
@@ -30,6 +33,7 @@ def create_router(
     get_save_tender_use_case: Callable,
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
+    get_document_processing_service: Callable,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
@@ -76,6 +80,12 @@ def create_router(
     root.include_router(
         create_question_router(
             get_smart_question_use_case=get_smart_question_use_case,
+            get_current_user=get_current_user,
+        )
+    )
+    root.include_router(
+        create_document_processing_mock_router(
+            get_document_processing_service=get_document_processing_service,
             get_current_user=get_current_user,
         )
     )

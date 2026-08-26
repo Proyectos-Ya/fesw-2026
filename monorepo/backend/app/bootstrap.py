@@ -19,6 +19,9 @@ from app.application.repositories.tender_vector_repository import (
 )
 from app.application.repositories.user_repository import IUserRepository
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.services.document_processing_service import (
+    IDocumentProcessingService,
+)
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
@@ -64,6 +67,9 @@ from app.infrastructure.services.bge_reranker_service import BgeRerankerService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
+)
+from app.infrastructure.services.mock_document_processing_service import (
+    MockDocumentProcessingService,
 )
 from app.infrastructure.services.password_hasher import BcryptPasswordHasher
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
@@ -198,6 +204,10 @@ def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
     return request.app.state.deep_analysis_service
 
 
+def get_document_processing_service(request: Request) -> IDocumentProcessingService:
+    return request.app.state.document_processing_service
+
+
 def get_get_or_create_deep_analysis_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     deep_analysis_service: Annotated[
@@ -311,6 +321,7 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.document_processing_service = MockDocumentProcessingService()
 
     app.state.reranker_service = build_reranker_service()
 
@@ -354,5 +365,6 @@ def bootstrap(app: FastAPI) -> None:
         get_save_tender_use_case=get_save_tender_use_case,
         get_unsave_tender_use_case=get_unsave_tender_use_case,
         get_search_tenders_use_case=get_search_tenders_use_case,
+        get_document_processing_service=get_document_processing_service,
     )
     app.include_router(router)
