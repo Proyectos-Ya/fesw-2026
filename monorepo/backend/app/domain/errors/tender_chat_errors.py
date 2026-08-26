@@ -26,3 +26,16 @@ class DocumentNotFoundError(TenderChatError):
 class MaxDocumentsExceededError(TenderChatError):
     def __init__(self, message: str = "Se ha alcanzado el límite máximo de documentos adjuntos por chat."):
         super().__init__(message)
+
+
+class InvalidPromptInstruction(TenderChatError):
+    """Excepción lanzada cuando la consulta del usuario intenta manipular el prompt del sistema (Prompt Injection)."""
+    def __init__(self, message: str = "Se detectó un intento de manipulación del prompt (Prompt Injection)."):
+        super().__init__(message)
+
+
+class OutOfScopeQueryError(TenderChatError):
+    """Excepción lanzada cuando la consulta está completamente fuera del alcance del asistente de licitaciones."""
+    def __init__(self, message: str = "La consulta está fuera del ámbito de análisis de esta licitación."):
+        super().__init__(message)
+

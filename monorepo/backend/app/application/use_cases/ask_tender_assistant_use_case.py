@@ -10,6 +10,7 @@ from app.domain.entities.tender_chat import TenderChatMessage
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
     TenderAssistantUnavailableError,
+    InvalidPromptInstruction,
 )
 
 
@@ -17,6 +18,29 @@ class AskTenderAssistantUseCase:
     """Caso de uso para realizar consultas al asistente virtual con RAG sobre documentos de la licitación."""
 
     MAX_QUERY_LENGTH = 1000
+    FORBIDDEN_PROMPT_PATTERNS = [
+        "ignora las instrucciones",
+        "ignora los requisitos",
+        "ignora tus instrucciones",
+        "ignorar las instrucciones",
+        "ignore instructions",
+        "ignore previous instructions",
+        "ignore all instructions",
+        "system prompt",
+        "revela tu prompt",
+        "dame tu prompt",
+        "show your prompt",
+        "override instructions",
+        "anula las instrucciones",
+        "olvida tus restricciones",
+        "forget your instructions",
+        "act as dan",
+        "jailbreak",
+        "pretend you are",
+        "simula ser",
+        "tu nuevo rol es",
+        "your new role is",
+    ]
 
     def __init__(
         self,
@@ -25,6 +49,15 @@ class AskTenderAssistantUseCase:
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
+
+    def _validate_guardrails(self, question: str) -> None:
+        """Valida sintáctica y preventivamente intentos de manipulación del asistente (Prompt Injection)."""
+        lowered = question.lower().strip()
+        for pattern in self.FORBIDDEN_PROMPT_PATTERNS:
+            if pattern in lowered:
+                raise InvalidPromptInstruction(
+                    f"Se detectó un intento de manipulación del prompt (Prompt Injection) mediante el patrón: '{pattern}'."
+                )
 
     async def execute(
         self,
@@ -40,6 +73,10 @@ class AskTenderAssistantUseCase:
         # 2. Validar longitud máxima de 1000 caracteres (Criterio HU-004)
         if len(cleaned_question) > self.MAX_QUERY_LENGTH:
             raise TenderChatQueryTooLongError()
+
+        # 3. Validar guardarraíles de seguridad (Anti-Prompt Injection)
+        self._validate_guardrails(cleaned_question)
+
 
         # 3. Guardar mensaje de la pregunta del usuario
         user_msg = TenderChatMessage(
