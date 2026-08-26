@@ -8,6 +8,7 @@ from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
 from app.infrastructure.routers.question import create_question_router
+from app.infrastructure.routers.tender_chat import create_tender_chat_router
 
 
 def create_router(
@@ -25,11 +26,16 @@ def create_router(
     cookie_secure: bool,
     cookie_max_age: int,
     get_get_or_create_deep_analysis_use_case: Callable,
+    get_upload_tender_chat_doc_use_case: Callable,
+    get_list_tender_chat_docs_use_case: Callable,
+    get_delete_tender_chat_doc_use_case: Callable,
+    get_ask_tender_assistant_use_case: Callable,
+    get_tender_chat_history_use_case: Callable,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
     Públicos: health (root + /health) y auth (register/login/logout).
-    Protegidos (requieren sesión): suppliers.
+    Protegidos (requieren sesión): suppliers, tenders, questions, tender chat.
     """
     root = APIRouter()
 
@@ -71,4 +77,16 @@ def create_router(
         )
     )
 
+    root.include_router(
+        create_tender_chat_router(
+            get_current_user=get_current_user,
+            get_upload_doc_use_case=get_upload_tender_chat_doc_use_case,
+            get_list_docs_use_case=get_list_tender_chat_docs_use_case,
+            get_delete_doc_use_case=get_delete_tender_chat_doc_use_case,
+            get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
+            get_chat_history_use_case=get_tender_chat_history_use_case,
+        )
+    )
+
     return root
+
