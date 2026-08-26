@@ -10,6 +10,7 @@ import { Suspense } from "react";
 import { loginSchema, type LoginData } from "../authSchema";
 import { login } from "../services/authService";
 import { useAuth } from "../AuthContext";
+import { RETURN_URL_PARAM, sanitizeReturnUrl } from "../returnUrl";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
@@ -27,6 +28,7 @@ function RegisteredBanner() {
 
 function LoginFormInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const { refresh } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,10 @@ function LoginFormInner() {
     try {
       await login(data);
       await refresh();
-      router.push("/");
+      // Vuelve a donde el usuario quería ir —el enlace de una alerta, por
+      // ejemplo— en vez de aterrizar siempre en el home. `sanitizeReturnUrl`
+      // descarta destinos externos.
+      router.push(sanitizeReturnUrl(params.get(RETURN_URL_PARAM)) ?? "/");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
