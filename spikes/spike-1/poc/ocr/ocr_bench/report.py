@@ -2,7 +2,7 @@
 
 El plan del spike es explícito: *"las cifras están en tablas, por librería y por
 categoría de calidad — no en prosa"*. Este módulo produce exactamente eso, para
-pegar en `1.3-ocr-alternativas.md` sin transcribir nada a mano (transcribir es
+pegar en `1.2-ocr-alternativas.md` sin transcribir nada a mano (transcribir es
 donde se cuelan los números equivocados).
 """
 

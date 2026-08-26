@@ -22,7 +22,7 @@ Uso
     python benchmark.py --json resultados.json --md tablas.md
 
 Salida: tablas Markdown por extractor y categoría de calidad, listas para pegar
-en `1.3-ocr-alternativas.md`. Con `--json` queda además el detalle documento a
+en `1.2-ocr-alternativas.md`. Con `--json` queda además el detalle documento a
 documento, que es lo que permite reproducir una cifra en vez de creerle.
 
 Código de salida: 0 si corrió, 1 si el corpus está vacío o ningún extractor
@@ -35,6 +35,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+# `puente_backend.py` vive en `poc/`, un nivel arriba de este script (que está
+# en `poc/ocr/`). Sin esto, `ocr_bench.dominio` no lo encuentra: al correr
+# `python benchmark.py`, Python solo agrega al `sys.path` la carpeta del
+# script que se ejecuta, no la de sus padres.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ocr_bench.corpus import cargar_corpus
 from ocr_bench.extractors import REGISTRO, disponibles
@@ -49,7 +55,8 @@ from ocr_bench.report import (
 )
 from ocr_bench.runner import correr
 
-CORPUS_POR_DEFECTO = Path(__file__).resolve().parents[1] / "corpus"
+# `poc/ocr/benchmark.py` -> `poc/ocr/` -> `poc/` -> `spike-1/` -> `corpus/`
+CORPUS_POR_DEFECTO = Path(__file__).resolve().parents[2] / "corpus"
 
 
 def construir_parser() -> argparse.ArgumentParser:

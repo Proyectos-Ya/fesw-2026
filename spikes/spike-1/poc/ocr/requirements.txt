@@ -1,0 +1,36 @@
+# Dependencias del **OCR** (#157): extracción de texto y benchmark de motores
+# (ocr_bench/, benchmark.py, degradar.py). El perfilamiento (#156) está aparte
+# en `../requirements.txt` — son subsistemas independientes del mismo spike.
+#
+#   python3.12 -m venv ../.venv && ../.venv/bin/pip install -r requirements.txt
+#
+# (o, si ya se instaló `../requirements.txt` en el mismo venv, basta con
+# `../.venv/bin/pip install -r requirements.txt` desde acá para agregar estas).
+#
+# El OCR pesado (PaddleOCR, Apple Vision) va en requirements-motores-pesados.txt,
+# que se instala aparte.
+
+# --- Núcleo del arnés ---
+# Distancia de edición en C. Obligatoria: en Python puro, el CER entre dos
+# documentos de 100 mil caracteres es cuadrático y no termina.
+rapidfuzz>=3.9
+# Para importar is_valid_rut desde app/domain (ver ocr_bench/dominio.py) sin
+# reimplementarlo.
+pydantic>=2.6.0
+
+# --- Escalón 1: capa de texto del PDF (sin OCR) ---
+pymupdf>=1.24          # el más rápido; licencia AGPL, ver extractors.py
+pdfplumber>=0.11       # el más cuidadoso con columnas y tablas; el más lento
+pypdfium2>=4.30        # alternativa con licencia permisiva a pymupdf
+pymupdf4llm>=0.0.17    # misma capa de texto, emitida como Markdown (para chunking)
+python-docx>=1.1       # los adjuntos .docx del corpus
+
+# --- Rasterizado y degradación sintética del corpus ---
+pillow>=10.3
+numpy>=1.26
+
+# --- Escalón 2: OCR local liviano ---
+# El binario y el idioma español se instalan aparte del paquete de Python:
+#   macOS:  brew install tesseract tesseract-lang
+#   Debian: apt-get install tesseract-ocr tesseract-ocr-spa
+pytesseract>=0.3.10

@@ -27,21 +27,32 @@ Configuración de la API
 -----------------------
 Ninguna fuente tiene endpoint por defecto **a propósito**: consultar un servicio
 externo tiene términos de uso y posiblemente costo, y no es algo que deba pasar
-por omisión al correr un script. Cada fuente se configura con su propio par de
-variables:
+por omisión al correr un script.
 
-    export WEB_EMPRESARIO_URL='https://.../consulta?rut={rut}'
-    export WEB_EMPRESARIO_TOKEN='...'          # opcional
+Se configura con un archivo `.env` en esta misma carpeta (`poc/.env`), copiado
+desde `.env.example` y completado con las credenciales reales. Se carga solo
+—vía `python-dotenv`— tanto si se corre `perfilar_rut.py` desde la terminal
+como si se corre `perfilar_ruts.ipynb` desde VS Code u otro editor.
+`.env` está en `.gitignore`; `.env.example` (sin valores) sí se versiona.
 
-    export RUTS_INFO_URL='https://.../consulta?rut={rut}'
-    export RUTS_INFO_TOKEN='...'               # opcional
+    # poc/.env
+    WEB_EMPRESARIO_URL=https://.../v1/{rut}
+    WEB_EMPRESARIO_TOKEN=...
 
-    export SRE_URL='https://sre.cl/api/company_info'
-    export SRE_TOKEN='...'
+    RUTS_INFO_URL=https://.../consulta?rut={rut}
+    RUTS_INFO_TOKEN=...
+
+    SRE_URL=https://sre.cl/api/company_info
+    SRE_TOKEN=...
+
+También funciona con variables de entorno exportadas en la terminal
+(`export WEB_EMPRESARIO_URL=...`) — si ambas están presentes, `.env` **no**
+sobrescribe una variable ya exportada en el entorno.
 
 `{rut}` se reemplaza por el RUT ya normalizado. Web Empresario y ruts.info son
 GET: si el servicio espera el token como cabecera, se manda como
-`Authorization: Bearer <token>`. **SRE es distinto: es POST**, con el RUT y el
+`Authorization: Bearer <token>` (Web Empresario usa `X-Api-Key` en su lugar,
+ya resuelto en `FUENTES`). **SRE es distinto: es POST**, con el RUT y el
 token en un cuerpo JSON (`{"token": ..., "rut": ..., "version": "2.0"}`), no en
 la URL ni en una cabecera — `perfilar_rut.py` lo detecta solo porque la entrada
 de SRE en `FUENTES` declara `armar_cuerpo`.
@@ -62,6 +73,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from dotenv import load_dotenv  # noqa: E402
+
+# Se carga desde la ruta de este archivo, no desde el directorio de trabajo:
+# el notebook y la CLI se pueden lanzar desde carpetas distintas (VS Code, por
+# ejemplo, suele abrir el intérprete en la raíz del repo), y `.env` vive junto
+# a este script, no junto a quien lo importa.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from perfilamiento.perfil import PerfilSugerido  # noqa: E402
 from perfilamiento.ruts_info import desde_ruts_info  # noqa: E402

@@ -1,33 +1,20 @@
-# Dependencias SOLO del PoC del Spike 1. Deliberadamente separadas de
-# `backend/requirements.txt`: acá se instala software que se está evaluando y que
-# en su mayoría se va a descartar. Una librería que se probó y no quedó no tiene
-# por qué terminar en la imagen de producción.
+# Dependencias del **perfilamiento** (#156): mapeo de perfil desde actividades
+# económicas (perfilamiento/, perfilar_rut.py, cargar_catalogo.py,
+# perfilar_ruts.ipynb). Las de OCR (#157) están aparte en `ocr/requirements.txt`
+# — son subsistemas independientes del mismo spike, y uno no necesita las
+# dependencias del otro para correr.
 #
 #   python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 #
-# El OCR pesado va en requirements-ocr.txt, que se instala aparte.
+# Ambos subsistemas comparten el mismo `.venv` de este directorio (`poc/`);
+# instalar los dos `requirements.txt` en el mismo entorno no da conflicto.
 
-# --- Núcleo del arnés ---
-# Distancia de edición en C. Obligatoria: en Python puro, el CER entre dos
-# documentos de 100 mil caracteres es cuadrático y no termina.
-rapidfuzz>=3.9
-# Para importar is_valid_rut desde app/domain (ver ocr_bench/dominio.py) sin
-# reimplementarlo.
+# Para importar is_valid_rut desde app/domain (ver puente_backend.py) sin
+# reimplementarlo. También la necesita `ocr/requirements.txt` de forma
+# independiente, porque ocr/ocr_bench/dominio.py hace el mismo puente.
 pydantic>=2.6.0
 
-# --- Escalón 1: capa de texto del PDF (sin OCR) ---
-pymupdf>=1.24          # el más rápido; licencia AGPL, ver extractors.py
-pdfplumber>=0.11       # el más cuidadoso con columnas y tablas; el más lento
-pypdfium2>=4.30        # alternativa con licencia permisiva a pymupdf
-pymupdf4llm>=0.0.17    # misma capa de texto, emitida como Markdown (para chunking)
-python-docx>=1.1       # los adjuntos .docx del corpus
-
-# --- Rasterizado y degradación sintética del corpus ---
-pillow>=10.3
-numpy>=1.26
-
-# --- Escalón 2: OCR local liviano ---
-# El binario y el idioma español se instalan aparte del paquete de Python:
-#   macOS:  brew install tesseract tesseract-lang
-#   Debian: apt-get install tesseract-ocr tesseract-ocr-spa
-pytesseract>=0.3.10
+# Lee .env para las URL/token de cada API de perfilamiento (ver perfilar_rut.py
+# y .env.example). Así el notebook corrido desde VS Code no depende de
+# variables exportadas en una terminal.
+python-dotenv>=1.0

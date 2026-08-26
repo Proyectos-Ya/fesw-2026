@@ -3,7 +3,7 @@
 # del spike dice explícitamente que primero se prueba la extracción directa, y
 # solo si no alcanza se paga esto.
 #
-#   .venv/bin/pip install -r requirements-ocr.txt
+#   ../.venv/bin/pip install -r requirements-motores-pesados.txt
 #
 # Cada extractor no instalado aparece como "no probado" en el informe, que no es
 # lo mismo que un mal resultado.

@@ -40,7 +40,8 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-CORPUS_POR_DEFECTO = Path(__file__).resolve().parents[1] / "corpus"
+# `poc/ocr/degradar.py` -> `poc/ocr/` -> `poc/` -> `spike-1/` -> `corpus/`
+CORPUS_POR_DEFECTO = Path(__file__).resolve().parents[2] / "corpus"
 
 # Mínimo de caracteres para considerar que un PDF trae capa de texto usable. Un
 # escaneado suele devolver 0 y un digital, miles; el umbral solo evita generar

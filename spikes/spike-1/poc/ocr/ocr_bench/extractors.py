@@ -385,7 +385,7 @@ class PaddleOCRExtractor(Extractor):
         try:
             import paddleocr  # noqa: F401
         except ImportError:
-            return _falta("paddleocr", "paddleocr (ver requirements-ocr.txt)")
+            return _falta("paddleocr", "paddleocr (ver requirements-motores-pesados.txt)")
         return True, ""
 
     def _paginas(self, ruta: Path) -> list[str]:
