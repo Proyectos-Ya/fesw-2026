@@ -14,8 +14,12 @@ import type { MatchingResult } from "../tenderTypes";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
+  filterMatchesByCommune,
+  filterMatchesByProvince,
   filterMatchesByRegion,
   isBudgetFilterActive,
+  listCommunes,
+  listProvinces,
   listRegions,
   type BudgetRange,
 } from "../utils/filter";
@@ -46,6 +50,8 @@ export function MatchesDashboard() {
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
   const [region, setRegion] = useState<string | null>(null);
+  const [province, setProvince] = useState<string | null>(null);
+  const [commune, setCommune] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [savedTenderIds, setSavedTenderIds] = useState<Set<string>>(new Set());
   const ITEMS_PER_PAGE = 10;
@@ -63,9 +69,20 @@ export function MatchesDashboard() {
         .catch((err) => console.error("Error al cargar guardadas:", err));
   }, [isAuthenticated, user]);
 
+  const handleRegionChange = (next: string | null) => {
+    setRegion(next);
+    setProvince(null);
+    setCommune(null);
+  };
+
+  const handleProvinceChange = (next: string | null) => {
+    setProvince(next);
+    setCommune(null);
+  };
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [budget, region]);
+  }, [budget, region, province, commune]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -212,9 +229,15 @@ export function MatchesDashboard() {
 
   const { matches } = state;
   const total = matches.length;
-  const filterActive = isBudgetFilterActive(budget) || region !== null;
+  const filterActive = isBudgetFilterActive(budget) || region !== null || province !== null || commune !== null;
   const visible = filterActive
-    ? filterMatchesByRegion(filterMatchesByBudget(matches, budget), region)
+    ? filterMatchesByCommune(
+        filterMatchesByProvince(
+          filterMatchesByRegion(filterMatchesByBudget(matches, budget), region),
+          province,
+        ),
+        commune,
+      )
     : matches;
   const shown = visible.length;
 
@@ -260,7 +283,13 @@ export function MatchesDashboard() {
           onChange={setBudget}
           regions={listRegions(matches)}
           region={region}
-          onRegionChange={setRegion}
+          onRegionChange={handleRegionChange}
+          provinces={listProvinces(matches, region)}
+          province={province}
+          onProvinceChange={handleProvinceChange}
+          communes={listCommunes(matches, region, province)}
+          commune={commune}
+          onCommuneChange={setCommune}
         />
       )}
       {total === 0 ? (
@@ -270,6 +299,8 @@ export function MatchesDashboard() {
           onClear={() => {
             setBudget(EMPTY_BUDGET_RANGE);
             setRegion(null);
+            setProvince(null);
+            setCommune(null);
           }}
         />
       ) : (

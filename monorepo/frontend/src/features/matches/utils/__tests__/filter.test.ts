@@ -24,6 +24,8 @@ function makeTender(overrides: Partial<Tender> = {}): Tender {
     buyer_name: "Municipalidad de Prueba",
     buyer_unit: "Adquisiciones",
     region: "Metropolitana de Santiago",
+    province: "Santiago",
+    commune: "Santiago",
     available_amount_clp: 5_000_000,
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",

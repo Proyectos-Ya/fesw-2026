@@ -22,6 +22,8 @@ export interface Tender {
   buyer_name: string | null;
   buyer_unit: string;
   region: string | null;
+  province: string | null;
+  commune: string | null;
   available_amount_clp: number | null;
   created_at: string;
   updated_at: string;
