@@ -123,6 +123,26 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str
 
+    # --- Alertas de licitaciones (HdU 08) ---
+    # SMTP plano: es el denominador común de Mailpit en local y de Brevo o
+    # SendGrid en producción, así que cambiar de entorno es cambiar estas
+    # variables y nada de código. Los defaults apuntan al Mailpit que levanta
+    # `supabase start` (hay que descomentar `smtp_port` en supabase/config.toml).
+    smtp_host: str = "host.docker.internal"
+    smtp_port: int = 54325
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "alertas@proyectosya.local"
+    # STARTTLS sobre el 587. Mailpit escucha en claro, por eso el default apagado.
+    smtp_use_tls: bool = False
+    # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
+    # lo que el usuario abre desde su bandeja.
+    app_base_url: str = "http://localhost:3000"
+    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    run_notification_scan: bool = True
+    notification_scan_interval_seconds: int = 300
+    notification_digest_hour: int = 8
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.

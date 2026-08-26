@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from qdrant_client.http.exceptions import UnexpectedResponse as QdrantException
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.schemas.notification_schema import TenderDetailResponse
 from app.application.schemas.tender_schema import (
     TenderFilterCriteria,
     TenderSearchResult,
@@ -21,6 +22,9 @@ from app.application.use_cases.saved_tenders.list_saved_tenders import (
 )
 from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
 from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
+from app.application.use_cases.tender.get_tender_detail import (
+    GetTenderDetailUseCase,
+)
 from app.application.use_cases.tender.search_tenders import (
     DEFAULT_RESULT_LIMIT,
     MAX_RESULT_LIMIT,
@@ -89,6 +93,7 @@ def create_tender_router(
     get_save_tender_use_case: Callable,
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
+    get_tender_detail_use_case: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -366,5 +371,44 @@ def create_tender_router(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
             ) from e
+
+    # Va al final, después de `/search`, `/recommended` y `/saved`: es la ruta
+    # más genérica y capturaría esos segmentos como si fueran un UUID.
+    @router.get(
+        "/{tender_id}",
+        response_model=TenderDetailResponse,
+        responses={404: {"description": "La licitación no existe"}},
+    )
+    async def get_tender_detail(
+        tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            GetTenderDetailUseCase, Depends(get_tender_detail_use_case)
+        ],
+    ):
+        """Ficha de una licitación, incluidas las ya cerradas.
+
+        `/recommended` filtra por `closing_at > now`, así que no sirve para
+        abrir el enlace de una alerta enviada hace días. Acá la licitación se
+        devuelve igual, marcada con `is_closed`, para que la interfaz pueda
+        avisar que ya cerró en vez de decir que no existe.
+        """
+        try:
+            detalle = await use_case.execute(
+                user_id=current_user.id, tender_id=tender_id
+            )
+        except TenderNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        return TenderDetailResponse(
+            tender=detalle.tender,
+            score_pct=(
+                round(detalle.final_score * 100)
+                if detalle.final_score is not None
+                else None
+            ),
+            is_closed=detalle.is_closed,
+        )
 
     return router
