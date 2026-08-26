@@ -128,3 +128,46 @@ class FakeTokenService(ITokenService):
             return UUID(token.removeprefix("token::"))
         except ValueError as exc:
             raise InvalidToken() from exc
+
+
+class InMemoryTenderChatRepository:
+    def __init__(self) -> None:
+        self.messages: list = []
+        self.documents: dict[UUID, tuple] = {}  # doc_id: (doc_entity, file_bytes)
+
+    async def save_message(self, message):
+        self.messages.append(message)
+        return message
+
+    async def get_history(self, user_id: UUID, tender_id: UUID, limit: int = 50):
+        matched = [
+            m for m in self.messages
+            if m.user_id == user_id and m.tender_id == tender_id
+        ]
+        return matched[-limit:]
+
+    async def save_document(self, doc, file_bytes: bytes):
+        self.documents[doc.id] = (doc, file_bytes)
+        return doc
+
+    async def get_documents_by_chat(self, user_id: UUID, tender_id: UUID):
+        return [
+            doc for doc, _ in self.documents.values()
+            if doc.user_id == user_id and doc.tender_id == tender_id
+        ]
+
+    async def get_document_bytes(self, document_id: UUID, user_id: UUID):
+        if document_id in self.documents:
+            doc, data = self.documents[document_id]
+            if doc.user_id == user_id:
+                return data
+        return None
+
+    async def delete_document(self, document_id: UUID, user_id: UUID) -> bool:
+        if document_id in self.documents:
+            doc, _ = self.documents[document_id]
+            if doc.user_id == user_id:
+                del self.documents[document_id]
+                return True
+        return False
+
