@@ -1,0 +1,21 @@
+# OCR pesado: modelos de cientos de megas y dependencias que tardan en instalar.
+# Va aparte porque el arnés tiene que poder correr sin esto — el escalón de costo
+# del spike dice explícitamente que primero se prueba la extracción directa, y
+# solo si no alcanza se paga esto.
+#
+#   .venv/bin/pip install -r requirements-ocr.txt
+#
+# Cada extractor no instalado aparece como "no probado" en el informe, que no es
+# lo mismo que un mal resultado.
+
+-r requirements.txt
+
+# Detección + reconocimiento con corrección de ángulo. Es el candidato serio
+# para los documentos torcidos, donde Tesseract flaquea.
+paddleocr>=2.7
+paddlepaddle>=2.6
+
+# Apple Vision, el OCR del sistema en macOS. Gratis, offline y muy bueno en
+# español, pero NO es desplegable: la imagen del backend es Linux. Se mide como
+# cota superior de lo local, no como candidato de producción.
+ocrmac>=1.0 ; sys_platform == "darwin"

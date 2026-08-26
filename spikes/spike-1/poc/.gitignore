@@ -1,0 +1,6 @@
+# Entorno virtual del PoC: se instala con requirements.txt, no se versiona.
+.venv/
+__pycache__/
+# Salidas de una corrida (las cifras se pegan en el .md del spike, no acá).
+resultados.json
+tablas.md

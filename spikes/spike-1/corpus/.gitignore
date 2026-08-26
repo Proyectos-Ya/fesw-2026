@@ -1,4 +1,4 @@
 # Los documentos del corpus llevan datos de empresas reales y no se versionan.
-# En el repo queda solo el inventario (../inventario.md).
+# Los hallazgos y resultados de OCR quedan en ../1.3-ocr-alternativas.md.
 *
 !.gitignore
