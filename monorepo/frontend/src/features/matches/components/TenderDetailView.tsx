@@ -12,6 +12,11 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
+import {
+  fetchSavedTenders,
+  saveTenderApi,
+  unsaveTenderApi,
+} from "@/features/saved-tenders/services/savedTenders.service";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import {
@@ -67,6 +72,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [isSaved, setIsSaved] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -79,15 +86,26 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     let cancelled = false;
     setState({ kind: "loading" });
     setAnalysis(null);
+
     void (async () => {
       try {
-        const matches = await getRecommendedTenders(user.id);
+        const [matches, savedList] = await Promise.all([
+          getRecommendedTenders(user.id),
+          fetchSavedTenders().catch(() => []),
+        ]);
+
         if (cancelled) return;
+
         const found = matches.find((m) => m.tender?.id === tenderId);
         if (!found) {
           setState({ kind: "not-found" });
           return;
         }
+
+        const isCurrentlySaved = savedList.some(
+          (item) => (item.tender?.id ?? item.tender_id ?? item.id) === tenderId
+        );
+        setIsSaved(isCurrentlySaved);
         setState({ kind: "ready", match: found });
 
         // Cargar el análisis de compatibilidad si ya existe
@@ -121,6 +139,28 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       cancelled = true;
     };
   }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
+
+  const handleToggleSave = async () => {
+    const previousState = isSaved;
+    setActionError(null);
+    setIsSaved(!previousState);
+
+    try {
+      if (previousState) {
+        await unsaveTenderApi(tenderId);
+      } else {
+        await saveTenderApi(tenderId);
+      }
+    } catch (err) {
+      console.error("Error al actualizar guardado:", err);
+      setIsSaved(previousState);
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos guardar los cambios. Revisa tu conexión a internet."
+      );
+    }
+  };
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
@@ -179,6 +219,19 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     <section className="mx-auto w-full max-w-4xl">
       <BackLink />
 
+      {actionError && (
+        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs font-bold underline hover:opacity-80 cursor-pointer ml-4"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
+
       <header className="mb-6 flex flex-col gap-5 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-start">
         <div className="flex-none">
           <MatchMeter
@@ -199,10 +252,32 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               {closing.label}
             </Badge>
             <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
+
+            <div className="flex-1" />
+
+            <button
+              type="button"
+              onClick={handleToggleSave}
+              aria-label={isSaved ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
+              title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
+              className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
+                isSaved
+                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
+                  : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+            >
+              <Icon
+                name={isSaved ? "bookmark-check" : "bookmark"}
+                size={19}
+                color={isSaved ? "var(--primary)" : "currentColor"}
+              />
+            </button>
           </div>
+
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-text-strong">
             {tender.name}
           </h1>
+
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
             <span className="inline-flex items-center gap-1.5">
               <Icon name="building-2" size={15} color="var(--text-subtle)" />
