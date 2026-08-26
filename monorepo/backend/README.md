@@ -418,10 +418,82 @@ declaró.
 docker exec supabase_db_fesw-2026 psql -U postgres -c "select r.name, count(*) from tender t join buyer_institution b on b.rut=t.buyer_rut join region r on r.id=b.region_id group by r.name order by 2 desc;"
 ```
 
-> **Sobre los porcentajes bajos.** Es esperable ver compatibilidades de 1%–5%, y no
-> es culpa del dump: la mitad del puntaje depende de coincidencias léxicas literales
-> que casi nunca ocurren.
+> **Sobre los porcentajes.** Con la calibración actual del reranker, un perfil bien
+> completado alcanza compatibilidades sobre el umbral verde (70%). Si ves un corpus
+> entero en porcentajes de un dígito, revisa que el perfil tenga rubros y palabras
+> clave cargados: la mitad del puntaje sale de esas coincidencias.
 
+
+---
+
+## Alertas de nuevas licitaciones (HdU 08)
+
+La aplicación revisa en segundo plano si aparecieron licitaciones compatibles con cada
+empresa y avisa por dos canales: un aviso en la plataforma y un correo.
+
+### Cómo funciona
+
+Tres bucles `asyncio` arrancan con la API, igual que los de ingesta
+(`app/infrastructure/services/notifications/notification_scheduler.py`):
+
+| Bucle | Cada cuánto | Qué hace |
+|---|---|---|
+| Escaneo | `NOTIFICATION_SCAN_INTERVAL_SECONDS` (300 s) | Ejecuta el matching por empresa y crea un aviso por cada licitación sobre el umbral del usuario |
+| Entrega | 30 s | Vacía la cola de correos pendientes y reintenta los que fallaron |
+| Resumen | Diario, `NOTIFICATION_DIGEST_HOUR` (hora de Chile) | Agrupa en un correo los avisos de quienes eligieron resumen diario |
+
+La tabla `notification` tiene una constraint única `(user_id, tender_id)`: es el registro
+de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos avisos.
+
+La cola de correos vive en `notification_delivery`. Si el servidor de correo no responde,
+la fila queda en `pending` con un backoff exponencial (2, 4, 8… minutos, con tope de 60) y
+sale sola cuando el servicio vuelve. Si el proveedor rechaza la dirección de forma
+definitiva, la entrega queda en `failed_permanent`, se apaga
+`notification_preference.email_delivery_enabled` y el usuario ve el motivo en
+`/configuracion/notificaciones`, donde puede reactivarlo.
+
+> Como el scheduler de ingesta, esto asume **una sola instancia** de la API. Con dos
+> réplicas ambas escanearían y los correos saldrían duplicados.
+
+### Correo en desarrollo
+
+`supabase start` levanta un servidor de correo de prueba. No hace falta configurar nada:
+los valores por defecto ya apuntan ahí.
+
+| Qué | Dónde |
+|---|---|
+| Bandeja de entrada | [http://localhost:54324](http://localhost:54324) |
+| Puerto SMTP | `54325` (declarado en `supabase/config.toml`) |
+
+Si los correos no llegan, revisa que `smtp_port = 54325` esté **descomentado** en
+`supabase/config.toml` y reinicia con `supabase stop && supabase start`.
+
+Para ver el criterio del servicio caído: baja Supabase, provoca avisos nuevos, mira la
+fila en "Pendiente" en `/configuracion/notificaciones`, y vuelve a levantarlo.
+
+### Correo en producción
+
+El servicio es SMTP genérico (`SmtpEmailService`), así que cambiar de entorno es cambiar
+variables:
+
+| Variable | Local | Brevo | SendGrid |
+|---|---|---|---|
+| `SMTP_HOST` | `host.docker.internal` | `smtp-relay.brevo.com` | `smtp.sendgrid.net` |
+| `SMTP_PORT` | `54325` | `587` | `587` |
+| `SMTP_USER` | *(vacío)* | login SMTP | `apikey` (literal) |
+| `SMTP_PASSWORD` | *(vacío)* | SMTP key | API key |
+| `SMTP_USE_TLS` | `false` | `true` | `true` |
+| `SMTP_FROM` | cualquiera | remitente verificado | remitente verificado |
+| `APP_BASE_URL` | `http://localhost:3000` | URL pública del frontend | ídem |
+
+**Hay que verificar el remitente antes de la demo** o el proveedor rechaza todo envío. No
+requiere dominio propio: ambos permiten verificar una sola dirección que ya controles,
+confirmando desde un correo que te llega. `SMTP_PASSWORD` es un secreto y va en las
+variables del proveedor de despliegue, nunca en el repositorio.
+
+> Si el remitente verificado es un `@gmail.com`, los correos enviados en su nombre chocan
+> con la política DMARC de Gmail y suelen caer en spam. Llegan, pero hay que mirar esa
+> carpeta antes de concluir que falló.
 
 ---
 
