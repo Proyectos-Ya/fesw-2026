@@ -11,7 +11,9 @@ sys.modules.setdefault("transformers", MagicMock())
 sys.modules.setdefault("onnxruntime", MagicMock())
 sys.modules.setdefault("huggingface_hub", MagicMock())
 
-from app.infrastructure.services.bge_reranker_service import BgeRerankerService
+from app.infrastructure.services.bge_reranker_service import (  # noqa: E402
+    BgeRerankerService,
+)
 
 
 @pytest.fixture
@@ -59,8 +61,11 @@ async def test_bge_reranker_initialization_and_rerank(
         mock_at.from_pretrained.assert_called_once_with(
             "onnx-community/bge-reranker-v2-m3-ONNX"
         )
+        # Solo se baja la variante configurada: el repositorio publica el mismo
+        # modelo en ocho precisiones que suman 8,3 GB.
         mock_sd.assert_called_once_with(
-            repo_id="onnx-community/bge-reranker-v2-m3-ONNX"
+            repo_id="onnx-community/bge-reranker-v2-m3-ONNX",
+            allow_patterns=["onnx/model_quantized.onnx", "*.json"],
         )
 
         # Validamos con la misma concatenación de ruta usada en la clase concreta

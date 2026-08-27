@@ -6,7 +6,6 @@ from app.domain.errors.supplier_errors import SupplierNotFound
 
 
 class GetSupplierUseCase:
-
     def __init__(self, repo: ISupplierRepository):
         self.repo = repo
 

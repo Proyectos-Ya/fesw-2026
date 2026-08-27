@@ -6,10 +6,6 @@ from unittest.mock import MagicMock
 # Stubs must be registered before any test module is imported.
 _stubs = [
     "sentence_transformers",
-    "qdrant_client",
-    "qdrant_client.http",
-    "qdrant_client.http.models",
-    "qdrant_client.models",
 ]
 for _name in _stubs:
     sys.modules.setdefault(_name, MagicMock())

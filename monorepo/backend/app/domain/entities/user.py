@@ -1,8 +1,9 @@
 import re
-from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
+
+from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 # Validación de email simple y suficiente (evita sumar dependencia email-validator).
 # Exige un dominio con punto y TLD de al menos 2 caracteres.
@@ -22,8 +23,8 @@ class User(BaseModel):
     phone: str | None = None
     active: bool = True
     email_verified: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
     @field_validator("email")
     @classmethod

@@ -5,6 +5,7 @@ Verifican la actualización parcial de la empresa del usuario, el re-indexado
 en Qdrant solo cuando cambian campos de matching, y el error cuando el
 usuario no tiene empresa.
 """
+
 from uuid import uuid4
 
 import pytest

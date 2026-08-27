@@ -1,19 +1,24 @@
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from unittest.mock import patch, MagicMock, AsyncMock
+
 import httpx
+import pytest
 
-from app.domain.entities.tender import Tender
 from app.domain.entities.supplier import Supplier
-from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction, DeepAnalysisServiceError
-from app.infrastructure.services.gemini_deep_analysis_service import GeminiDeepAnalysisService
+from app.domain.entities.tender import Tender
+from app.domain.errors.deep_analysis_errors import (
+    DeepAnalysisServiceError,
+    InvalidPromptInstruction,
+)
+from app.infrastructure.services.gemini_deep_analysis_service import (
+    GeminiDeepAnalysisService,
+)
 
-
-from datetime import datetime, timezone
 
 # Helper para crear objetos dummy
 def create_dummy_tender() -> Tender:
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Tender(
         id=uuid4(),
         code="LIC-123",
@@ -85,7 +90,7 @@ async def test_analyze_compatibility_success():
             tender=tender,
             supplier=supplier,
             matching_score=matching_score,
-            prompt_instruction="Priorizar la ISO 9001"
+            prompt_instruction="Priorizar la ISO 9001",
         )
 
         # Aserciones
@@ -103,7 +108,7 @@ async def test_analyze_compatibility_success():
         url = args[0]
         assert "fake_model" in url
         assert "fake_key" in url
-        
+
         # Verificar que el prompt contiene la instrucción y los datos
         payload = kwargs["json"]
         prompt_text = payload["contents"][0]["parts"][0]["text"]
@@ -135,7 +140,7 @@ async def test_analyze_compatibility_raises_on_prompt_injection():
                 tender=tender,
                 supplier=supplier,
                 matching_score=75.0,
-                prompt_instruction=prompt
+                prompt_instruction=prompt,
             )
 
 
@@ -155,7 +160,7 @@ async def test_analyze_compatibility_raises_on_http_error():
 
         with pytest.raises(DeepAnalysisServiceError) as exc_info:
             await service.analyze_compatibility(tender, supplier, 50.0)
-        
+
         assert "Error en la API de Gemini (HTTP 500)" in str(exc_info.value)
 
 
@@ -168,17 +173,7 @@ async def test_analyze_compatibility_raises_on_invalid_json():
 
     # JSON malformado
     mock_gemini_response = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "text": "{invalid json string"
-                        }
-                    ]
-                }
-            }
-        ]
+        "candidates": [{"content": {"parts": [{"text": "{invalid json string"}]}}]
     }
 
     mock_response = MagicMock(spec=httpx.Response)
@@ -190,5 +185,8 @@ async def test_analyze_compatibility_raises_on_invalid_json():
 
         with pytest.raises(DeepAnalysisServiceError) as exc_info:
             await service.analyze_compatibility(tender, supplier, 50.0)
-        
-        assert "No se pudo decodificar el JSON de compatibilidad retornado por Gemini" in str(exc_info.value)
+
+        assert (
+            "No se pudo decodificar el JSON de compatibilidad retornado por Gemini"
+            in str(exc_info.value)
+        )

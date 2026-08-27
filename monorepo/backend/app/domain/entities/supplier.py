@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID, uuid4
+
 from pydantic import BaseModel, Field, field_validator
+
+from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 
 def is_valid_rut(rut: str) -> bool:
@@ -35,22 +36,22 @@ def is_valid_rut(rut: str) -> bool:
 
 
 class Supplier(BaseModel):
-    id: UUID =  Field(default_factory=uuid4)
-    user_id: Optional[UUID] = None  # ID del usuario propietario de esta cuenta proveedor
+    id: UUID = Field(default_factory=uuid4)
+    user_id: UUID | None = None  # ID del usuario propietario de esta cuenta proveedor
     rut: str
     legal_name: str
-    trade_name: Optional[str] = None
-    description: Optional[str] = None
-    regions: Optional[list[str]] = None
-    sectors: Optional[list[str]] = None
-    certifications: Optional[list[str]] = None
-    keywords: Optional[list[str]] = None
-    years_experience: Optional[int] = None
-    num_employees: Optional[int] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    trade_name: str | None = None
+    description: str | None = None
+    regions: list[str] | None = None
+    sectors: list[str] | None = None
+    certifications: list[str] | None = None
+    keywords: list[str] | None = None
+    years_experience: int | None = None
+    num_employees: int | None = None
+    created_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     # Última vez que cambió el contenido que alimenta el matching (embedding)
-    profile_changed_at: Optional[datetime] = None
+    profile_changed_at: UtcDateTime | None = None
 
     @field_validator("rut")
     @classmethod

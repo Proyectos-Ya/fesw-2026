@@ -3,18 +3,24 @@ Tests unitarios de TenderIngestionUseCase.
 Verifican que tras guardar cada licitación en SQL se genera su embedding
 y se indexa en el repositorio vectorial (Qdrant).
 """
+
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
-from app.domain.entities.tender import Tender
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.tender import Tender
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
-from tests.unit.application.fakes import FakeEmbeddingService, FakeTenderVectorRepository
-
+from tests.unit.application.fakes import (
+    FakeEmbeddingService,
+    FakeTenderVectorRepository,
+)
 
 # ---------------------------------------------------------------------------
 # Fakes locales
@@ -27,11 +33,19 @@ class FakeTenderRepository(ITenderRepository):
     def __init__(self) -> None:
         self.saved: list = []
 
-    async def get_tenders(self, filters: TenderFilters) -> List[Tender]:  # noqa: ARG002
+    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:  # noqa: ARG002
         return []
 
-    async def get_by_code(self, code: str) -> Optional[TenderModel]:  # noqa: ARG002
+    async def get_by_code(self, code: str) -> TenderModel | None:  # noqa: ARG002
         return None
+
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,  # noqa: ARG002
+        limit: int,  # noqa: ARG002
+        offset: int = 0,  # noqa: ARG002
+    ) -> tuple[list[Tender], int]:
+        return [], 0
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:  # noqa: ARG002
         return rut
@@ -39,39 +53,50 @@ class FakeTenderRepository(ITenderRepository):
     async def get_or_create_status(self, status_id: int) -> int:
         return status_id
 
-    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]) -> None:
+    async def save_complex_tender(
+        self, tender_model: TenderModel, items: list[TenderItemModel]
+    ) -> None:
         self.saved.append((tender_model, items))
 
     async def rollback(self) -> None:
         pass
 
-    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+    async def get_deep_analysis(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> DeepAnalysis | None:
         return None
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
-    async def get_latest_tender_created_at(self) -> Optional[datetime]:
+    async def get_latest_tender_created_at(self) -> datetime | None:
         return None
 
 
 def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
-    return TenderIngestaDTO.model_validate({
-        "CodigoExterno": code,
-        "Nombre": "Construcción de sede comunal",
-        "Descripcion": "Se requiere construir edificio de 2 pisos",
-        "CodigoEstado": status_code,
-        "FechaPublicacion": "2026-01-01T00:00:00",
-        "FechaCierre": "2026-06-30T23:59:00",
-        "RutComprador": "12.345.678-9",
-        "NombreOrganismo": "Municipalidad de Santiago",
-        "UnidadCompra": "Depto. Obras",
-        "RegionUnidad": "Región Metropolitana de Santiago",
-        "MontoEstimado": 50_000_000.0,
-        "items": [
-            {"nombre_producto": "Mano de obra", "cantidad": 10, "unidad_medida": "hh"},
-        ],
-    })
+    return TenderIngestaDTO.model_validate(
+        {
+            "CodigoExterno": code,
+            "Nombre": "Construcción de sede comunal",
+            "Descripcion": "Se requiere construir edificio de 2 pisos",
+            "CodigoEstado": status_code,
+            "FechaPublicacion": "2026-01-01T00:00:00",
+            "FechaCierre": "2026-06-30T23:59:00",
+            "RutComprador": "12.345.678-9",
+            "NombreOrganismo": "Municipalidad de Santiago",
+            "UnidadCompra": "Depto. Obras",
+            "RegionId": 13,
+            "RegionUnidad": "Región Metropolitana de Santiago",
+            "MontoEstimado": 50_000_000.0,
+            "items": [
+                {
+                    "nombre_producto": "Mano de obra",
+                    "cantidad": 10,
+                    "unidad_medida": "hh",
+                },
+            ],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +172,9 @@ async def test_texto_enviado_al_embedding_incluye_nombre_licitacion() -> None:
 
     await use_case.execute(_make_dto())
 
-    assert any("Construcción de sede comunal" in text for text in embedding_service.calls[0])
+    assert any(
+        "Construcción de sede comunal" in text for text in embedding_service.calls[0]
+    )
 
 
 async def test_payload_qdrant_contiene_status_code_publicada() -> None:
@@ -167,6 +194,7 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
 
 async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
     """Si el código ya existe en SQL no se llama a Qdrant."""
+
     class RepoConDuplicado(FakeTenderRepository):
         async def get_by_code(self, code: str) -> TenderModel:  # noqa: ARG002
             return TenderModel.__new__(TenderModel)  # simula que ya existe

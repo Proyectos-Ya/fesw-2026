@@ -1,9 +1,10 @@
-import pytest
+from datetime import datetime
 from uuid import uuid4
-from pydantic import ValidationError
-from datetime import datetime, timezone
 
-from app.domain.entities.deep_analysis import DeepAnalysis
+import pytest
+from pydantic import ValidationError
+
+from app.domain.entities.deep_analysis import DeepAnalysis, RecommendationLiteral
 
 
 def test_create_valid_deep_analysis():
@@ -21,15 +22,20 @@ def test_create_valid_deep_analysis():
     assert analysis.supplier_id == supplier_id
     assert analysis.compatibility_score == 85.5
     assert analysis.recommendation == "Postular"
-    assert analysis.justification == "Cumple con el 90% de los requisitos y tiene experiencia previa."
+    assert (
+        analysis.justification
+        == "Cumple con el 90% de los requisitos y tiene experiencia previa."
+    )
     assert analysis.prompt_instruction is None
     assert isinstance(analysis.created_at, datetime)
     assert isinstance(analysis.updated_at, datetime)
     assert analysis.id is not None
 
 
-@pytest.mark.parametrize("valid_rec", ["Postular", "Evaluar con cautela", "No recomendado"])
-def test_valid_recommendations(valid_rec: str):
+@pytest.mark.parametrize(
+    "valid_rec", ["Postular", "Evaluar con cautela", "No recomendado"]
+)
+def test_valid_recommendations(valid_rec: RecommendationLiteral):
     """Verifica que la entidad acepte los tres valores válidos para la recomendación."""
     analysis = DeepAnalysis(
         tender_id=uuid4(),
@@ -41,7 +47,9 @@ def test_valid_recommendations(valid_rec: str):
     assert analysis.recommendation == valid_rec
 
 
-@pytest.mark.parametrize("invalid_rec", ["postular", "Postular ", "Recomendado", "Rechazar", ""])
+@pytest.mark.parametrize(
+    "invalid_rec", ["postular", "Postular ", "Recomendado", "Rechazar", ""]
+)
 def test_invalid_recommendations_raises(invalid_rec: str):
     """Verifica que se lance un ValidationError si se proporciona una recomendación no válida o mal formateada."""
     with pytest.raises(ValidationError):
@@ -49,7 +57,8 @@ def test_invalid_recommendations_raises(invalid_rec: str):
             tender_id=uuid4(),
             supplier_id=uuid4(),
             compatibility_score=50.0,
-            recommendation=invalid_rec,
+            # El valor inválido es justamente lo que se está probando.
+            recommendation=invalid_rec,  # type: ignore[arg-type]
             justification="Test",
         )
 

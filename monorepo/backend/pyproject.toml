@@ -18,13 +18,18 @@ exclude = [
 # B: flake8-bugbear
 # Q: flake8-quotes
 # UP: pyupgrade (modern Python syntax suggestions)
-lint.select = ["E", "F", "I", "B", "Q", "UP"]
-lint.ignore = []
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "Q", "UP"]
+ignore = ["E501"]
 
+# tests/matching_evaluation no son tests: son scripts de investigación del
+# matching que se corren a mano (benchmarks, grid search, carga del dataset).
+# Arrancan con un bootstrap de sys.path antes de importar la app, de ahí los
+# E402. Los B023 son falsos positivos: los lambda se pasan a run_in_executor y
+# se esperan dentro de la misma iteración, así que el late-binding no alcanza a
+# ocurrir.
 [tool.ruff.lint.per-file-ignores]
-# FastAPI's Depends() in argument defaults is idiomatic — B008 is a false positive here.
-# B904 (raise from) also suppressed: HTTP exceptions don't need chaining context.
-"app/routers/*.py" = ["B008", "B904"]
+"tests/matching_evaluation/*" = ["E402", "E701", "B007", "B023"]
 
 [tool.ruff.format]
 quote-style = "double"

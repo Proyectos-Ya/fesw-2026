@@ -4,6 +4,7 @@ Pruebas e2e del router /suppliers.
 Todas las rutas requieren sesión iniciada (cookie httpOnly de login).
 GET /suppliers/me devuelve la empresa del usuario autenticado o 404.
 """
+
 import pytest
 from httpx import AsyncClient
 
