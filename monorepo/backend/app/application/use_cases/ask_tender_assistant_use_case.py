@@ -2,6 +2,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
     DocumentContextDTO,
@@ -15,7 +16,7 @@ from app.domain.errors.tender_chat_errors import (
 
 
 class AskTenderAssistantUseCase:
-    """Caso de uso para realizar consultas al asistente virtual con RAG sobre documentos de la licitación."""
+    """Caso de uso para realizar consultas al asistente virtual con RAG sobre documentos de la licitación y perfil de empresa."""
 
     MAX_QUERY_LENGTH = 1000
     FORBIDDEN_PROMPT_PATTERNS = [
@@ -46,9 +47,11 @@ class AskTenderAssistantUseCase:
         self,
         chat_repo: ITenderChatRepository,
         ai_service: ITenderAssistantAIService,
+        supplier_repo: Optional[ISupplierRepository] = None,
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
+        self.supplier_repo = supplier_repo
 
     def _validate_guardrails(self, question: str) -> None:
         """Valida sintáctica y preventivamente intentos de manipulación del asistente (Prompt Injection)."""
@@ -77,8 +80,7 @@ class AskTenderAssistantUseCase:
         # 3. Validar guardarraíles de seguridad (Anti-Prompt Injection)
         self._validate_guardrails(cleaned_question)
 
-
-        # 3. Guardar mensaje de la pregunta del usuario
+        # 4. Guardar mensaje de la pregunta del usuario
         user_msg = TenderChatMessage(
             tender_id=tender_id,
             user_id=user_id,
@@ -87,10 +89,10 @@ class AskTenderAssistantUseCase:
         )
         await self.chat_repo.save_message(user_msg)
 
-        # 4. Obtener historial reciente para dar contexto de conversación
+        # 5. Obtener historial reciente para dar contexto de conversación
         history = await self.chat_repo.get_history(user_id=user_id, tender_id=tender_id, limit=20)
 
-        # 5. Obtener documentos adjuntos asociados a este chat/licitación
+        # 6. Obtener documentos adjuntos asociados a este chat/licitación
         chat_docs = await self.chat_repo.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
         document_contexts: List[DocumentContextDTO] = []
         for doc in chat_docs:
@@ -104,13 +106,37 @@ class AskTenderAssistantUseCase:
                     )
                 )
 
-        # 6. Invocar servicio de IA
+        # 7. Obtener perfil de la empresa proveedora si existe
+        supplier_context_str: Optional[str] = None
+        if self.supplier_repo:
+            try:
+                supplier = await self.supplier_repo.get_by_user_id(user_id)
+                if supplier:
+                    supplier_context_str = (
+                        "=== ANTECEDENTES Y PERFIL DE LA EMPRESA QUE CONSULTA ===\n"
+                        f"- Razón Social: {supplier.legal_name}\n"
+                        f"- Nombre de Fantasía: {supplier.trade_name or 'N/A'}\n"
+                        f"- RUT: {supplier.rut}\n"
+                        f"- Años de Experiencia: {supplier.years_experience or 0} años\n"
+                        f"- Número de Empleados: {supplier.num_employees or 1}\n"
+                        f"- Regiones de Operación: {', '.join(supplier.regions or [])}\n"
+                        f"- Rubros / Sectores: {', '.join(supplier.sectors or [])}\n"
+                        f"- Certificaciones y Registros: {', '.join(supplier.certifications or [])}\n"
+                        f"- Palabras Clave de la Empresa: {', '.join(supplier.keywords or [])}\n"
+                        f"- Descripción de la Empresa: {supplier.description or 'Sin descripción'}\n"
+                    )
+            except Exception:
+                supplier_context_str = None
+
+        # 8. Invocar servicio de IA
         try:
             ai_response = await self.ai_service.generate_response(
                 question=cleaned_question,
                 history=history,
                 documents=document_contexts,
+                supplier_context=supplier_context_str,
             )
+
         except TenderAssistantUnavailableError:
             raise
         except Exception as e:

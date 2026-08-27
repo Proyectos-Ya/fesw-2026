@@ -27,10 +27,12 @@ class ITenderAssistantAIService(ABC):
         self,
         question: str,
         history: List[TenderChatMessage],
-        documents: List[DocumentContextDTO]
+        documents: List[DocumentContextDTO],
+        supplier_context: Optional[str] = None,
     ) -> AIResponseDTO:
         """
-        Genera la respuesta a la pregunta del usuario utilizando el historial de chat
-        y los documentos adjuntos, extrayendo citas textuales exactas.
+        Genera la respuesta a la pregunta del usuario utilizando el historial de chat,
+        los documentos adjuntos y el perfil de la empresa consultante, extrayendo citas textuales exactas.
         """
         pass
+

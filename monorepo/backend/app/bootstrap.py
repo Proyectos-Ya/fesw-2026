@@ -191,8 +191,14 @@ def get_delete_tender_chat_doc_use_case(
 def get_ask_tender_assistant_use_case(
     chat_repo: ITenderChatRepository = Depends(get_tender_chat_repo),
     ai_service: ITenderAssistantAIService = Depends(get_tender_assistant_ai_service),
+    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
 ) -> AskTenderAssistantUseCase:
-    return AskTenderAssistantUseCase(chat_repo=chat_repo, ai_service=ai_service)
+    return AskTenderAssistantUseCase(
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+    )
+
 
 
 def get_tender_chat_history_use_case(
@@ -210,7 +216,15 @@ def bootstrap(app: FastAPI) -> None:
         expire_minutes=settings.access_token_expire_minutes,
     )
 
-    app.state.embedding_service = BgeM3EmbeddingService(model_name=settings.embedding_model)
+    try:
+        app.state.embedding_service = BgeM3EmbeddingService(model_name=settings.embedding_model)
+    except Exception as e:
+        print(f"[Bootstrap] No se pudo cargar BgeM3EmbeddingService ({e}). Usando MockEmbeddingService.")
+        class MockEmbeddingService(IEmbeddingService):
+            async def embed(self, texts: list[str]) -> list[list[float]]:
+                return [[0.0] * settings.embedding_vector_size for _ in texts]
+        app.state.embedding_service = MockEmbeddingService()
+
     app.state.deep_analysis_service = GeminiDeepAnalysisService(
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
@@ -219,6 +233,7 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+
 
     # Inicialización de servicios de Reranking y Weighting con manejo robusto para ambientes de prueba
     if settings.disable_reranker:
