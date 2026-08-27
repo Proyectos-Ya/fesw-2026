@@ -29,12 +29,14 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_questions: List[str] = []
         self.called_history: List[List[TenderChatMessage]] = []
         self.called_documents: List[List[DocumentContextDTO]] = []
+        self.called_supplier_contexts: List[Optional[str]] = []
 
     async def generate_response(
         self,
         question: str,
         history: List[TenderChatMessage],
-        documents: List[DocumentContextDTO]
+        documents: List[DocumentContextDTO],
+        supplier_context: Optional[str] = None,
     ) -> AIResponseDTO:
         if self.should_fail:
             raise TenderAssistantUnavailableError("Error simulado de conexión con Gemini")
@@ -42,6 +44,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_questions.append(question)
         self.called_history.append(history)
         self.called_documents.append(documents)
+        self.called_supplier_contexts.append(supplier_context)
 
         # Si hay documentos, simular cita
         citations = []
@@ -59,6 +62,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
             citations=citations,
             has_sufficient_info=True
         )
+
 
 
 @pytest.fixture
@@ -184,4 +188,49 @@ async def test_ask_assistant_blocks_prompt_injection(use_case, ai_service, injec
 
     # Verificar que NINGUNA llamada llegó al servicio de IA externo
     assert len(ai_service.called_questions) == 0
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_injects_supplier_profile_context(repo, ai_service):
+    from unittest.mock import AsyncMock
+    from app.domain.entities.supplier import Supplier
+
+    user_id = uuid4()
+    mock_supplier = Supplier(
+        user_id=user_id,
+        rut="76.543.210-3",
+        legal_name="Constructora e Ingeniería Sanitaria del Valle SpA",
+        trade_name="IngeValle",
+        regions=["Valparaíso", "Metropolitana"],
+        sectors=["Construcción", "Ingeniería Sanitaria"],
+        certificaciones=["Registro ESVAL"],
+        keywords=["agua potable", "alcantarillado"],
+        years_experience=8,
+        num_employees=15,
+        description="Empresa de ingeniería sanitaria y obras civiles",
+    )
+
+    mock_supplier_repo = AsyncMock()
+    mock_supplier_repo.get_by_user_id.return_value = mock_supplier
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=ai_service,
+        supplier_repo=mock_supplier_repo,
+    )
+
+    tender_id = uuid4()
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Somos compatibles con los requisitos de la licitación?"
+    )
+
+    assert len(ai_service.called_supplier_contexts) == 1
+    supplier_ctx = ai_service.called_supplier_contexts[0]
+    assert supplier_ctx is not None
+    assert "Constructora e Ingeniería Sanitaria del Valle SpA" in supplier_ctx
+    assert "76.543.210-3" in supplier_ctx
+    assert "8 años" in supplier_ctx
+
 
