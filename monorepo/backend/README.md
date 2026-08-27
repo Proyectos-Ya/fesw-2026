@@ -495,6 +495,71 @@ variables del proveedor de despliegue, nunca en el repositorio.
 > con la política DMARC de Gmail y suelen caer en spam. Llegan, pero hay que mirar esa
 > carpeta antes de concluir que falló.
 
+### Cómo comprobar los criterios de aceptación
+
+Cuatro de los siete se ven levantando la aplicación y usándola. Los otros tres describen
+situaciones que el sistema está diseñado para que **no** ocurran, así que hay que
+provocarlas: de eso se encarga `scripts/demo_alertas.py`.
+
+Dos cosas que conviene tener presentes antes de empezar:
+
+- **Reiniciar la API fuerza un escaneo inmediato.** `start_scan_loop` ejecuta antes de
+  dormir, así que no hay que esperar los 5 minutos del intervalo:
+  `docker compose restart api`.
+- **`uvicorn --reload` no relee el `.env`.** Cualquier cambio de variable exige reiniciar
+  el contenedor. Es el error más habitual al probar esto.
+
+El script se ejecuta dentro del contenedor, que ya tiene las dependencias:
+
+```bash
+docker compose exec api python -m scripts.demo_alertas estado
+```
+
+| Criterio | Cómo se comprueba |
+|---|---|
+| Detecta y avisa (correo + panel) | Baja el umbral en `/configuracion/notificaciones`, reinicia la API. El aviso aparece en `/alertas` y el correo en http://localhost:54324 |
+| El enlace lleva al detalle | Clic en el aviso, y clic en el enlace del correo desde Mailpit |
+| Umbral y frecuencia configurables | Se cambian en `/configuracion/notificaciones`. Para ver **llegar** el resumen diario sin esperar a las 08:00: `demo_alertas resumen-ahora` |
+| Licitación ya cerrada | `demo_alertas cerrar-licitacion` y abre ese aviso |
+| Servicio de correo caído | Ver más abajo |
+| Correo inexistente | Solo con proveedor real; `demo_alertas marcar-rebote` reproduce el estado visible, no la detección |
+| Pide sesión antes de mostrar datos | Cierra sesión y abre el enlace del correo en una ventana privada |
+
+#### El criterio del servicio caído
+
+**No uses `supabase stop`.** Mailpit vive dentro del stack de Supabase, así que ese comando
+se lleva también a Postgres: el bucle de entrega no puede ni leer su propia cola y verías
+un error de base de datos, que es otro problema distinto.
+
+La forma correcta es dejar el SMTP apuntando a un puerto muerto, en `monorepo/.env`:
+
+```bash
+SMTP_PORT=59999
+```
+
+```bash
+docker compose restart api
+```
+
+Da *connection refused* inmediato. Genera avisos nuevos bajando el umbral y míralos quedar
+en **Pendiente**, con su contador de intentos, en `/configuracion/notificaciones`. Después
+restaura `SMTP_PORT=54325`, reinicia, y para no esperar el backoff exponencial:
+
+```bash
+docker compose exec api python -m scripts.demo_alertas reintentar-ahora
+```
+
+Es la misma maniobra que en producción, donde se cambia `SMTP_HOST` en el panel del
+proveedor de despliegue.
+
+#### Lo que no se puede comprobar en local
+
+Que el sistema **detecte** un correo inexistente y desactive el envío necesita un
+proveedor real: Mailpit acepta cualquier destinatario por diseño y jamás devuelve un
+rechazo definitivo. Apuntando el `.env` a Brevo o SendGrid se comprueba sin desplegar
+nada, y las cuentas demo ya usan direcciones `@demo.invalid` —un TLD reservado que nunca
+resuelve—, así que el rebote es inmediato y genuino.
+
 ---
 
 ## Calidad de código
