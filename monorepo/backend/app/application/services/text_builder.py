@@ -1,16 +1,17 @@
-from typing import Optional, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 from app.domain.entities.supplier import Supplier
 
 
 class _TenderLike(Protocol):
     name: str
-    description: Optional[str]
+    description: str | None
 
 
 class _ItemLike(Protocol):
     name: str
-    description: Optional[str]
+    description: str | None
 
 
 class TextBuilder:
@@ -35,7 +36,6 @@ class TextBuilder:
             parts.append("Items: " + ". ".join(item_texts))
         return ". ".join(parts)
 
-
     def build_from_supplier(self, supplier: Supplier) -> str:
         sections: list[str] = []
 
@@ -51,8 +51,6 @@ class TextBuilder:
             sections.append(f"Capacidades: {', '.join(supplier.keywords)}")
 
         if supplier.certifications:
-            sections.append(
-                f"Certificaciones: {', '.join(supplier.certifications)}"
-            )
+            sections.append(f"Certificaciones: {', '.join(supplier.certifications)}")
 
         return ". ".join(sections) + "."

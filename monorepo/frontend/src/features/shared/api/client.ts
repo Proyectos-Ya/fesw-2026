@@ -1,4 +1,21 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// El fallback a localhost solo vale en desarrollo. En un build de producción,
+// caer a localhost en silencio hace que el frontend desplegado llame al equipo
+// del propio visitante: no falla al construir, falla en la cara del usuario y
+// sin ninguna pista. Por eso acá revienta el build en vez de arrancar mal.
+function resolverApiUrl(): string {
+  const declarada = process.env.NEXT_PUBLIC_API_URL;
+  if (declarada) return declarada;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "NEXT_PUBLIC_API_URL no está definida. Es obligatoria fuera de desarrollo: " +
+        "sin ella el frontend apuntaría a http://localhost:8000, que en el " +
+        "navegador del usuario no es el backend.",
+    );
+  }
+  return "http://localhost:8000";
+}
+
+const API_URL = resolverApiUrl();
 const REQUEST_TIMEOUT_MS = 60_000; 
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 

@@ -21,12 +21,14 @@ export interface Tender {
   buyer_rut: string;
   buyer_name: string | null;
   buyer_unit: string;
-  province: string | null;
   region: string | null;
+  province: string | null;
+  commune: string | null;
   available_amount_clp: number | null;
   created_at: string;
   updated_at: string;
   items: TenderItem[];
+  is_saved?: boolean;
 }
 
 export interface MatchingResult {

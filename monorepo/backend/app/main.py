@@ -1,27 +1,42 @@
-from contextlib import asynccontextmanager
 import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlmodel import SQLModel
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
-from qdrant_client import QdrantClient, AsyncQdrantClient
-from qdrant_client.models import VectorParams, Distance
-
-from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
-from app.infrastructure.services.tenders.tender_ingestion_service import TenderIngestionService
-from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 from app.bootstrap import bootstrap
 from app.config import settings
-from app.infrastructure.db import engine
-from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.repositories.qdrant_tender_repository import (
+    QdrantTenderRepository,
+)
+from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.tenders.mercado_publico_client import (
+    MercadoPublicoClient,
+)
+from app.infrastructure.services.tenders.tender_ingestion_service import (
+    TenderIngestionService,
+)
+from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    # El esquema ya NO se crea acá. Antes esto era `SQLModel.metadata.create_all`,
+    # con dos problemas: `create_all` agrega las tablas que faltan pero **no
+    # altera las existentes**, así que cualquier columna o restricción nueva
+    # quedaba fuera en silencio; y con dos réplicas arrancando a la vez, ambas
+    # intentaban crear el esquema al mismo tiempo.
+    #
+    # Ahora lo hace Alembic, como paso previo y explícito:
+    #     alembic upgrade head
+    # Verificamos que se haya corrido para fallar acá, con un mensaje claro, en
+    # vez de más adelante con un error de "relation does not exist".
+    await verificar_esquema_migrado()
+
     app.state.qdrant_client = QdrantClient(url=settings.qdrant_url)
     app.state.qdrant_async_client = AsyncQdrantClient(url=settings.qdrant_url)
 
@@ -32,13 +47,19 @@ async def lifespan(app: FastAPI):
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="suppliers",
-            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+            vectors_config=VectorParams(
+                size=settings.embedding_vector_size, distance=Distance.COSINE
+            ),
         )
-    if "tenders" not in existing:
-        app.state.qdrant_client.create_collection(
-            collection_name="tenders",
-            vectors_config={"tender": VectorParams(size=1024, distance=Distance.COSINE)},
-        )
+
+    # La colección de licitaciones se delega al repositorio en vez de crearse
+    # inline: además de la colección, `ensure_collection` crea los índices de
+    # payload que el pre-filtrado del buscador necesita. Creándola aquí a mano,
+    # esos índices no existirían nunca en un entorno real.
+    await QdrantTenderRepository(
+        client=app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    ).ensure_collection()
 
     client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
     ingestion_service = TenderIngestionService(
@@ -55,7 +76,9 @@ async def lifespan(app: FastAPI):
         metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
         processing_task = asyncio.create_task(scheduler.start_processing_loop())
     else:
-        print("[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local.")
+        print(
+            "[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local."
+        )
 
     yield
 

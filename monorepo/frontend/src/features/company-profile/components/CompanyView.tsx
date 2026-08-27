@@ -10,6 +10,7 @@ import { REGIONS } from "../data/regions";
 import { SECTORS } from "../data/sectors";
 import { useCompany } from "./CompanyProvider";
 import { updateSupplier, type Supplier } from "../services/supplierService";
+import { parseApiDate } from "@/features/matches/utils/format";
 import { Input } from "@/features/shared/components/Input";
 import { Textarea } from "@/features/shared/components/Textarea";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
@@ -95,11 +96,11 @@ function CompanyDetails({
           <ChipList items={supplier.certifications} />
         </Field>
         <Field label="Miembro desde">
-          {new Date(supplier.created_at).toLocaleDateString("es-CL", {
+          {parseApiDate(supplier.created_at)?.toLocaleDateString("es-CL", {
             year: "numeric",
             month: "long",
             day: "numeric",
-          })}
+          }) ?? "—"}
         </Field>
       </div>
     </div>

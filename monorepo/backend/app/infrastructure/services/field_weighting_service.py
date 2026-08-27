@@ -4,7 +4,7 @@ from uuid import UUID
 from app.application.services.weighting_service import IWeightingService
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
-from app.shared.region_normalizer import are_regions_matching
+from app.shared.regions import are_regions_matching
 
 
 class FieldWeightingService(IWeightingService):
@@ -41,15 +41,17 @@ class FieldWeightingService(IWeightingService):
             # 1. Puntuación base del Reranker calibrado (50%)
             score = reranker_score * self.reranker_weight
 
-            # 2. Coincidencia de región (si tiene peso asignado)
-            if self.region_weight > 0:
-                tender_region = tender.region or tender.province
-                if are_regions_matching(tender_region, supplier.regions):
+            # 2. Coincidencia de región (si tiene peso asignado).
+            # Se exige `supplier.regions` no vacío: `are_regions_matching`
+            # devuelve True cuando no hay restricción, y sin esta guarda un
+            # proveedor sin regiones configuradas se llevaría el bono siempre.
+            if self.region_weight > 0 and supplier.regions:
+                if are_regions_matching(tender.region, supplier.regions):
                     score += self.region_weight
 
             # Texto global de la licitación (título + descripción)
             tender_overview = f"{tender.name} {tender.description or ''}"
-            
+
             # Texto de los ítems/partidas
             items_texts = []
             if tender.items:
@@ -64,15 +66,21 @@ class FieldWeightingService(IWeightingService):
                     sec_clean = sector.strip()
                     if not sec_clean:
                         continue
-                    
+
                     # Intentar coincidencia de frase completa
                     pattern_full = rf"\b{re.escape(sec_clean)}\b"
                     if re.search(pattern_full, all_tender_text, re.IGNORECASE):
                         sector_matches += 1
                         continue
-                    
+
                     # Si no coincide la frase completa, evaluar tokens significativos (len >= 4)
-                    tokens = [t for t in re.split(r"\s+", sec_clean) if len(t) >= 4 and t.lower() not in ("para", "sobre", "entre", "desde", "hasta")]
+                    tokens = [
+                        t
+                        for t in re.split(r"\s+", sec_clean)
+                        if len(t) >= 4
+                        and t.lower()
+                        not in ("para", "sobre", "entre", "desde", "hasta")
+                    ]
                     for tok in tokens:
                         pattern_tok = rf"\b{re.escape(tok)}\b"
                         if re.search(pattern_tok, tender_overview, re.IGNORECASE):

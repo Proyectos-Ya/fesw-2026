@@ -6,14 +6,15 @@ Ubicar en: tests/test_smart_question.py
 Ejecutar con: pytest -v
 """
 
-import pytest
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
+from app.application.use_cases.questions.smart_question_use_case import (
+    SmartQuestionUseCase,
+)
 from app.domain.entities.question import Question
-from app.application.use_cases.questions.smart_question_use_case import SmartQuestionUseCase
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
-
 
 # ─────────────────────────────────────────────
 # Fixtures comunes
@@ -23,7 +24,9 @@ PROVIDER_ID = uuid4()
 
 
 def make_question(**kwargs) -> Question:
-    defaults = dict(
+    # Sin la anotación, el valor del dict se infiere como la unión de los tipos
+    # presentes y ningún campo de Question termina siendo asignable.
+    defaults: dict[str, Any] = dict(
         provider_id=PROVIDER_ID,
         question="¿Pregunta de prueba?",
         target_profile_field="campo_prueba",
@@ -43,6 +46,7 @@ def make_supplier(sectors: list):
 # ─────────────────────────────────────────────
 # Issue #41 — Entidad Question (domain)
 # ─────────────────────────────────────────────
+
 
 class TestQuestionEntity:
     """Tests para app/domain/entities/question.py"""
@@ -105,6 +109,7 @@ class TestQuestionEntity:
 # Issue #40 — SmartQuestionServiceImpl
 # ─────────────────────────────────────────────
 
+
 class TestSmartQuestionServiceImpl:
     """Tests para app/infrastructure/services/smart_question_service.py"""
 
@@ -143,7 +148,9 @@ class TestSmartQuestionServiceImpl:
     async def test_category_string_is_normalized(self):
         """Categoría con mayúsculas/espacios debe normalizarse antes de matchear."""
         service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "  CONSTRUCCION  ")
+        result = await service.get_or_generate_questions(
+            PROVIDER_ID, "  CONSTRUCCION  "
+        )
         assert len(result) == 10
 
     async def test_construction_questions_have_correct_category(self):
@@ -219,12 +226,15 @@ class TestSmartQuestionServiceImpl:
 # Issue #39 — SmartQuestionUseCase
 # ─────────────────────────────────────────────
 
+
 class TestSmartQuestionUseCase:
     """Tests para app/application/useCases/smart_question_use_case.py"""
 
     def _make_use_case(self, supplier_sectors=None, questions=None):
         smart_service = AsyncMock()
-        smart_service.get_or_generate_questions.return_value = questions or [make_question()]
+        smart_service.get_or_generate_questions.return_value = questions or [
+            make_question()
+        ]
 
         supplier_repo = AsyncMock()
         if supplier_sectors is None:
@@ -319,7 +329,9 @@ class TestSmartQuestionUseCase:
     async def test_returns_questions_from_service(self):
         """El use case debe retornar exactamente lo que devuelve el servicio."""
         expected = [make_question(), make_question()]
-        uc, service, _ = self._make_use_case(supplier_sectors=["ti"], questions=expected)
+        uc, service, _ = self._make_use_case(
+            supplier_sectors=["ti"], questions=expected
+        )
         result = await uc.execute(PROVIDER_ID)
         assert result == expected
 
@@ -334,6 +346,7 @@ class TestSmartQuestionUseCase:
 # Issue #38 — Repositorio (lógica de mapeo)
 # ─────────────────────────────────────────────
 
+
 class TestQuestionRepositoryMapping:
     """
     Tests de la lógica de mapeo entity ↔ model en QuestionRepositoryImpl.
@@ -341,14 +354,16 @@ class TestQuestionRepositoryMapping:
     """
 
     def _make_repo(self):
-        from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+        from app.infrastructure.repositories.question_repository import (
+            QuestionRepositoryImpl,
+        )
+
         session = AsyncMock()
         session.flush = AsyncMock()
         return QuestionRepositoryImpl(session=session)
 
     def test_to_entity_roundtrip(self):
         """_to_model y _to_entity deben ser inversas una de la otra."""
-        from app.infrastructure.repositories.question_model import QuestionModel
         repo = self._make_repo()
 
         original = make_question()
@@ -384,14 +399,14 @@ class TestQuestionRepositoryMapping:
         repo = self._make_repo()
         questions = [make_question(), make_question(), make_question()]
         await repo.save_all(questions)
-        assert repo.session.flush.call_count == 3
+        assert cast(AsyncMock, repo.session).flush.call_count == 3
 
     async def test_save_all_adds_each_model_to_session(self):
         """save_all debe llamar a session.add por cada entidad."""
         repo = self._make_repo()
         questions = [make_question(), make_question()]
         await repo.save_all(questions)
-        assert repo.session.add.call_count == 2
+        assert cast(AsyncMock, repo.session).add.call_count == 2
 
     async def test_save_all_returns_same_count(self):
         """save_all debe retornar la misma cantidad de entidades que recibió."""

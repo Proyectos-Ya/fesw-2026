@@ -1,6 +1,8 @@
 from datetime import datetime
 from uuid import uuid4
+
 import pytest
+
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender, TenderItem
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
@@ -31,7 +33,9 @@ def service() -> FieldWeightingService:
     )
 
 
-def test_calculate_scores_con_coincidencia_completa(service: FieldWeightingService, supplier: Supplier) -> None:
+def test_calculate_scores_con_coincidencia_completa(
+    service: FieldWeightingService, supplier: Supplier
+) -> None:
     """Verifica que con múltiples coincidencias de sector y keywords (densidad completa) se sumen los pesos correctamente (0.50 + 0.25 + 0.25)."""
     now = datetime.now()
     t1 = Tender(
@@ -45,7 +49,7 @@ def test_calculate_scores_con_coincidencia_completa(service: FieldWeightingServi
         last_change_at=now,
         buyer_rut="11.111.111-1",
         buyer_unit="TI",
-        province="Santiago, Metropolitana",
+        region="Región Metropolitana de Santiago",
         available_amount_clp=5000000.0,
         items=[
             TenderItem(
@@ -67,7 +71,9 @@ def test_calculate_scores_con_coincidencia_completa(service: FieldWeightingServi
     assert pytest.approx(results[0][1], rel=1e-3) == 0.90
 
 
-def test_calculate_scores_sin_coincidencias(service: FieldWeightingService, supplier: Supplier) -> None:
+def test_calculate_scores_sin_coincidencias(
+    service: FieldWeightingService, supplier: Supplier
+) -> None:
     """Verifica que sin coincidencias el score final sea exclusivamente el score del Reranker ponderado al 50%."""
     now = datetime.now()
     t1 = Tender(
@@ -81,7 +87,7 @@ def test_calculate_scores_sin_coincidencias(service: FieldWeightingService, supp
         last_change_at=now,
         buyer_rut="22.222.222-2",
         buyer_unit="Obras",
-        province="Concepción",
+        region="Región del Biobío",
         available_amount_clp=100000.0,
         items=[
             TenderItem(
@@ -103,7 +109,9 @@ def test_calculate_scores_sin_coincidencias(service: FieldWeightingService, supp
     assert pytest.approx(results[0][1], rel=1e-3) == 0.30
 
 
-def test_keywords_match_in_title_and_description(service: FieldWeightingService, supplier: Supplier) -> None:
+def test_keywords_match_in_title_and_description(
+    service: FieldWeightingService, supplier: Supplier
+) -> None:
     """Verifica que las keywords se detecten en el título/descripción y apliquen el bono de densidad proporcional."""
     now = datetime.now()
     # Licitación sin items pero con 1 keyword ('redes') en el título
@@ -126,7 +134,9 @@ def test_keywords_match_in_title_and_description(service: FieldWeightingService,
     assert pytest.approx(results[0][1], rel=1e-3) == (0.70 * 0.50) + (0.25 * 0.75)
 
 
-def test_sector_matching_avoids_substring_false_positives(service: FieldWeightingService) -> None:
+def test_sector_matching_avoids_substring_false_positives(
+    service: FieldWeightingService,
+) -> None:
     """Verifica que subcadenas parciales accidentales (ej. 'red' en 'alrededor', 'TI' en 'tierra')
     NO activen el bono de sector si no son palabras completas."""
     now = datetime.now()

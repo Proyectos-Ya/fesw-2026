@@ -6,7 +6,6 @@ from app.domain.errors.auth_errors import UserAlreadyExists
 
 
 class RegisterUserUseCase:
-
     def __init__(self, repo: IUserRepository, hasher: IPasswordHasher):
         self.repo = repo
         self.hasher = hasher

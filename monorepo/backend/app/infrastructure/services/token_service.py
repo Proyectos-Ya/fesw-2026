@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import jwt
@@ -16,7 +16,7 @@ class JwtTokenService(ITokenService):
         self.expire_minutes = expire_minutes
 
     def create_access_token(self, user_id: UUID) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=self.expire_minutes)
+        expire = datetime.now(UTC) + timedelta(minutes=self.expire_minutes)
         payload = {"sub": str(user_id), "exp": expire}
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 

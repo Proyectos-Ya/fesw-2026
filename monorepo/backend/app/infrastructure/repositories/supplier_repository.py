@@ -9,7 +9,6 @@ from app.infrastructure.repositories.supplier_model import SupplierModel
 
 
 class SupplierRepository(ISupplierRepository):
-
     def __init__(self, session: AsyncSession):
         self.session = session
 

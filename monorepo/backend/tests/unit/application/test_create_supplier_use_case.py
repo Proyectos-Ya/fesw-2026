@@ -6,6 +6,7 @@ Verifican explícitamente que los datos se persisten en el repositorio SQL
 Qdrant (FakeSupplierVectorRepository), y que los errores de negocio dejan
 ambos stores intactos.
 """
+
 from uuid import uuid4
 
 import pytest
@@ -59,7 +60,9 @@ def use_case(
 # ---------------------------------------------------------------------------
 
 
-async def test_supplier_saved_in_sql_by_rut(use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository) -> None:
+async def test_supplier_saved_in_sql_by_rut(
+    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
     """El proveedor queda recuperable desde el repo SQL por RUT."""
     supplier = await use_case.execute(SUPPLIER_DATA)
 
@@ -68,7 +71,9 @@ async def test_supplier_saved_in_sql_by_rut(use_case: CreateSupplierUseCase, sup
     assert stored.id == supplier.id
 
 
-async def test_supplier_saved_in_sql_by_id(use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository) -> None:
+async def test_supplier_saved_in_sql_by_id(
+    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
     """El proveedor queda recuperable desde el repo SQL por UUID."""
     supplier = await use_case.execute(SUPPLIER_DATA)
 
@@ -82,21 +87,27 @@ async def test_supplier_saved_in_sql_by_id(use_case: CreateSupplierUseCase, supp
 # ---------------------------------------------------------------------------
 
 
-async def test_supplier_indexed_in_qdrant(use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository) -> None:
+async def test_supplier_indexed_in_qdrant(
+    use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository
+) -> None:
     """El ID del proveedor se registra en el repositorio vectorial (Qdrant)."""
     supplier = await use_case.execute(SUPPLIER_DATA)
 
     assert supplier.id in vector_repo.upserts
 
 
-async def test_qdrant_receives_exact_supplier_id(use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository) -> None:
+async def test_qdrant_receives_exact_supplier_id(
+    use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository
+) -> None:
     """El ID enviado a Qdrant coincide con el UUID persistido en SQL."""
     supplier = await use_case.execute(SUPPLIER_DATA)
 
     assert vector_repo.upserts[0] == supplier.id
 
 
-async def test_qdrant_receives_one_upsert_per_creation(use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository) -> None:
+async def test_qdrant_receives_one_upsert_per_creation(
+    use_case: CreateSupplierUseCase, vector_repo: FakeSupplierVectorRepository
+) -> None:
     """Crear un proveedor genera exactamente un upsert en Qdrant, no más."""
     await use_case.execute(SUPPLIER_DATA)
 
@@ -145,7 +156,9 @@ async def test_duplicate_rut_does_not_add_extra_sql_row(
 # ---------------------------------------------------------------------------
 
 
-async def test_invalid_rut_raises_validation_error(use_case: CreateSupplierUseCase) -> None:
+async def test_invalid_rut_raises_validation_error(
+    use_case: CreateSupplierUseCase,
+) -> None:
     """Un RUT con dígito verificador incorrecto lanza SupplierValidationError."""
     data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
 
@@ -216,7 +229,9 @@ async def test_embedding_stored_comes_from_service(
 ) -> None:
     """El vector guardado en Qdrant es el que devuelve el EmbeddingService."""
     fake_vector = [0.9] * 1024
-    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService(fake_vector))
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, FakeEmbeddingService(fake_vector)
+    )
 
     supplier = await use_case.execute(SUPPLIER_DATA)
 
