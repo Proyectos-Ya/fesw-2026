@@ -40,9 +40,10 @@ export async function apiFetch<T>(
       signal: controller.signal,
       credentials: "include",
       headers: {
-        "Content-Type": "application/json",
+        ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...options?.headers,
       },
+
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {

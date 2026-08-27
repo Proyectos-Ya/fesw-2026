@@ -14,6 +14,7 @@ import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
+import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import {
   daysUntilClosing,
   formatCLP,
@@ -22,6 +23,7 @@ import {
   normalizeScore,
   type ClosingTone,
 } from "../utils/format";
+
 
 interface TenderDetailViewProps {
   tenderId: string;
@@ -67,6 +69,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
 
   useEffect(() => {
     if (authLoading) return;
@@ -242,18 +246,34 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
             </p>
           </div>
         </div>
-        <Button
-          onClick={() => router.push(`/matches/${tenderId}/analisis`)}
-          variant="primary"
-          className="shrink-0"
-          id="btn-generate-ai-analysis"
-        >
-          <span className="inline-flex items-center gap-2">
-            <Icon name="sparkles" size={16} />
-            Generar análisis de compatibilidad IA
-          </span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => setIsAssistantOpen(true)}
+            variant="ghost"
+            className="shrink-0 border border-border-strong bg-white hover:bg-slate-50"
+            id="btn-open-tender-assistant"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon name="message-square" size={16} />
+              Consultar asistente virtual
+            </span>
+          </Button>
+
+
+          <Button
+            onClick={() => router.push(`/matches/${tenderId}/analisis`)}
+            variant="primary"
+            className="shrink-0"
+            id="btn-generate-ai-analysis"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon name="sparkles" size={16} />
+              Generar análisis de compatibilidad IA
+            </span>
+          </Button>
+        </div>
       </div>
+
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <KeyValueCard
@@ -433,8 +453,16 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           </li>
         </ul>
       </Section>
+
+      <TenderAssistantDrawer
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+      />
     </section>
   );
+
 }
 
 function BackLink() {
