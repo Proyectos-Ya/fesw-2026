@@ -1,12 +1,18 @@
-"""alertas de licitaciones y licitaciones guardadas
+"""alertas de licitaciones
 
 Revision ID: 9a1c4f7b2e08
-Revises: 2d2720796d82
+Revises: 82786321a8db
 Create Date: 2026-08-26 12:00:00.000000
 
-`saved_tender` entra acá y no en la migración inicial porque su modelo nunca se
-registró en `app/infrastructure/repositories/models.py`: Alembic no lo veía y la
-tabla no existía en una base creada desde cero, aunque el código la consultara.
+Crea las tres tablas de la HdU 08: `notification_preference`, `notification` y
+`notification_delivery`.
+
+Esta migración también creaba `saved_tender`. El autogenerate se la llevó porque
+esta rama fue la primera en registrar `SavedTenderModel` en
+`app/infrastructure/repositories/models.py`, y hasta entonces Alembic no veía ese
+modelo. Mientras tanto, en `develop` la HU9 creó su propia migración para la misma
+tabla (`82786321a8db`), así que acá se quitó y esta pasa a colgar de aquella: la
+cadena queda lineal y `saved_tender` tiene un solo dueño.
 
 """
 
@@ -23,37 +29,13 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "9a1c4f7b2e08"
-down_revision: str | Sequence[str] | None = "2d2720796d82"
+down_revision: str | Sequence[str] | None = "82786321a8db"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
-        "saved_tender",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("user_id", sa.Uuid(), nullable=False),
-        sa.Column("tender_id", sa.Uuid(), nullable=False),
-        sa.Column("saved_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["tender_id"],
-            ["tender.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["users.id"],
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "tender_id", name="uq_saved_tender_user_tender"),
-    )
-    op.create_index(
-        op.f("ix_saved_tender_tender_id"), "saved_tender", ["tender_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_saved_tender_user_id"), "saved_tender", ["user_id"], unique=False
-    )
-
     op.create_table(
         "notification_preference",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -162,6 +144,3 @@ def downgrade() -> None:
         op.f("ix_notification_preference_user_id"), table_name="notification_preference"
     )
     op.drop_table("notification_preference")
-    op.drop_index(op.f("ix_saved_tender_user_id"), table_name="saved_tender")
-    op.drop_index(op.f("ix_saved_tender_tender_id"), table_name="saved_tender")
-    op.drop_table("saved_tender")

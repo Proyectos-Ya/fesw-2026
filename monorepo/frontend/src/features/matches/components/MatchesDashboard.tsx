@@ -14,14 +14,23 @@ import type { MatchingResult } from "../tenderTypes";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
+  filterMatchesByCommune,
+  filterMatchesByProvince,
   filterMatchesByRegion,
   isBudgetFilterActive,
+  listCommunes,
+  listProvinces,
   listRegions,
   type BudgetRange,
 } from "../utils/filter";
 import { BudgetFilter } from "./BudgetFilter";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
+import {
+  fetchSavedTenders,
+  saveTenderApi,
+  unsaveTenderApi,
+} from "@/features/saved-tenders/services/savedTenders.service";
 
 type LoadState =
   | { kind: "idle" }
@@ -41,12 +50,39 @@ export function MatchesDashboard() {
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
   const [region, setRegion] = useState<string | null>(null);
+  const [province, setProvince] = useState<string | null>(null);
+  const [commune, setCommune] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [savedTenderIds, setSavedTenderIds] = useState<Set<string>>(new Set());
   const ITEMS_PER_PAGE = 10;
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+      fetchSavedTenders()
+        .then((saved) => {
+          const ids = saved.map(
+            (item) => item.tender?.id ?? item.tender_id ?? item.id
+          );
+          setSavedTenderIds(new Set(ids));
+        })
+        .catch((err) => console.error("Error al cargar guardadas:", err));
+  }, [isAuthenticated, user]);
+
+  const handleRegionChange = (next: string | null) => {
+    setRegion(next);
+    setProvince(null);
+    setCommune(null);
+  };
+
+  const handleProvinceChange = (next: string | null) => {
+    setProvince(next);
+    setCommune(null);
+  };
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [budget, region]);
+  }, [budget, region, province, commune]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -94,6 +130,42 @@ export function MatchesDashboard() {
       clearInterval(intervalId);
     };
   }, [authLoading, isAuthenticated, user, router, retryNonce]);
+
+  const handleToggleSave = async (tenderId: string) => {
+    const isCurrentlySaved = savedTenderIds.has(tenderId);
+    setActionError(null);
+
+    // Optimistic update
+    setSavedTenderIds((prev) => {
+      const next = new Set(prev);
+      if (isCurrentlySaved) next.delete(tenderId);
+      else next.add(tenderId);
+      return next;
+    });
+
+    try {
+      if (isCurrentlySaved) {
+        await unsaveTenderApi(tenderId);
+      } else {
+        await saveTenderApi(tenderId);
+      }
+    } catch (err) {
+      console.error("Error al actualizar guardado:", err);
+
+      setSavedTenderIds((prev) => {
+        const next = new Set(prev);
+        if (isCurrentlySaved) next.add(tenderId);
+        else next.delete(tenderId);
+        return next;
+      });
+
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos guardar los cambios. Revise su conexión o intente nuevamente."
+      );
+    }
+  };
 
   const handleRetry = () => setRetryNonce((n) => n + 1);
 
@@ -157,9 +229,15 @@ export function MatchesDashboard() {
 
   const { matches } = state;
   const total = matches.length;
-  const filterActive = isBudgetFilterActive(budget) || region !== null;
+  const filterActive = isBudgetFilterActive(budget) || region !== null || province !== null || commune !== null;
   const visible = filterActive
-    ? filterMatchesByRegion(filterMatchesByBudget(matches, budget), region)
+    ? filterMatchesByCommune(
+        filterMatchesByProvince(
+          filterMatchesByRegion(filterMatchesByBudget(matches, budget), region),
+          province,
+        ),
+        commune,
+      )
     : matches;
   const shown = visible.length;
 
@@ -187,13 +265,31 @@ export function MatchesDashboard() {
   return (
     <section className="mx-auto w-full max-w-3xl">
       <DashboardHeader countLine={countLine} />
+      {actionError && (
+        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs font-bold underline hover:opacity-80 cursor-pointer ml-4"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
       {total > 0 && (
         <BudgetFilter
           value={budget}
           onChange={setBudget}
           regions={listRegions(matches)}
           region={region}
-          onRegionChange={setRegion}
+          onRegionChange={handleRegionChange}
+          provinces={listProvinces(matches, region)}
+          province={province}
+          onProvinceChange={handleProvinceChange}
+          communes={listCommunes(matches, region, province)}
+          commune={commune}
+          onCommuneChange={setCommune}
         />
       )}
       {total === 0 ? (
@@ -203,14 +299,24 @@ export function MatchesDashboard() {
           onClear={() => {
             setBudget(EMPTY_BUDGET_RANGE);
             setRegion(null);
+            setProvince(null);
+            setCommune(null);
           }}
         />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4">
-            {paginatedVisible.map((m) => (
-              <TenderCard key={m.id} match={m} />
-            ))}
+            {paginatedVisible.map((m) => {
+              const tenderId = m.tender?.id ?? m.id;
+              return (
+                <TenderCard
+                  key={m.id}
+                  match={m}
+                  isSaved={savedTenderIds.has(tenderId)}
+                  onToggleSave={handleToggleSave}
+                />
+              );
+            })}
           </div>
           {totalPages > 1 && (
             <div className="mt-6 flex items-center justify-between border-t border-border-subtle pt-6">

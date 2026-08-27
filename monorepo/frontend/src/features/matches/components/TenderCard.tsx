@@ -12,7 +12,10 @@ import {
 } from "../utils/format";
 
 interface TenderCardProps {
-  match: MatchingResult;
+  match?: MatchingResult;
+  tender?: Tender;
+  isSaved?: boolean;
+  onToggleSave?: (tenderId: string) => void;
 }
 
 const DASHBOARD_THRESHOLDS = { high: 70, mid: 40 };
@@ -41,13 +44,21 @@ function ScoreLabel({ score }: { score: number }) {
   return "Baja compatibilidad";
 }
 
-export function TenderCard({ match }: TenderCardProps) {
-  const tender: Tender | null = match.tender;
+export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: TenderCardProps) {
+  const tender: Tender | null = rawTender ?? match?.tender ?? null;
   if (!tender) return null;
 
-  const score = normalizeScore(match.final_score);
+  // Toma el score del match; si viene el tender suelto sin score, se evalúa a 0
+  const score = normalizeScore(match?.final_score ?? 0);
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
+  const savedState = isSaved ?? tender.is_saved ?? false;
+
+  const handleSaveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleSave?.(tender.id);
+  };
 
   return (
     <Link
@@ -55,6 +66,7 @@ export function TenderCard({ match }: TenderCardProps) {
       className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
+      {/* Medidor de compatibilidad: siempre visible */}
       <div className="flex-none">
         <MatchMeter
           value={score}
@@ -74,6 +86,28 @@ export function TenderCard({ match }: TenderCardProps) {
             {closing.label}
           </Badge>
           <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
+
+          <div className="flex-1" />
+
+          {onToggleSave && (
+            <button
+              type="button"
+              onClick={handleSaveClick}
+              aria-label={savedState ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
+              title={savedState ? "Quitar de guardadas" : "Guardar licitación"}
+              className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
+                savedState
+                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
+                  : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+            >
+              <Icon
+                name={savedState ? "bookmark-check" : "bookmark"}
+                size={19}
+                color={savedState ? "var(--primary)" : "currentColor"}
+              />
+            </button>
+          )}
         </div>
 
         <h3 className="font-display text-xl font-semibold leading-tight tracking-tight text-text-strong">

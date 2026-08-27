@@ -240,7 +240,7 @@ def create_tender_router(
 
     # Declarada antes que las rutas con `{tender_id}` para que el segmento
     # estático "saved" nunca sea capturado como parámetro de path.
-    @router.get("/saved", response_model=list[Tender])
+    @router.get("/saved", response_model=list[MatchingResult])
     async def get_saved_tenders(
         current_user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[
