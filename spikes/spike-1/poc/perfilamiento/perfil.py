@@ -149,15 +149,15 @@ def construir_perfil(
 
     if concordancia.sin_diccionario:
         avisos.append(
-            "sin curación fina en el diccionario, se usó la glosa oficial y el "
-            "clasificador por palabras clave: "
+            "sin curación fina en el diccionario, el rubro se intuyó con el "
+            "clasificador por palabras clave sobre la glosa oficial: "
             + ", ".join(str(c) for c in concordancia.sin_diccionario)
         )
 
-    if concordancia.genericas:
+    if concordancia.sin_palabra_clave:
         avisos.append(
-            "glosa genérica, excluida de keywords: "
-            + ", ".join(str(c) for c in concordancia.genericas)
+            "sin ninguna palabra clave que coincida para estos códigos: "
+            + ", ".join(str(c) for c in concordancia.sin_palabra_clave)
         )
 
     if concordancia.sin_rubro_determinado:

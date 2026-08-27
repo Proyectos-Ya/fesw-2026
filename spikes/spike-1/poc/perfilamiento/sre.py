@@ -23,12 +23,14 @@ Lo que NO entrega, y que sí entregan Web Empresario o ruts.info
 ------------------------------------------------------------------
 
 1. **Ninguna glosa por actividad.** `actecos` es una lista de códigos pelados
-   (`"433000"`, como texto). Sin esto, no hay cómo derivar `keywords` por la vía
-   de respaldo (glosa normalizada) ni decidir si una actividad es genérica —
-   ambas rutinas necesitan texto, no un número. Se resuelve con el catálogo del
-   SII ya cargado en este mismo PoC (`catalogo_glosas.py`, construido desde el
-   xlsx que se procesó para 1.4): la glosa no se inventa ni se pide a otra API,
-   se recupera de una fuente que ya se tiene y ya se verificó.
+   (`"433000"`, como texto). Sin esto, no hay texto sobre el cual correr el
+   clasificador de rubro (`clasificador_rubro.py`) — necesita una glosa, no un
+   número. Se resuelve con el catálogo del SII ya cargado en este mismo PoC
+   (`catalogo_glosas.py`, construido desde el xlsx que se procesó para 1.1): la
+   glosa no se inventa ni se pide a otra API, se recupera de una fuente que ya
+   se tiene y ya se verificó. `keywords`, en cambio, no usa la glosa para nada
+   —ver `diccionario.terminos_de`—, así que en eso SRE no está en desventaja
+   frente a las otras dos fuentes.
 
 2. **Cero datos de domicilio.** Ni región, ni comuna, ni dirección. **SRE no
    puede aportar nada a `Supplier.regions`.**

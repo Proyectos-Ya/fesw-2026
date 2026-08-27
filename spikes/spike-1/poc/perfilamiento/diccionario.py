@@ -57,7 +57,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import catalogo_glosas
-from .ciiu import es_glosa_generica, normalizar_glosa
 from .clasificador_rubro import rubro_por_glosa
 
 
@@ -222,45 +221,30 @@ def terminos_de(codigos: list[int]) -> list[str]:
     lo que esa capacidad tenga en común con las otras. Intersectar acá borraría
     justamente el término que iba a producir la coincidencia.
 
-    Dos niveles, igual que en `sectores_de`:
-
-    1. **Por código** (`CATALOGO`): términos en lenguaje de compra, escritos a
-       mano — la mejor calidad.
-    2. **Glosa oficial del SII** (`catalogo_glosas.glosa_oficial`), normalizada
-       a una frase legible, para cualquier código sin curar. Es lenguaje
-       tributario, no de compra (ver "El problema real: dos vocabularios
-       distintos" en `1.1-onboarding.md`), pero es preferible a no entregar
-       ninguna palabra clave. Una glosa genérica (`N.C.P.`, "no especializada")
-       se descarta en vez de ensuciar el resultado.
+    **Solo por código curado** (`CATALOGO`): términos en lenguaje de compra,
+    escritos a mano. A propósito **no hay respaldo con la glosa oficial** del
+    SII: es lenguaje tributario, no de compra (ver "El problema real: dos
+    vocabularios distintos" en `1.1-onboarding.md`), y se prefirió no aportar
+    nada antes que aportar una palabra que describe mal. Un código sin
+    curación fina simplemente no aporta a `keywords` — ver `sin_palabra_clave`
+    para poder avisarlo en vez de que pase inadvertido.
     """
-    directos = _unir(codigos, "terminos")
-
-    respaldo: list[str] = []
-    for codigo in codigos:
-        if entrada(codigo) is not None:
-            continue
-        glosa = catalogo_glosas.glosa_oficial(codigo)
-        if not glosa or es_glosa_generica(glosa):
-            continue
-        termino = normalizar_glosa(glosa)
-        if termino and termino not in directos and termino not in respaldo:
-            respaldo.append(termino)
-
-    return directos + respaldo
+    return _unir(codigos, "terminos")
 
 
-def genericas_de(codigos: list[int]) -> list[int]:
-    """Códigos sin curar cuya glosa oficial es un cajón de sastre (`N.C.P.`, etc.).
+def sin_palabra_clave(codigos: list[int]) -> list[int]:
+    """Códigos que no aportaron ningún término a `terminos_de`.
 
-    Se excluyen de `terminos_de` sin dejar rastro ahí — esta función es lo que
-    permite avisarlo en vez de que la exclusión pase inadvertida.
+    Dos causas posibles, y a esta función le da lo mismo cuál fue: no está
+    curado en `CATALOGO`, o está curado pero marcado fuera de alcance (con
+    `terminos=()`, como `970000`). Ese segundo caso ya tiene su propio aviso
+    (`fuera_de_alcance`) con su propia explicación, así que se excluye acá
+    para no duplicar el mensaje sobre el mismo código.
     """
     return [
         codigo
         for codigo in codigos
-        if entrada(codigo) is None
-        and (glosa := catalogo_glosas.glosa_oficial(codigo))
-        and es_glosa_generica(glosa)
+        if not _unir([codigo], "terminos") and not esta_fuera_de_alcance(codigo)
     ]
 
 
@@ -318,9 +302,9 @@ class Concordancia:
     # glosa sin rubro forzado es mejor que un rubro inventado, y es la lista de
     # trabajo para agregar reglas al clasificador más adelante.
     sin_rubro_determinado: list[int] = field(default_factory=list)
-    # Códigos sin curar cuya glosa oficial es un cajón de sastre y por eso no
-    # entró a `keywords`.
-    genericas: list[int] = field(default_factory=list)
+    # Códigos que no aportaron ningún término a `keywords` — no curados y sin
+    # respaldo de glosa (se quitó a propósito, ver `terminos_de`).
+    sin_palabra_clave: list[int] = field(default_factory=list)
 
     @property
     def hay_hilo_comun(self) -> bool:
@@ -345,5 +329,5 @@ def analizar(codigos: list[int]) -> Concordancia:
         fuera_de_alcance=[c for c in codigos if esta_fuera_de_alcance(c)],
         sin_catalogo_sii=sin_catalogo,
         sin_rubro_determinado=sin_rubro,
-        genericas=genericas_de(codigos),
+        sin_palabra_clave=sin_palabra_clave(codigos),
     )
