@@ -300,27 +300,18 @@ def get_delete_tender_chat_doc_use_case(
 
 
 def get_ask_tender_assistant_use_case(
-<<<<<<< HEAD
-    chat_repo: ITenderChatRepository = Depends(get_tender_chat_repo),
-    ai_service: ITenderAssistantAIService = Depends(get_tender_assistant_ai_service),
-    supplier_repo: ISupplierRepository = Depends(get_supplier_repo),
-=======
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
     ai_service: Annotated[
         ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
     ],
     supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
->>>>>>> feat/HU-004-consultas-via-asistente-virtual
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
         ai_service=ai_service,
         supplier_repo=supplier_repo,
     )
-<<<<<<< HEAD
 
-=======
->>>>>>> feat/HU-004-consultas-via-asistente-virtual
 
 
 def get_tender_chat_history_use_case(
