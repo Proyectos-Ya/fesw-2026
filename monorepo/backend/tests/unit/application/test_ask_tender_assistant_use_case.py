@@ -234,3 +234,80 @@ async def test_ask_assistant_injects_supplier_profile_context(repo, ai_service):
     assert "8 años" in supplier_ctx
 
 
+@pytest.mark.asyncio
+async def test_ask_assistant_multi_turn_history_injected(repo, ai_service):
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=ai_service)
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    # 1. Primer turno
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Cuál es la garantía solicitada?",
+    )
+    assert len(ai_service.called_history[0]) == 0
+
+    # 2. Segundo turno (pregunta de seguimiento implícita)
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Y qué vigencia debe tener?",
+    )
+    # En el segundo turno, el historial inyectado debe incluir la pregunta 1 y la respuesta 1
+    assert len(ai_service.called_history[1]) == 2
+    assert ai_service.called_history[1][0].role == "user"
+    assert ai_service.called_history[1][0].content == "¿Cuál es la garantía solicitada?"
+    assert ai_service.called_history[1][1].role == "assistant"
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_history_isolated_between_different_tenders(repo, ai_service):
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=ai_service)
+    tender_a = uuid4()
+    tender_b = uuid4()
+    user_id = uuid4()
+
+    # Turno en Licitación A
+    await use_case.execute(tender_id=tender_a, user_id=user_id, question="Pregunta sobre Licitación A")
+
+    # Turno en Licitación B (no debe tener mensajes de Licitación A)
+    await use_case.execute(tender_id=tender_b, user_id=user_id, question="Pregunta sobre Licitación B")
+
+    assert len(ai_service.called_history[1]) == 0
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_with_clean_new_session_isolation(repo, ai_service):
+    from app.application.use_cases.create_tender_chat_session_use_case import (
+        CreateTenderChatSessionUseCase,
+    )
+
+    create_session_uc = CreateTenderChatSessionUseCase(chat_repo=repo)
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=ai_service)
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    # Sesión 1
+    session_1 = await create_session_uc.execute(user_id=user_id, tender_id=tender_id)
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="Pregunta 1 en sesión 1",
+        session_id=session_1.id,
+    )
+
+    # Iniciar Sesión 2 ("Nuevo Chat")
+    session_2 = await create_session_uc.execute(user_id=user_id, tender_id=tender_id)
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="Pregunta en sesión 2 limpia",
+        session_id=session_2.id,
+    )
+
+    # En la sesión 2, el historial inyectado debe ser 0 mensajes
+    assert len(ai_service.called_history[1]) == 0
+
+
+

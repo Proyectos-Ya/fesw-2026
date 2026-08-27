@@ -58,3 +58,50 @@ async def test_get_history_returns_messages_in_chronological_order(use_case, rep
     assert history[0].content == "¿Cuál es el plazo?"
     assert history[1].content == "El plazo es de 3 días."
     assert len(history[1].citations) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_history_with_specific_session_id(use_case, repo):
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    session_1 = await repo.create_session(user_id=user_id, tender_id=tender_id)
+    msg1 = TenderChatMessage(
+        session_id=session_1.id,
+        tender_id=tender_id,
+        user_id=user_id,
+        role="user",
+        content="Pregunta en sesión 1",
+    )
+    await repo.save_message(msg1)
+
+    session_2 = await repo.create_session(user_id=user_id, tender_id=tender_id)
+    msg2 = TenderChatMessage(
+        session_id=session_2.id,
+        tender_id=tender_id,
+        user_id=user_id,
+        role="user",
+        content="Pregunta en sesión 2",
+    )
+    await repo.save_message(msg2)
+
+    history_1 = await use_case.execute(tender_id=tender_id, user_id=user_id, session_id=session_1.id)
+    assert len(history_1) == 1
+    assert history_1[0].content == "Pregunta en sesión 1"
+
+    history_2 = await use_case.execute(tender_id=tender_id, user_id=user_id, session_id=session_2.id)
+    assert len(history_2) == 1
+    assert history_2[0].content == "Pregunta en sesión 2"
+
+
+@pytest.mark.asyncio
+async def test_get_history_with_non_existent_session_raises_error(use_case):
+    from app.domain.errors.tender_chat_errors import ChatSessionNotFoundError
+
+    tender_id = uuid4()
+    user_id = uuid4()
+    fake_session_id = uuid4()
+
+    with pytest.raises(ChatSessionNotFoundError):
+        await use_case.execute(tender_id=tender_id, user_id=user_id, session_id=fake_session_id)
+
