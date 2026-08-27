@@ -23,15 +23,28 @@ class Citation(BaseModel):
         return value.strip()
 
 
+class TenderChatSession(BaseModel):
+    """Representa una sesión o hilo de conversación independiente para una licitación."""
+    id: UUID = Field(default_factory=uuid4)
+    tender_id: UUID
+    user_id: UUID
+    title: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    updated_at: datetime = Field(default_factory=utc_now_naive)
+
+
 class TenderChatMessage(BaseModel):
     """Representa un mensaje individual en la conversación del asistente."""
     id: UUID = Field(default_factory=uuid4)
+    session_id: Optional[UUID] = None
     tender_id: UUID
     user_id: UUID
     role: Literal["user", "assistant"]
     content: str
     citations: List[Citation] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now_naive)
+
 
     @field_validator("content")
     @classmethod
