@@ -56,7 +56,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import catalogo_glosas
+from . import catalogo
 from .clasificador_rubro import rubro_por_glosa
 
 
@@ -203,7 +203,7 @@ def sectores_de(codigos: list[int]) -> list[str]:
     for codigo in codigos:
         if entrada(codigo) is not None:
             continue  # ya cubierto por el nivel 1, incluidas las genéricas vacías
-        glosa = catalogo_glosas.glosa_oficial(codigo)
+        glosa = catalogo.glosa_oficial(codigo)
         if not glosa:
             continue
         for sector in rubro_por_glosa(glosa):
@@ -313,13 +313,13 @@ class Concordancia:
 
 def analizar(codigos: list[int]) -> Concordancia:
     """Aplica los tres ejes de una vez."""
-    sin_catalogo = [c for c in codigos if entrada(c) is None and not catalogo_glosas.glosa_oficial(c)]
+    sin_catalogo = [c for c in codigos if entrada(c) is None and not catalogo.glosa_oficial(c)]
     sin_rubro = [
         c
         for c in codigos
         if entrada(c) is None
-        and catalogo_glosas.glosa_oficial(c)
-        and not rubro_por_glosa(catalogo_glosas.glosa_oficial(c))
+        and catalogo.glosa_oficial(c)
+        and not rubro_por_glosa(catalogo.glosa_oficial(c))
     ]
     return Concordancia(
         sectores=sectores_de(codigos),

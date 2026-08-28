@@ -1,5 +1,10 @@
 """El tipo `Actividad` y utilidades de texto sobre la glosa del SII.
 
+Este archivo se llamó `ciiu.py`. Se renombró porque, desde que se eliminó el
+cálculo de sección (ver más abajo), el nombre ya no describe lo que hay acá —
+la historia de por qué existió ese cálculo sigue siendo útil, pero un lector
+nuevo no debería tener que adivinarla a partir del nombre del import.
+
 Historia de este archivo
 -------------------------
 Originalmente calculaba la sección CIIU de un código con una tabla de rangos
@@ -12,7 +17,7 @@ comparar contra el catálogo real).
 **Ese cálculo se eliminó.** El catálogo real del SII, ya procesado en
 `catalogo_sii.json`, trae la sección de cada código como texto — leerla es una
 búsqueda en un diccionario, no una cuenta, y no puede tener ese tipo de error.
-Ver `catalogo_glosas.seccion_titulo`.
+Ver `catalogo.seccion_titulo`.
 
 Y para determinar el **rubro del producto** (no la sección CIIU), agrupar por
 sección resultó demasiado grueso: una sola sección de "comercio" mete 105

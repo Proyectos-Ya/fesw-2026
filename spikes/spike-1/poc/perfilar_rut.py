@@ -13,7 +13,7 @@ mostrar prellenado para que el usuario confirme o corrija.
 Tres fuentes, la misma salida
 -----------------------------
 Web Empresario, ruts.info y SRE entregan la misma información en esquemas JSON
-distintos (ver `perfilamiento/{web_empresario,ruts_info,sre}.py`). Cada una
+distintos (ver `perfilamiento/fuentes.py`). Cada una
 tiene su propio adaptador; las tres convergen en el mismo `PerfilSugerido` vía
 `perfilamiento/perfil.py`. Agregar una cuarta fuente es escribir un adaptador
 más y una entrada en `FUENTES` — el resto de este script no cambia.
@@ -82,11 +82,9 @@ from dotenv import load_dotenv  # noqa: E402
 # a este script, no junto a quien lo importa.
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
+from perfilamiento.fuentes import desde_ruts_info, desde_sre, desde_web_empresario  # noqa: E402
 from perfilamiento.perfil import PerfilSugerido  # noqa: E402
-from perfilamiento.ruts_info import desde_ruts_info  # noqa: E402
-from perfilamiento.sre import desde_sre  # noqa: E402
 from perfilamiento.vocabulario import a_region_del_front  # noqa: E402
-from perfilamiento.web_empresario import desde_web_empresario  # noqa: E402
 from puente_backend import asegurar_path  # noqa: E402
 
 asegurar_path()
