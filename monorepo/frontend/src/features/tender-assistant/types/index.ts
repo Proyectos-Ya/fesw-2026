@@ -8,8 +8,19 @@ export interface Citation {
   quote: string;
 }
 
+export interface TenderChatSession {
+  id: string;
+  tender_id: string;
+  user_id: string;
+  title: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TenderChatMessage {
   id: string;
+  session_id?: string | null;
   tender_id: string;
   user_id: string;
   role: TenderChatRole;
@@ -29,4 +40,10 @@ export interface TenderChatDocument {
 
 export interface AskQuestionRequest {
   question: string;
+  session_id?: string | null;
 }
+
+export interface CreateChatSessionRequest {
+  title?: string;
+}
+
