@@ -105,6 +105,23 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_vector_size: int = 1024
 
+    # De dónde sale el modelo: "local" lo carga en el proceso (sentence-transformers,
+    # ~4,3 GB de caché) y "api" lo delega a un proveedor externo. El free tier de
+    # Railway no aguanta la primera opción. El proveedor tiene que servir el MISMO
+    # modelo: cambiarlo invalida todo lo ya indexado en Qdrant, porque los vectores
+    # de dos modelos distintos no son comparables entre sí.
+    embedding_provider: Literal["local", "api"] = "local"
+    deepinfra_api_key: str | None = None
+    deepinfra_base_url: str = "https://api.deepinfra.com/v1/openai"
+
+    # Mismo esquema para el reranker, que en local es ONNX (~588 MB).
+    reranker_provider: Literal["local", "api"] = "local"
+    pinecone_api_key: str | None = None
+    pinecone_base_url: str = "https://api.pinecone.io"
+    pinecone_rerank_model: str = "bge-reranker-v2-m3"
+    # La API de Pinecone versiona por header y rechaza las peticiones sin él.
+    pinecone_api_version: str = "2025-04"
+
     # --- Mercado Público ---
     mercado_publico_api_key: str
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
@@ -229,6 +246,31 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @field_validator("deepinfra_api_key", "pinecone_api_key", mode="after")
+    @classmethod
+    def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return valor.strip() or None
+
+    @model_validator(mode="after")
+    def _exigir_credencial_del_proveedor(self) -> "Settings":
+        """En modo API, sin credencial la aplicación no arranca.
+
+        Dejarlo pasar convierte un error de configuración en un fallo en la
+        primera petición del primer usuario. Para el embedding es peor todavía:
+        la ingesta escribiría vectores fallidos en Qdrant, y eso no se arregla
+        corrigiendo la variable —hay que reindexar.
+        """
+        faltantes = []
+        if self.embedding_provider == "api" and not self.deepinfra_api_key:
+            faltantes.append("DEEPINFRA_API_KEY (EMBEDDING_PROVIDER=api)")
+        if self.reranker_provider == "api" and not self.pinecone_api_key:
+            faltantes.append("PINECONE_API_KEY (RERANKER_PROVIDER=api)")
+        if faltantes:
+            raise ValueError("Falta configurar: " + ", ".join(faltantes))
+        return self
 
     @field_validator("qdrant_url_override", "qdrant_api_key", mode="after")
     @classmethod

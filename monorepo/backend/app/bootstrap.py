@@ -117,8 +117,8 @@ from app.infrastructure.repositories.supplier_repository import SupplierReposito
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.routers.router import create_router
-from app.infrastructure.services.bge_m3_embedding_service import BgeM3EmbeddingService
-from app.infrastructure.services.bge_reranker_service import BgeRerankerService
+from app.infrastructure.services.api_embedding_service import ApiEmbeddingService
+from app.infrastructure.services.api_reranker_service import ApiRerankerService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
@@ -456,6 +456,62 @@ class MockRerankerService(IRerankerService):
 logger = logging.getLogger(__name__)
 
 
+class MockEmbeddingService(IEmbeddingService):
+    """Embeddings en cero, para levantar en local sin el modelo descargado.
+
+    Con él toda búsqueda y todo matching devuelven resultados sin sentido, y la
+    aplicación se ve perfectamente sana desde afuera. Por eso vive solo en
+    desarrollo y grita en los logs.
+    """
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] * settings.embedding_vector_size for _ in texts]
+
+
+def build_embedding_service() -> IEmbeddingService:
+    """Construye el servicio de embeddings según el proveedor configurado.
+
+    Mismo criterio que el reranker, y por la misma razón: antes esto caía a
+    `MockEmbeddingService` con un `logger.warning` incluso en producción. Un
+    despliegue donde el modelo no carga quedaba "exitoso", respondiendo con
+    vectores de puros ceros —y peor, la ingesta los escribía en Qdrant, que no
+    se arregla corrigiendo la configuración: hay que reindexar.
+    """
+    if settings.embedding_provider == "api":
+        logger.info("Embeddings servidos por API (%s).", settings.embedding_model)
+        return ApiEmbeddingService(
+            api_key=settings.deepinfra_api_key or "",
+            base_url=settings.deepinfra_base_url,
+            model_name=settings.embedding_model,
+        )
+
+    try:
+        # Importación tardía: sentence-transformers no está en la imagen de
+        # producción cuando se corre en modo API.
+        from app.infrastructure.services.bge_m3_embedding_service import (
+            BgeM3EmbeddingService,
+        )
+
+        return BgeM3EmbeddingService(model_name=settings.embedding_model)
+    except Exception as exc:
+        if not settings.is_dev:
+            logger.exception(
+                "El servicio de embeddings no se pudo construir (%s) y "
+                "IS_DEV=false, así que la aplicación no arranca. Degradarse en "
+                "silencio serviría búsquedas y matching sin ningún sentido.",
+                exc,
+            )
+            raise
+
+        logger.exception(
+            "El servicio de embeddings no se pudo construir (%s). Se continúa "
+            "con MockEmbeddingService porque IS_DEV=true, pero las búsquedas y "
+            "el matching no tienen sentido hasta que esto se resuelva.",
+            exc,
+        )
+        return MockEmbeddingService()
+
+
 def build_reranker_service() -> IRerankerService:
     """Construye el reranker, o decide qué hacer si no se puede.
 
@@ -475,7 +531,25 @@ def build_reranker_service() -> IRerankerService:
         )
         return MockRerankerService()
 
+    if settings.reranker_provider == "api":
+        # Sin try/except: config.py ya garantizó que hay credencial, y construir
+        # el cliente no toca la red. Un fallo acá sería un error de programación,
+        # no una condición del entorno que tenga sentido absorber.
+        logger.info("Reranker servido por API (%s).", settings.pinecone_rerank_model)
+        return ApiRerankerService(
+            api_key=settings.pinecone_api_key or "",
+            base_url=settings.pinecone_base_url,
+            model_name=settings.pinecone_rerank_model,
+            api_version=settings.pinecone_api_version,
+        )
+
     try:
+        # Importación tardía: arrastra onnxruntime y transformers, que en modo
+        # API no están instalados en la imagen.
+        from app.infrastructure.services.bge_reranker_service import (
+            BgeRerankerService,
+        )
+
         return BgeRerankerService()
     except Exception as exc:
         # En producción no se traga: relanza y el arranque falla con la traza.
@@ -587,21 +661,7 @@ def bootstrap(app: FastAPI) -> None:
         expire_minutes=settings.access_token_expire_minutes,
     )
 
-    try:
-        app.state.embedding_service = BgeM3EmbeddingService(
-            model_name=settings.embedding_model
-        )
-    except Exception as e:
-        logger.warning(
-            "[Bootstrap] No se pudo cargar BgeM3EmbeddingService (%s). Usando MockEmbeddingService.",
-            e,
-        )
-
-        class MockEmbeddingService(IEmbeddingService):
-            async def embed(self, texts: list[str]) -> list[list[float]]:
-                return [[0.0] * settings.embedding_vector_size for _ in texts]
-
-        app.state.embedding_service = MockEmbeddingService()
+    app.state.embedding_service = build_embedding_service()
 
     app.state.deep_analysis_service = GeminiDeepAnalysisService(
         api_key=settings.gemini_api_key,
