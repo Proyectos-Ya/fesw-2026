@@ -157,6 +157,48 @@ class FakeTokenService(ITokenService):
             raise InvalidToken() from exc
 
 
+class InMemoryTenderChatRepository:
+    def __init__(self) -> None:
+        self.messages: list = []
+        self.documents: dict[UUID, tuple] = {}  # doc_id: (doc_entity, file_bytes)
+
+    async def save_message(self, message):
+        self.messages.append(message)
+        return message
+
+    async def get_history(self, user_id: UUID, tender_id: UUID, limit: int = 50):
+        matched = [
+            m for m in self.messages
+            if m.user_id == user_id and m.tender_id == tender_id
+        ]
+        return matched[-limit:]
+
+    async def save_document(self, doc, file_bytes: bytes):
+        self.documents[doc.id] = (doc, file_bytes)
+        return doc
+
+    async def get_documents_by_chat(self, user_id: UUID, tender_id: UUID):
+        return [
+            doc for doc, _ in self.documents.values()
+            if doc.user_id == user_id and doc.tender_id == tender_id
+        ]
+
+    async def get_document_bytes(self, document_id: UUID, user_id: UUID):
+        if document_id in self.documents:
+            doc, data = self.documents[document_id]
+            if doc.user_id == user_id:
+                return data
+        return None
+
+    async def delete_document(self, document_id: UUID, user_id: UUID) -> bool:
+        if document_id in self.documents:
+            doc, _ = self.documents[document_id]
+            if doc.user_id == user_id:
+                del self.documents[document_id]
+                return True
+        return False
+
+
 class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
 
@@ -203,6 +245,18 @@ class InMemoryTenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        return ([], 0)
+
+    async def get_latest_tender_created_at(self):
+        return None
+
+
 
 class InMemorySavedTenderRepository(ISavedTenderRepository):
     """Fake repository en memoria para las licitaciones guardadas por un usuario."""
@@ -223,3 +277,4 @@ class InMemorySavedTenderRepository(ISavedTenderRepository):
 
     async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
         return self.saved.pop((user_id, tender_id), None) is not None
+

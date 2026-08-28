@@ -21,8 +21,8 @@ class ListSavedTendersUseCase:
         self,
         saved_tender_repo: ISavedTenderRepository,
         tender_repo: ITenderRepository,
-        supplier_repo: ISupplierRepository,
-        matching_result_repo: IMatchingResultRepository,
+        supplier_repo: ISupplierRepository | None = None,
+        matching_result_repo: IMatchingResultRepository | None = None,
     ):
         self.saved_tender_repo = saved_tender_repo
         self.tender_repo = tender_repo
@@ -44,15 +44,20 @@ class ListSavedTendersUseCase:
         tender_by_id = {t.id: t for t in tenders}
 
         # 2. Obtener el proveedor de este usuario
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        supplier = (
+            await self.supplier_repo.get_by_user_id(user_id)
+            if self.supplier_repo
+            else None
+        )
 
         # 3. Obtener los scores de matching calculados para la empresa
         match_by_tender_id: dict[UUID, MatchingResult] = {}
-        if supplier:
+        if supplier and self.matching_result_repo:
             supplier_matches = await self.matching_result_repo.get_by_supplier_id(
                 supplier.id
             )
             match_by_tender_id = {m.tender_id: m for m in supplier_matches}
+
 
         # 4. Construir y ordenar la lista final
         results: list[MatchingResult] = []

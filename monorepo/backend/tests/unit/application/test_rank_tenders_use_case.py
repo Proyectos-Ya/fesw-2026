@@ -22,14 +22,20 @@ from app.domain.errors.supplier_errors import (
 )
 from app.shared.constants import TENDER_STATUSES
 
-# ---------------------------------------------------------------------------
-# Implementaciones fake específicas para las pruebas unitarias de este caso de uso
-# ---------------------------------------------------------------------------
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.infrastructure.repositories.tender_model import (
+    TenderItemModel,
+    TenderModel,
+)
+from app.domain.entities.deep_analysis import DeepAnalysis
 from tests.unit.application.fakes import (
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
-    InMemoryTenderRepository,
 )
+
 
 
 class InMemoryTenderRepository(ITenderRepository):

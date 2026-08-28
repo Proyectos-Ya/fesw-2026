@@ -446,8 +446,18 @@ async def _login(api: AsyncClient, email: str, full_name: str) -> None:
 async def test_get_saved_tenders_success(api: AsyncClient) -> None:
     """Valida que el endpoint retorne solo las licitaciones guardadas por el usuario."""
     tender_id = uuid4()
+    supplier_id = uuid4()
+    mock_tender = _build_tender(tender_id)
+    mock_result = MatchingResult(
+        supplier_id=supplier_id,
+        tender_id=tender_id,
+        similarity_score=0.85,
+        final_score=0.85,
+        model_version="v1.0",
+        tender=mock_tender,
+    )
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = [_build_tender(tender_id)]
+    mock_uc.execute.return_value = [mock_result]
     app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
 
     await _login(api, "guardadas@example.com", "Sofía Rojas")
@@ -457,10 +467,11 @@ async def test_get_saved_tenders_success(api: AsyncClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
-    assert data[0]["id"] == str(tender_id)
-    assert data[0]["buyer_name"] == "Municipalidad de Santiago"
-    assert data[0]["region"] == "Metropolitana"
+    assert data[0]["tender"]["id"] == str(tender_id)
+    assert data[0]["tender"]["buyer_name"] == "Municipalidad de Santiago"
+    assert data[0]["tender"]["region"] == "Metropolitana"
     mock_uc.execute.assert_called_once()
+
 
 
 @pytest.mark.asyncio

@@ -63,8 +63,9 @@ async def test_list_returns_only_tenders_saved_by_the_user() -> None:
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
 
     assert len(result) == 1
-    assert result[0].id == tender_id
-    assert result[0].buyer_name == "Municipalidad de Santiago"
+    assert result[0].tender is not None
+    assert result[0].tender.id == tender_id
+    assert result[0].tender.buyer_name == "Municipalidad de Santiago"
 
 
 @pytest.mark.asyncio
@@ -96,7 +97,7 @@ async def test_list_excludes_tenders_saved_by_another_user() -> None:
 
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
 
-    assert [t.id for t in result] == [own_tender_id]
+    assert [t.tender.id for t in result if t.tender] == [own_tender_id]
 
 
 @pytest.mark.asyncio
@@ -117,7 +118,8 @@ async def test_list_is_ordered_by_saved_at_descending() -> None:
 
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
 
-    assert [t.id for t in result] == [newer_id, older_id]
+    assert [t.tender.id for t in result if t.tender] == [newer_id, older_id]
+
 
 
 # ---------------------------------------------------------------------------
