@@ -1,0 +1,38 @@
+# ============================================================
+# .dockerignore — qué NO se copia al contexto de build de la API
+# ============================================================
+
+# Entornos virtuales locales (el README sugiere crear .venv aquí)
+.venv/
+venv/
+env/
+ENV/
+
+# Artefactos de Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secretos: las variables llegan por entorno, nunca horneadas en la imagen
+.env
+.env.*
+!.env.example
+
+# Documentación y notas de trabajo
+README.md
+status.md
+
+# Herramientas y editores
+.claude/
+.vscode/
+.idea/
+.git/
+.gitignore
+
+# Basura del sistema operativo
+.DS_Store
+Thumbs.db

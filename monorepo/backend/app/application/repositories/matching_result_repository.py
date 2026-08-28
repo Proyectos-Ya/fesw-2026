@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
+
 from app.domain.entities.matching_result import MatchingResult
 
 
@@ -27,4 +28,3 @@ class IMatchingResultRepository(ABC):
     ) -> MatchingResult | None:
         """Obtiene un resultado de matching específico por ID de proveedor y licitación."""
         pass
-

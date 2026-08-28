@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.supplier_repository import ISupplierRepository
@@ -9,7 +9,6 @@ from app.infrastructure.repositories.supplier_model import SupplierModel
 
 
 class SupplierRepository(ISupplierRepository):
-
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -41,6 +40,14 @@ class SupplierRepository(ISupplierRepository):
         )
         model = result.first()
         return self._to_entity(model) if model else None
+
+    async def list_user_ids_with_profile(self) -> list[UUID]:
+        # Usuarios que ya tienen un perfil de empresa. Lo usa el escaneo de
+        # alertas: sin perfil no hay vector y el matching no tiene qué comparar.
+        result = await self.session.exec(
+            select(SupplierModel.user_id).where(col(SupplierModel.user_id).is_not(None))
+        )
+        return [user_id for user_id in result.all() if user_id is not None]
 
     async def save(self, supplier: Supplier) -> Supplier:
         # Persiste el proveedor en la base de datos

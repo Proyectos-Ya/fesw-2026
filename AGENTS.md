@@ -55,4 +55,4 @@ Es obligatorio adoptar el flujo **TDD (Red-Green-Refactor)** al escribir código
 
 ## 4. Flujo de Trabajo en Git y Commits
 
-Verifica el archivo [SKILL.md](file:///d:/ProyectosYA/SKILL.md) para conocer las reglas estrictas sobre el ciclo de vida de Git, convenciones de commits hechas por agentes de IA, y la prohibición de hacer Push directamente.
+Verifica el archivo [SKILL.md](./SKILL.md) para conocer las reglas estrictas sobre el ciclo de vida de Git, convenciones de commits hechas por agentes de IA, y la prohibición de hacer Push directamente.

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../AuthContext";
+import { loginUrlWithReturn } from "../returnUrl";
 
 /**
  * Guardia de rutas protegidas: redirige a /login si no hay sesión activa.
@@ -10,14 +10,17 @@ import { useAuth } from "../AuthContext";
  * todas sus páginas sin repetir la lógica en cada componente.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const { isLoading, isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      // Igual que en el proxy: se guarda a dónde iba el usuario para devolverlo
+      // ahí una vez autenticado.
+      window.location.replace(
+        loginUrlWithReturn(window.location.pathname, window.location.search),
+      );
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated]);
 
   if (isLoading || !isAuthenticated) {
     return (

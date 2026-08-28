@@ -1,24 +1,24 @@
 """Tests unitarios de TextBuilder — simetría semántica entre proveedor y licitación."""
-from dataclasses import dataclass, field
-from typing import Optional
+
+from dataclasses import dataclass
 
 from app.application.services.text_builder import TextBuilder
-
 
 # ---------------------------------------------------------------------------
 # Helpers: objetos mínimos compatibles por duck typing
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FakeTender:
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 @dataclass
 class FakeItem:
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # ---------------------------------------------------------------------------

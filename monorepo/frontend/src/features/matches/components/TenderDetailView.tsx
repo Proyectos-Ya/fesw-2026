@@ -11,9 +11,19 @@ import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
-import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
+import {
+  getRecommendedTenders,
+  getDeepAnalysisOnly,
+  getTenderDetail,
+} from "../services/tenderService";
+import {
+  fetchSavedTenders,
+  saveTenderApi,
+  unsaveTenderApi,
+} from "@/features/saved-tenders/services/savedTenders.service";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
+import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import {
   daysUntilClosing,
   formatCLP,
@@ -23,6 +33,7 @@ import {
   type ClosingTone,
 } from "../utils/format";
 
+
 interface TenderDetailViewProps {
   tenderId: string;
 }
@@ -30,7 +41,7 @@ interface TenderDetailViewProps {
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; match: MatchingResult }
+  | { kind: "ready"; match: MatchingResult; isClosed: boolean }
   | { kind: "not-found" }
   | { kind: "error"; message: string };
 
@@ -67,6 +78,11 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+
 
   useEffect(() => {
     if (authLoading) return;
@@ -79,16 +95,49 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     let cancelled = false;
     setState({ kind: "loading" });
     setAnalysis(null);
+
     void (async () => {
       try {
-        const matches = await getRecommendedTenders(user.id);
+        const [matches, savedList] = await Promise.all([
+          getRecommendedTenders(user.id),
+          fetchSavedTenders().catch(() => []),
+        ]);
+
         if (cancelled) return;
+
+        // Vale para los dos caminos de abajo: una licitación cerrada también
+        // puede estar guardada, así que esto no depende de las recomendaciones.
+        setIsSaved(
+          savedList.some(
+            (item) => (item.tender?.id ?? item.tender_id ?? item.id) === tenderId
+          )
+        );
+
         const found = matches.find((m) => m.tender?.id === tenderId);
-        if (!found) {
-          setState({ kind: "not-found" });
-          return;
+        if (found) {
+          setState({ kind: "ready", match: found, isClosed: false });
+        } else {
+          // Las recomendaciones descartan lo que ya cerró, así que no encontrarla
+          // ahí no significa que no exista: puede ser una alerta de hace días.
+          // El detalle directo sí la devuelve, marcada como cerrada.
+          const detalle = await getTenderDetail(tenderId);
+          if (cancelled) return;
+          setState({
+            kind: "ready",
+            isClosed: detalle.is_closed,
+            match: {
+              id: detalle.tender.id,
+              supplier_id: "",
+              tender_id: detalle.tender.id,
+              similarity_score: 0,
+              reranker_score: null,
+              final_score: (detalle.score_pct ?? 0) / 100,
+              model_version: "",
+              calculated_at: detalle.tender.updated_at,
+              tender: detalle.tender,
+            },
+          });
         }
-        setState({ kind: "ready", match: found });
 
         // Cargar el análisis de compatibilidad si ya existe
         setAnalysisLoading(true);
@@ -106,6 +155,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         }
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setState({ kind: "not-found" });
+          return;
+        }
         if (err instanceof ApiError || err instanceof TimeoutError) {
           setState({ kind: "error", message: err.message });
           return;
@@ -121,6 +174,28 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       cancelled = true;
     };
   }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
+
+  const handleToggleSave = async () => {
+    const previousState = isSaved;
+    setActionError(null);
+    setIsSaved(!previousState);
+
+    try {
+      if (previousState) {
+        await unsaveTenderApi(tenderId);
+      } else {
+        await saveTenderApi(tenderId);
+      }
+    } catch (err) {
+      console.error("Error al actualizar guardado:", err);
+      setIsSaved(previousState);
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos guardar los cambios. Revisa tu conexión a internet."
+      );
+    }
+  };
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
@@ -174,10 +249,48 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
+  // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
+  // una ficha abierta desde los matches cuyo plazo venció mientras se miraba.
+  const cerrada = state.isClosed || closing.tone === "expired";
 
   return (
     <section className="mx-auto w-full max-w-4xl">
       <BackLink />
+
+      {/* Criterio de la HdU 08: al abrir la alerta de una licitación cuyo plazo
+          ya pasó, hay que decirlo en vez de mostrar la ficha como si siguiera
+          disponible. */}
+      {cerrada && (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4"
+        >
+          <Icon name="triangle-alert" size={18} color="var(--amber-500)" />
+          <div>
+            <p className="text-sm font-semibold text-text-strong">
+              Esta licitación ya cerró
+            </p>
+            <p className="mt-1 text-sm text-text-body">
+              El plazo de postulación venció el{" "}
+              {formatClosingDate(tender.closing_at)}. Es posible que ya haya sido
+              adjudicada; puedes revisar su estado oficial en Mercado Público.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs font-bold underline hover:opacity-80 cursor-pointer ml-4"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
 
       <header className="mb-6 flex flex-col gap-5 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-start">
         <div className="flex-none">
@@ -199,10 +312,32 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               {closing.label}
             </Badge>
             <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
+
+            <div className="flex-1" />
+
+            <button
+              type="button"
+              onClick={handleToggleSave}
+              aria-label={isSaved ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
+              title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
+              className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
+                isSaved
+                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
+                  : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+            >
+              <Icon
+                name={isSaved ? "bookmark-check" : "bookmark"}
+                size={19}
+                color={isSaved ? "var(--primary)" : "currentColor"}
+              />
+            </button>
           </div>
+
           <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-text-strong">
             {tender.name}
           </h1>
+
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
             <span className="inline-flex items-center gap-1.5">
               <Icon name="building-2" size={15} color="var(--text-subtle)" />
@@ -214,12 +349,12 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
                 <span>{tender.buyer_unit}</span>
               </>
             )}
-            {tender.province && (
+            {tender.region && (
               <>
                 <span className="text-border-strong">·</span>
                 <span className="inline-flex items-center gap-1.5">
                   <Icon name="map-pin" size={15} color="var(--text-subtle)" />
-                  <span>{tender.province}</span>
+                  <span>{tender.region}</span>
                 </span>
               </>
             )}
@@ -242,18 +377,34 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
             </p>
           </div>
         </div>
-        <Button
-          onClick={() => router.push(`/matches/${tenderId}/analisis`)}
-          variant="primary"
-          className="shrink-0"
-          id="btn-generate-ai-analysis"
-        >
-          <span className="inline-flex items-center gap-2">
-            <Icon name="sparkles" size={16} />
-            Generar análisis de compatibilidad IA
-          </span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => setIsAssistantOpen(true)}
+            variant="ghost"
+            className="shrink-0 border border-border-strong bg-white hover:bg-slate-50"
+            id="btn-open-tender-assistant"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon name="message-square" size={16} />
+              Consultar asistente virtual
+            </span>
+          </Button>
+
+
+          <Button
+            onClick={() => router.push(`/matches/${tenderId}/analisis`)}
+            variant="primary"
+            className="shrink-0"
+            id="btn-generate-ai-analysis"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon name="sparkles" size={16} />
+              Generar análisis de compatibilidad IA
+            </span>
+          </Button>
+        </div>
       </div>
+
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <KeyValueCard
@@ -433,8 +584,16 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           </li>
         </ul>
       </Section>
+
+      <TenderAssistantDrawer
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+      />
     </section>
   );
+
 }
 
 function BackLink() {

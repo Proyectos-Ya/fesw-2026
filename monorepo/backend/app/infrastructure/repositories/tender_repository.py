@@ -1,22 +1,26 @@
-from typing import List, Optional
-from sqlalchemy.orm import selectinload
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 import uuid
+from datetime import datetime
 
-from app.domain.entities.tender import utc_now_naive
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.domain.entities.tender import Tender, TenderItem
+from sqlalchemy import func
+from sqlalchemy.orm import selectinload
+from sqlmodel import col, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.domain.entities.deep_analysis import VALID_RECOMMENDATIONS, DeepAnalysis
+from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
+from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 from app.infrastructure.repositories.tender_model import (
-    TenderModel,
     BuyerInstitutionModel,
     RegionModel,
-    TenderStatusModel,
     TenderItemModel,
+    TenderModel,
+    TenderStatusModel,
 )
-from app.domain.entities.deep_analysis import DeepAnalysis
-from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 
 
@@ -46,8 +50,9 @@ class TenderRepository(ITenderRepository):
             buyer_rut=model.buyer_rut,
             buyer_name=model.buyer.name if model.buyer else None,
             buyer_unit=model.buyer_unit,
-            province=model.province,
-            region=model.buyer.region.name if model.buyer and model.buyer.region else None,
+            region=model.buyer.region.name
+            if model.buyer and model.buyer.region
+            else None,
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -65,7 +70,6 @@ class TenderRepository(ITenderRepository):
             ],
         )
 
-
     def _to_model(self, entity: Tender) -> TenderModel:
         """Convert Domain Entity to DB Model."""
         return TenderModel(
@@ -79,54 +83,153 @@ class TenderRepository(ITenderRepository):
             last_change_at=entity.last_change_at,
             buyer_rut=entity.buyer_rut,
             buyer_unit=entity.buyer_unit,
-            province=entity.province,
             available_amount_clp=entity.available_amount_clp,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
 
-    async def get_tenders(self, filters: TenderFilters) -> List[Tender]:
+    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         """Retrieve tenders matching specified filters."""
+        # SQLModel anota las relaciones con el tipo de la entidad, no con el
+        # descriptor QueryableAttribute que SQLAlchemy instala en runtime, por lo
+        # que selectinload no puede tiparse sin ignorar el argumento.
         query = select(TenderModel).options(
-            selectinload(TenderModel.status),
-            selectinload(TenderModel.buyer).selectinload(BuyerInstitutionModel.region),
-            selectinload(TenderModel.items)
+            selectinload(TenderModel.status),  # type: ignore[arg-type]
+            selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
+                BuyerInstitutionModel.region  # type: ignore[arg-type]
+            ),
+            selectinload(TenderModel.items),  # type: ignore[arg-type]
         )
 
         # Apply join if region name filtering is requested
         if filters.regions:
             query = (
-                query.join(BuyerInstitutionModel, TenderModel.buyer_rut == BuyerInstitutionModel.rut)
-                .join(RegionModel, BuyerInstitutionModel.region_id == RegionModel.id)
-                .where(RegionModel.name.in_(filters.regions))
+                query.join(
+                    BuyerInstitutionModel,
+                    col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
+                )
+                .join(
+                    RegionModel,
+                    col(BuyerInstitutionModel.region_id) == col(RegionModel.id),
+                )
+                .where(col(RegionModel.name).in_(filters.regions))
             )
 
         if filters.ids:
-            query = query.where(TenderModel.id.in_(filters.ids))
-
-        if filters.provinces:
-            query = query.where(TenderModel.province.in_(filters.provinces))
+            query = query.where(col(TenderModel.id).in_(filters.ids))
 
         result = await self.session.exec(query)
         models = result.all()
 
         return [self._to_entity(m) for m in models]
 
-    async def get_by_code(self, code: str) -> Optional[TenderModel]:
+    def _search_conditions(self, criteria: TenderFilterCriteria) -> list:
+        """Traduce el criterio de búsqueda a condiciones de SQLModel.
+
+        Todo pasa por `col(...) == valor`, que genera parámetros ligados: los
+        valores nunca se concatenan a la sentencia. Ahí está la defensa real
+        contra inyección, no en sanitizar cadenas.
+        """
+        conditions = []
+
+        if criteria.status_codes:
+            # La tabla guarda `status_id`; el código semántico ('publicada') se
+            # deriva de él. Varios ids comparten código —1, 2 y 6 son todos
+            # 'publicada'— así que la traducción es de uno a muchos.
+            status_ids = [
+                status_id
+                for status_id, code in TENDER_STATUS_CODE_BY_ID.items()
+                if code in criteria.status_codes
+            ]
+            conditions.append(col(TenderModel.status_id).in_(status_ids))
+
+        if criteria.closing_from is not None:
+            conditions.append(col(TenderModel.closing_at) >= criteria.closing_from)
+        if criteria.closing_to is not None:
+            conditions.append(col(TenderModel.closing_at) <= criteria.closing_to)
+        if criteria.published_from is not None:
+            conditions.append(col(TenderModel.published_at) >= criteria.published_from)
+        if criteria.published_to is not None:
+            conditions.append(col(TenderModel.published_at) <= criteria.published_to)
+
+        # Una licitación sin monto queda fuera cuando el filtro está activo: en
+        # SQL la comparación contra NULL no es verdadera, que es la misma
+        # semántica del payload de Qdrant y la del filtro del frontend.
+        if criteria.min_amount is not None:
+            conditions.append(
+                col(TenderModel.available_amount_clp) >= criteria.min_amount
+            )
+        if criteria.max_amount is not None:
+            conditions.append(
+                col(TenderModel.available_amount_clp) <= criteria.max_amount
+            )
+
+        return conditions
+
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:
+        """Respaldo del buscador cuando no hay vector con que ordenar.
+
+        Ordena por fecha de cierre ascendente: sin relevancia que calcular, lo
+        más útil es lo que vence primero.
+        """
+        conditions = self._search_conditions(criteria)
+
+        # La región vive en la institución compradora, así que necesita join. Se
+        # aplica a las dos consultas para que el total corresponda a los mismos
+        # resultados que se devuelven.
+        def _with_region(query):
+            if not criteria.region_ids:
+                return query.where(*conditions) if conditions else query
+            query = query.join(
+                BuyerInstitutionModel,
+                col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
+            ).where(col(BuyerInstitutionModel.region_id).in_(criteria.region_ids))
+            return query.where(*conditions) if conditions else query
+
+        total_result = await self.session.exec(
+            _with_region(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
+        )
+        total = total_result.one()
+
+        page_query = _with_region(
+            select(TenderModel).options(
+                selectinload(TenderModel.status),  # type: ignore[arg-type]
+                selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
+                    BuyerInstitutionModel.region  # type: ignore[arg-type]
+                ),
+                selectinload(TenderModel.items),  # type: ignore[arg-type]
+            )
+        )
+        page_query = (
+            page_query.order_by(col(TenderModel.closing_at).asc())
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result = await self.session.exec(page_query)
+        return [self._to_entity(m) for m in result.all()], total
+
+    async def get_by_code(self, code: str) -> TenderModel | None:
         statement = select(TenderModel).where(TenderModel.code == code)
         result = await self.session.exec(statement)
         return result.first()
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
-        statement = select(BuyerInstitutionModel).where(BuyerInstitutionModel.rut == rut)
+        statement = select(BuyerInstitutionModel).where(
+            BuyerInstitutionModel.rut == rut
+        )
         result = await self.session.exec(statement)
         buyer = result.first()
-        
+
         if not buyer:
             now = utc_now_naive()
             buyer = BuyerInstitutionModel(
-                rut=rut, name=name, region_id=region_id,
-                created_at=now, updated_at=now
+                rut=rut, name=name, region_id=region_id, created_at=now, updated_at=now
             )
             self.session.add(buyer)
             await self.session.flush()
@@ -136,7 +239,7 @@ class TenderRepository(ITenderRepository):
         statement = select(TenderStatusModel).where(TenderStatusModel.id == status_id)
         result = await self.session.exec(statement)
         status = result.first()
-        
+
         if not status:
             ESTADOS_MAP = {
                 1: "Publicada",
@@ -144,7 +247,7 @@ class TenderRepository(ITenderRepository):
                 6: "Publicada",
                 7: "Cerrada",
                 8: "Desierta",
-                18: "Adjudicada"
+                18: "Adjudicada",
             }
 
             if status_id in ESTADOS_MAP:
@@ -156,17 +259,15 @@ class TenderRepository(ITenderRepository):
                 name_str = f"Estado Desconocido ({status_id})"
                 code_str = f"desconocido_{status_id}"
 
-            status = TenderStatusModel(
-                id=status_id,
-                code=code_str,
-                name=name_str
-            )
+            status = TenderStatusModel(id=status_id, code=code_str, name=name_str)
             self.session.add(status)
             await self.session.flush()
-            
+
         return status_id
 
-    async def save_complex_tender(self, tender_model: TenderModel, items: List[TenderItemModel]):
+    async def save_complex_tender(
+        self, tender_model: TenderModel, items: list[TenderItemModel]
+    ):
         self.session.add(tender_model)
         for item in items:
             self.session.add(item)
@@ -178,12 +279,22 @@ class TenderRepository(ITenderRepository):
 
     def _to_deep_analysis_entity(self, model: DeepAnalysisModel) -> DeepAnalysis:
         """Convert DeepAnalysisModel to DeepAnalysis domain entity."""
+        # La columna es un str libre: validamos contra el dominio antes de
+        # construir la entidad para no violar su contrato con datos corruptos.
+        recommendation = model.recommendation
+        if recommendation not in VALID_RECOMMENDATIONS:
+            raise ValueError(
+                f"Recomendación inválida en la base de datos para el análisis "
+                f"{model.id}: '{recommendation}'. "
+                f"Valores permitidos: {list(VALID_RECOMMENDATIONS)}"
+            )
+
         return DeepAnalysis(
             id=model.id,
             tender_id=model.tender_id,
             supplier_id=model.supplier_id,
             compatibility_score=model.compatibility_score,
-            recommendation=model.recommendation,
+            recommendation=recommendation,
             justification=model.justification,
             prompt_instruction=model.prompt_instruction,
             created_at=model.created_at,
@@ -204,10 +315,12 @@ class TenderRepository(ITenderRepository):
             updated_at=entity.updated_at,
         )
 
-    async def get_deep_analysis(self, tender_id: uuid.UUID, supplier_id: uuid.UUID) -> Optional[DeepAnalysis]:
+    async def get_deep_analysis(
+        self, tender_id: uuid.UUID, supplier_id: uuid.UUID
+    ) -> DeepAnalysis | None:
         statement = select(DeepAnalysisModel).where(
             DeepAnalysisModel.tender_id == tender_id,
-            DeepAnalysisModel.supplier_id == supplier_id
+            DeepAnalysisModel.supplier_id == supplier_id,
         )
         result = await self.session.exec(statement)
         model = result.first()
@@ -216,7 +329,7 @@ class TenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         statement = select(DeepAnalysisModel).where(
             DeepAnalysisModel.tender_id == deep_analysis.tender_id,
-            DeepAnalysisModel.supplier_id == deep_analysis.supplier_id
+            DeepAnalysisModel.supplier_id == deep_analysis.supplier_id,
         )
         result = await self.session.exec(statement)
         model = result.first()
@@ -234,3 +347,13 @@ class TenderRepository(ITenderRepository):
         await self.session.commit()
         await self.session.refresh(model)
         return self._to_deep_analysis_entity(model)
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        """Fecha de la licitación más reciente, para saber si la caché quedó atrás."""
+        statement = (
+            select(TenderModel.created_at)
+            .order_by(col(TenderModel.created_at).desc())
+            .limit(1)
+        )
+        result = await self.session.exec(statement)
+        return result.first()

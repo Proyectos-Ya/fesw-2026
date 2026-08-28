@@ -1,9 +1,11 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel, Relationship
+from sqlalchemy import JSON, Column
+from sqlmodel import Field, Relationship, SQLModel
+
+from app.shared.datetime_utils import utc_now_naive
 
 
 class RegionModel(SQLModel, table=True):
@@ -11,7 +13,7 @@ class RegionModel(SQLModel, table=True):
     id: int = Field(primary_key=True)
     name: str
 
-    institutions: List["BuyerInstitutionModel"] = Relationship(back_populates="region")
+    institutions: list["BuyerInstitutionModel"] = Relationship(back_populates="region")
 
 
 class TenderStatusModel(SQLModel, table=True):
@@ -20,7 +22,7 @@ class TenderStatusModel(SQLModel, table=True):
     code: str = Field(unique=True, index=True)
     name: str
 
-    tenders: List["TenderModel"] = Relationship(back_populates="status")
+    tenders: list["TenderModel"] = Relationship(back_populates="status")
 
 
 class BuyerInstitutionModel(SQLModel, table=True):
@@ -31,8 +33,8 @@ class BuyerInstitutionModel(SQLModel, table=True):
     created_at: datetime
     updated_at: datetime
 
-    region: Optional[RegionModel] = Relationship(back_populates="institutions")
-    tenders: List["TenderModel"] = Relationship(back_populates="buyer")
+    region: RegionModel | None = Relationship(back_populates="institutions")
+    tenders: list["TenderModel"] = Relationship(back_populates="buyer")
 
 
 class TenderModel(SQLModel, table=True):
@@ -40,22 +42,23 @@ class TenderModel(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     code: str = Field(unique=True, index=True)
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     status_id: int = Field(foreign_key="tender_status.id")
     published_at: datetime
     closing_at: datetime
     last_change_at: datetime
     buyer_rut: str = Field(foreign_key="buyer_institution.rut")
     buyer_unit: str
-    province: Optional[str] = None
-    available_amount_clp: Optional[float] = None
+    available_amount_clp: float | None = None
     created_at: datetime
     updated_at: datetime
 
-    status: Optional[TenderStatusModel] = Relationship(back_populates="tenders")
-    buyer: Optional[BuyerInstitutionModel] = Relationship(back_populates="tenders")
-    items: List["TenderItemModel"] = Relationship(back_populates="tender")
-    ai_analysis: Optional["TenderAIAnalysisModel"] = Relationship(back_populates="tender")
+    status: TenderStatusModel | None = Relationship(back_populates="tenders")
+    buyer: BuyerInstitutionModel | None = Relationship(back_populates="tenders")
+    items: list["TenderItemModel"] = Relationship(back_populates="tender")
+    ai_analysis: Optional["TenderAIAnalysisModel"] = Relationship(
+        back_populates="tender"
+    )
 
 
 class TenderItemModel(SQLModel, table=True):
@@ -64,11 +67,11 @@ class TenderItemModel(SQLModel, table=True):
     tender_id: UUID = Field(foreign_key="tender.id")
     product_code: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     quantity: float
     unit_of_measure: str
 
-    tender: Optional[TenderModel] = Relationship(back_populates="items")
+    tender: TenderModel | None = Relationship(back_populates="items")
 
 
 class TenderAIAnalysisModel(SQLModel, table=True):
@@ -80,4 +83,16 @@ class TenderAIAnalysisModel(SQLModel, table=True):
     match_justification: dict = Field(default=None, sa_column=Column(JSON))
     generated_at: datetime
 
-    tender: Optional[TenderModel] = Relationship(back_populates="ai_analysis")
+    tender: TenderModel | None = Relationship(back_populates="ai_analysis")
+
+
+# Cola de ingesta: guarda qué licitaciones se detectaron y cuáles ya se
+# procesaron. Al ser persistente, una caída o un 429 de Mercado Público no
+# pierde el rastro de lo que falta bajar.
+class TenderMetadataModel(SQLModel, table=True):
+    __tablename__ = "tender_metadata"  # type: ignore
+    id: UUID = Field(primary_key=True)
+    code: str = Field(unique=True, index=True)
+    is_processed: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    updated_at: datetime = Field(default_factory=utc_now_naive)

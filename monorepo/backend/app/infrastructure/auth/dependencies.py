@@ -1,4 +1,5 @@
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,11 +27,17 @@ def build_get_current_user(
 
     async def get_current_user(
         request: Request,
-        credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-        user_repo: IUserRepository = Depends(get_user_repo),
+        user_repo: Annotated[IUserRepository, Depends(get_user_repo)],
+        credentials: Annotated[
+            HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)
+        ] = None,
+        # credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+        # user_repo: IUserRepository = Depends(get_user_repo),
     ) -> User:
         # 1) Header Authorization tiene prioridad; 2) si no, la cookie
-        token = credentials.credentials if credentials else request.cookies.get(cookie_name)
+        token = (
+            credentials.credentials if credentials else request.cookies.get(cookie_name)
+        )
 
         unauthorized = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -43,7 +50,7 @@ def build_get_current_user(
         try:
             user_id = token_service.decode_token(token)
         except InvalidToken:
-            raise unauthorized
+            raise unauthorized from None
 
         user = await user_repo.get_by_id(user_id)
         if user is None or not user.active:

@@ -1,0 +1,573 @@
+[
+  {
+    "supplier_name": "Constructora e Ingeniería Alianza Ltda.",
+    "sectors": [
+      "Construcción",
+      "Obras Menores",
+      "Mantención de Infraestructura"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "83150e21-d3dc-4695-96ec-ba1fdf4beb76",
+        "code": "1101892-152-COT26",
+        "name": "SERVICIO REPARACION Y MANTENCION TECHUMBRE",
+        "buyer": "INSTITUTO DE INVESTIGACIONES AGROPECUARIAS",
+        "region": "Los Ríos",
+        "amount_clp": 1200000.0,
+        "final_percentage": "74%",
+        "final_score": 0.74,
+        "reranker_score": 0.605,
+        "multi_vector_score": 0.7877,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "b5c2b4f2-3ea7-4e9a-9712-58a4d3c95810",
+        "code": "3113-38-COT26",
+        "name": "MANTENCION TECHUMBRE",
+        "buyer": "DIRECCION DE RECUPERACION DE UNIDADES DE LA ARMADA",
+        "region": "Los Ríos",
+        "amount_clp": 151610.0,
+        "final_percentage": "72%",
+        "final_score": 0.7213,
+        "reranker_score": 0.5676,
+        "multi_vector_score": 0.7253,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "5e374898-705c-4ddf-ac91-0f97f36b36db",
+        "code": "1593-148-COT26",
+        "name": " Servicio de suministro de reparaciones, mantenciones, entre otros, Oficina Regional de Los Lagos ",
+        "buyer": "SUPERINTENDENCIA DE SERVICIOS SANITARIOS",
+        "region": "Los Ríos",
+        "amount_clp": 6900000.0,
+        "final_percentage": "70%",
+        "final_score": 0.696,
+        "reranker_score": 0.392,
+        "multi_vector_score": 0.5835,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 118.142,
+    "rerank_duration_sec": 7.928
+  },
+  {
+    "supplier_name": "TecnoCloud SpA",
+    "sectors": [
+      "Desarrollo de Software",
+      "Informática",
+      "Telecomunicaciones"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "0780e94d-b4f1-4798-b68b-b6980c119107",
+        "code": "1213444-212-COT26",
+        "name": "SERVICIO DE LICENCIAS DE HERRAMIENTAS DIGITALES Y MONITOREO DE REDES",
+        "buyer": "CORP MUNICIPAL SAN FERNANDO PARA LA ATENCION MENORES Y LAS A DE E Y S",
+        "region": "Los Ríos",
+        "amount_clp": 610000.0,
+        "final_percentage": "57%",
+        "final_score": 0.5673,
+        "reranker_score": 0.2596,
+        "multi_vector_score": 0.7369,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "d2f7055c-c03c-4f5f-b7cd-28e3388db300",
+        "code": "889473-1556-COT26",
+        "name": "SC 8425 - Licencias de software de inteligencia artificial generativa",
+        "buyer": "UNIVERSIDAD DE O'HIGGINS",
+        "region": "Los Ríos",
+        "amount_clp": 2200000.0,
+        "final_percentage": "54%",
+        "final_score": 0.5445,
+        "reranker_score": 0.2141,
+        "multi_vector_score": 0.6533,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "e688b5d7-0cef-4f58-9338-26d06d62b58f",
+        "code": "5178-4280-COT26",
+        "name": "LICENCIA PRO TOOL STUDIO SOFTWARE Y PRO TOOL STUDIO/SP 1065378 KS",
+        "buyer": "UNIVERSIDAD DE CHILE",
+        "region": "Los Ríos",
+        "amount_clp": 450000.0,
+        "final_percentage": "52%",
+        "final_score": 0.5227,
+        "reranker_score": 0.1703,
+        "multi_vector_score": 0.464,
+        "sector_match": false,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 144.794,
+    "rerank_duration_sec": 8.103
+  },
+  {
+    "supplier_name": "Distribuidora Médica del Sur SpA",
+    "sectors": [
+      "Insumos Médicos",
+      "Salud",
+      "Farmacia y Hospitalario"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "4c029c4c-8686-4c3c-a77e-ea86b69b5c0e",
+        "code": "3300-94-COT26",
+        "name": "INSUMOS CLINICOS",
+        "buyer": "I MUNICIPALIDAD DE LICANTEN",
+        "region": "Los Ríos",
+        "amount_clp": 600000.0,
+        "final_percentage": "94%",
+        "final_score": 0.9363,
+        "reranker_score": 0.8725,
+        "multi_vector_score": 0.7911,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "5002c3e3-cb17-4246-a2bb-c9ba0c49e3dd",
+        "code": "1239966-396-COT26",
+        "name": "insumos médicos Praps CPU",
+        "buyer": "CORPORACION DE EDUCACION, SALUD Y MENORES DE PUERT",
+        "region": "Los Ríos",
+        "amount_clp": 1050000.0,
+        "final_percentage": "87%",
+        "final_score": 0.8673,
+        "reranker_score": 0.8595,
+        "multi_vector_score": 0.6974,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "7e70b993-3850-4ae2-bcc3-515d5249e7bc",
+        "code": "2591-1757-COT26",
+        "name": "COMPRA DE INSUMOS MEDICOS (3 MESES)",
+        "buyer": "ILUSTRE MUNICIPALIDAD DE POZO ALMONTE",
+        "region": "Los Ríos",
+        "amount_clp": 5600000.0,
+        "final_percentage": "86%",
+        "final_score": 0.8604,
+        "reranker_score": 0.8457,
+        "multi_vector_score": 0.778,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 85.219,
+    "rerank_duration_sec": 9.49
+  },
+  {
+    "supplier_name": "Química y Limpieza Total S.A.",
+    "sectors": [
+      "Aseo e Higiene",
+      "Productos Químicos",
+      "Artículos de Limpieza"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "459c7015-991d-416c-837b-8a97e4262edd",
+        "code": "1870-15-COT26",
+        "name": "Adquisicion Articulos de Aseo DR Valparaíso",
+        "buyer": "Servicio Nacional de Turismo",
+        "region": "Los Ríos",
+        "amount_clp": 800000.0,
+        "final_percentage": "94%",
+        "final_score": 0.9373,
+        "reranker_score": 0.8746,
+        "multi_vector_score": 0.7436,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "bb0e24f4-a804-49e6-9aa4-2a6984aaa8d3",
+        "code": "3335-1007-COT26",
+        "name": "ADQUISICIÓN DE MATERIAL DE ASEO E HIGIENE PARA JARDIN INFANTIL Y SALA CUNA LOS RIOS ORD. 26 JUNJI",
+        "buyer": "I MUNICIPALIDAD DE LA UNION",
+        "region": "Los Lagos",
+        "amount_clp": 250000.0,
+        "final_percentage": "93%",
+        "final_score": 0.9262,
+        "reranker_score": 0.8524,
+        "multi_vector_score": 0.6535,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "8e07b3dc-4da7-4fca-811d-1084d1ae4053",
+        "code": "1142-120-COT26",
+        "name": "Se requiere cotizar Artículos de Aseo e Higiene Personal, RESIDENCIA TRANSITORIA. Ver antecedentes en archivo adjunto",
+        "buyer": "DELEGACIÓN PRESIDENCIAL REGIONAL DEL MAULE",
+        "region": "Los Ríos",
+        "amount_clp": 6000000.0,
+        "final_percentage": "91%",
+        "final_score": 0.9054,
+        "reranker_score": 0.9358,
+        "multi_vector_score": 0.7488,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 84.406,
+    "rerank_duration_sec": 7.211
+  },
+  {
+    "supplier_name": "Alimentos y Raciones del Sur SpA",
+    "sectors": [
+      "Alimentación",
+      "Catering",
+      "Abarrotes",
+      "Gastronomía"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "9339ef9f-144f-4aba-bbd9-bd4313ee89fe",
+        "code": "299-82-COT26",
+        "name": "E102RT9 SERVICO DE ALIMENTACIÓN Y CATERING PARA EVENTO - PCH - REGIÓN DE LOS RÍOS ",
+        "buyer": "INSTITUTO NACIONAL DE DEPORTES DE CHILE",
+        "region": "Los Lagos",
+        "amount_clp": 1050000.0,
+        "final_percentage": "96%",
+        "final_score": 0.9639,
+        "reranker_score": 0.9277,
+        "multi_vector_score": 0.7933,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "3e11d49f-f5a5-42c7-b187-283b257671b2",
+        "code": "4291-1001-COT26",
+        "name": "Servicio de catering y coffee break para actividades institucionales",
+        "buyer": "UNIVERSIDAD DE ANTOFAGASTA",
+        "region": "Los Ríos",
+        "amount_clp": 400000.0,
+        "final_percentage": "92%",
+        "final_score": 0.9221,
+        "reranker_score": 0.8441,
+        "multi_vector_score": 0.6047,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "9d121655-8823-496c-9ebd-fdc682a0387b",
+        "code": "2092-50-COT26",
+        "name": "Servicio de catering para actividades de DEPROV Valparaíso mes de agosto-septiembre. ",
+        "buyer": "Departamento Provincial de Educación Valparaíso - Isla de Pascua",
+        "region": "Los Ríos",
+        "amount_clp": 3270000.0,
+        "final_percentage": "92%",
+        "final_score": 0.9184,
+        "reranker_score": 0.8368,
+        "multi_vector_score": 0.7148,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 97.2,
+    "rerank_duration_sec": 7.365
+  },
+  {
+    "supplier_name": "Seguridad Integral y Vigilancia SpA",
+    "sectors": [
+      "Seguridad Privada",
+      "Vigilancia",
+      "Telecomunicaciones y CCTV"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "626faa69-a081-4518-8ad8-5721850bca8a",
+        "code": "2658-1010-COT26",
+        "name": "SERVICIO DE REVISIÓN, DIAGNÓSTICO Y RESTABLECIMIENTO DEL SISTEMA DE TELEVIGILANCIA",
+        "buyer": "I MUNICIPALIDAD DE ANCUD",
+        "region": "Los Ríos",
+        "amount_clp": 7000000.0,
+        "final_percentage": "76%",
+        "final_score": 0.7556,
+        "reranker_score": 0.5112,
+        "multi_vector_score": 0.6812,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "28c02f33-24ef-4129-b4bd-6d7508a4f479",
+        "code": "1233619-542-COT26",
+        "name": "Servicio y Adquisición e implementación, ampliación reubicación y configuración de CCTV para diferentes establecimientos perteneciente al SLEP Maule Costa",
+        "buyer": "SERVICIO LOCAL DE EDUCACIÓN PÚBLICA MAULE COSTA",
+        "region": "Los Ríos",
+        "amount_clp": 6700000.0,
+        "final_percentage": "74%",
+        "final_score": 0.7401,
+        "reranker_score": 0.6051,
+        "multi_vector_score": 0.5804,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "b5b83d01-c2c6-45c0-bdbe-056b848e881d",
+        "code": "872535-333-COT26",
+        "name": "\"SERVICIO DE REPOSICIÓN, MANTENCIÓN SISTEMA DE TELEVIGILANCIA JUNTA DE VECINOS QUINTA - MONTERILLA\"",
+        "buyer": "I MUNICIPALIDAD DE TENO",
+        "region": "Los Ríos",
+        "amount_clp": 1200000.0,
+        "final_percentage": "74%",
+        "final_score": 0.7394,
+        "reranker_score": 0.4788,
+        "multi_vector_score": 0.6556,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 147.677,
+    "rerank_duration_sec": 10.694
+  },
+  {
+    "supplier_name": "Comercial Papelería e Impresos Maule Ltda.",
+    "sectors": [
+      "Librería y Papelería",
+      "Mobiliario y Oficina",
+      "Insumos de Impresión"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "d3c33e86-91af-4b1c-8d72-1ed733d15356",
+        "code": "1425523-31-COT26",
+        "name": "UTILES DE OFICINA",
+        "buyer": "ASOCIACION NACIONAL DE GOBERNADORES Y GOBERNADORAS REGIONALES DE CHILE",
+        "region": "Los Ríos",
+        "amount_clp": 40000.0,
+        "final_percentage": "90%",
+        "final_score": 0.9015,
+        "reranker_score": 0.928,
+        "multi_vector_score": 0.6759,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "b25b66b8-e0ab-47a8-a767-b7b7ab0bb55b",
+        "code": "610181-19-COT26",
+        "name": "material de oficina ",
+        "buyer": "SUBSECRETARIA DEL MEDIO AMBIENTE",
+        "region": "Los Ríos",
+        "amount_clp": 200000.0,
+        "final_percentage": "88%",
+        "final_score": 0.883,
+        "reranker_score": 0.891,
+        "multi_vector_score": 0.8131,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "0557e87a-8bd6-4029-9558-50c7c75c60a3",
+        "code": "3869-634-COT26",
+        "name": "MATERIALES DE OFICINA ",
+        "buyer": "I MUNICIPALIDAD DE GORBEA",
+        "region": "Los Ríos",
+        "amount_clp": 500000.0,
+        "final_percentage": "84%",
+        "final_score": 0.8403,
+        "reranker_score": 0.9307,
+        "multi_vector_score": 0.6945,
+        "sector_match": false,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 100.856,
+    "rerank_duration_sec": 7.373
+  },
+  {
+    "supplier_name": "ElectroNorte Suministros Eléctricos SpA",
+    "sectors": [
+      "Electricidad",
+      "Ferretería",
+      "Iluminación Pública"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "a7361b7f-ee91-471e-bc84-8d1563dfdfed",
+        "code": "5190-138-COT26",
+        "name": "INFORMATICA - MATERIALES DE FERRETERÍA",
+        "buyer": "JEFATURA DE BIENESTAR (I.P)",
+        "region": "Los Ríos",
+        "amount_clp": 765584.0,
+        "final_percentage": "85%",
+        "final_score": 0.8462,
+        "reranker_score": 0.8174,
+        "multi_vector_score": 0.5896,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "ebbb55be-7564-4ee9-b214-fc6a0fd8f21d",
+        "code": "4195-758-COT26",
+        "name": "ARTICULOS DE FERRETERIA",
+        "buyer": "I MUNICIPALIDAD DE QUEMCHI",
+        "region": "Los Ríos",
+        "amount_clp": 250000.0,
+        "final_percentage": "56%",
+        "final_score": 0.5611,
+        "reranker_score": 0.7471,
+        "multi_vector_score": 0.5586,
+        "sector_match": false,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "c830a5e0-fbb4-4a68-a1e6-36753873cebe",
+        "code": "2440-1310-COT26",
+        "name": "MATERIALES DE FERRETERIA PARA EL ESTABBLECIMIENTO   LICEO ZAPALLAR ",
+        "buyer": "I MUNICIPALIDAD DE CURICO",
+        "region": "Los Ríos",
+        "amount_clp": 650000.0,
+        "final_percentage": "42%",
+        "final_score": 0.419,
+        "reranker_score": 0.838,
+        "multi_vector_score": 0.5376,
+        "sector_match": false,
+        "keyword_match": false
+      }
+    ],
+    "total_duration_sec": 86.265,
+    "rerank_duration_sec": 7.396
+  },
+  {
+    "supplier_name": "Transportes y Logística Ruta Chile SpA",
+    "sectors": [
+      "Transporte y Logística",
+      "Arriendo de Vehículos",
+      "Fletes"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "f0758dff-8090-43a6-982c-99d425e63881",
+        "code": "3897-118-COT26",
+        "name": "ARRIENDO DE VEHICULO",
+        "buyer": "I MUNICIPALIDAD DE FUTALEUFU",
+        "region": "Los Ríos",
+        "amount_clp": 960000.0,
+        "final_percentage": "95%",
+        "final_score": 0.9533,
+        "reranker_score": 0.9066,
+        "multi_vector_score": 0.8546,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "04c38613-8793-4662-8135-a5a934adadb1",
+        "code": "2395-721-COT26",
+        "name": " (Sol. Ped. 774) Servicio de Transporte , Programa Mas Adulto Mayor",
+        "buyer": "I MUNICIPALIDAD PEDRO AGUIRRE CERDA",
+        "region": "Los Ríos",
+        "amount_clp": 400000.0,
+        "final_percentage": "85%",
+        "final_score": 0.8466,
+        "reranker_score": 0.8182,
+        "multi_vector_score": 0.8366,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "534e0d26-dcee-49f4-9775-2ced2753f964",
+        "code": "3193-344-COT26",
+        "name": "ARRIENDO VEHÍCULO TIPO TRACTO CAMIÓN PARA UNIDAD MARÍTIMA ARCÁNGEL LPM-4406",
+        "buyer": "GOBERNACION MARITIMA DE TALCAHUANO",
+        "region": "Los Ríos",
+        "amount_clp": 510000.0,
+        "final_percentage": "84%",
+        "final_score": 0.8368,
+        "reranker_score": 0.7987,
+        "multi_vector_score": 0.7333,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 125.22,
+    "rerank_duration_sec": 7.394
+  },
+  {
+    "supplier_name": "Consultoría y Capacitaciones Talento Austral Ltda.",
+    "sectors": [
+      "Consultoría",
+      "Capacitación",
+      "Asesoría Legal y Financiera"
+    ],
+    "top_results": [
+      {
+        "rank": 1,
+        "tender_id": "8e767bf9-5e22-4dc4-b527-e9c5e9c1896d",
+        "code": "2440-1324-COT26",
+        "name": "SERVICIO DE CAPACITACION PARA EL ESTABLECIMIENTO EDUCACIONAL ESCUELA ESPAÑA ",
+        "buyer": "I MUNICIPALIDAD DE CURICO",
+        "region": "Los Ríos",
+        "amount_clp": 4500000.0,
+        "final_percentage": "73%",
+        "final_score": 0.7275,
+        "reranker_score": 0.5799,
+        "multi_vector_score": 0.5389,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 2,
+        "tender_id": "6276a681-1a98-404a-a406-fad66c12b183",
+        "code": "3014-221-COT26",
+        "name": "SERVICIOS DE CAPACITACIÓN PROGRAMA RED LOCAL DE APOYOS Y CUIDADOS",
+        "buyer": "I MUNICIPALIDAD DE COINCO",
+        "region": "Los Ríos",
+        "amount_clp": 1780000.0,
+        "final_percentage": "71%",
+        "final_score": 0.7096,
+        "reranker_score": 0.5441,
+        "multi_vector_score": 0.6066,
+        "sector_match": true,
+        "keyword_match": true
+      },
+      {
+        "rank": 3,
+        "tender_id": "f305ac7a-5571-4843-a6ff-a589feb9880d",
+        "code": "4047-88-COT26",
+        "name": "ADQUISICION SERVICIO DE CAPACITACION Y ASISTENCIA TECNICA EDUCATIVA PAR ESTABLECIMIENTOS EDUCACIONALES DE ISLA DE PASCUA",
+        "buyer": "I MUNICIPALIDAD DE ISLA DE PASCUA",
+        "region": "Los Ríos",
+        "amount_clp": 3570000.0,
+        "final_percentage": "63%",
+        "final_score": 0.6342,
+        "reranker_score": 0.3934,
+        "multi_vector_score": 0.5354,
+        "sector_match": true,
+        "keyword_match": true
+      }
+    ],
+    "total_duration_sec": 66.442,
+    "rerank_duration_sec": 9.114
+  }
+]

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 from uuid import UUID
+
+from app.application.schemas.tender_schema import TenderFilterCriteria
 
 
 class ITenderVectorRepository(ABC):
@@ -11,7 +12,8 @@ class ITenderVectorRepository(ABC):
     @abstractmethod
     async def ensure_collection(self) -> None:
         """
-        Asegura que la colección de licitaciones exista en Qdrant.
+        Asegura que la colección de licitaciones exista en Qdrant, con los
+        índices de payload de los campos por los que se filtra.
         """
         ...
 
@@ -35,16 +37,40 @@ class ITenderVectorRepository(ABC):
         ...
 
     @abstractmethod
-    async def search_by_supplier_vector(
+    async def search_by_vector(
         self,
-        supplier_vector: list[float],
+        vector: list[float],
         limit: int,
-        filters: Optional[dict] = None,
+        offset: int = 0,
+        criteria: TenderFilterCriteria | None = None,
     ) -> list[tuple[UUID, float]]:
         """
-        Busca las top N licitaciones afines al vector de perfil de un proveedor,
-        aplicando los filtros de metadatos sobre el payload.
+        Busca las licitaciones más afines a un vector, aplicando los criterios
+        como pre-filtro durante el recorrido.
+
+        Una sola operación para tres usos, que solo difieren en de dónde sale el
+        vector:
+
+        - dashboard de recomendaciones: vector del proveedor, filtro de estado
+        - buscador con texto: vector de la consulta, filtros del usuario
+        - buscador sin texto: vector del proveedor, filtros del usuario
+
+        `offset` permite pedir el siguiente bloque cuando el usuario agota el
+        primero. Su costo crece con la profundidad —Qdrant recupera y ordena
+        `offset + limit` para descartar los primeros—, así que sirve para
+        recorrer un catálogo acotado, no para paginar indefinidamente.
 
         Devuelve una lista de tuplas (tender_id, similarity_score).
+        """
+        ...
+
+    @abstractmethod
+    async def count(self, criteria: TenderFilterCriteria | None = None) -> int:
+        """
+        Cuenta cuántas licitaciones cumplen los criterios, sin considerar
+        similitud ni corte.
+
+        Es el total de coincidencias que ve el usuario: depende solo del conjunto
+        elegible, así que no cambia entre páginas.
         """
         ...

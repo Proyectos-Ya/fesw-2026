@@ -1,30 +1,38 @@
 # Node.js
+# El frontend tiene su propio .gitignore, más cercano y por lo tanto prioritario
+# para sus rutas (.next/, out/, build/, coverage). Aquí queda lo que aplica a
+# cualquier paquete Node que se agregue al monorepo.
 node_modules/
-.next/
-out/
-build/
 dist/
 pnpm-debug.log*
 
 # Python
-.venv/
-venv/
-env/
-ENV/
+# Los patrones de directorio van anclados con "/" inicial: sin anclar coinciden a
+# cualquier profundidad, y "env/" llegaría a ignorar en silencio un app/env/ con
+# código adentro.
+/.venv/
+/venv/
+/env/
+/ENV/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
 # Environment files
+# El comodín es a propósito: ".env" a secas solo coincide con ese nombre exacto,
+# y dejaba fuera las copias que uno hace a mano —.env.bak, .env.old, .env.prod,
+# .env.copia—. Todas llevan credenciales reales adentro, y este repositorio es
+# público. Con ".env.*" se ignoran todas por defecto y hay que declarar
+# explícitamente la excepción, en vez de ir persiguiendo cada variante nueva.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+# Única excepción: la plantilla, que solo tiene placeholders y sí debe versionarse.
+!.env.example
 .envrc
 .direnv
 
@@ -38,7 +46,12 @@ Thumbs.db
 playwright-report/
 test-results/
 
-# Claude Code
+# Claude Code / Agents / Graphify
 CLAUDE.md
 .claude
+.agents/
+graphify-out/
 
+PENDIENTES.md
+
+.continueignore

@@ -1,53 +1,33 @@
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from datetime import UTC, datetime
 from uuid import uuid4
+
 import pytest
-import pytest_asyncio
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import delete, select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.infrastructure.db import engine, SQLModel
-from app.infrastructure.repositories.tender_model import (
-    TenderModel,
-    BuyerInstitutionModel,
-    TenderStatusModel,
-    RegionModel,
-)
-from app.infrastructure.repositories.supplier_model import SupplierModel
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
+from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_model import (
+    BuyerInstitutionModel,
+    RegionModel,
+    TenderModel,
+    TenderStatusModel,
+)
+from app.shared.regions import CHILE_REGIONS
+
+# `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
+# que apunta a la base de test y no a la de desarrollo.
 
 
 def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def setup_db_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
-    yield
-
-
-@pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSession(engine) as session:
-        yield session
-        await session.exec(delete(DeepAnalysisModel))
-        await session.exec(delete(SupplierModel))
-        await session.exec(delete(TenderModel))
-        await session.exec(delete(BuyerInstitutionModel))
-        await session.exec(delete(TenderStatusModel))
-        await session.exec(delete(RegionModel))
-        await session.commit()
-    await engine.dispose()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
     """Crea y persiste las entidades relacionadas (Region, Status, Buyer, Supplier, Tender) necesarias para probar DeepAnalysisModel."""
     # 1. Seed region
-    region = RegionModel(id=13, name="Metropolitana")
+    region = RegionModel(id=13, name=CHILE_REGIONS[13])
     session.add(region)
 
     # 2. Seed status
@@ -86,7 +66,6 @@ async def seed_related_entities(session: AsyncSession, tender_id, supplier_id):
         last_change_at=utc_now_naive(),
         buyer_rut="12.345.678-9",
         buyer_unit="Operaciones",
-        province="Santiago",
         available_amount_clp=500000.0,
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),
@@ -118,7 +97,9 @@ async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession
     await db_session.commit()
 
     # Query back
-    result = await db_session.exec(select(DeepAnalysisModel).where(DeepAnalysisModel.id == analysis_id))
+    result = await db_session.exec(
+        select(DeepAnalysisModel).where(DeepAnalysisModel.id == analysis_id)
+    )
     retrieved = result.one()
 
     assert retrieved.id == analysis_id
@@ -126,7 +107,9 @@ async def test_persist_and_retrieve_deep_analysis_model(db_session: AsyncSession
     assert retrieved.supplier_id == supplier_id
     assert retrieved.compatibility_score == 88.5
     assert retrieved.recommendation == "Postular"
-    assert retrieved.justification == "Excelente alineación con el perfil del proveedor."
+    assert (
+        retrieved.justification == "Excelente alineación con el perfil del proveedor."
+    )
     assert retrieved.prompt_instruction == "Ignora cables de red"
     assert isinstance(retrieved.created_at, datetime)
     assert isinstance(retrieved.updated_at, datetime)
@@ -167,4 +150,3 @@ async def test_composite_unique_constraint_raises(db_session: AsyncSession):
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
-

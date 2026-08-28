@@ -1,4 +1,5 @@
-from typing import Callable
+from collections.abc import Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -13,6 +14,7 @@ from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.application.use_cases.auth.login_user import LoginUserUseCase
 from app.application.use_cases.auth.register_user import RegisterUserUseCase
+from app.config import settings
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import (
     InactiveUser,
@@ -44,12 +46,15 @@ def create_auth_router(
     )
     async def register(
         data: RegisterSchema,
-        repo: IUserRepository = Depends(get_user_repo),
+        # repo: IUserRepository = Depends(get_user_repo),
+        repo: Annotated[IUserRepository, Depends(get_user_repo)],
     ):
         try:
             return await RegisterUserUseCase(repo, hasher).execute(data)
         except UserAlreadyExists as e:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
+            ) from e
 
     @router.post(
         "/login",
@@ -59,12 +64,15 @@ def create_auth_router(
     async def login(
         data: LoginSchema,
         response: Response,
-        repo: IUserRepository = Depends(get_user_repo),
+        # repo: IUserRepository = Depends(get_user_repo),
+        repo: Annotated[IUserRepository, Depends(get_user_repo)],
     ):
         try:
             token, _ = await LoginUserUseCase(repo, hasher, token_service).execute(data)
         except (InvalidCredentials, InactiveUser) as e:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
+            ) from e
 
         # Cookie httpOnly para el frontend; el token también va en el body para Swagger
         response.set_cookie(
@@ -72,7 +80,7 @@ def create_auth_router(
             value=token,
             httponly=True,
             secure=cookie_secure,
-            samesite="lax",
+            samesite=settings.auth_cookie_samesite,
             max_age=cookie_max_age,
         )
         return TokenSchema(access_token=token)
@@ -84,7 +92,8 @@ def create_auth_router(
         return None
 
     @router.get("/me", response_model=UserPublicSchema)
-    async def me(current_user: User = Depends(get_current_user)):
+    # async def me(current_user: User = Depends(get_current_user)):
+    async def me(current_user: Annotated[User, Depends(get_current_user)]):
         return current_user
 
     return router

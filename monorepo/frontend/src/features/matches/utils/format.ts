@@ -28,11 +28,34 @@ export function normalizeScore(raw: number): number {
   return Math.max(0, Math.min(100, scaled));
 }
 
+/** ISO-8601 con zona explícita: sufijo `Z` u offset `±HH:MM` / `±HHMM`. */
+const HAS_TIMEZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+/** ISO-8601 con componente horario (lo distingue de un `YYYY-MM-DD` suelto). */
+const HAS_TIME = /\d{2}:\d{2}/;
+
+/**
+ * Convierte una fecha de la API en un `Date`.
+ *
+ * El backend persiste todo en UTC y serializa con sufijo `Z`. Si un endpoint
+ * devuelve el ISO sin offset, `new Date()` lo interpretaría como hora **local**
+ * y mostraría la hora corrida; por eso aquí se marca explícitamente como UTC,
+ * respetando la convención de persistencia del backend.
+ *
+ * Un `YYYY-MM-DD` sin hora ya se interpreta como UTC según el estándar, así que
+ * se deja intacto.
+ */
+export function parseApiDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const normalized = HAS_TIME.test(iso) && !HAS_TIMEZONE.test(iso) ? `${iso}Z` : iso;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 export function daysUntilClosing(closingAtIso: string, now: Date = new Date()): ClosingInfo {
-  const closing = new Date(closingAtIso);
-  if (Number.isNaN(closing.getTime())) {
+  const closing = parseApiDate(closingAtIso);
+  if (closing === null) {
     return { days: 0, label: "Fecha no disponible", tone: "neutral" };
   }
   const diffMs = closing.getTime() - now.getTime();
@@ -47,18 +70,20 @@ export function daysUntilClosing(closingAtIso: string, now: Date = new Date()): 
 }
 
 const closingFormatter = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
   day: "2-digit",
   month: "short",
   year: "numeric",
 });
 
 export function formatClosingDate(closingAtIso: string): string {
-  const closing = new Date(closingAtIso);
-  if (Number.isNaN(closing.getTime())) return "—";
-  return closingFormatter.format(closing);
+  const closing = parseApiDate(closingAtIso);
+  if (closing === null) return "—";
+  return closingFormatter.format(closing).replace(/\u00a0/g, " ");
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
   day: "2-digit",
   month: "short",
   year: "numeric",
@@ -66,9 +91,9 @@ const dateTimeFormatter = new Intl.DateTimeFormat("es-CL", {
   minute: "2-digit",
 });
 
+
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return dateTimeFormatter.format(d);
+  const d = parseApiDate(iso);
+  if (d === null) return "—";
+  return dateTimeFormatter.format(d).replace(/\u00a0/g, " ");
 }

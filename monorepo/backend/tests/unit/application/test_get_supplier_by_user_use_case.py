@@ -4,6 +4,7 @@ Pruebas unitarias de GetSupplierByUserUseCase.
 Verifica que el caso de uso recupere la empresa del usuario autenticado
 y que falle con SupplierNotFoundForUser cuando el usuario no tiene empresa.
 """
+
 from uuid import uuid4
 
 import pytest

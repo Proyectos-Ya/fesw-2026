@@ -1,27 +1,34 @@
-import pytest
-from datetime import datetime, timedelta, timezone
-from uuid import uuid4, UUID
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import UUID, uuid4
 
-from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import GetOrCreateDeepAnalysisUseCase
-from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
-from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.matching_result_repository import IMatchingResultRepository
+import pytest
+
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
+from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.deep_analysis_service import IDeepAnalysisService
-from app.domain.entities.supplier import Supplier
-from app.domain.entities.tender import Tender
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
+    GetOrCreateDeepAnalysisUseCase,
+)
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
+from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender import Tender
+from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderNotFound
-from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
-from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
 from tests.unit.application.fakes import InMemorySupplierRepository
-
 
 # ---------------------------------------------------------------------------
 # Fakes específicos para la prueba del caso de uso
 # ---------------------------------------------------------------------------
+
 
 class FakeTenderRepositoryForAnalysis(ITenderRepository):
     def __init__(self):
@@ -36,13 +43,21 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
             results.append(t)
         return results
 
-    async def get_by_code(self, code: str) -> Optional[any]:
+    async def search_tenders(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[Tender], int]:  # noqa: ARG002
+        return ([], 0)
+
+    async def get_by_code(self, code: str) -> Any | None:
         return None
 
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
         return rut
 
-    async def save_complex_tender(self, tender_model: any, items: list[any]) -> None:
+    async def save_complex_tender(self, tender_model: Any, items: list[Any]) -> None:
         pass
 
     async def get_or_create_status(self, status_id: int) -> int:
@@ -51,13 +66,24 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
     async def rollback(self) -> None:
         pass
 
-    async def get_deep_analysis(self, tender_id: UUID, supplier_id: UUID) -> Optional[DeepAnalysis]:
+    async def get_deep_analysis(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> DeepAnalysis | None:
         return self.analyses.get((tender_id, supplier_id))
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
-        key = (deep_analysis.tender_id, deep_analysis.supplier_id)
-        self.analyses[key] = deep_analysis
+        self.analyses[(deep_analysis.tender_id, deep_analysis.supplier_id)] = (
+            deep_analysis
+        )
         return deep_analysis
+
+    async def get_latest_tender_created_at(self) -> datetime | None:
+        if not self.tenders:
+            return None
+        return max(
+            (t.created_at for t in self.tenders.values() if t.created_at is not None),
+            default=None,
+        )
 
 
 class FakeMatchingResultRepositoryForAnalysis(IMatchingResultRepository):
@@ -89,10 +115,10 @@ class FakeDeepAnalysisService(IDeepAnalysisService):
         tender: Tender,
         supplier: Supplier,
         matching_score: float,
-        prompt_instruction: Optional[str] = None
+        prompt_instruction: str | None = None,
     ) -> DeepAnalysis:
         self.calls.append((tender.id, supplier.id, matching_score, prompt_instruction))
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         return DeepAnalysis(
             tender_id=tender.id,
             supplier_id=supplier.id,
@@ -101,13 +127,13 @@ class FakeDeepAnalysisService(IDeepAnalysisService):
             justification="Cumple con todo.",
             prompt_instruction=prompt_instruction,
             created_at=now,
-            updated_at=now
+            updated_at=now,
         )
 
 
 # Helper para crear objetos de prueba
 def create_dummy_tender(tender_id: UUID) -> Tender:
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Tender(
         id=tender_id,
         code=f"LIC-{tender_id}",
@@ -125,7 +151,9 @@ def create_dummy_tender(tender_id: UUID) -> Tender:
     )
 
 
-def create_dummy_supplier(supplier_id: UUID, user_id: UUID, updated_at: datetime) -> Supplier:
+def create_dummy_supplier(
+    supplier_id: UUID, user_id: UUID, updated_at: datetime
+) -> Supplier:
     return Supplier(
         id=supplier_id,
         user_id=user_id,
@@ -139,6 +167,7 @@ def create_dummy_supplier(supplier_id: UUID, user_id: UUID, updated_at: datetime
 # ---------------------------------------------------------------------------
 # Pruebas Unitarias del Caso de Uso
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_supplier_not_found_raises():
@@ -159,7 +188,11 @@ async def test_tender_not_found_raises():
     supplier_id = uuid4()
     user_id = uuid4()
     supplier_repo = InMemorySupplierRepository()
-    await supplier_repo.save(create_dummy_supplier(supplier_id, user_id, datetime.now(timezone.utc).replace(tzinfo=None)))
+    await supplier_repo.save(
+        create_dummy_supplier(
+            supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
+        )
+    )
 
     use_case = GetOrCreateDeepAnalysisUseCase(
         supplier_repo=supplier_repo,
@@ -177,10 +210,14 @@ async def test_matching_score_not_found_raises():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
+
     supplier_repo = InMemorySupplierRepository()
-    await supplier_repo.save(create_dummy_supplier(supplier_id, user_id, datetime.now(timezone.utc).replace(tzinfo=None)))
-    
+    await supplier_repo.save(
+        create_dummy_supplier(
+            supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
+        )
+    )
+
     tender_repo = FakeTenderRepositoryForAnalysis()
     tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
 
@@ -200,11 +237,13 @@ async def test_create_new_analysis_success():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
+
     supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, datetime.now(timezone.utc).replace(tzinfo=None))
+    supplier = create_dummy_supplier(
+        supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
+    )
     await supplier_repo.save(supplier)
-    
+
     tender_repo = FakeTenderRepositoryForAnalysis()
     tender = create_dummy_tender(tender_id)
     tender_repo.tenders[tender_id] = tender
@@ -215,7 +254,7 @@ async def test_create_new_analysis_success():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -228,15 +267,18 @@ async def test_create_new_analysis_success():
     )
 
     # Ejecutar
-    result = await use_case.execute(tender_id=tender_id, user_id=user_id, prompt_instruction="Usar ISO")
+    result = await use_case.execute(
+        tender_id=tender_id, user_id=user_id, prompt_instruction="Usar ISO"
+    )
 
     # Aserciones
+    assert result is not None
     assert result.compatibility_score == 85.0  # final_score * 100
     assert result.recommendation == "Postular"
     assert result.prompt_instruction == "Usar ISO"
     assert len(ai_service.calls) == 1
     assert ai_service.calls[0] == (tender_id, supplier_id, 85.0, "Usar ISO")
-    
+
     # Verificar persistencia en repo
     persisted = await tender_repo.get_deep_analysis(tender_id, supplier_id)
     assert persisted is not None
@@ -249,9 +291,9 @@ async def test_return_existing_analysis_no_profile_change():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
+
     # Simulamos que el proveedor se actualizó hace 2 horas y el análisis se generó hace 1 hora (no hay cambios de perfil desde entonces)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     supplier_repo = InMemorySupplierRepository()
     supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
     await supplier_repo.save(supplier)
@@ -265,7 +307,7 @@ async def test_return_existing_analysis_no_profile_change():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -293,6 +335,7 @@ async def test_return_existing_analysis_no_profile_change():
     result = await use_case.execute(tender_id=tender_id, user_id=user_id)
 
     # Debe retornar el existente directamente sin llamar a Gemini
+    assert result is not None
     assert result.recommendation == "Evaluar con cautela"
     assert result.justification == "Ya calculado"
     assert len(ai_service.calls) == 0
@@ -304,13 +347,13 @@ async def test_regenerate_automatically_on_profile_updated():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
+
     # Proveedor actualizado hace 10 minutos
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     supplier_repo = InMemorySupplierRepository()
     supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(minutes=10))
     await supplier_repo.save(supplier)
-    
+
     tender_repo = FakeTenderRepositoryForAnalysis()
     tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
 
@@ -320,7 +363,7 @@ async def test_regenerate_automatically_on_profile_updated():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -350,7 +393,13 @@ async def test_regenerate_automatically_on_profile_updated():
 
     # Debe haber regenerado porque el perfil cambió después, reutilizando el prompt anterior
     assert len(ai_service.calls) == 1
-    assert ai_service.calls[0] == (tender_id, supplier_id, 85.0, "Instruccion previa guardada")
+    assert ai_service.calls[0] == (
+        tender_id,
+        supplier_id,
+        85.0,
+        "Instruccion previa guardada",
+    )
+    assert result is not None
     assert result.recommendation == "Postular"
     assert result.prompt_instruction == "Instruccion previa guardada"
 
@@ -361,12 +410,12 @@ async def test_manual_force_regenerate_overwrites_prompt():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    now = datetime.now(UTC).replace(tzinfo=None)
     supplier_repo = InMemorySupplierRepository()
     supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
     await supplier_repo.save(supplier)
-    
+
     tender_repo = FakeTenderRepositoryForAnalysis()
     tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
 
@@ -376,7 +425,7 @@ async def test_manual_force_regenerate_overwrites_prompt():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -405,12 +454,18 @@ async def test_manual_force_regenerate_overwrites_prompt():
         tender_id=tender_id,
         user_id=user_id,
         force_regenerate=True,
-        prompt_instruction="Priorizar certificaciones ISO 14001"
+        prompt_instruction="Priorizar certificaciones ISO 14001",
     )
 
     # Debe haber llamado a Gemini con el nuevo prompt
     assert len(ai_service.calls) == 1
-    assert ai_service.calls[0] == (tender_id, supplier_id, 85.0, "Priorizar certificaciones ISO 14001")
+    assert ai_service.calls[0] == (
+        tender_id,
+        supplier_id,
+        85.0,
+        "Priorizar certificaciones ISO 14001",
+    )
+    assert result is not None
     assert result.prompt_instruction == "Priorizar certificaciones ISO 14001"
 
 
@@ -420,11 +475,13 @@ async def test_only_if_exists_returns_none_when_missing():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
+
     supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, datetime.now(timezone.utc).replace(tzinfo=None))
+    supplier = create_dummy_supplier(
+        supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
+    )
     await supplier_repo.save(supplier)
-    
+
     tender_repo = FakeTenderRepositoryForAnalysis()
     tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
 
@@ -434,7 +491,7 @@ async def test_only_if_exists_returns_none_when_missing():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -448,9 +505,7 @@ async def test_only_if_exists_returns_none_when_missing():
 
     # Ejecutar con only_if_exists=True
     result = await use_case.execute(
-        tender_id=tender_id,
-        user_id=user_id,
-        only_if_exists=True
+        tender_id=tender_id, user_id=user_id, only_if_exists=True
     )
 
     # Debe retornar None y no llamar al LLM
@@ -464,8 +519,8 @@ async def test_only_if_exists_returns_existing_when_present():
     supplier_id = uuid4()
     user_id = uuid4()
     tender_id = uuid4()
-    
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    now = datetime.now(UTC).replace(tzinfo=None)
     supplier_repo = InMemorySupplierRepository()
     supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
     await supplier_repo.save(supplier)
@@ -479,7 +534,7 @@ async def test_only_if_exists_returns_existing_when_present():
         tender_id=tender_id,
         similarity_score=0.80,
         final_score=0.85,
-        model_version="v1"
+        model_version="v1",
     )
     await matching_result_repo.save_bulk([matching_result])
 
@@ -505,9 +560,7 @@ async def test_only_if_exists_returns_existing_when_present():
 
     # Ejecutar con only_if_exists=True
     result = await use_case.execute(
-        tender_id=tender_id,
-        user_id=user_id,
-        only_if_exists=True
+        tender_id=tender_id, user_id=user_id, only_if_exists=True
     )
 
     # Debe retornar el análisis existente

@@ -41,4 +41,3 @@ class ISupplierVectorRepository(ABC):
         Devuelve una lista de floats con el embedding si existe, o None si no.
         """
         ...
-

@@ -1,135 +1,138 @@
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any
 
 from app.application.repositories.tender_repository import ITenderRepository
-from app.application.repositories.tender_vector_repository import ITenderVectorRepository
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 from app.application.services.embedding_service import IEmbeddingService
-from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
-from app.infrastructure.repositories.tender_model import TenderModel, TenderItemModel
+from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
+from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
+from app.shared.datetime_utils import to_utc_epoch
 
 
 class TenderIngestionUseCase:
-    REGION_MAP = {
-        "Región de Tarapacá": 1, "Tarapacá": 1,
-        "Región de Antofagasta": 2, "Antofagasta": 2,
-        "Región de Atacama": 3, "Atacama": 3,
-        "Región de Coquimbo": 4, "Coquimbo": 4,
-        "Región de Valparaíso": 5, "Valparaíso": 5, "Valparaiso": 5,
-        "Región del Libertador Gral. Bernardo O’Higgins": 6, "Región del Libertador General Bernardo O'Higgins": 6, "O'Higgins": 6, "O’Higgins": 6,
-        "Región del Maule": 7, "Maule": 7,
-        "Región del Biobío": 8, "Región del Bio bío": 8, "Biobío": 8, "Bio-Bio": 8,
-        "Región de la Araucanía": 9, "Región de La Araucanía": 9, "Araucanía": 9, "Araucania": 9,
-        "Región de Los Lagos": 10, "Los Lagos": 10,
-        "Región de Aysén del Gral. Carlos Ibáñez del Campo": 11, "Región de Aysén del General Carlos Ibáñez del Campo": 11, "Aysén": 11, "Aysen": 11,
-        "Región de Magallanes y de la Antártica Chilena": 12, "Magallanes y Antártica": 12, "Magallanes": 12,
-        "Región Metropolitana de Santiago": 13, "Metropolitana": 13, "Región Metropolitana": 13,
-        "Región de Los Ríos": 14, "Región de Los Rios": 14, "Los Ríos": 14, "Los Rios": 14,
-        "Región de Arica y Parinacota": 15, "Arica y Parinacota": 15,
-        "Región de Ñuble": 16, "Ñuble": 16, "Nuble": 16
-    }
     # Mapeo de CodigoEstado (int) al código de string usado en Qdrant y constantes.
     # Definido en shared/constants para mantener una sola fuente de verdad con
     # el seeder y el repositorio SQL.
-    _STATUS_CODE_MAP: Dict[int, str] = TENDER_STATUS_CODE_BY_ID
+    _STATUS_CODE_MAP: dict[int, str] = TENDER_STATUS_CODE_BY_ID
 
     def __init__(
         self,
-        ingestion_service: ITenderIngestionService,
         repository: ITenderRepository,
         embedding_service: IEmbeddingService,
         tender_vector_repo: ITenderVectorRepository,
     ):
-        self.service = ingestion_service
         self.repo = repository
         self.embedding_service = embedding_service
         self.tender_vector_repo = tender_vector_repo
         self.text_builder = TextBuilder()
 
-    async def execute(self, limit: Optional[int] = None) -> Dict[str, Any]:
-        dtos = await self.service.fetch_public_tenders()
-        
-        if limit:
-            dtos = dtos[:limit]
-            print(f"[Ingesta] Modo desarrollo activo. Procesando solo {limit} registros.")
+    async def execute(self, dto: TenderIngestaDTO) -> dict[str, Any]:
+        """Ingesta una licitación. La cola de pendientes la maneja el servicio."""
+        try:
+            if await self.repo.get_by_code(dto.code):
+                return {
+                    "status": "skipped",
+                    "message": f"Tender {dto.code} already exists",
+                }
 
-        stats = {"fetched": len(dtos), "saved": 0, "skipped": 0}
+            if (
+                not dto.buyer_rut
+                or dto.buyer_rut.strip() == ""
+                or dto.buyer_rut == "Sin RUT"
+            ):
+                safe_buyer_rut = f"GENERIC-{dto.code}"
+            else:
+                safe_buyer_rut = dto.buyer_rut
 
-        for dto in dtos:
-            try:
-                if await self.repo.get_by_code(dto.code):
-                    stats["skipped"] += 1
-                    continue
+            # El id llega como dato desde la API; ya no se deduce del nombre.
+            region_id = dto.region_id
 
-                if not dto.buyer_rut or dto.buyer_rut.strip() == "" or dto.buyer_rut == "Sin RUT":
-                    safe_buyer_rut = f"GENERIC-{dto.code}"
-                else:
-                    safe_buyer_rut = dto.buyer_rut
+            tender_id = uuid.uuid4()
+            now = utc_now_naive()
 
-                region_id = self.REGION_MAP.get(dto.region_name, 7)
-                await self.repo.get_or_create_buyer(
-                    rut=safe_buyer_rut,
-                    name=dto.buyer_name,
-                    region_id=region_id
-                )
+            new_tender = TenderModel(
+                id=tender_id,
+                code=dto.code,
+                name=dto.name,
+                description=dto.description,
+                status_id=dto.status_code,
+                published_at=dto.published_at,
+                closing_at=dto.closing_at,
+                last_change_at=now,
+                buyer_rut=safe_buyer_rut,
+                buyer_unit=dto.buyer_unit,
+                available_amount_clp=dto.available_amount_clp,
+                created_at=now,
+                updated_at=now,
+            )
 
-                await self.repo.get_or_create_status(status_id=dto.status_code)
-
-                tender_id = uuid.uuid4()
-                now = utc_now_naive()
-
-                new_tender = TenderModel(
-                    id=tender_id,
-                    code=dto.code,
-                    name=dto.name,
-                    description=dto.description,
-                    status_id=dto.status_code,
-                    published_at=dto.published_at,
-                    closing_at=dto.closing_at,
-                    last_change_at=now,
-                    buyer_rut=safe_buyer_rut,
-                    buyer_unit=dto.buyer_unit,
-                    province=None, 
-                    available_amount_clp=dto.available_amount_clp,
-                    created_at=now,
-                    updated_at=now
-                )
-
-                tender_items = [
-                    TenderItemModel(
-                        id=uuid.uuid4(),
-                        tender_id=tender_id,
-                        product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
-                        name=item.nombre_producto,
-                        description=item.descripcion,
-                        quantity=item.cantidad,
-                        unit_of_measure=item.unidad_medida
-                    ) for item in dto.items
-                ]
-
-                text = self.text_builder.build_from_tender(new_tender, tender_items)
-                await self.repo.save_complex_tender(new_tender, tender_items)
-                vectors = await self.embedding_service.embed([text])
-                status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
-                await self.tender_vector_repo.upsert(
+            tender_items = [
+                TenderItemModel(
+                    id=uuid.uuid4(),
                     tender_id=tender_id,
-                    embedding=vectors[0],
-                    payload={
-                        "status_code": status_code,
-                        "region_id": region_id,
-                        "available_amount_clp": dto.available_amount_clp,
-                    },
+                    product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
+                    name=item.nombre_producto,
+                    description=item.descripcion,
+                    quantity=item.cantidad,
+                    unit_of_measure=item.unidad_medida,
                 )
-                stats["saved"] += 1
+                for item in dto.items
+            ]
 
-            except Exception as e:
-                print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
-                await self.repo.rollback()
-                continue
+            text = self.text_builder.build_from_tender(new_tender, tender_items)
+            vectors = await self.embedding_service.embed([text])
+            status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
 
-        return {
-            "status": "success",
-            "summary": stats
-        }
+            # Qdrant antes que SQL, deliberadamente. Las dos escrituras no
+            # comparten transacción, así que una puede fallar tras la otra;
+            # lo que sí se elige es hacia qué lado queda el desbalance:
+            #
+            #   fila en SQL sin punto   → invisible para el matching de forma
+            #                             permanente (Qdrant es el único punto
+            #                             de entrada y get_by_code impide el
+            #                             reintento).
+            #   punto sin fila en SQL   → rank_tenders (3.3.1) lo elimina en
+            #                             cuanto aparece en una búsqueda.
+            #
+            # Escribiendo primero el vector, el único desbalance posible es
+            # el que el sistema ya reconcilia solo.
+            await self.tender_vector_repo.upsert(
+                tender_id=tender_id,
+                embedding=vectors[0],
+                payload={
+                    "status_code": status_code,
+                    "region_id": region_id,
+                    "available_amount_clp": dto.available_amount_clp,
+                    # Como epoch entero: Qdrant no compara `datetime`, y el
+                    # buscador manual pre-filtra por rango de fechas sobre el
+                    # payload. Sin esto, filtrar por fecha obligaría a traer
+                    # top-K y descartar después, que devuelve casi nada en
+                    # cuanto el filtro es algo específico.
+                    "closing_at": to_utc_epoch(dto.closing_at),
+                    "published_at": to_utc_epoch(dto.published_at),
+                },
+            )
+
+            # Recién acá se abre la transacción SQL. Ambos get_or_create
+            # hacen flush, así que dejarlos antes del embedding mantendría
+            # los locks tomados durante toda la inferencia del modelo.
+            # Son las claves foráneas de new_tender: deben existir al commit.
+            await self.repo.get_or_create_buyer(
+                rut=safe_buyer_rut, name=dto.buyer_name, region_id=region_id
+            )
+            await self.repo.get_or_create_status(status_id=dto.status_code)
+            await self.repo.save_complex_tender(new_tender, tender_items)
+
+            return {"status": "success", "tender_code": dto.code}
+
+        except Exception as e:
+            # get_or_create_buyer/status hacen flush dentro de la misma
+            # transacción: sin rollback quedarían pendientes en la sesión.
+            print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
+            await self.repo.rollback()
+            raise

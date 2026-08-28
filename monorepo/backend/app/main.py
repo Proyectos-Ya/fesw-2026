@@ -1,26 +1,45 @@
-from contextlib import asynccontextmanager
 import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlmodel import SQLModel
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
-from qdrant_client import QdrantClient, AsyncQdrantClient
-from qdrant_client.models import VectorParams, Distance
 
-from app.infrastructure.services.tenders.mercado_publico_client import MercadoPublicoClient
-from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
-
-from app.bootstrap import bootstrap
+from app.bootstrap import bootstrap, build_notification_runners
 from app.config import settings
-from app.infrastructure.db import engine
-from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.repositories.qdrant_tender_repository import (
+    QdrantTenderRepository,
+)
+from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.notifications.notification_scheduler import (
+    NotificationScheduler,
+)
+from app.infrastructure.services.tenders.mercado_publico_client import (
+    MercadoPublicoClient,
+)
+from app.infrastructure.services.tenders.tender_ingestion_service import (
+    TenderIngestionService,
+)
+from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    # El esquema ya NO se crea acá. Antes esto era `SQLModel.metadata.create_all`,
+    # con dos problemas: `create_all` agrega las tablas que faltan pero **no
+    # altera las existentes**, así que cualquier columna o restricción nueva
+    # quedaba fuera en silencio; y con dos réplicas arrancando a la vez, ambas
+    # intentaban crear el esquema al mismo tiempo.
+    #
+    # Ahora lo hace Alembic, como paso previo y explícito:
+    #     alembic upgrade head
+    # Verificamos que se haya corrido para fallar acá, con un mensaje claro, en
+    # vez de más adelante con un error de "relation does not exist".
+    await verificar_esquema_migrado()
+
     app.state.qdrant_client = QdrantClient(url=settings.qdrant_url)
     app.state.qdrant_async_client = AsyncQdrantClient(url=settings.qdrant_url)
 
@@ -31,27 +50,72 @@ async def lifespan(app: FastAPI):
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="suppliers",
-            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-        )
-    if "tenders" not in existing:
-        app.state.qdrant_client.create_collection(
-            collection_name="tenders",
-            vectors_config={"tender": VectorParams(size=1024, distance=Distance.COSINE)},
+            vectors_config=VectorParams(
+                size=settings.embedding_vector_size, distance=Distance.COSINE
+            ),
         )
 
-    ingestion_service = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-    scheduler = TenderScheduler(
+    # La colección de licitaciones se delega al repositorio en vez de crearse
+    # inline: además de la colección, `ensure_collection` crea los índices de
+    # payload que el pre-filtrado del buscador necesita. Creándola aquí a mano,
+    # esos índices no existirían nunca en un entorno real.
+    await QdrantTenderRepository(
+        client=app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    ).ensure_collection()
+
+    client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+    ingestion_service = TenderIngestionService(
         engine=engine,
-        ingestion_service=ingestion_service,
+        client=client,
         embedding_service=app.state.embedding_service,
         qdrant_client=app.state.qdrant_async_client,
-        is_dev=settings.is_dev,
     )
-    print("[Main] Iniciando scheduler de ingesta...")
-    ingestion_task = asyncio.create_task(scheduler.start_periodic_ingestion())
+    scheduler = TenderScheduler(ingestion_service=ingestion_service)
+    metadata_task = None
+    processing_task = None
+    if settings.run_auto_ingestion:
+        print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
+        metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
+        processing_task = asyncio.create_task(scheduler.start_processing_loop())
+    else:
+        print(
+            "[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local."
+        )
+
+    # Alertas de licitaciones (HdU 08). Van aparte de la ingesta: el corpus
+    # puede venir de un dump y aun así hay que avisar de lo que ya está en la
+    # base, así que este bucle no depende de RUN_AUTO_INGESTION.
+    scan_task = None
+    delivery_task = None
+    digest_task = None
+    if settings.run_notification_scan:
+        scan_all, dispatch_pending, build_digest = build_notification_runners(app)
+        notification_scheduler = NotificationScheduler(
+            scan_all=scan_all,
+            dispatch_pending=dispatch_pending,
+            build_digest=build_digest,
+            scan_interval_seconds=settings.notification_scan_interval_seconds,
+            digest_hour=settings.notification_digest_hour,
+        )
+        print("[Main] Iniciando tareas en segundo plano de alertas...")
+        scan_task = asyncio.create_task(notification_scheduler.start_scan_loop())
+        delivery_task = asyncio.create_task(
+            notification_scheduler.start_delivery_loop()
+        )
+        digest_task = asyncio.create_task(notification_scheduler.start_digest_loop())
+    else:
+        print("[Main] Alertas desactivadas (RUN_NOTIFICATION_SCAN=false)")
+
     yield
 
-    ingestion_task.cancel()
+    if metadata_task:
+        metadata_task.cancel()
+    if processing_task:
+        processing_task.cancel()
+    for task in (scan_task, delivery_task, digest_task):
+        if task:
+            task.cancel()
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
 

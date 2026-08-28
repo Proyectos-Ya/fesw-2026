@@ -46,4 +46,23 @@ describe("proxy (guardia de autenticación)", () => {
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/");
   });
+
+  it("conserva el destino al redirigir una ruta profunda a /login", () => {
+    // Es el enlace de un correo de alerta: sin el parámetro, tras iniciar
+    // sesión el usuario aterrizaría en el home y tendría que volver al correo.
+    const response = proxy(makeRequest("/matches/abc-123", false));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/login?next=%2Fmatches%2Fabc-123",
+    );
+  });
+
+  it("incluye la query del destino en el parámetro de retorno", () => {
+    const response = proxy(makeRequest("/matches?region=RM", false));
+
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/login?next=%2Fmatches%3Fregion%3DRM",
+    );
+  });
 });

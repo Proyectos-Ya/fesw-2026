@@ -1,14 +1,14 @@
+from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import (
-    Region,
-    TenderStatus,
     BuyerInstitution,
-    TenderItem,
-    TenderAIAnalysis,
+    Region,
     Tender,
+    TenderAIAnalysis,
+    TenderItem,
+    TenderStatus,
 )
-from app.domain.entities.deep_analysis import DeepAnalysis
 
 __all__ = [
     "MatchingResult",
@@ -21,4 +21,3 @@ __all__ = [
     "Tender",
     "DeepAnalysis",
 ]
-
