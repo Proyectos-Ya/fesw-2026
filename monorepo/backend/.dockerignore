@@ -14,6 +14,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
 
@@ -25,6 +26,10 @@ htmlcov/
 # Documentación y notas de trabajo
 README.md
 status.md
+
+# Pruebas: no se ejecutan dentro de la imagen. La etapa dev las recibe igual
+# por el bind mount del código que hace docker-compose.
+tests/
 
 # Herramientas y editores
 .claude/

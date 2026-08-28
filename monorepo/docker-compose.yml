@@ -32,6 +32,14 @@ services:
       DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
       QDRANT_HOST: qdrant
       QDRANT_HTTP_PORT: 6333
+      # Modelos en proceso, no por API. Explícito y no heredado del .env a
+      # propósito: en local no debería hacer falta ninguna cuenta de terceros
+      # ni gastarse créditos, y un EMBEDDING_PROVIDER suelto en el .env —puesto
+      # para probar el despliegue— dejaría el entorno local pegándole a la API
+      # sin que nadie lo note. En producción (Railway) van en "huggingface" y
+      # "pinecone"; esa es la única diferencia real entre los dos entornos.
+      EMBEDDING_PROVIDER: local
+      RERANKER_PROVIDER: local
     ports:
       - "${API_PORT:-8000}:8000"
     # En desarrollo se migra antes de arrancar. En producción NO debe ir acá:
