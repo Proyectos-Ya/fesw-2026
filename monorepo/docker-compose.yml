@@ -1,0 +1,65 @@
+# ============================================================
+# docker-compose.yml — Infraestructura local de ProyectosYA
+# Servicios: PostgreSQL (datos relacionales) + Qdrant (búsqueda vectorial)
+# ============================================================
+
+services:
+
+  # ------------------------------------------------------------
+  # Base de datos relacional: perfiles, usuarios y metadata
+  # ------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: proyectosya_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-proyectosya}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proyectosya_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-proyectosya_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Persistencia de datos entre reinicios del contenedor
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proyectosya} -d ${POSTGRES_DB:-proyectosya_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - proyectosya_network
+
+  # ------------------------------------------------------------
+  # Motor de búsqueda vectorial: matching semántico de licitaciones
+  # ------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    container_name: proyectosya_qdrant
+    restart: unless-stopped
+    ports:
+      # Puerto REST/gRPC HTTP
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__ENABLE_CORS: "true"
+    networks:
+      - proyectosya_network
+
+# ------------------------------------------------------------
+# Volúmenes nombrados para persistencia de datos
+# ------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+# ------------------------------------------------------------
+# Red interna compartida entre todos los servicios, se usa cuando al api este dentro del docker-compose y se conecta a postgres o qdrant usando el nombre del servicio como host (ej: "postgres" o "qdrant")
+# ------------------------------------------------------------
+networks:
+  proyectosya_network:
+    driver: bridge

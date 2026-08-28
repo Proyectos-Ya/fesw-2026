@@ -1,0 +1,56 @@
+<!-- @startingPoint section="App" subtitle="ProyectosYa app — matching feed, AI analysis & smart profile" viewport="1320x840" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>ProyectosYa — App</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; }
+  #root { height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<script>window.DS = window.ProyectosYaDesignSystem_1dd038;</script>
+<script src="data.js"></script>
+<script type="text/babel" src="AppShell.jsx"></script>
+<script type="text/babel" src="LicitacionCard.jsx"></script>
+<script type="text/babel" src="DashboardScreen.jsx"></script>
+<script type="text/babel" src="LicitacionDetailScreen.jsx"></script>
+<script type="text/babel" src="PerfilScreen.jsx"></script>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+function App() {
+  const [nav, setNav] = React.useState('dashboard');
+  const [openLic, setOpenLic] = React.useState(null);
+  const [search, setSearch] = React.useState('');
+  const [saved, setSaved] = React.useState(['5103-204-LP25']);
+  const toggleSave = (id) => setSaved((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const open = (lic) => { setOpenLic(lic); window.scrollTo(0, 0); };
+
+  let content;
+  if (openLic) {
+    content = <window.DetailScreen lic={openLic} onBack={() => setOpenLic(null)} saved={saved.includes(openLic.id)} onToggleSave={toggleSave} />;
+  } else if (nav === 'perfil') {
+    content = <window.PerfilScreen />;
+  } else {
+    content = <window.DashboardScreen onOpen={open} saved={saved} onToggleSave={toggleSave} />;
+  }
+
+  return (
+    <window.AppShell active={openLic ? 'dashboard' : nav} onNav={(k) => { setOpenLic(null); setNav(k); }} search={search} onSearch={setSearch}>
+      {content}
+    </window.AppShell>
+  );
+}
+
+function mount() {
+  if (!window.DS || !window.AppShell || !window.DashboardScreen) { return setTimeout(mount, 40); }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  setTimeout(() => window.lucide && window.lucide.createIcons(), 200);
+}
+mount();
+</script>
+</body></html>

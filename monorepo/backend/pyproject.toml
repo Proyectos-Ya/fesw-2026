@@ -1,0 +1,33 @@
+[tool.ruff]
+# Target Python version
+target-version = "py312"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+# Enable lint rules
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort (import sorting)
+# B: flake8-bugbear
+# Q: flake8-quotes
+# UP: pyupgrade (modern Python syntax suggestions)
+lint.select = ["E", "F", "I", "B", "Q", "UP"]
+lint.ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's Depends() in argument defaults is idiomatic — B008 is a false positive here.
+# B904 (raise from) also suppressed: HTTP exceptions don't need chaining context.
+"app/routers/*.py" = ["B008", "B904"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

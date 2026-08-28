@@ -1,0 +1,279 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&family=Spline+Sans+Mono:wght@400..600&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  /* ---- Warm neutrals (off-white → warm near-black) ---- */
+  --warm-50:  #FBF8F3;
+  --warm-100: #F3EEE6;
+  --warm-200: #E8E1D5;
+  --warm-300: #D6CDBD;
+  --warm-400: #AEA596;
+  --warm-500: #847C6E;
+  --warm-600: #60584C;
+  --warm-700: #423D34;
+  --warm-800: #2A2620;
+  --warm-900: #1B1814;
+  --white:    #FFFFFF;
+
+  /* ---- Teal (primary brand) ---- */
+  --teal-50:  #E6F4F2;
+  --teal-100: #C5E7E4;
+  --teal-200: #97D4CF;
+  --teal-300: #5FBAB4;
+  --teal-400: #2E9D98;
+  --teal-500: #0E8580;
+  --teal-600: #0A6E69;
+  --teal-700: #0A5854;
+  --teal-800: #0B4441;
+  --teal-900: #0A302E;
+
+  /* ---- Coral / orange-red (accent) ---- */
+  --coral-50:  #FDEEE9;
+  --coral-100: #FAD8CC;
+  --coral-200: #F5B7A2;
+  --coral-300: #EF8F70;
+  --coral-400: #EA6E48;
+  --coral-500: #E0552F;
+  --coral-600: #C44322;
+  --coral-700: #9F351B;
+  --coral-800: #7B2A16;
+  --coral-900: #592011;
+
+  /* ---- Semantic hues (soft, warm) ---- */
+  --green-100: #D6EBDC;
+  --green-500: #2F8F5B;
+  --green-600: #237548;
+  --amber-100: #F8E9C7;
+  --amber-500: #D6960F;
+  --amber-600: #B07A0A;
+  --red-100:   #F7D9D4;
+  --red-500:   #CC3B2E;
+  --red-600:   #A82E23;
+  --blue-100:  #D8E8F2;
+  --blue-500:  #2E78A6;
+
+  /* Surfaces & backgrounds */
+  --bg-page:        var(--warm-50);
+  --bg-sunken:      var(--warm-100);
+  --surface-card:   var(--white);
+  --surface-raised: var(--white);
+  --surface-inset:  var(--warm-100);
+  --surface-teal:   var(--teal-50);
+  --surface-coral:  var(--coral-50);
+
+  /* Text / ink */
+  --text-strong:    var(--warm-900);
+  --text-body:      var(--warm-800);
+  --text-muted:     var(--warm-600);
+  --text-subtle:    var(--warm-500);
+  --text-on-teal:   var(--warm-50);
+  --text-on-coral:  #FFFFFF;
+  --text-link:      var(--teal-600);
+
+  /* Borders & dividers */
+  --border-subtle:  var(--warm-200);
+  --border-default: var(--warm-300);
+  --border-strong:  var(--warm-400);
+  --divider:        var(--warm-200);
+
+  /* Primary (teal) */
+  --primary:        var(--teal-500);
+  --primary-hover:  var(--teal-600);
+  --primary-active: var(--teal-700);
+  --primary-soft:   var(--teal-50);
+  --primary-border: var(--teal-200);
+  --on-primary:     var(--warm-50);
+
+  /* Accent (coral) */
+  --accent:         var(--coral-500);
+  --accent-hover:   var(--coral-600);
+  --accent-active:  var(--coral-700);
+  --accent-soft:    var(--coral-50);
+  --accent-border:  var(--coral-200);
+  --on-accent:      #FFFFFF;
+
+  /* Status */
+  --success:        var(--green-500);
+  --success-soft:   var(--green-100);
+  --warning:        var(--amber-500);
+  --warning-soft:   var(--amber-100);
+  --danger:         var(--red-500);
+  --danger-soft:    var(--red-100);
+  --info:         var(--blue-500);
+  --info-soft:    var(--blue-100);
+
+  /* Focus ring */
+  --ring:           rgba(14, 133, 128, 0.32);
+  --ring-accent:    rgba(224, 85, 47, 0.30);
+
+  /* Spacing — 4px base */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radii */
+  --radius-xs:   4px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   22px;
+}
+
+@theme {
+  /* ---- Full color scales (so utilities like bg-warm-100, text-coral-300 compile) ---- */
+  --color-warm-50:  var(--warm-50);
+  --color-warm-100: var(--warm-100);
+  --color-warm-200: var(--warm-200);
+  --color-warm-300: var(--warm-300);
+  --color-warm-400: var(--warm-400);
+  --color-warm-500: var(--warm-500);
+  --color-warm-600: var(--warm-600);
+  --color-warm-700: var(--warm-700);
+  --color-warm-800: var(--warm-800);
+  --color-warm-900: var(--warm-900);
+
+  --color-teal-50:  var(--teal-50);
+  --color-teal-100: var(--teal-100);
+  --color-teal-200: var(--teal-200);
+  --color-teal-300: var(--teal-300);
+  --color-teal-400: var(--teal-400);
+  --color-teal-500: var(--teal-500);
+  --color-teal-600: var(--teal-600);
+  --color-teal-700: var(--teal-700);
+  --color-teal-800: var(--teal-800);
+  --color-teal-900: var(--teal-900);
+
+  --color-coral-50:  var(--coral-50);
+  --color-coral-100: var(--coral-100);
+  --color-coral-200: var(--coral-200);
+  --color-coral-300: var(--coral-300);
+  --color-coral-400: var(--coral-400);
+  --color-coral-500: var(--coral-500);
+  --color-coral-600: var(--coral-600);
+  --color-coral-700: var(--coral-700);
+  --color-coral-800: var(--coral-800);
+  --color-coral-900: var(--coral-900);
+
+  --color-green-100: var(--green-100);
+  --color-green-500: var(--green-500);
+  --color-green-600: var(--green-600);
+  --color-amber-100: var(--amber-100);
+  --color-amber-500: var(--amber-500);
+  --color-amber-600: var(--amber-600);
+  --color-red-100:   var(--red-100);
+  --color-red-500:   var(--red-500);
+  --color-red-600:   var(--red-600);
+  --color-blue-100:  var(--blue-100);
+  --color-blue-500:  var(--blue-500);
+
+  /* ---- Semantic aliases ---- */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-border: var(--primary-border);
+  --color-on-primary: var(--on-primary);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-on-accent: var(--on-accent);
+
+  --color-bg-page: var(--bg-page);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-surface-card: var(--surface-card);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-teal: var(--surface-teal);
+  --color-surface-coral: var(--surface-coral);
+
+  --color-text-strong: var(--text-strong);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-on-teal: var(--text-on-teal);
+  --color-text-on-coral: var(--text-on-coral);
+  --color-text-link: var(--text-link);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* ---- Typography ---- */
+  --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+
+  --tracking-caps: 0.08em;
+
+  /* ---- Shadows ---- */
+  --shadow-xs: 0 1px 2px rgba(27, 24, 20, 0.05);
+  --shadow-sm: 0 2px 6px rgba(27, 24, 20, 0.06);
+  --shadow-md: 0 6px 16px rgba(27, 24, 20, 0.08);
+  --shadow-lg: 0 12px 28px rgba(27, 24, 20, 0.10);
+  --shadow-premium: 0 12px 32px rgba(27, 24, 20, 0.10), 0 3px 8px rgba(27, 24, 20, 0.05);
+  --shadow-teal: 0 8px 24px rgba(10, 110, 105, 0.18);
+  --shadow-coral: 0 8px 24px rgba(196, 67, 34, 0.18);
+}
+
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.12;
+    margin: 0 0 0.5em;
+  }
+
+  p {
+    margin: 0 0 1em;
+  }
+
+  /* Solo enlaces "desnudos": un selector global `a` queda sin capa en el CSS
+     compilado y pisaría las utilidades de color (ej: text-on-primary) de los
+     enlaces-botón. */
+  a:not([class]) {
+    color: var(--text-link);
+    text-decoration: none;
+  }
+
+  a:not([class]):hover {
+    text-decoration: underline;
+  }
+}

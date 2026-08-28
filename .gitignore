@@ -1,0 +1,44 @@
+# Node.js
+node_modules/
+.next/
+out/
+build/
+dist/
+pnpm-debug.log*
+
+# Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+.direnv
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Playwright
+playwright-report/
+test-results/
+
+# Claude Code
+CLAUDE.md
+.claude
+

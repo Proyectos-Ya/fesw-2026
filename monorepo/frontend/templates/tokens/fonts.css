@@ -1,0 +1,13 @@
+/* ============================================================
+   ProyectosYa — Webfonts
+   Loaded via Google Fonts CDN.
+   NOTE: These are CDN-linked, not self-hosted binaries. To ship
+   self-hosted fonts, drop the .woff2 files into /assets/fonts and
+   replace the @import below with local @font-face rules.
+
+   Display : Bricolage Grotesque  (fresh, characterful headlines)
+   Text/UI : Hanken Grotesk       (warm, friendly, legible)
+   Mono    : Spline Sans Mono     (rounded, friendly data/codes)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&family=Spline+Sans+Mono:wght@400..600&display=swap');

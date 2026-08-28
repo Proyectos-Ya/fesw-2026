@@ -1,0 +1,10 @@
+/* ============================================================
+   ProyectosYa — Global stylesheet entry point.
+   Consumers link ONLY this file. Keep it to @import lines.
+   ============================================================ */
+
+@import url("tokens/fonts.css");
+@import url("tokens/colors.css");
+@import url("tokens/typography.css");
+@import url("tokens/spacing.css");
+@import url("tokens/base.css");
