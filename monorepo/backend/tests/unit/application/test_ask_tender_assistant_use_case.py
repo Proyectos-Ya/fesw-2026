@@ -12,6 +12,7 @@ from app.domain.entities.tender_chat import (
     TenderChatMessage,
     TenderChatDocument,
     Citation,
+    DocumentDiscrepancy,
 )
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
@@ -21,11 +22,16 @@ from app.domain.errors.tender_chat_errors import (
 from tests.unit.application.fakes import InMemoryTenderChatRepository
 
 
-
 class FakeTenderAssistantAIService(ITenderAssistantAIService):
-    def __init__(self, should_fail: bool = False, default_answer: str = "Respuesta del asistente"):
+    def __init__(
+        self,
+        should_fail: bool = False,
+        default_answer: str = "Respuesta del asistente",
+        custom_response: Optional[AIResponseDTO] = None,
+    ):
         self.should_fail = should_fail
         self.default_answer = default_answer
+        self.custom_response = custom_response
         self.called_questions: List[str] = []
         self.called_history: List[List[TenderChatMessage]] = []
         self.called_documents: List[List[DocumentContextDTO]] = []
@@ -45,6 +51,9 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_history.append(history)
         self.called_documents.append(documents)
         self.called_supplier_contexts.append(supplier_context)
+
+        if self.custom_response is not None:
+            return self.custom_response
 
         # Si hay documentos, simular cita
         citations = []
@@ -308,6 +317,220 @@ async def test_ask_assistant_with_clean_new_session_isolation(repo, ai_service):
 
     # En la sesión 2, el historial inyectado debe ser 0 mensajes
     assert len(ai_service.called_history[1]) == 0
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_multi_document_cross_referencing_consolidation(repo):
+    """CA1: Verifica que se cruce información de múltiples documentos y se consolide en la respuesta."""
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    doc1 = TenderChatDocument(
+        tender_id=tender_id,
+        user_id=user_id,
+        file_name="Bases_Administrativas.pdf",
+        file_type="pdf",
+        file_size_bytes=1000,
+        storage_path="uploads/Bases_Administrativas.pdf"
+    )
+    doc2 = TenderChatDocument(
+        tender_id=tender_id,
+        user_id=user_id,
+        file_name="Bases_Tecnicas.pdf",
+        file_type="pdf",
+        file_size_bytes=2000,
+        storage_path="uploads/Bases_Tecnicas.pdf"
+    )
+    await repo.save_document(doc1, b"%PDF admin")
+    await repo.save_document(doc2, b"%PDF tecnicas")
+
+    mock_ai = FakeTenderAssistantAIService(
+        custom_response=AIResponseDTO(
+            answer="Respuesta consolidada cruzando bases administrativas y técnicas.",
+            citations=[
+                Citation(document_name="Bases_Administrativas.pdf", page_or_sheet="Pág 4", quote="Plazo de 30 días"),
+                Citation(document_name="Bases_Tecnicas.pdf", page_or_sheet="Pág 10", quote="Perfil Ingeniero Civil")
+            ],
+            has_sufficient_info=True
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=mock_ai)
+    response_msg = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Cuáles son los plazos y perfiles exigidos?"
+    )
+
+    assert len(response_msg.citations) == 2
+    doc_names = {c.document_name for c in response_msg.citations}
+    assert doc_names == {"Bases_Administrativas.pdf", "Bases_Tecnicas.pdf"}
+    assert "Respuesta consolidada" in response_msg.content
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_detects_contradictions_and_populates_discrepancies(repo):
+    """CA2: Verifica que cuando existan discrepancias entre documentos, se advierta y se popule discrepancies."""
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    discrepancy = DocumentDiscrepancy(
+        topic="Plazo de entrega",
+        description="Bases Administrativas indican 30 días pero Bases Técnicas indican 45 días.",
+        conflicting_sources=[
+            Citation(document_name="Bases_Admin.pdf", quote="30 días corridos"),
+            Citation(document_name="Bases_Tecnicas.pdf", quote="45 días corridos"),
+        ]
+    )
+
+    mock_ai = FakeTenderAssistantAIService(
+        custom_response=AIResponseDTO(
+            answer="Advertencia: Se detectó una discrepancia en los plazos de entrega entre documentos.",
+            citations=[
+                Citation(document_name="Bases_Admin.pdf", quote="30 días corridos"),
+                Citation(document_name="Bases_Tecnicas.pdf", quote="45 días corridos"),
+            ],
+            discrepancies=[discrepancy],
+            has_sufficient_info=True
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=mock_ai)
+    response_msg = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Cuál es el plazo de entrega?"
+    )
+
+    assert len(response_msg.discrepancies) == 1
+    assert response_msg.discrepancies[0].topic == "Plazo de entrega"
+    assert "30 días" in response_msg.discrepancies[0].description
+    assert len(response_msg.discrepancies[0].conflicting_sources) == 2
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_compound_question_with_partial_backing(repo):
+    """CA3: Verifica el manejo de preguntas compuestas con respaldo parcial."""
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    mock_ai = FakeTenderAssistantAIService(
+        custom_response=AIResponseDTO(
+            answer="Se encontró la garantía requerida, pero el presupuesto estimado no figura en ningún documento.",
+            citations=[Citation(document_name="Bases.pdf", quote="Garantía de 5%")],
+            unbacked_aspects=["Presupuesto disponible estimado"],
+            has_sufficient_info=True
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=mock_ai)
+    response_msg = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Cuál es la garantía y cuál es el presupuesto estimado?"
+    )
+
+    assert response_msg.unbacked_aspects == ["Presupuesto disponible estimado"]
+    assert len(response_msg.citations) == 1
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_unbacked_requirement_anti_hallucination(repo):
+    """CA4: Verifica que si un requisito no figura en las bases, se declare explícitamente y has_sufficient_info sea False."""
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    mock_ai = FakeTenderAssistantAIService(
+        custom_response=AIResponseDTO(
+            answer="El requisito de certificación ISO 27001 no figura en ninguno de los documentos revisados.",
+            citations=[],
+            unbacked_aspects=["Certificación ISO 27001"],
+            has_sufficient_info=False
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(chat_repo=repo, ai_service=mock_ai)
+    response_msg = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Se exige certificación ISO 27001?"
+    )
+
+    assert response_msg.has_sufficient_info is False
+    assert len(response_msg.citations) == 0
+    assert response_msg.unbacked_aspects == ["Certificación ISO 27001"]
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_failing(repo):
+    """CA6: Verifica que un documento corrupto en la licitación se aísle, se agregue advertencia y la consulta continúe con los archivos sanos."""
+    from app.application.services.document_validator_service import (
+        IDocumentValidatorService,
+        DocumentValidationResult,
+    )
+
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    doc_valido = TenderChatDocument(
+        tender_id=tender_id,
+        user_id=user_id,
+        file_name="especificaciones_buenas.pdf",
+        file_type="pdf",
+        file_size_bytes=1500,
+        storage_path="uploads/especificaciones_buenas.pdf"
+    )
+    doc_corrupto = TenderChatDocument(
+        tender_id=tender_id,
+        user_id=user_id,
+        file_name="plano_danado.pdf",
+        file_type="pdf",
+        file_size_bytes=800,
+        storage_path="uploads/plano_danado.pdf"
+    )
+    await repo.save_document(doc_valido, b"%PDF valid content")
+    await repo.save_document(doc_corrupto, b"corrupted bytes")
+
+    class SelectiveValidator(IDocumentValidatorService):
+        def validate_integrity(self, file_bytes: bytes, file_name: str, declared_type=None) -> DocumentValidationResult:
+            if "danado" in file_name:
+                return DocumentValidationResult(
+                    is_valid=False,
+                    file_type=declared_type or "pdf",
+                    error_message=f"El archivo '{file_name}' está corrupto."
+                )
+            return DocumentValidationResult(is_valid=True, file_type=declared_type or "pdf")
+
+    mock_ai = FakeTenderAssistantAIService(
+        custom_response=AIResponseDTO(
+            answer="Respuesta obtenida a partir de las especificaciones buenas.",
+            citations=[Citation(document_name="especificaciones_buenas.pdf", quote="Especificación 1")],
+            has_sufficient_info=True
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=mock_ai,
+        validator_service=SelectiveValidator()
+    )
+
+    response_msg = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Cuáles son las especificaciones técnicas?"
+    )
+
+    # 1. La consulta no debe fallar
+    assert response_msg.role == "assistant"
+    # 2. Solo el documento sano debe haber sido enviado a la IA
+    assert len(mock_ai.called_documents[0]) == 1
+    assert mock_ai.called_documents[0][0].document_name == "especificaciones_buenas.pdf"
+    # 3. El mensaje debe contener el warning del documento dañado
+    assert len(response_msg.warnings) == 1
+    assert "plano_danado.pdf" in response_msg.warnings[0]
+    assert "dañado o ilegible" in response_msg.warnings[0]
+
 
 
 
