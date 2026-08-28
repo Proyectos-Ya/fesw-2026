@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -133,6 +134,20 @@ class TenderIngestionService(ITenderIngestionService):
                 await session.rollback()
 
     # Procesa todas las licitaciones marcadas como is_processed=False
+    async def ultima_sincronizacion(self) -> datetime | None:
+        """Fecha del registro de metadata más reciente, en UTC con zona.
+
+        La columna se guarda naive —en UTC, por convención del proyecto—, así que
+        se le pone la zona antes de devolverla: quien compara contra `ahora` está
+        en hora de Chile, y restar un naive de un aware lanza TypeError.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = select(func.max(col(TenderMetadataModel.created_at)))
+            ultima = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
+            if ultima is None:
+                return None
+            return ultima.replace(tzinfo=UTC)
+
     async def process_unprocessed_tenders(self) -> None:
         async with AsyncSession(self.engine) as session:
             # `is_(False)` y no `not ...`: la comparación tiene que generar
