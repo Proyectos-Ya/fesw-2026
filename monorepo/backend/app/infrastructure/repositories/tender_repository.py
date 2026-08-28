@@ -241,13 +241,11 @@ class TenderRepository(ITenderRepository):
         status = result.first()
 
         if not status:
+            # Se deriva del mapeo medido en vez de repetirlo: eran tres copias
+            # (esta, el seeder y constants) y llevaban valores distintos entre sí.
             ESTADOS_MAP = {
-                1: "Publicada",
-                2: "Publicada",
-                6: "Publicada",
-                7: "Cerrada",
-                8: "Desierta",
-                18: "Adjudicada",
+                id_: codigo.replace("_", " ").capitalize()
+                for id_, codigo in TENDER_STATUS_CODE_BY_ID.items()
             }
 
             if status_id in ESTADOS_MAP:

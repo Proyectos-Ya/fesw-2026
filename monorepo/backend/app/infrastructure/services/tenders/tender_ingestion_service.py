@@ -99,7 +99,10 @@ class TenderIngestionService(ITenderIngestionService):
                     id_estado = estado.get("id_estado")
                     codigo_estado = str(estado.get("codigo", "")).lower()
                     glosa_estado = str(estado.get("glosa", "")).lower()
-                    ACTIVE_STATUS_IDS = {1, 2, 5, 6}
+                    # Solo 2 (publicada). El conjunto anterior, {1,2,5,6}, dejaba
+                    # entrar el 5 (cancelada) y el 6 (desierta). Ver el mapeo
+                    # medido en shared/constants.TENDER_STATUS_CODE_BY_ID.
+                    ACTIVE_STATUS_IDS = {2}
                     is_active_status = (
                         (id_estado in ACTIVE_STATUS_IDS)
                         or ("publicada" in codigo_estado)

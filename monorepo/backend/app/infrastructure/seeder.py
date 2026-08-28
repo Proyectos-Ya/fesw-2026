@@ -2,6 +2,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
+from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 from app.shared.regions import (
     CHILE_REGIONS,
     UNKNOWN_REGION_ID,
@@ -28,13 +29,13 @@ async def seed_database_metadata(session: AsyncSession):
     # Seed de Estados. El campo code tiene índice único, por lo que se usa str(id);
     # el código semántico ('publicada', ...) se deriva del status_id vía
     # TENDER_STATUS_CODE_BY_ID al construir la entidad (ver TenderRepository._to_entity).
+    #
+    # Los nombres se derivan del mapeo medido y no se repiten acá: cuando eran
+    # dos listas separadas llevaban valores distintos, con el 6 como "Publicada"
+    # en ambas cuando en realidad es "desierta".
     estados_data = {
-        1: "Publicada",
-        2: "Publicada",
-        6: "Publicada",
-        7: "Cerrada",
-        8: "Desierta",
-        18: "Adjudicada",
+        id_: codigo.replace("_", " ").capitalize()
+        for id_, codigo in TENDER_STATUS_CODE_BY_ID.items()
     }
     for e_id, e_name in estados_data.items():
         statement = select(TenderStatusModel).where(TenderStatusModel.id == e_id)

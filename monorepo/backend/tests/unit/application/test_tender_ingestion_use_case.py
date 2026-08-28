@@ -73,7 +73,7 @@ class FakeTenderRepository(ITenderRepository):
         return None
 
 
-def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
+def _make_dto(code: str = "LIC-001", status_code: int = 2) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
         {
             "CodigoExterno": code,
@@ -186,7 +186,9 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute(_make_dto(status_code=1))
+    # 2 es el id medido de "publicada" en Compra Ágil v2 (antes se usaba 1,
+    # heredado de la API de Licitaciones).
+    await use_case.execute(_make_dto(status_code=2))
 
     _, _, payload = vector_repo.upserts[0]
     assert payload["status_code"] == "publicada"
