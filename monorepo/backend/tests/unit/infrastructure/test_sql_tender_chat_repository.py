@@ -217,3 +217,90 @@ async def test_get_session_history_returns_mapped_entities(repo, mock_session):
     assert history[0].session_id == session_id
     assert history[0].content == "Pregunta sesión"
 
+
+@pytest.mark.asyncio
+async def test_save_message_with_discrepancies_and_warnings_persists_model(repo, mock_session):
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    discrepancy = DocumentDiscrepancy(
+        topic="Plazo de entrega",
+        description="Inconsistencia de 30 vs 45 días",
+        conflicting_sources=[
+            Citation(document_name="DocA.pdf", page_or_sheet="1", quote="30 días"),
+            Citation(document_name="DocB.pdf", page_or_sheet="5", quote="45 días"),
+        ]
+    )
+
+    msg = TenderChatMessage(
+        session_id=uuid4(),
+        tender_id=uuid4(),
+        user_id=uuid4(),
+        role="assistant",
+        content="Respuesta con discrepancia",
+        citations=[Citation(document_name="DocA.pdf", quote="30 días")],
+        discrepancies=[discrepancy],
+        warnings=["El archivo anexo_danado.pdf no pudo ser procesado."],
+        unbacked_aspects=["Presupuesto total estimado"],
+        has_sufficient_info=False
+    )
+
+    saved = await repo.save_message(msg)
+
+    assert saved.id == msg.id
+    mock_session.add.assert_called_once()
+    added_model = mock_session.add.call_args[0][0]
+    assert isinstance(added_model, TenderChatMessageModel)
+    assert len(added_model.discrepancies) == 1
+    assert added_model.discrepancies[0]["topic"] == "Plazo de entrega"
+    assert len(added_model.discrepancies[0]["conflicting_sources"]) == 2
+    assert added_model.warnings == ["El archivo anexo_danado.pdf no pudo ser procesado."]
+    assert added_model.unbacked_aspects == ["Presupuesto total estimado"]
+    assert added_model.has_sufficient_info is False
+
+
+@pytest.mark.asyncio
+async def test_get_history_maps_discrepancies_and_unbacked_aspects(repo, mock_session):
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    model = TenderChatMessageModel(
+        id=uuid4(),
+        tender_id=tender_id,
+        user_id=user_id,
+        role="assistant",
+        content="Respuesta persistida",
+        citations=[{"document_name": "bases.pdf", "page_or_sheet": "1", "quote": "txt"}],
+        discrepancies=[
+            {
+                "topic": "Garantía",
+                "description": "5% vs 10%",
+                "conflicting_sources": [
+                    {"document_name": "A.pdf", "quote": "5%"},
+                    {"document_name": "B.pdf", "quote": "10%"}
+                ]
+            }
+        ],
+        warnings=["Advertencia archivo corrupto"],
+        unbacked_aspects=["Requisito X"],
+        has_sufficient_info=False,
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+
+    mock_exec_result = MagicMock()
+    mock_exec_result.all.return_value = [model]
+    mock_session.exec.return_value = mock_exec_result
+
+    history = await repo.get_history(user_id=user_id, tender_id=tender_id, limit=10)
+
+    assert len(history) == 1
+    msg = history[0]
+    assert len(msg.discrepancies) == 1
+    assert isinstance(msg.discrepancies[0], DocumentDiscrepancy)
+    assert msg.discrepancies[0].topic == "Garantía"
+    assert msg.warnings == ["Advertencia archivo corrupto"]
+    assert msg.unbacked_aspects == ["Requisito X"]
+    assert msg.has_sufficient_info is False
+
+

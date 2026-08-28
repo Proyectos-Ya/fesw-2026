@@ -30,6 +30,10 @@ class TenderChatMessageModel(SQLModel, table=True):
     role: str = Field(max_length=20)
     content: str
     citations: List[dict] = Field(default=[], sa_column=Column(JSON))
+    discrepancies: List[dict] = Field(default=[], sa_column=Column(JSON))
+    warnings: List[str] = Field(default=[], sa_column=Column(JSON))
+    unbacked_aspects: List[str] = Field(default=[], sa_column=Column(JSON))
+    has_sufficient_info: bool = Field(default=True)
     created_at: datetime
 
 
