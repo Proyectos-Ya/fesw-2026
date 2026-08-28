@@ -3,10 +3,12 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.services.document_validator_service import IDocumentValidatorService
 from app.domain.entities.tender_chat import TenderChatDocument
 from app.domain.errors.tender_chat_errors import (
     UnsupportedDocumentTypeError,
     MaxDocumentsExceededError,
+    CorruptedDocumentError,
 )
 
 
@@ -17,8 +19,13 @@ class UploadTenderChatDocumentUseCase:
     MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
     MAX_DOCUMENTS_PER_CHAT = 5
 
-    def __init__(self, chat_repo: ITenderChatRepository):
+    def __init__(
+        self,
+        chat_repo: ITenderChatRepository,
+        validator_service: Optional[IDocumentValidatorService] = None,
+    ):
         self.chat_repo = chat_repo
+        self.validator_service = validator_service
 
     async def execute(
         self,
@@ -49,7 +56,20 @@ class UploadTenderChatDocumentUseCase:
         if detected_type not in self.ALLOWED_EXTENSIONS:
             raise UnsupportedDocumentTypeError()
 
-        # 3. Validar límite de documentos por chat
+        # 3. Validar integridad técnica del archivo (detección de corrupción o formato inválido)
+        if self.validator_service:
+            val_result = self.validator_service.validate_integrity(
+                file_bytes=file_bytes,
+                file_name=file_name,
+                declared_type=detected_type,
+            )
+            if not val_result.is_valid:
+                raise CorruptedDocumentError(
+                    val_result.error_message
+                    or f"El archivo '{file_name}' está dañado o corrupto y no puede ser procesado."
+                )
+
+        # 4. Validar límite de documentos por chat
         existing_docs = await self.chat_repo.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
         if len(existing_docs) >= self.MAX_DOCUMENTS_PER_CHAT:
             raise MaxDocumentsExceededError(

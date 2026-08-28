@@ -140,3 +140,74 @@ async def test_upload_exceeding_max_documents_per_chat_raises_error(use_case):
             file_name="doc_extra.pdf",
             file_bytes=b"content"
         )
+
+
+@pytest.mark.asyncio
+async def test_upload_corrupted_document_raises_corrupted_document_error(repo):
+    """Verifica que un archivo detectado como corrupto lance CorruptedDocumentError."""
+    from app.application.services.document_validator_service import (
+        IDocumentValidatorService,
+        DocumentValidationResult,
+    )
+    from app.domain.errors.tender_chat_errors import CorruptedDocumentError
+
+    class FakeCorruptedValidator(IDocumentValidatorService):
+        def validate_integrity(self, file_bytes: bytes, file_name: str, declared_type=None) -> DocumentValidationResult:
+            return DocumentValidationResult(
+                is_valid=False,
+                file_type=declared_type or "pdf",
+                error_message=f"El archivo '{file_name}' está dañado o tiene una cabecera corrupta."
+            )
+
+    use_case_with_validator = UploadTenderChatDocumentUseCase(
+        chat_repo=repo,
+        validator_service=FakeCorruptedValidator()
+    )
+
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    with pytest.raises(CorruptedDocumentError, match="dañado o tiene una cabecera corrupta"):
+        await use_case_with_validator.execute(
+            tender_id=tender_id,
+            user_id=user_id,
+            file_name="anexo_danado.pdf",
+            file_bytes=b"corrupted binary data"
+        )
+
+
+@pytest.mark.asyncio
+async def test_upload_valid_document_with_validator_service_success(repo):
+    """Verifica que un archivo válido pase la validación técnica correctamente."""
+    from app.application.services.document_validator_service import (
+        IDocumentValidatorService,
+        DocumentValidationResult,
+    )
+
+    class FakeValidValidator(IDocumentValidatorService):
+        def validate_integrity(self, file_bytes: bytes, file_name: str, declared_type=None) -> DocumentValidationResult:
+            return DocumentValidationResult(
+                is_valid=True,
+                file_type=declared_type or "pdf",
+                error_message=None
+            )
+
+    use_case_with_validator = UploadTenderChatDocumentUseCase(
+        chat_repo=repo,
+        validator_service=FakeValidValidator()
+    )
+
+    tender_id = uuid4()
+    user_id = uuid4()
+    pdf_bytes = b"%PDF-1.4 test valid"
+
+    doc = await use_case_with_validator.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        file_name="bases_validas.pdf",
+        file_bytes=pdf_bytes
+    )
+
+    assert doc.file_name == "bases_validas.pdf"
+    assert doc.file_type == "pdf"
+
