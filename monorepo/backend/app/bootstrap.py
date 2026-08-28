@@ -20,6 +20,9 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
+from app.application.repositories.tender_chat_repository import (
+    ITenderChatRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
@@ -30,9 +33,24 @@ from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
+from app.application.services.tender_assistant_ai_service import (
+    ITenderAssistantAIService,
+)
 from app.application.services.weighting_service import IWeightingService
+from app.application.use_cases.ask_tender_assistant_use_case import (
+    AskTenderAssistantUseCase,
+)
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
+)
+from app.application.use_cases.delete_tender_chat_document_use_case import (
+    DeleteTenderChatDocumentUseCase,
+)
+from app.application.use_cases.get_tender_chat_history_use_case import (
+    GetTenderChatHistoryUseCase,
+)
+from app.application.use_cases.list_tender_chat_documents_use_case import (
+    ListTenderChatDocumentsUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.notifications.build_daily_digest import (
@@ -68,6 +86,9 @@ from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
+from app.application.use_cases.upload_tender_chat_document_use_case import (
+    UploadTenderChatDocumentUseCase,
+)
 from app.config import settings
 from app.infrastructure.auth.dependencies import build_get_current_user
 from app.infrastructure.db import async_session_maker, get_session
@@ -89,6 +110,9 @@ from app.infrastructure.repositories.question_repository import QuestionReposito
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
+from app.infrastructure.repositories.sql_tender_chat_repository import (
+    SQLTenderChatRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
@@ -98,6 +122,9 @@ from app.infrastructure.services.bge_reranker_service import BgeRerankerService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
+)
+from app.infrastructure.services.gemini_tender_assistant_service import (
+    GeminiTenderAssistantService,
 )
 from app.infrastructure.services.notifications.smtp_email_service import (
     SmtpEmailService,
@@ -370,6 +397,54 @@ def get_answer_question_use_case(
     return AnswerQuestionUseCase(supplier_repo=supplier_repo)
 
 
+def get_tender_chat_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ITenderChatRepository:
+    return SQLTenderChatRepository(session)
+
+
+def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIService:
+    return request.app.state.tender_assistant_ai_service
+
+
+def get_upload_tender_chat_doc_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> UploadTenderChatDocumentUseCase:
+    return UploadTenderChatDocumentUseCase(chat_repo=chat_repo)
+
+
+def get_list_tender_chat_docs_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> ListTenderChatDocumentsUseCase:
+    return ListTenderChatDocumentsUseCase(chat_repo=chat_repo)
+
+
+def get_delete_tender_chat_doc_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> DeleteTenderChatDocumentUseCase:
+    return DeleteTenderChatDocumentUseCase(chat_repo=chat_repo)
+
+
+def get_ask_tender_assistant_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    ai_service: Annotated[
+        ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
+    ],
+    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+) -> AskTenderAssistantUseCase:
+    return AskTenderAssistantUseCase(
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+    )
+
+
+def get_tender_chat_history_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> GetTenderChatHistoryUseCase:
+    return GetTenderChatHistoryUseCase(chat_repo=chat_repo)
+
+
 class MockRerankerService(IRerankerService):
     """Reranker neutro para cuando está desactivado o falta ONNX en local/tests."""
 
@@ -511,10 +586,27 @@ def bootstrap(app: FastAPI) -> None:
         expire_minutes=settings.access_token_expire_minutes,
     )
 
-    app.state.embedding_service = BgeM3EmbeddingService(
-        model_name=settings.embedding_model
-    )
+    try:
+        app.state.embedding_service = BgeM3EmbeddingService(
+            model_name=settings.embedding_model
+        )
+    except Exception as e:
+        logger.warning(
+            "[Bootstrap] No se pudo cargar BgeM3EmbeddingService (%s). Usando MockEmbeddingService.",
+            e,
+        )
+
+        class MockEmbeddingService(IEmbeddingService):
+            async def embed(self, texts: list[str]) -> list[list[float]]:
+                return [[0.0] * settings.embedding_vector_size for _ in texts]
+
+        app.state.embedding_service = MockEmbeddingService()
+
     app.state.deep_analysis_service = GeminiDeepAnalysisService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
+    app.state.tender_assistant_ai_service = GeminiTenderAssistantService(
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
@@ -581,5 +673,10 @@ def bootstrap(app: FastAPI) -> None:
         get_notification_preferences_use_case=get_notification_preferences_use_case,
         get_update_notification_preferences_use_case=get_update_notification_preferences_use_case,
         get_list_deliveries_use_case=get_list_deliveries_use_case,
+        get_upload_tender_chat_doc_use_case=get_upload_tender_chat_doc_use_case,
+        get_list_tender_chat_docs_use_case=get_list_tender_chat_docs_use_case,
+        get_delete_tender_chat_doc_use_case=get_delete_tender_chat_doc_use_case,
+        get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
+        get_tender_chat_history_use_case=get_tender_chat_history_use_case,
     )
     app.include_router(router)

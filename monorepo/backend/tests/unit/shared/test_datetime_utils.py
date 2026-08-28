@@ -1,7 +1,7 @@
 import calendar
 import os
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -106,6 +106,14 @@ class TestToUtcEpoch:
         respecto de TZ=UTC, y el filtro de fechas devolvería un conjunto
         distinto según dónde corra el proceso: tu máquina o el contenedor.
         """
+        if not hasattr(time, "tzset"):
+            # En plataformas sin tzset (Windows), verificar consistencia directa
+            value = datetime(2026, 7, 27, 21, 42, 0)
+            assert to_utc_epoch(value) == int(
+                datetime(2026, 7, 27, 21, 42, 0, tzinfo=timezone.utc).timestamp()
+            )
+            return
+
         value = datetime(2026, 7, 27, 21, 42, 0)
         original = os.environ.get("TZ")
         try:

@@ -22,6 +22,10 @@ from app.infrastructure.repositories.notification_model import (
 from app.infrastructure.repositories.question_model import QuestionModel
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_chat_model import (
+    TenderChatDocumentModel,
+    TenderChatMessageModel,
+)
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -49,5 +53,7 @@ __all__ = [
     "TenderMetadataModel",
     "TenderModel",
     "TenderStatusModel",
+    "TenderChatDocumentModel",
+    "TenderChatMessageModel",
     "UserModel",
 ]
