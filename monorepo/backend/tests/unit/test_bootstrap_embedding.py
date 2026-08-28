@@ -10,13 +10,12 @@ Antes esto era un `logger.warning` y seguía adelante también fuera de desarrol
 
 import pytest
 
-from app.bootstrap import (
-    ApiEmbeddingService,
-    MockEmbeddingService,
-    build_embedding_service,
-)
+from app.bootstrap import MockEmbeddingService, build_embedding_service
 from app.config import settings
 from app.infrastructure.services import bge_m3_embedding_service as modulo_local
+from app.infrastructure.services.api_embedding_service import (
+    HuggingFaceEmbeddingService,
+)
 
 
 class _EmbeddingRoto:
@@ -50,7 +49,7 @@ def test_en_desarrollo_el_fallo_cae_al_mock(monkeypatch, embedding_roto):
 
 def test_en_modo_api_no_carga_el_modelo_local(monkeypatch, embedding_roto):
     """Con el proveedor en API, que el modelo local esté roto es irrelevante."""
-    monkeypatch.setattr(settings, "embedding_provider", "api")
-    monkeypatch.setattr(settings, "deepinfra_api_key", "dp-secreto")
+    monkeypatch.setattr(settings, "embedding_provider", "huggingface")
+    monkeypatch.setattr(settings, "embedding_api_key", "hf-secreto")
 
-    assert isinstance(build_embedding_service(), ApiEmbeddingService)
+    assert isinstance(build_embedding_service(), HuggingFaceEmbeddingService)

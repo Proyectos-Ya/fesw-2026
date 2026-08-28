@@ -117,7 +117,11 @@ from app.infrastructure.repositories.supplier_repository import SupplierReposito
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.routers.router import create_router
-from app.infrastructure.services.api_embedding_service import ApiEmbeddingService
+from app.infrastructure.services.api_embedding_service import (
+    ApiEmbeddingService,
+    DeepInfraEmbeddingService,
+    HuggingFaceEmbeddingService,
+)
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
@@ -468,6 +472,15 @@ class MockEmbeddingService(IEmbeddingService):
         return [[0.0] * settings.embedding_vector_size for _ in texts]
 
 
+# Cada proveedor habla su propio dialecto HTTP; el mapa evita un if por cada uno.
+# Los valores posibles los acota el Literal de `Settings.embedding_provider`, así que
+# una clave faltante es un error de programación, no de configuración.
+_EMBEDDING_POR_PROVEEDOR: dict[str, type[ApiEmbeddingService]] = {
+    "deepinfra": DeepInfraEmbeddingService,
+    "huggingface": HuggingFaceEmbeddingService,
+}
+
+
 def build_embedding_service() -> IEmbeddingService:
     """Construye el servicio de embeddings según el proveedor configurado.
 
@@ -477,11 +490,15 @@ def build_embedding_service() -> IEmbeddingService:
     vectores de puros ceros —y peor, la ingesta los escribía en Qdrant, que no
     se arregla corrigiendo la configuración: hay que reindexar.
     """
-    if settings.embedding_provider == "api":
-        logger.info("Embeddings servidos por API (%s).", settings.embedding_model)
-        return ApiEmbeddingService(
-            api_key=settings.deepinfra_api_key or "",
-            base_url=settings.deepinfra_base_url,
+    if settings.embedding_provider != "local":
+        logger.info(
+            "Embeddings servidos por %s (%s).",
+            settings.embedding_provider,
+            settings.embedding_model,
+        )
+        return _EMBEDDING_POR_PROVEEDOR[settings.embedding_provider](
+            api_key=settings.embedding_api_key or "",
+            base_url=settings.embedding_api_url,
             model_name=settings.embedding_model,
         )
 
@@ -531,7 +548,7 @@ def build_reranker_service() -> IRerankerService:
         )
         return MockRerankerService()
 
-    if settings.reranker_provider == "api":
+    if settings.reranker_provider != "local":
         # Sin try/except: config.py ya garantizó que hay credencial, y construir
         # el cliente no toca la red. Un fallo acá sería un error de programación,
         # no una condición del entorno que tenga sentido absorber.

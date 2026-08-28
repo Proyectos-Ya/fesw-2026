@@ -19,6 +19,14 @@ _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 # atributos con guion bajo inicial en ModelPrivateAttr, no en el entero.
 MIN_JWT_SECRET_BYTES = 32
 
+# Host oficial de cada proveedor de embeddings. "local" no llama a ninguno, pero
+# tiene entrada para que `embedding_api_url` no falle si alguien la consulta.
+_URL_POR_PROVEEDOR = {
+    "local": "",
+    "deepinfra": "https://api.deepinfra.com/v1/openai",
+    "huggingface": "https://router.huggingface.co",
+}
+
 # La clave de ejemplo que estuvo publicada en el repositorio como valor por
 # defecto de `jwt_secret_key`. Se rechaza explícitamente: sin esto, alguien
 # podría recuperarla del historial de git, ponerla en su .env y quedar tan
@@ -106,16 +114,21 @@ class Settings(BaseSettings):
     embedding_vector_size: int = 1024
 
     # De dónde sale el modelo: "local" lo carga en el proceso (sentence-transformers,
-    # ~4,3 GB de caché) y "api" lo delega a un proveedor externo. El free tier de
-    # Railway no aguanta la primera opción. El proveedor tiene que servir el MISMO
-    # modelo: cambiarlo invalida todo lo ya indexado en Qdrant, porque los vectores
-    # de dos modelos distintos no son comparables entre sí.
-    embedding_provider: Literal["local", "api"] = "local"
-    deepinfra_api_key: str | None = None
-    deepinfra_base_url: str = "https://api.deepinfra.com/v1/openai"
+    # ~938 MB de RAM) y el resto lo delega a un proveedor externo, que tiene que servir
+    # el MISMO modelo: cambiarlo invalida todo lo ya indexado en Qdrant, porque los
+    # vectores de dos modelos distintos no son comparables entre sí.
+    #
+    # Se nombra al proveedor en vez de un genérico "api" porque no hablan el mismo
+    # protocolo: DeepInfra expone el dialecto OpenAI (`data[].embedding`) y Hugging
+    # Face devuelve un array de arrays plano por su endpoint de feature-extraction.
+    embedding_provider: Literal["local", "deepinfra", "huggingface"] = "local"
+    embedding_api_key: str | None = None
+    # Solo para apuntar a otro host (un proxy, una instancia dedicada). Vacío usa el
+    # oficial del proveedor elegido.
+    embedding_api_base_url: str | None = None
 
-    # Mismo esquema para el reranker, que en local es ONNX (~588 MB).
-    reranker_provider: Literal["local", "api"] = "local"
+    # Mismo esquema para el reranker, que en local es ONNX (~1,3 GB de RAM).
+    reranker_provider: Literal["local", "pinecone"] = "local"
     pinecone_api_key: str | None = None
     pinecone_base_url: str = "https://api.pinecone.io"
     pinecone_rerank_model: str = "bge-reranker-v2-m3"
@@ -247,7 +260,7 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    @field_validator("deepinfra_api_key", "pinecone_api_key", mode="after")
+    @field_validator("embedding_api_key", "pinecone_api_key", mode="after")
     @classmethod
     def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
         if valor is None:
@@ -264,10 +277,14 @@ class Settings(BaseSettings):
         corrigiendo la variable —hay que reindexar.
         """
         faltantes = []
-        if self.embedding_provider == "api" and not self.deepinfra_api_key:
-            faltantes.append("DEEPINFRA_API_KEY (EMBEDDING_PROVIDER=api)")
-        if self.reranker_provider == "api" and not self.pinecone_api_key:
-            faltantes.append("PINECONE_API_KEY (RERANKER_PROVIDER=api)")
+        if self.embedding_provider != "local" and not self.embedding_api_key:
+            faltantes.append(
+                f"EMBEDDING_API_KEY (EMBEDDING_PROVIDER={self.embedding_provider})"
+            )
+        if self.reranker_provider != "local" and not self.pinecone_api_key:
+            faltantes.append(
+                f"PINECONE_API_KEY (RERANKER_PROVIDER={self.reranker_provider})"
+            )
         if faltantes:
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
@@ -285,6 +302,13 @@ class Settings(BaseSettings):
             return None
         valor = valor.strip()
         return valor or None
+
+    @property
+    def embedding_api_url(self) -> str:
+        """Host del proveedor de embeddings, con el override por delante."""
+        if self.embedding_api_base_url:
+            return self.embedding_api_base_url.rstrip("/")
+        return _URL_POR_PROVEEDOR[self.embedding_provider]
 
     @property
     def qdrant_url(self) -> str:

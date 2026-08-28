@@ -9,13 +9,15 @@ import httpx
 import pytest
 import respx
 
-from app.infrastructure.services.api_embedding_service import ApiEmbeddingService
+from app.infrastructure.services.api_embedding_service import (
+    DeepInfraEmbeddingService,
+)
 
 URL = "https://api.deepinfra.com/v1/openai/embeddings"
 
 
-def _servicio(**extra) -> ApiEmbeddingService:
-    return ApiEmbeddingService(
+def _servicio(**extra) -> DeepInfraEmbeddingService:
+    return DeepInfraEmbeddingService(
         api_key="dp-secreto",
         base_url="https://api.deepinfra.com/v1/openai",
         model_name="BAAI/bge-m3",
