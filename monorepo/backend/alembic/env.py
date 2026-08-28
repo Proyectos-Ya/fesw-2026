@@ -20,6 +20,7 @@ from sqlmodel import SQLModel
 import app.infrastructure.repositories.models  # noqa: F401  (registra los modelos)
 from alembic import context
 from app.config import settings
+from app.infrastructure.db import _connect_args
 
 config = context.config
 
@@ -62,6 +63,11 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # Mismos ajustes de asyncpg que usa la app: detrás de un pooler en modo
+        # transacción (Supavisor 6543) las sentencias preparadas fallan de forma
+        # intermitente, y una migración a medio aplicar es peor que una que no
+        # parte. Sin esto, DB_DISABLE_PREPARED_STATEMENTS no llegaba a Alembic.
+        connect_args=_connect_args(),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(_configurar_y_migrar)
