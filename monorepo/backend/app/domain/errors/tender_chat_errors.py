@@ -55,3 +55,16 @@ class ChatHistoryLoadError(TenderChatError):
         super().__init__(message)
 
 
+class CorruptedDocumentError(TenderChatError):
+    """Excepción lanzada cuando el archivo subido está corrupto, dañado o truncado."""
+    def __init__(self, message: str = "El documento adjunto está dañado o corrupto y no puede ser procesado."):
+        super().__init__(message)
+
+
+class UnreadableDocumentError(TenderChatError):
+    """Excepción lanzada cuando el documento es ilegible o no se puede extraer su contenido."""
+    def __init__(self, message: str = "No fue posible leer o extraer el contenido del documento adjunto."):
+        super().__init__(message)
+
+
+
