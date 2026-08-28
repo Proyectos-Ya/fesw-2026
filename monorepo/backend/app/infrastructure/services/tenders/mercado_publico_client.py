@@ -20,8 +20,11 @@ class CuotaAgotadaError(ErrorTransitorioMercadoPublico):
 
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
 class MercadoPublicoClient:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, espera_base: float = 1.0):
         self.api_key = api_key
+        # Factor de la espera exponencial entre reintentos. Se inyecta para que
+        # los tests no duerman de verdad.
+        self._espera_base = espera_base
         self.base_url = "https://api2.mercadopublico.cl/v2/compra-agil"
 
     # Obtiene el listado de cambios recientes en base a una ventana de tiempo (en milisegundos)
@@ -68,8 +71,12 @@ class MercadoPublicoClient:
                         )
                         break
                     if response.status_code == 429:
+                        # Llega aquí solo tras agotar los reintentos: un 429
+                        # pasajero ya se reintentó dentro de _get_con_reintentos.
                         print(
-                            "[API MP] Cuota agotada (Error 429). Deteniendo paginación."
+                            "[API MP] Cuota agotada (429 tras varios reintentos). "
+                            f"Se detiene la paginación con {len(all_items)} "
+                            "licitaciones listadas."
                         )
                         break
                     response.raise_for_status()
@@ -111,33 +118,48 @@ class MercadoPublicoClient:
         client: httpx.AsyncClient,
         headers: dict[str, str],
         params: dict[str, Any],
-        intentos: int = 3,
+        intentos: int = 4,
     ) -> httpx.Response | None:
         """GET al listado, reintentando ante fallas pasajeras del servidor.
 
-        La API devuelve 504 de forma intermitente cuando la consulta tarda
-        demasiado de su lado. No es un error nuestro ni de cuota, así que
-        rendirse al primero descarta licitaciones que sí están disponibles.
-        Un 429 se devuelve tal cual: ahí no hay que insistir, la cuota se agotó.
+        La API falla de dos formas transitorias:
+
+        - **5xx.** Devuelve 504 cuando la consulta tarda de su lado, y 500
+          ("Servicio no disponible") sin más. Rendirse al primero descarta
+          licitaciones que sí están disponibles.
+        - **429.** La versión anterior lo trataba como terminal, siguiendo la
+          guía de la API, que manda esperar al día siguiente. Medido el 28 de
+          agosto de 2026, eso no se sostiene: la API aplica un balde de tokens
+          de capacidad pequeña que se recarga en segundos, y aparecen 429
+          sueltos entre respuestas correctas. Cortando al primero, una carga
+          inicial de horas no llega nunca al final.
+
+        Un 429 que sobrevive a todos los reintentos sí se devuelve: ahí la cuota
+        se agotó de verdad y el llamador debe parar.
         """
         for intento in range(1, intentos + 1):
             try:
                 respuesta = await client.get(
                     self.base_url, headers=headers, params=params, timeout=60.0
                 )
-                if respuesta.status_code == 429 or respuesta.status_code < 500:
+                if respuesta.status_code < 500 and respuesta.status_code != 429:
+                    return respuesta
+                if respuesta.status_code == 429 and intento == intentos:
+                    # Agotados los reintentos: se devuelve para que el llamador
+                    # distinga "cuota agotada" de "el servidor no respondió".
                     return respuesta
                 motivo = f"HTTP {respuesta.status_code}"
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 motivo = type(e).__name__
 
             if intento < intentos:
-                espera = 2**intento
+                espera = self._espera_base * (2**intento)
                 print(
                     f"[API MP] {motivo} en el listado. Reintento {intento}/{intentos - 1} "
                     f"en {espera}s..."
                 )
-                await asyncio.sleep(espera)
+                if espera:
+                    await asyncio.sleep(espera)
         return None
 
     # Obtiene el detalle crudo de una licitación específica

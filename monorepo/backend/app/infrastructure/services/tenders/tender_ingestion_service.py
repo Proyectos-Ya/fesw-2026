@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -30,8 +31,19 @@ from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import to_utc_naive, utc_now_naive
 from app.shared.regions import to_region_id
 
-
 # Implementación del servicio de ingesta de licitaciones
+# Filas por sentencia al insertar metadata. Postgres topa en 65.535 parámetros
+# por sentencia y cada fila lleva 5 columnas, así que el techo real ronda las
+# 13.000. Mil deja margen de sobra y mantiene las transacciones cortas.
+LOTE_METADATA = 1000
+
+
+def _lotes(elementos: list, tamano: int):
+    """Trocea una lista en sublistas de a lo más `tamano`."""
+    for inicio in range(0, len(elementos), tamano):
+        yield elementos[inicio : inicio + tamano]
+
+
 def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bool:
     """Si el plazo de cotización ya pasó. Ante la duda, False: se conserva.
 
@@ -89,7 +101,7 @@ class TenderIngestionService(ITenderIngestionService):
             )
             try:
                 items = await self.client.get_tenders(from_date, to_date, limit)
-                new_count = 0
+                codigos_candidatos: list[str] = []
                 for item in items:
                     code = item.get("codigo")
                     if not code:
@@ -121,21 +133,11 @@ class TenderIngestionService(ITenderIngestionService):
                             ):
                                 continue
 
-                    # Comprobar si ya existe en metadata para no duplicar
-                    stmt = select(TenderMetadataModel).where(
-                        TenderMetadataModel.code == code
-                    )
-                    existing = (await session.exec(stmt)).first()
-                    if not existing:
-                        metadata = TenderMetadataModel(
-                            id=uuid.uuid4(),
-                            code=code,
-                            is_processed=False,
-                            created_at=datetime.now(UTC).replace(tzinfo=None),
-                            updated_at=datetime.now(UTC).replace(tzinfo=None),
-                        )
-                        session.add(metadata)
-                        new_count += 1
+                    codigos_candidatos.append(code)
+
+                new_count = await self._insertar_metadata(
+                    session, codigos_candidatos
+                )
 
                 await session.commit()
                 print(f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}.")
@@ -144,6 +146,43 @@ class TenderIngestionService(ITenderIngestionService):
                 await session.rollback()
 
     # Procesa todas las licitaciones marcadas como is_processed=False
+    async def _insertar_metadata(
+        self, session: AsyncSession, codigos: list[str]
+    ) -> int:
+        """Inserta los códigos que falten y devuelve cuántos eran nuevos.
+
+        Sin consultar antes: `tender_metadata.code` tiene índice único, así que
+        el duplicado lo resuelve Postgres con ON CONFLICT. La versión anterior
+        hacía un SELECT por licitación, y desde Chile contra Supabase en US East
+        cada viaje son ~133 ms: con 2.000 licitaciones, 4,4 minutos de espera
+        que no calculan nada.
+        """
+        if not codigos:
+            return 0
+
+        ahora = utc_now_naive()
+        nuevos = 0
+        for lote in _lotes(codigos, LOTE_METADATA):
+            filas = [
+                {
+                    "id": uuid.uuid4(),
+                    "code": code,
+                    "is_processed": False,
+                    "created_at": ahora,
+                    "updated_at": ahora,
+                }
+                for code in lote
+            ]
+            stmt = (
+                pg_insert(TenderMetadataModel)
+                .values(filas)
+                .on_conflict_do_nothing(index_elements=["code"])
+                .returning(TenderMetadataModel.code)
+            )
+            resultado = await session.exec(stmt)  # type: ignore[call-overload]
+            nuevos += len(resultado.all())
+        return nuevos
+
     async def ultima_sincronizacion(self) -> datetime | None:
         """Fecha del registro de metadata más reciente, en UTC con zona.
 
