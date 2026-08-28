@@ -27,6 +27,11 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.infrastructure.repositories.user_model import UserModel
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
+from app.infrastructure.repositories.tender_chat_model import (
+    TenderChatSessionModel,
+    TenderChatMessageModel,
+    TenderChatDocumentModel,
+)
 
 __all__ = [
     "BuyerInstitutionModel",
@@ -42,4 +47,8 @@ __all__ = [
     "TenderStatusModel",
     "UserModel",
     "SavedTenderModel",
+    "TenderChatSessionModel",
+    "TenderChatMessageModel",
+    "TenderChatDocumentModel",
 ]
+
