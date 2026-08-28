@@ -26,10 +26,41 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.shared.datetime_utils import to_utc_naive, utc_now_naive
 from app.shared.regions import to_region_id
 
 
 # Implementación del servicio de ingesta de licitaciones
+def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bool:
+    """Si el plazo de cotización ya pasó. Ante la duda, False: se conserva.
+
+    La conversión de zona la hace `to_utc_naive` y no un `replace(tzinfo=None)`:
+    `replace` **descarta** el offset en vez de convertir, así que un cierre con
+    `-04:00` —la hora de Chile— se comparaba contra UTC con cuatro horas de
+    error, y descartaba licitaciones que seguían abiertas. Con sufijo `Z` el
+    error no se notaba, porque ahí la hora de pared ya es UTC.
+
+    Descartar una licitación viva es peor que ingerir una ya cerrada: lo segundo
+    lo corrige el barrido de vencidas, lo primero no lo nota nadie.
+    """
+    if not fecha_cierre:
+        return False
+
+    texto = fecha_cierre.replace("Z", "+00:00")
+    try:
+        if " " in texto and "T" not in texto:
+            # Formato sin zona que la API no documenta, pero que se vio en la
+            # práctica. `to_utc_naive` lo interpreta en hora de Chile.
+            parseada = datetime.strptime(texto, "%Y-%m-%d %H:%M")
+        else:
+            parseada = datetime.fromisoformat(texto)
+    except (ValueError, TypeError):
+        return False
+
+    cierre = to_utc_naive(parseada)
+    return cierre is not None and cierre <= ahora_utc_naive
+
+
 class TenderIngestionService(ITenderIngestionService):
     def __init__(
         self,
@@ -79,24 +110,8 @@ class TenderIngestionService(ITenderIngestionService):
 
                     # 2. Filtrar licitaciones cuya fecha de cierre ya venció
                     fechas = item.get("fechas", {}) or {}
-                    fecha_cierre_str = fechas.get("fecha_cierre")
-                    if fecha_cierre_str:
-                        try:
-                            fc_clean = fecha_cierre_str.replace("Z", "+00:00")
-                            if " " in fc_clean and "T" not in fc_clean:
-                                closing_dt = datetime.strptime(
-                                    fc_clean, "%Y-%m-%d %H:%M"
-                                )
-                            else:
-                                closing_dt = datetime.fromisoformat(fc_clean).replace(
-                                    tzinfo=None
-                                )
-
-                            now_naive = datetime.now(UTC).replace(tzinfo=None)
-                            if closing_dt <= now_naive:
-                                continue
-                        except Exception:
-                            pass
+                    if _cierre_ya_vencio(fechas.get("fecha_cierre"), utc_now_naive()):
+                        continue
 
                     # 3. Filtrar por región en el listado si TARGET_REGION está configurado
                     if settings.target_region:
