@@ -123,8 +123,8 @@ async def test_upload_exceeding_max_documents_per_chat_raises_error(use_case):
     tender_id = uuid4()
     user_id = uuid4()
     
-    # Subir 5 documentos (máximo permitido)
-    for i in range(5):
+    # Subir 10 documentos (máximo permitido)
+    for i in range(10):
         await use_case.execute(
             tender_id=tender_id,
             user_id=user_id,
@@ -132,7 +132,7 @@ async def test_upload_exceeding_max_documents_per_chat_raises_error(use_case):
             file_bytes=b"content"
         )
     
-    # El 6to debe lanzar MaxDocumentsExceededError
+    # El 11vo debe lanzar MaxDocumentsExceededError
     with pytest.raises(MaxDocumentsExceededError):
         await use_case.execute(
             tender_id=tender_id,

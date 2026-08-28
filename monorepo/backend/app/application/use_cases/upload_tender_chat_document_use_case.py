@@ -17,7 +17,7 @@ class UploadTenderChatDocumentUseCase:
 
     ALLOWED_EXTENSIONS = {"pdf", "xlsx", "png"}
     MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
-    MAX_DOCUMENTS_PER_CHAT = 5
+    MAX_DOCUMENTS_PER_CHAT = 10
 
     def __init__(
         self,
