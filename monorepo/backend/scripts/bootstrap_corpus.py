@@ -64,7 +64,7 @@ def _es_local(url: str) -> bool:
     return (urlsplit(url).hostname or "") in HOSTS_LOCALES
 
 
-def _construir_servicio() -> tuple[TenderIngestionService, object]:
+def _construir_servicio() -> tuple[TenderIngestionService, object, AsyncQdrantClient]:
     """Arma el servicio de ingesta con las mismas piezas que usa la aplicación."""
     from app.bootstrap import build_embedding_service
 
@@ -78,7 +78,7 @@ def _construir_servicio() -> tuple[TenderIngestionService, object]:
         embedding_service=build_embedding_service(),
         qdrant_client=qdrant,
     )
-    return servicio, engine
+    return servicio, engine, qdrant
 
 
 async def _pendientes(engine) -> int:
@@ -148,9 +148,34 @@ async def contar(args: argparse.Namespace) -> None:
         )
 
 
+async def _preparar_destino(engine, qdrant) -> None:
+    """Deja la base y el índice listos para recibir datos.
+
+    Normalmente lo hace el arranque de la aplicación (`main.py`), pero contra un
+    entorno recién creado la aplicación todavía no se ha ejecutado nunca: la
+    tabla `region` estaría vacía y los FK de `tender` fallarían, y la colección
+    `tenders` no existiría. Ambas operaciones son idempotentes.
+    """
+    from app.infrastructure.repositories.qdrant_tender_repository import (
+        QdrantTenderRepository,
+    )
+    from app.infrastructure.seeder import seed_database_metadata
+
+    async with AsyncSession(engine) as s:
+        await seed_database_metadata(s)
+    print("Regiones y estados sembrados.")
+
+    await QdrantTenderRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tenders' lista (con sus índices de payload).\n")
+
+
 async def cargar(args: argparse.Namespace) -> None:
-    servicio, engine = _construir_servicio()
+    servicio, engine, qdrant = _construir_servicio()
     try:
+        await _preparar_destino(engine, qdrant)
+
         if not args.reanudar:
             print(f"--- Fase 1: listado ({args.dias} días) ---")
             t0 = time.perf_counter()
@@ -188,6 +213,7 @@ async def cargar(args: argparse.Namespace) -> None:
         print(f"\nListo en {(time.perf_counter() - t0) / 60:.1f} min.")
     finally:
         await engine.dispose()
+        await qdrant.close()
 
 
 def main() -> None:
