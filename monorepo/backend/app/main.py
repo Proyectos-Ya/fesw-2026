@@ -40,8 +40,13 @@ async def lifespan(app: FastAPI):
     # vez de más adelante con un error de "relation does not exist".
     await verificar_esquema_migrado()
 
-    app.state.qdrant_client = QdrantClient(url=settings.qdrant_url)
-    app.state.qdrant_async_client = AsyncQdrantClient(url=settings.qdrant_url)
+    # api_key va en None contra el Qdrant del compose local, que no autentica.
+    app.state.qdrant_client = QdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    app.state.qdrant_async_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)

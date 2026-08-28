@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     postgres_password: str
 
     # --- Qdrant ---
+    # URL completa del servicio. Tiene prioridad sobre qdrant_host/qdrant_http_port,
+    # que siguen sirviendo para el compose local. Un servicio gestionado (Qdrant
+    # Cloud) entrega un endpoint https con un puerto propio, y armarlo a mano
+    # desde las piezas obliga a asumir el esquema http.
+    qdrant_url_override: str | None = Field(default=None, alias="QDRANT_URL")
+    # Solo la exigen los servicios gestionados; el Qdrant del compose local no
+    # pide autenticación, así que por defecto no se manda nada.
+    qdrant_api_key: str | None = None
+
     qdrant_host: str = "localhost"
     qdrant_http_port: int = 6333
     qdrant_grpc_port: int = 6334
@@ -221,8 +230,29 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @field_validator("qdrant_url_override", "qdrant_api_key", mode="after")
+    @classmethod
+    def _vacio_es_ausente(cls, valor: str | None) -> str | None:
+        """Una variable declarada pero vacía es ausencia, no un valor.
+
+        Es el caso habitual de una plantilla de `.env` con `QDRANT_API_KEY=` sin
+        rellenar: sin esto, el cliente mandaría una key vacía y el servidor
+        respondería 401 en vez de dejar pasar la conexión anónima.
+        """
+        if valor is None:
+            return None
+        valor = valor.strip()
+        return valor or None
+
     @property
     def qdrant_url(self) -> str:
+        """URL del servicio, con el override por delante del host y el puerto."""
+        if self.qdrant_url_override:
+            # Una barra final concatenada con la ruta del cliente da "//". Los
+            # paneles la entregan de las dos formas y copiarla tal cual no
+            # debería cambiar el comportamiento.
+            return self.qdrant_url_override.rstrip("/")
+
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
 
 
