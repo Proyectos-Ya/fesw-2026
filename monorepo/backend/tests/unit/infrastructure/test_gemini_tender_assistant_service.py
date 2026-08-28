@@ -253,3 +253,130 @@ async def test_generate_response_applies_sliding_window_limit():
     assert contents[0]["parts"][0]["text"] == "Pregunta 4"
     assert contents[1]["parts"][0]["text"] == "Respuesta 5"
 
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_response_parses_discrepancies_and_multi_doc_citations(service):
+    mock_gemini_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps({
+                                "answer": "Advertencia: Se detectó una contradicción en el plazo de entrega entre las bases administrativas y técnicas.",
+                                "citations": [
+                                    {
+                                        "document_name": "Bases_Admin.pdf",
+                                        "page_or_sheet": "Página 10",
+                                        "quote": "Plazo de entrega: 30 días"
+                                    },
+                                    {
+                                        "document_name": "Bases_Tecnicas.pdf",
+                                        "page_or_sheet": "Página 2",
+                                        "quote": "Plazo de entrega: 45 días"
+                                    }
+                                ],
+                                "discrepancies": [
+                                    {
+                                        "topic": "Plazo de entrega",
+                                        "description": "Las bases administrativas exigen 30 días corridos mientras que las técnicas fijan 45 días.",
+                                        "conflicting_sources": [
+                                            {
+                                                "document_name": "Bases_Admin.pdf",
+                                                "page_or_sheet": "Página 10",
+                                                "quote": "Plazo de entrega: 30 días"
+                                            },
+                                            {
+                                                "document_name": "Bases_Tecnicas.pdf",
+                                                "page_or_sheet": "Página 2",
+                                                "quote": "Plazo de entrega: 45 días"
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "unbacked_aspects": [],
+                                "has_sufficient_info": True
+                            })
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+    ).respond(status_code=200, json=mock_gemini_response)
+
+    response = await service.generate_response(
+        question="¿Cuál es el plazo de entrega exigido?",
+        history=[],
+        documents=[
+            DocumentContextDTO(document_name="Bases_Admin.pdf", file_type="pdf", file_bytes=b"%PDF-1.4 admin"),
+            DocumentContextDTO(document_name="Bases_Tecnicas.pdf", file_type="pdf", file_bytes=b"%PDF-1.4 tec"),
+        ]
+    )
+
+    assert len(response.citations) == 2
+    assert len(response.discrepancies) == 1
+    disc = response.discrepancies[0]
+    assert disc.topic == "Plazo de entrega"
+    assert "30 días" in disc.description and "45 días" in disc.description
+    assert len(disc.conflicting_sources) == 2
+    assert disc.conflicting_sources[0].document_name == "Bases_Admin.pdf"
+    assert disc.conflicting_sources[1].document_name == "Bases_Tecnicas.pdf"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_response_parses_unbacked_aspects_and_insufficient_info(service):
+    mock_gemini_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps({
+                                "answer": "Se encontró información sobre la garantía de seriedad, pero el presupuesto estimado no figura en las bases.",
+                                "citations": [
+                                    {
+                                        "document_name": "Bases.pdf",
+                                        "page_or_sheet": "Página 3",
+                                        "quote": "Garantía de 5%"
+                                    }
+                                ],
+                                "discrepancies": [],
+                                "unbacked_aspects": ["Presupuesto estimado disponible"],
+                                "has_sufficient_info": True
+                            })
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+    ).respond(status_code=200, json=mock_gemini_response)
+
+    response = await service.generate_response(
+        question="¿Cuánto es la garantía y cuál es el presupuesto?",
+        history=[],
+        documents=[DocumentContextDTO(document_name="Bases.pdf", file_type="pdf", file_bytes=b"%PDF-1.4 bases")]
+    )
+
+    assert response.unbacked_aspects == ["Presupuesto estimado disponible"]
+    assert len(response.citations) == 1
+
+
+def test_system_instruction_contains_multidoc_and_contradiction_directives(service):
+    instruction = service._build_system_instruction(has_supplier=True)
+    assert "Cruce de información y síntesis consolidada" in instruction
+    assert "Detección de contradicciones y discrepancias" in instruction
+    assert "discrepancies" in instruction
+    assert "unbacked_aspects" in instruction
+    assert "has_sufficient_info: false" in instruction
+
+
