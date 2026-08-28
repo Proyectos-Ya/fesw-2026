@@ -36,6 +36,7 @@ def create_router(
     get_delete_tender_chat_doc_use_case: Callable,
     get_ask_tender_assistant_use_case: Callable,
     get_tender_chat_history_use_case: Callable,
+    get_create_tender_chat_session_use_case: Callable,
 ) -> APIRouter:
 
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
@@ -95,8 +96,10 @@ def create_router(
             get_delete_doc_use_case=get_delete_tender_chat_doc_use_case,
             get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
             get_chat_history_use_case=get_tender_chat_history_use_case,
+            get_create_chat_session_use_case=get_create_tender_chat_session_use_case,
         )
     )
 
     return root
+
 

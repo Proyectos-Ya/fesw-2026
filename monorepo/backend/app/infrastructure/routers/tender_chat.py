@@ -11,11 +11,17 @@ from fastapi import (
 
 from app.application.schemas.tender_chat_schema import (
     AskQuestionRequest,
+    CreateChatSessionRequest,
+    TenderChatSessionResponse,
     TenderChatMessageResponse,
     TenderChatDocumentResponse,
     CitationResponse,
 )
-from app.domain.entities.tender_chat import TenderChatMessage, TenderChatDocument
+from app.domain.entities.tender_chat import (
+    TenderChatMessage,
+    TenderChatDocument,
+    TenderChatSession,
+)
 from app.domain.entities.user import User
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
@@ -25,6 +31,8 @@ from app.domain.errors.tender_chat_errors import (
     MaxDocumentsExceededError,
     InvalidPromptInstruction,
     OutOfScopeQueryError,
+    ChatSessionNotFoundError,
+    ChatHistoryLoadError,
 )
 
 
@@ -35,8 +43,20 @@ def create_tender_chat_router(
     get_delete_doc_use_case: Callable,
     get_ask_assistant_use_case: Callable,
     get_chat_history_use_case: Callable,
+    get_create_chat_session_use_case: Callable,
 ) -> APIRouter:
     router = APIRouter(prefix="/tenders/{tender_id}/assistant", tags=["Tender Assistant"])
+
+    def _to_session_response(session: TenderChatSession) -> TenderChatSessionResponse:
+        return TenderChatSessionResponse(
+            id=session.id,
+            tender_id=session.tender_id,
+            user_id=session.user_id,
+            title=session.title,
+            is_active=session.is_active,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
 
     def _to_doc_response(doc: TenderChatDocument) -> TenderChatDocumentResponse:
         return TenderChatDocumentResponse(
@@ -59,6 +79,7 @@ def create_tender_chat_router(
         ]
         return TenderChatMessageResponse(
             id=msg.id,
+            session_id=msg.session_id,
             tender_id=msg.tender_id,
             user_id=msg.user_id,
             role=msg.role,
@@ -67,7 +88,25 @@ def create_tender_chat_router(
             created_at=msg.created_at,
         )
 
-    # 1. Cargar archivo adjunto al chat
+    # 1. Crear nueva sesión de chat limpia ("Nuevo Chat")
+    @router.post("/sessions", status_code=status.HTTP_201_CREATED, response_model=TenderChatSessionResponse)
+    async def create_session(
+        tender_id: UUID,
+        body: Optional[CreateChatSessionRequest] = None,
+        current_user: User = Depends(get_current_user),
+        use_case = Depends(get_create_chat_session_use_case),
+    ):
+        try:
+            session = await use_case.execute(
+                user_id=current_user.id,
+                tender_id=tender_id,
+                title=body.title if body else None,
+            )
+            return _to_session_response(session)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    # 2. Cargar archivo adjunto al chat
     @router.post("/documents", status_code=status.HTTP_201_CREATED, response_model=TenderChatDocumentResponse)
     async def upload_document(
         tender_id: UUID,
@@ -93,7 +132,7 @@ def create_tender_chat_router(
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-    # 2. Listar documentos adjuntos del chat
+    # 3. Listar documentos adjuntos del chat
     @router.get("/documents", response_model=List[TenderChatDocumentResponse])
     async def list_documents(
         tender_id: UUID,
@@ -103,7 +142,7 @@ def create_tender_chat_router(
         docs = await use_case.execute(tender_id=tender_id, user_id=current_user.id)
         return [_to_doc_response(d) for d in docs]
 
-    # 3. Eliminar documento adjunto del chat
+    # 4. Eliminar documento adjunto del chat
     @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete_document(
         tender_id: UUID,
@@ -117,7 +156,7 @@ def create_tender_chat_router(
         except DocumentNotFoundError as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
-    # 4. Realizar consulta al asistente virtual
+    # 5. Realizar consulta al asistente virtual
     @router.post("/ask", response_model=TenderChatMessageResponse)
     async def ask_assistant(
         tender_id: UUID,
@@ -130,8 +169,11 @@ def create_tender_chat_router(
                 tender_id=tender_id,
                 user_id=current_user.id,
                 question=body.question,
+                session_id=body.session_id,
             )
             return _to_msg_response(msg)
+        except ChatSessionNotFoundError as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         except TenderChatQueryTooLongError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         except (InvalidPromptInstruction, OutOfScopeQueryError) as e:
@@ -141,15 +183,29 @@ def create_tender_chat_router(
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # 5. Obtener historial del chat
+    # 6. Obtener historial del chat
     @router.get("/history", response_model=List[TenderChatMessageResponse])
     async def get_history(
         tender_id: UUID,
+        session_id: Optional[UUID] = None,
         limit: int = 50,
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_chat_history_use_case),
     ):
-        messages = await use_case.execute(tender_id=tender_id, user_id=current_user.id, limit=limit)
-        return [_to_msg_response(m) for m in messages]
+        try:
+            messages = await use_case.execute(
+                tender_id=tender_id,
+                user_id=current_user.id,
+                limit=limit,
+                session_id=session_id,
+            )
+            return [_to_msg_response(m) for m in messages]
+        except ChatSessionNotFoundError as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        except ChatHistoryLoadError as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return router
+

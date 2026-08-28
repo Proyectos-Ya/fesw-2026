@@ -35,12 +35,16 @@ from app.application.use_cases.ask_tender_assistant_use_case import (
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
+from app.application.use_cases.create_tender_chat_session_use_case import (
+    CreateTenderChatSessionUseCase,
+)
 from app.application.use_cases.delete_tender_chat_document_use_case import (
     DeleteTenderChatDocumentUseCase,
 )
 from app.application.use_cases.get_tender_chat_history_use_case import (
     GetTenderChatHistoryUseCase,
 )
+
 from app.application.use_cases.list_tender_chat_documents_use_case import (
     ListTenderChatDocumentsUseCase,
 )
@@ -314,10 +318,17 @@ def get_ask_tender_assistant_use_case(
 
 
 
+def get_create_tender_chat_session_use_case(
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> CreateTenderChatSessionUseCase:
+    return CreateTenderChatSessionUseCase(chat_repo=chat_repo)
+
+
 def get_tender_chat_history_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
 ) -> GetTenderChatHistoryUseCase:
     return GetTenderChatHistoryUseCase(chat_repo=chat_repo)
+
 
 
 class MockRerankerService(IRerankerService):
@@ -454,7 +465,9 @@ def bootstrap(app: FastAPI) -> None:
         get_delete_tender_chat_doc_use_case=get_delete_tender_chat_doc_use_case,
         get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
         get_tender_chat_history_use_case=get_tender_chat_history_use_case,
+        get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
     )
     app.include_router(router)
+
 
 
