@@ -7,8 +7,10 @@
 # (o, si ya se instaló `../requirements.txt` en el mismo venv, basta con
 # `../.venv/bin/pip install -r requirements.txt` desde acá para agregar estas).
 #
-# El OCR pesado (PaddleOCR, Apple Vision) va en requirements-motores-pesados.txt,
-# que se instala aparte.
+# El OCR es exclusivamente en la nube (Gemini, Unstructured, LlamaParse — ver
+# ocr_bench/extractors.py). Gemini, Document AI y LlamaParse no necesitan
+# paquete propio más allá de la librería estándar (`urllib`); Unstructured sí
+# (ver más abajo), porque su Workflow API no tiene contrato REST público.
 
 # --- Núcleo del arnés ---
 # Distancia de edición en C. Obligatoria: en Python puro, el CER entre dos
@@ -17,20 +19,32 @@ rapidfuzz>=3.9
 # Para importar is_valid_rut desde app/domain (ver ocr_bench/dominio.py) sin
 # reimplementarlo.
 pydantic>=2.6.0
+# Lee .env para las credenciales de Gemini/Unstructured/LlamaParse (ver
+# .env.example). Mismo mecanismo que perfilamiento/requirements.txt.
+python-dotenv>=1.0
+# Unstructured, solo para la Workflow API (create_job/get_job/download_job_output):
+# a diferencia de los otros 3 proveedores, ese contrato no está documentado en
+# REST puro — Unstructured remite a este SDK y a su Swagger UI autenticado.
+# Armarlo a mano con urllib sería adivinar el formato exacto del payload.
+unstructured-client>=0.46.2
 
 # --- Escalón 1: capa de texto del PDF (sin OCR) ---
-pymupdf>=1.24          # el más rápido; licencia AGPL, ver extractors.py
-pdfplumber>=0.11       # el más cuidadoso con columnas y tablas; el más lento
-pypdfium2>=4.30        # alternativa con licencia permisiva a pymupdf
-pymupdf4llm>=0.0.17    # misma capa de texto, emitida como Markdown (para chunking)
+# PyMuPDF y pypdfium2 se probaron y se descartaron para producción: PyMuPDF
+# es AGPL (riesgo si el backend se distribuye como servicio de red) y
+# pypdfium2, aunque de licencia permisiva, dio bastante peor CER que
+# pdfplumber en el corpus real (0.112 vs. 0.024) — ver
+# "Verificado contra el corpus real" en `1.2-ocr-alternativas.md`.
+# pymupdf4llm (Markdown, para chunking por sección) tampoco se incluye: no se
+# está usando ese enfoque de chunking en el pipeline actual.
+pdfplumber>=0.11       # elegido: MIT, mejor fidelidad que pypdfium2 en el caso común
 python-docx>=1.1       # los adjuntos .docx del corpus
 
 # --- Rasterizado y degradación sintética del corpus ---
+# No son para extracción de texto en producción: `degradar.py` usa `pymupdf`
+# para renderizar PDFs a imagen y `pillow`/`numpy` para degradarlas
+# sintéticamente y generar `escaneado-malo`, sin importar qué extractor se
+# evalúe después. Es una herramienta de generación de corpus de prueba, no
+# parte del `REGISTRO` de extractores.
+pymupdf>=1.24
 pillow>=10.3
 numpy>=1.26
-
-# --- Escalón 2: OCR local liviano ---
-# El binario y el idioma español se instalan aparte del paquete de Python:
-#   macOS:  brew install tesseract tesseract-lang
-#   Debian: apt-get install tesseract-ocr tesseract-ocr-spa
-pytesseract>=0.3.10

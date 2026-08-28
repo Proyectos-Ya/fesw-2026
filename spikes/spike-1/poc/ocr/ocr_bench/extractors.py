@@ -1,43 +1,31 @@
 """Adaptadores para cada alternativa de extracción de texto que se evalúa.
 
 Todos exponen la misma interfaz (`Extractor.extraer`) para que el benchmark no
-tenga que saber si detrás hay un parser de PDF, un OCR local o un servicio en la
-nube. Agregar un candidato es escribir una subclase y registrarla en
-`REGISTRO`.
+tenga que saber si detrás hay un parser de PDF o un servicio de OCR en la nube.
+Agregar un candidato es escribir una subclase y registrarla en `REGISTRO`.
 
-Las importaciones son perezosas a propósito: la escalera de costo del spike va
-de librerías triviales de instalar a modelos de cientos de megas, y hay que
-poder correr el benchmark con lo que esté instalado en vez de exigir todo. Un
-extractor no disponible se reporta como tal en la tabla — que también es un
-resultado: "no lo probamos" y "lo probamos y falló" no son lo mismo.
+Las importaciones de los extractores del Escalón 1 son perezosas a propósito:
+así se puede correr el benchmark con lo que esté instalado, sin exigir todo de
+una vez. Un extractor no disponible se reporta como tal en la tabla — que
+también es un resultado: "no lo probamos" y "lo probamos y falló" no son lo
+mismo.
 
-Nota sobre el orden de la escalera: los tres primeros **no son OCR**. Leen la
+Nota sobre el orden de la escalera: los del Escalón 1 **no son OCR**. Leen la
 capa de texto que el PDF ya trae. Si el documento es digital, ganan siempre —
 son exactos, cuestan milisegundos y no tienen dependencias pesadas. Recién
 cuando esa capa no existe (un escaneo es una imagen dentro de un PDF) tiene
-sentido pagar el costo del OCR.
+sentido pagar el costo del Escalón 2, que acá es exclusivamente **OCR en la
+nube** — se decidió no evaluar motores locales (Tesseract, PaddleOCR, Apple
+Vision), ver `ocr_bench/extractors.py::ExtractorEnLaNube`.
 """
 
 from __future__ import annotations
 
 import os
-import platform
-import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-
-# Resolución a la que se rasterizan las páginas antes de pasarlas a un OCR.
-# 300 DPI es el estándar de facto para documentos de texto: por debajo de 200 la
-# tasa de error de Tesseract sube de forma marcada, y por encima de 400 el
-# tiempo crece sin ganancia. Se deja como constante para poder barrerla.
-DPI_OCR = 300
-
-# Idioma para los motores que lo reciben como parámetro. Sin esto, Tesseract
-# asume inglés y destroza los acentos: es el error de configuración más común y
-# el que más ensucia una comparación entre motores.
-IDIOMA = "spa"
 
 
 @dataclass(frozen=True)
@@ -68,8 +56,8 @@ class Extractor(ABC):
     """Interfaz común. Una subclase por candidato."""
 
     nombre: str = "sin-nombre"
-    # Cómo clasificarlo en el informe: leer la capa de texto, OCR local, o
-    # servicio en la nube (que además tiene costo por página).
+    # Cómo clasificarlo en el informe: leer la capa de texto, o servicio de
+    # OCR en la nube (que además tiene costo por página).
     familia: str = "texto"
     extensiones: tuple[str, ...] = (".pdf",)
 
@@ -116,11 +104,14 @@ def _falta(modulo: str, paquete: str) -> tuple[bool, str]:
 
 
 class PdfplumberExtractor(Extractor):
-    """pdfplumber (sobre pdfminer.six). El más cuidadoso con el layout.
+    """pdfplumber (sobre pdfminer.six). Licencia MIT.
 
-    Reconstruye posiciones carácter a carácter, así que respeta mejor columnas y
-    tablas que los demás parsers. A cambio es el más lento de los tres — del
-    orden de decenas de veces más que PyMuPDF en documentos largos.
+    Elegido para producción entre las alternativas de la capa de texto
+    (`PyMuPDF`, `pypdfium2`, `pymupdf4llm` — comparadas y descartadas, ver
+    `1.2-ocr-alternativas.md`): mejor fidelidad que `pypdfium2` en el caso
+    común (CER 0.024 vs. 0.112 sobre el corpus real) sin la licencia AGPL de
+    `PyMuPDF`, que puede obligar a liberar código fuente si el backend se
+    distribuye como servicio de red.
     """
 
     nombre = "pdfplumber"
@@ -138,90 +129,6 @@ class PdfplumberExtractor(Extractor):
 
         with pdfplumber.open(ruta) as pdf:
             return [pagina.extract_text() or "" for pagina in pdf.pages]
-
-
-class PyMuPDFExtractor(Extractor):
-    """PyMuPDF (fitz). El más rápido de la capa de texto.
-
-    Ojo con la licencia: PyMuPDF es AGPL. Para uso interno da lo mismo, pero si
-    en algún momento el backend se distribuye, hay que revisarlo o comprar
-    licencia comercial. pypdfium2 (abajo) es la alternativa con licencia
-    permisiva.
-    """
-
-    nombre = "pymupdf"
-    familia = "texto"
-
-    def disponible(self) -> tuple[bool, str]:
-        try:
-            import pymupdf as fitz  # noqa: F401
-        except ImportError:
-            return _falta("pymupdf", "pymupdf")
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import pymupdf as fitz
-
-        with fitz.open(ruta) as documento:
-            # sort=True ordena los bloques por posición en la página en vez de
-            # por orden interno del PDF. Sin esto, un documento a dos columnas
-            # sale intercalado y `reading_order` lo delata.
-            return [pagina.get_text("text", sort=True) for pagina in documento]
-
-
-class Pypdfium2Extractor(Extractor):
-    """pypdfium2, envoltorio de PDFium (el motor de Chrome).
-
-    Licencia permisiva (BSD/Apache) y binarios livianos. Es la opción sensata si
-    la licencia de PyMuPDF llegara a ser un problema.
-    """
-
-    nombre = "pypdfium2"
-    familia = "texto"
-
-    def disponible(self) -> tuple[bool, str]:
-        try:
-            import pypdfium2  # noqa: F401
-        except ImportError:
-            return _falta("pypdfium2", "pypdfium2")
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import pypdfium2
-
-        documento = pypdfium2.PdfDocument(ruta)
-        try:
-            return [pagina.get_textpage().get_text_range() for pagina in documento]
-        finally:
-            documento.close()
-
-
-class PyMuPDF4LLMExtractor(Extractor):
-    """pymupdf4llm: la misma capa de texto, pero emitida como Markdown.
-
-    Es el escalón directamente relevante para RAG. Conserva títulos, listas y
-    tablas como estructura en vez de aplanarlas, lo que permite cortar los
-    chunks por sección en vez de cada N caracteres. Contra las métricas de texto
-    plano puntúa **peor** que PyMuPDF —los `#` y `|` cuentan como tokens de
-    ruido— así que hay que leerlo sabiendo eso: lo que aporta es estructura, y
-    eso no se ve en el CER.
-    """
-
-    nombre = "pymupdf4llm"
-    familia = "texto-estructurado"
-
-    def disponible(self) -> tuple[bool, str]:
-        try:
-            import pymupdf4llm  # noqa: F401
-        except ImportError:
-            return _falta("pymupdf4llm", "pymupdf4llm")
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import pymupdf4llm
-
-        trozos = pymupdf4llm.to_markdown(str(ruta), page_chunks=True)
-        return [str(trozo["text"]) for trozo in trozos]
 
 
 class DocxExtractor(Extractor):
@@ -259,260 +166,547 @@ class DocxExtractor(Extractor):
 
 
 # --------------------------------------------------------------------------
-# Escalón 2 — OCR local. Solo tiene sentido cuando no hay capa de texto.
+# Escalón 2 — OCR en la nube. Se decidió no evaluar OCR local (Tesseract,
+# PaddleOCR, Apple Vision): el equipo optó por APIs, empezando por Gemini
+# —que el backend ya integra, sin credencial nueva que gestionar— y sumando
+# Unstructured y LlamaParse como puntos de comparación.
+#
+# Nada de esto llama a una red por su cuenta: cada extractor exige sus propias
+# variables de entorno (ver cada clase) y sin ellas se reporta "no disponible",
+# igual que un motor local sin instalar. La llamada real solo ocurre cuando
+# alguien corre el benchmark con las credenciales puestas — nunca al importar
+# este módulo ni al listar los extractores.
 # --------------------------------------------------------------------------
 
 
-def rasterizar(ruta: Path, dpi: int = DPI_OCR) -> list[bytes]:
-    """Convierte cada página del PDF en un PNG en memoria.
-
-    Los motores de OCR reciben imágenes, no PDFs. Se centraliza acá para que
-    todos los motores vean exactamente el mismo insumo: si cada uno rasterizara
-    a su manera, la comparación mediría el rasterizador y no el OCR.
-    """
-    import pymupdf as fitz
-
-    matriz = fitz.Matrix(dpi / 72, dpi / 72)
-    with fitz.open(ruta) as documento:
-        return [
-            pagina.get_pixmap(matrix=matriz).tobytes("png") for pagina in documento
-        ]
+def _leer_pdf(ruta: Path) -> bytes:
+    return ruta.read_bytes()
 
 
-class TesseractExtractor(Extractor):
-    """Tesseract vía pytesseract. El OCR local de referencia.
+def _contar_paginas(ruta: Path) -> int:
+    """Cuenta páginas con pdfplumber. No es OCR: solo se usa para separar la
+    respuesta de una API que devuelve todo el documento en un bloque."""
+    import pdfplumber
 
-    Maduro, gratis, offline y empaquetable en la imagen Docker. Su debilidad
-    conocida son los documentos torcidos y con ruido — justo la categoría
-    `escaneado-malo`, que es donde esta comparación se decide.
-
-    Requiere el binario del sistema **y** el paquete de idioma español, que se
-    instala aparte (`brew install tesseract-lang`,
-    `apt-get install tesseract-ocr-spa`). Sin `spa` corre igual pero en inglés,
-    y ahí el resultado no significa nada.
-    """
-
-    nombre = "tesseract"
-    familia = "ocr-local"
-
-    def disponible(self) -> tuple[bool, str]:
-        try:
-            import pytesseract  # noqa: F401
-        except ImportError:
-            return _falta("pytesseract", "pytesseract")
-        if shutil.which("tesseract") is None:
-            return False, "falta el binario tesseract (brew install tesseract)"
-        try:
-            import pytesseract as pt
-
-            if IDIOMA not in pt.get_languages():
-                return False, (
-                    f"falta el paquete de idioma '{IDIOMA}' "
-                    "(brew install tesseract-lang)"
-                )
-        except Exception as exc:  # noqa: BLE001
-            return False, f"no se pudo consultar los idiomas: {exc}"
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import io
-
-        import pytesseract
-        from PIL import Image
-
-        paginas = []
-        for png in rasterizar(ruta):
-            with Image.open(io.BytesIO(png)) as imagen:
-                paginas.append(pytesseract.image_to_string(imagen, lang=IDIOMA))
-        return paginas
-
-
-class OcrmacExtractor(Extractor):
-    """Apple Vision (framework del sistema) vía ocrmac. Solo macOS.
-
-    Vale la pena medirlo aunque no sea desplegable: es gratis, offline, muy
-    bueno en español y suele superar a Tesseract en escaneos torcidos. Sirve
-    como **cota superior de lo local** — si Vision tampoco puede con un
-    documento, el problema es el documento y no el motor.
-
-    **No se puede llevar a producción**: la imagen del backend es Linux. Si
-    resultara ser el único que alcanza la calidad necesaria, ese hallazgo por sí
-    solo empuja hacia OCR en la nube.
-    """
-
-    nombre = "apple-vision"
-    familia = "ocr-local"
-
-    def disponible(self) -> tuple[bool, str]:
-        if platform.system() != "Darwin":
-            return False, "solo disponible en macOS"
-        try:
-            import ocrmac  # noqa: F401
-        except ImportError:
-            return _falta("ocrmac", "ocrmac")
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import io
-
-        from ocrmac import ocrmac as motor
-        from PIL import Image
-
-        paginas = []
-        for png in rasterizar(ruta):
-            with Image.open(io.BytesIO(png)) as imagen:
-                anotaciones = motor.OCR(
-                    imagen, language_preference=["es-ES"]
-                ).recognize()
-                paginas.append("\n".join(texto for texto, _, _ in anotaciones))
-        return paginas
-
-
-class PaddleOCRExtractor(Extractor):
-    """PaddleOCR. Modelo de detección + reconocimiento, mejor con documentos torcidos.
-
-    Es el escalón caro de lo local: instala PaddlePaddle y descarga modelos
-    (cientos de megas), y sin GPU es lento. Se justifica solo si Tesseract se
-    cae en la categoría `escaneado-malo`, que es exactamente la hipótesis que el
-    benchmark pone a prueba. Trae corrección de ángulo integrada, que es la
-    diferencia concreta con Tesseract en fotos de celular.
-    """
-
-    nombre = "paddleocr"
-    familia = "ocr-local"
-
-    def disponible(self) -> tuple[bool, str]:
-        try:
-            import paddleocr  # noqa: F401
-        except ImportError:
-            return _falta("paddleocr", "paddleocr (ver requirements-motores-pesados.txt)")
-        return True, ""
-
-    def _paginas(self, ruta: Path) -> list[str]:
-        import io
-
-        import numpy as np
-        from paddleocr import PaddleOCR
-        from PIL import Image
-
-        # El modelo se carga una vez por documento, no por página: la carga
-        # domina el tiempo y contarla por página inflaría el costo unitario.
-        motor = PaddleOCR(use_angle_cls=True, lang="es", show_log=False)
-        paginas = []
-        for png in rasterizar(ruta):
-            with Image.open(io.BytesIO(png)) as imagen:
-                arreglo = np.array(imagen.convert("RGB"))
-            resultado = motor.ocr(arreglo, cls=True)
-            lineas = []
-            for bloque in resultado or []:
-                for entrada in bloque or []:
-                    lineas.append(str(entrada[1][0]))
-            paginas.append("\n".join(lineas))
-        return paginas
-
-
-# --------------------------------------------------------------------------
-# Escalón 3 — OCR en la nube. Nada de esto llama a una red por su cuenta: solo
-# se activa si la variable de entorno correspondiente está seteada. Elegido el
-# extractor local (Tesseract), este escalón queda listo para cuando llegue el
-# momento de comparar contra un servicio pagado — que el plan del spike deja
-# explícitamente para después, no para ahora.
-# --------------------------------------------------------------------------
+    with pdfplumber.open(ruta) as documento:
+        return len(documento.pages)
 
 
 class ExtractorEnLaNube(Extractor):
-    """Base común de los proveedores de nube: todos cobran por página y necesitan
-    una credencial, así que todos comparten el mismo candado de disponibilidad.
+    """Base común: todos cobran por documento/página y necesitan credencial.
 
-    Agregar un proveedor nuevo es escribir `_paginas_por_documento` (una llamada
-    HTTP) y `_VARIABLE_ENDPOINT`/`_VARIABLE_TOKEN`; el resto —detección de
-    disponibilidad, medición de tiempo, captura de errores— ya está en
-    `Extractor.extraer`. Cambiar de proveedor en el benchmark es solo pasar otro
-    nombre en `--extractores`, no tocar el resto del arnés.
+    Cada subclase declara qué variables de entorno necesita y las valida en su
+    propio `disponible()` — los tres servicios autentican distinto (Gemini:
+    API key + nombre de modelo, sin URL propia; Unstructured: API key + URL,
+    porque puede ser la nube pública o una instancia propia; LlamaParse: solo
+    API key, URL fija) así que forzar una única forma común habría sido más
+    confuso que compartir nada.
     """
 
     familia = "ocr-nube"
 
-    # Nombres de las variables de entorno que cada subclase debe declarar.
-    _VARIABLE_ENDPOINT: str = ""
-    _VARIABLE_TOKEN: str = ""
-
-    def disponible(self) -> tuple[bool, str]:
-        if not os.environ.get(self._VARIABLE_ENDPOINT):
+    def _falta(self, *variables: str) -> tuple[bool, str]:
+        faltantes = [v for v in variables if not os.environ.get(v)]
+        if faltantes:
             return False, (
-                f"falta configurar {self._VARIABLE_ENDPOINT} "
+                f"falta configurar {', '.join(faltantes)} "
                 "(no se hace ninguna llamada de red sin esto)"
             )
-        if self._VARIABLE_TOKEN and not os.environ.get(self._VARIABLE_TOKEN):
-            return False, f"falta configurar {self._VARIABLE_TOKEN}"
         return True, ""
-
-    def _endpoint(self) -> str:
-        return os.environ[self._VARIABLE_ENDPOINT]
-
-    def _token(self) -> str | None:
-        return os.environ.get(self._VARIABLE_TOKEN) if self._VARIABLE_TOKEN else None
 
 
 class GeminiExtractor(ExtractorEnLaNube):
-    """Gemini multimodal, leyendo la página como imagen.
+    """Gemini multimodal, leyendo el PDF completo de una vez (no página por página).
 
-    Es el candidato de menor fricción: el proyecto ya tiene cliente y
-    credencial para Gemini (`gemini_deep_analysis_service.py`), así que no hay
-    integración nueva que mantener. Su riesgo propio es la **alucinación**:
-    puede devolver texto plausible que no está en la página. Por eso conviene
-    mirar `token_precision` con más atención en este extractor que en los
-    demás — es la métrica que la delata.
+    Es el candidato elegido: el backend ya tiene cliente y credencial para
+    Gemini (`gemini_deep_analysis_service.py`), mismas variables de entorno
+    (`GEMINI_API_KEY`, `GEMINI_MODEL`) — si el backend ya las tiene
+    configuradas, este extractor las reutiliza tal cual, sin credencial nueva.
+
+    Gemini 1.5+ acepta un PDF completo como `inline_data` y lo entiende
+    nativamente (columnas, tablas, orden de lectura) sin que este arnés tenga
+    que rasterizarlo.
+
+    Mejora respecto al patrón del backend (aplicada solo acá, no en
+    `gemini_deep_analysis_service.py`)
+    ---------------------------------------------------------------------
+    La primera versión le pedía a Gemini que insertara un separador de texto
+    (`<<<PAGINA>>>`) entre páginas, y partía la respuesta por ese separador.
+    Es fràgil: un separador dentro del prompt es una **sugerencia**, no una
+    garantía — el modelo puede omitirlo, reformatearlo o perderlo en un
+    documento largo, y ahí desaparece la separación por página sin ningún
+    aviso de que pasó.
+
+    El backend ya resuelve este tipo de problema de otra forma:
+    `generationConfig.responseSchema` fuerza una forma de JSON válida —no es
+    una sugerencia, es una restricción estructural sobre cómo decodifica el
+    modelo—, y así es como `gemini_deep_analysis_service.py` obtiene
+    `compatibility_score`/`recommendation`/`justification` de manera
+    confiable. Acá se usa la **misma técnica**, con un schema propio (un
+    arreglo de strings, uno por página) en vez de copiar esos campos, que no
+    tienen sentido para este caso.
+
+    **Límite no manejado todavía:** `inline_data` tiene un tope de tamaño
+    (~20 MB en la API pública). Un PDF más grande necesitaría subirse primero
+    por la File API de Gemini, que este extractor no implementa — se
+    reportaría como error al toparse con ese límite, no en silencio.
+
+    Riesgo propio: la **alucinación** — puede devolver texto plausible que no
+    está en la página. Por eso conviene mirar `token_precision` con más
+    atención en este extractor que en los demás; es la métrica que la delata.
     """
 
     nombre = "gemini"
-    _VARIABLE_ENDPOINT = "GEMINI_OCR_URL"
-    _VARIABLE_TOKEN = "GEMINI_API_KEY"
+    familia = "ocr-nube"
+
+    # Códigos de error transitorios de la API (límite de cuota, sobrecarga del
+    # modelo) que vale la pena reintentar en vez de reportar como fallo del
+    # documento — importan más acá que en las otras tres fuentes porque se va
+    # a correr sobre un corpus completo, no un documento suelto.
+    _REINTENTOS = 3
+    _ESPERA_ENTRE_REINTENTOS = 10
+    _CODIGOS_REINTENTABLES = (429, 503)
+
+    def disponible(self) -> tuple[bool, str]:
+        return self._falta("GEMINI_API_KEY", "GEMINI_MODEL")
 
     def _paginas(self, ruta: Path) -> list[str]:
-        raise NotImplementedError(
-            "llamada a Gemini pendiente de implementar: ver "
-            "gemini_deep_analysis_service.py para el cliente ya existente en "
-            "el backend. No se implementa hasta decidir consultarlo de verdad."
+        import base64
+        import json
+        import time as _time
+        import urllib.error
+        import urllib.request
+
+        api_key = os.environ["GEMINI_API_KEY"]
+        modelo = os.environ["GEMINI_MODEL"]
+        total_paginas = _contar_paginas(ruta)
+
+        pdf_b64 = base64.b64encode(_leer_pdf(ruta)).decode("ascii")
+        prompt = (
+            "Transcribe TEXTUALMENTE y por completo el contenido de este "
+            "documento PDF, en español, preservando el orden de lectura real "
+            "(si hay columnas, primero la izquierda completa y luego la "
+            f"derecha). El documento tiene {total_paginas} páginas. Devuelve "
+            "un elemento del arreglo por cada página, en orden, con el texto "
+            "completo de esa página. No agregues comentarios, resúmenes ni "
+            "texto que no esté en el documento."
         )
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{modelo}:generateContent"
+        )
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": "application/pdf", "data": pdf_b64}},
+                        {"text": prompt},
+                    ]
+                }
+            ],
+            # Salida forzada a JSON con esta forma exacta: no depende de que
+            # el modelo "decida" seguir el formato pedido en el prompt.
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                },
+            },
+        }
+        cuerpo_peticion = json.dumps(payload).encode("utf-8")
+
+        ultimo_error: Exception | None = None
+        for intento in range(self._REINTENTOS):
+            peticion = urllib.request.Request(
+                url,
+                data=cuerpo_peticion,
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    # Google dejó de aceptar el parámetro `?key=` para las keys
+                    # nuevas de AI Studio ("auth keys", ligadas a una cuenta de
+                    # servicio) — hay que mandarla en este header. Las keys
+                    # "Standard" antiguas también lo aceptan, así que este
+                    # cambio no rompe compatibilidad hacia atrás.
+                    "x-goog-api-key": api_key,
+                },
+            )
+            try:
+                with urllib.request.urlopen(peticion, timeout=180) as respuesta:
+                    cuerpo = json.loads(respuesta.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                ultimo_error = exc
+                if exc.code not in self._CODIGOS_REINTENTABLES or intento == self._REINTENTOS - 1:
+                    raise
+                _time.sleep(self._ESPERA_ENTRE_REINTENTOS * (intento + 1))
+        else:  # pragma: no cover - inalcanzable, el raise de arriba corta antes
+            raise ultimo_error  # type: ignore[misc]
+
+        texto_json = cuerpo["candidates"][0]["content"]["parts"][0]["text"]
+        paginas = json.loads(texto_json)
+        if not isinstance(paginas, list):
+            # La API garantiza la forma vía responseSchema; esto es una
+            # defensa ante un cambio de comportamiento futuro, no el camino
+            # esperado.
+            raise ValueError(
+                f"Gemini no devolvió un arreglo pese al responseSchema: {texto_json[:200]!r}"
+            )
+        return [str(p) for p in paginas]
 
 
 class DocumentAIExtractor(ExtractorEnLaNube):
-    """Google Document AI. Cobra por página; fuerte en formularios y tablas."""
+    """Google Document AI. **No es generativo**: reconoce texto token por
+    token, con posición y confianza por palabra, en vez de "redactar" una
+    transcripción como hace un modelo como Gemini. Es la comparación que
+    responde la pregunta real de esta ronda: ¿vale la pena la fidelidad de un
+    OCR clásico frente a la conveniencia de un modelo generativo, en
+    documentos con fechas y montos donde una alucinación silenciosa sale cara?
+
+    Autenticación distinta a las otras tres, y **es la parte más frágil de
+    este extractor**: Document AI usa OAuth2 de Google Cloud, no una API key
+    plana. Para no traer el SDK de `google-cloud-documentai` (dependencia
+    pesada, con su propio manejo de credenciales) a un PoC, este extractor
+    espera un **token de acceso ya generado**:
+
+        gcloud auth print-access-token
+
+    Ese token **expira en aproximadamente una hora**. Para una corrida larga
+    del benchmark hay que regenerarlo y volver a exportarlo — a diferencia de
+    Gemini/Unstructured/LlamaParse, cuya API key no vence. Si en algún momento
+    esto se vuelve incómodo, migrar a una cuenta de servicio con
+    `google-auth` es el camino correcto, pero no se justifica para probar.
+
+    Requiere haber creado antes un procesador de tipo "OCR" (o "Document OCR")
+    en Google Cloud Console → Document AI, en algún `location` (`us` o `eu`).
+    """
 
     nombre = "document-ai"
-    _VARIABLE_ENDPOINT = "DOCUMENT_AI_URL"
-    _VARIABLE_TOKEN = "DOCUMENT_AI_TOKEN"
+    familia = "ocr-nube"
+
+    def disponible(self) -> tuple[bool, str]:
+        return self._falta(
+            "DOCUMENT_AI_PROJECT_ID",
+            "DOCUMENT_AI_LOCATION",
+            "DOCUMENT_AI_PROCESSOR_ID",
+            "DOCUMENT_AI_ACCESS_TOKEN",
+        )
 
     def _paginas(self, ruta: Path) -> list[str]:
-        raise NotImplementedError("llamada a Document AI pendiente de implementar.")
+        import base64
+        import json
+        import urllib.request
+
+        proyecto = os.environ["DOCUMENT_AI_PROJECT_ID"]
+        ubicacion = os.environ["DOCUMENT_AI_LOCATION"]
+        procesador = os.environ["DOCUMENT_AI_PROCESSOR_ID"]
+        token = os.environ["DOCUMENT_AI_ACCESS_TOKEN"]
+
+        url = (
+            f"https://{ubicacion}-documentai.googleapis.com/v1/projects/"
+            f"{proyecto}/locations/{ubicacion}/processors/{procesador}:process"
+        )
+        payload = {
+            "rawDocument": {
+                "content": base64.b64encode(_leer_pdf(ruta)).decode("ascii"),
+                "mimeType": "application/pdf",
+            }
+        }
+        peticion = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+        )
+        with urllib.request.urlopen(peticion, timeout=180) as respuesta:
+            cuerpo = json.loads(respuesta.read().decode("utf-8"))
+
+        documento = cuerpo["document"]
+        texto_completo = documento.get("text", "")
+        paginas_crudas = documento.get("pages")
+        if not paginas_crudas:
+            return [texto_completo]
+
+        # El texto viene como un solo bloque; cada página solo trae los
+        # rangos (`textSegments`) que le corresponden dentro de ese bloque.
+        # Reconstruir la página es recortar esos rangos y unirlos.
+        paginas: list[str] = []
+        for pagina in paginas_crudas:
+            segmentos = (
+                (pagina.get("layout") or {}).get("textAnchor") or {}
+            ).get("textSegments") or []
+            trozos = [
+                texto_completo[int(seg.get("startIndex", 0)) : int(seg["endIndex"])]
+                for seg in segmentos
+                if "endIndex" in seg
+            ]
+            paginas.append("".join(trozos) if trozos else "")
+        return paginas
 
 
-class MistralOCRExtractor(ExtractorEnLaNube):
-    """Mistral OCR. Cobra por página; salida pensada para RAG (Markdown)."""
+class UnstructuredExtractor(ExtractorEnLaNube):
+    """Unstructured, vía la **Workflow API** (jobs asíncronos), no la API
+    clásica de un solo POST.
 
-    nombre = "mistral-ocr"
-    _VARIABLE_ENDPOINT = "MISTRAL_OCR_URL"
-    _VARIABLE_TOKEN = "MISTRAL_API_KEY"
+    La cuenta usada para este PoC viene aprovisionada para la Workflow API
+    (`platform-api.transform.unstructured.io`) — la API clásica
+    (`api.unstructuredapp.io/general/v0/general`, un solo POST con el archivo
+    y la respuesta inmediata) devuelve 404 ahí, porque es un producto
+    distinto. La Workflow API no tiene un contrato REST público documentado
+    (Unstructured remite a su SDK y a Swagger UI con la propia API key), así
+    que se usa el SDK oficial (`unstructured-client`) en vez de armar las
+    llamadas a mano — a diferencia del resto de este archivo, que evita
+    dependencias nuevas cuando el contrato es simple y público.
+
+    Tres pasos, como LlamaParse: crear el job, hacer polling hasta que
+    termine, descargar el resultado. La diferencia es que acá el job se
+    define ad-hoc en la propia petición (`job_nodes`), sin depender de un
+    workflow guardado de antemano en el dashboard — no hace falta configurar
+    nada ahí para correr esto.
+
+    Nodo de partición: `hi_res` (subtype `unstructured_api` en el payload del
+    job) — el motor propio de Unstructured (detección de layout + OCR
+    clásico), no el nodo `vlm` (que reenvía la imagen a Claude por defecto y
+    puede consumir cuota/crédito aparte). Mismo criterio que ya se usaba en
+    la API clásica antes de este cambio.
+    """
+
+    nombre = "unstructured"
+    familia = "ocr-nube"
+
+    _INTENTOS_MAXIMOS = 60
+    _ESPERA_ENTRE_INTENTOS = 5
+
+    def disponible(self) -> tuple[bool, str]:
+        return self._falta("UNSTRUCTURED_API_URL", "UNSTRUCTURED_API_KEY")
 
     def _paginas(self, ruta: Path) -> list[str]:
-        raise NotImplementedError("llamada a Mistral OCR pendiente de implementar.")
+        import json
+        import mimetypes
+        import time as _time
+
+        from unstructured_client import UnstructuredClient
+        from unstructured_client.models.operations import (
+            CreateJobRequest,
+            DownloadJobOutputRequest,
+            GetJobRequest,
+        )
+        from unstructured_client.models.shared import BodyCreateJob, InputFiles, JobStatus
+
+        cliente = UnstructuredClient(
+            api_key_auth=os.environ["UNSTRUCTURED_API_KEY"],
+            server_url=os.environ["UNSTRUCTURED_API_URL"],
+        )
+
+        content_type, _ = mimetypes.guess_type(str(ruta))
+        with open(ruta, "rb") as archivo:
+            respuesta_job = cliente.jobs.create_job(
+                request=CreateJobRequest(
+                    body_create_job=BodyCreateJob(
+                        request_data=json.dumps(
+                            {
+                                "job_nodes": [
+                                    {
+                                        "name": "Partitioner",
+                                        "type": "partition",
+                                        "subtype": "unstructured_api",
+                                        "settings": {
+                                            "strategy": "hi_res",
+                                            "ocr_languages": ["spa"],
+                                        },
+                                    }
+                                ]
+                            }
+                        ),
+                        input_files=[
+                            InputFiles(
+                                content=archivo,
+                                file_name=ruta.name,
+                                content_type=content_type or "application/octet-stream",
+                            )
+                        ],
+                    )
+                )
+            )
+
+        job_id = respuesta_job.job_information.id
+
+        info = None
+        for _ in range(self._INTENTOS_MAXIMOS):
+            info = cliente.jobs.get_job(request=GetJobRequest(job_id=job_id)).job_information
+            if info.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.STOPPED):
+                break
+            _time.sleep(self._ESPERA_ENTRE_INTENTOS)
+        else:
+            raise TimeoutError(
+                f"Unstructured: el job {job_id} no terminó tras "
+                f"{self._INTENTOS_MAXIMOS * self._ESPERA_ENTRE_INTENTOS}s"
+            )
+
+        if info is None or info.status != JobStatus.COMPLETED:
+            estado = info.status.value if info else "desconocido"
+            raise RuntimeError(f"Unstructured: job {job_id} terminó en estado {estado}")
+
+        por_pagina: dict[int, list[str]] = {}
+        for archivo_salida in info.output_node_files or []:
+            resultado = cliente.jobs.download_job_output(
+                request=DownloadJobOutputRequest(
+                    job_id=job_id,
+                    file_id=archivo_salida.file_id,
+                    node_id=archivo_salida.node_id,
+                )
+            )
+            elementos = resultado.any
+            if not isinstance(elementos, list):
+                continue
+            for elemento in elementos:
+                numero = int((elemento.get("metadata") or {}).get("page_number") or 1)
+                texto = str(elemento.get("text", ""))
+                por_pagina.setdefault(numero, []).append(texto)
+
+        if not por_pagina:
+            return []
+        return ["\n".join(por_pagina[n]) for n in sorted(por_pagina)]
+
+
+class LlamaParseExtractor(ExtractorEnLaNube):
+    """LlamaParse (LlamaCloud). Pensado explícitamente para RAG: la salida es
+    Markdown con la estructura del documento conservada.
+
+    Es una API **asíncrona por trabajo** (`job`), a diferencia de Gemini y
+    Unstructured que responden en la misma llamada: se sube el documento, se
+    consulta el estado hasta que termina, y recién ahí se pide el resultado.
+    El costo de eso es la latencia — puede tardar bastante más por documento
+    que los otros dos — y es justo lo que hay que medir con `s/pág` en la
+    tabla del benchmark.
+
+    **Sin verificar en vivo todavía**, igual que Unstructured: los nombres de
+    endpoint y de campos son los documentados públicamente por LlamaCloud, no
+    confirmados contra una respuesta real.
+    """
+
+    nombre = "llamaparse"
+    familia = "ocr-nube"
+
+    _URL_BASE = "https://api.cloud.llamaindex.ai/api/parsing"
+    _INTENTOS_MAXIMOS = 60
+    _ESPERA_ENTRE_INTENTOS = 5
+
+    def disponible(self) -> tuple[bool, str]:
+        return self._falta("LLAMA_CLOUD_API_KEY")
+
+    def _paginas(self, ruta: Path) -> list[str]:
+        import json
+        import time as _time
+        import urllib.error
+        import urllib.request
+        import uuid
+
+        token = os.environ["LLAMA_CLOUD_API_KEY"]
+        cabeceras = {"Authorization": f"Bearer {token}"}
+
+        limite = uuid.uuid4().hex
+        cuerpo = _codificar_multipart(limite, {"language": "es"}, "file", ruta)
+        subida = urllib.request.Request(
+            f"{self._URL_BASE}/upload",
+            data=cuerpo,
+            method="POST",
+            headers={
+                **cabeceras,
+                "Content-Type": f"multipart/form-data; boundary={limite}",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(subida, timeout=60) as respuesta:
+            trabajo = json.loads(respuesta.read().decode("utf-8"))
+        id_trabajo = trabajo["id"]
+
+        # Espera activa con límite: la API es asíncrona y no hay forma de que
+        # avise cuando termina, solo se puede preguntar. Un límite de intentos
+        # evita que un trabajo colgado deje el benchmark esperando para siempre.
+        for _ in range(self._INTENTOS_MAXIMOS):
+            estado_peticion = urllib.request.Request(
+                f"{self._URL_BASE}/job/{id_trabajo}", headers=cabeceras
+            )
+            with urllib.request.urlopen(estado_peticion, timeout=30) as respuesta:
+                estado = json.loads(respuesta.read().decode("utf-8"))
+            if estado.get("status") == "SUCCESS":
+                break
+            if estado.get("status") == "ERROR":
+                raise RuntimeError(f"LlamaParse reportó error en el trabajo: {estado}")
+            _time.sleep(self._ESPERA_ENTRE_INTENTOS)
+        else:
+            raise TimeoutError(
+                f"LlamaParse no terminó tras {self._INTENTOS_MAXIMOS * self._ESPERA_ENTRE_INTENTOS}s"
+            )
+
+        try:
+            resultado_peticion = urllib.request.Request(
+                f"{self._URL_BASE}/job/{id_trabajo}/result/json", headers=cabeceras
+            )
+            with urllib.request.urlopen(resultado_peticion, timeout=60) as respuesta:
+                resultado = json.loads(respuesta.read().decode("utf-8"))
+            paginas = resultado.get("pages")
+            if paginas:
+                return [str(p.get("md") or p.get("text") or "") for p in paginas]
+        except (urllib.error.HTTPError, KeyError, ValueError):
+            pass  # cae al resultado en un solo bloque, más abajo
+
+        # Respaldo: el resultado en Markdown de una vez, sin separación por
+        # página. Sirve igual para CER/recall del documento completo; solo se
+        # pierde el detalle de páginas vacías.
+        respaldo_peticion = urllib.request.Request(
+            f"{self._URL_BASE}/job/{id_trabajo}/result/markdown", headers=cabeceras
+        )
+        with urllib.request.urlopen(respaldo_peticion, timeout=60) as respuesta:
+            cuerpo_md = json.loads(respuesta.read().decode("utf-8"))
+        return [str(cuerpo_md.get("markdown", ""))]
+
+
+def _codificar_multipart(
+    limite: str, campos: dict[str, str], nombre_archivo: str, ruta: Path
+) -> bytes:
+    """Arma un cuerpo `multipart/form-data` a mano, sin librerías de terceros.
+
+    `urllib` (stdlib) no trae un cliente HTTP con soporte de multipart —
+    `requests` sí, pero es una dependencia nueva solo para esto. Es un formato
+    simple de armar directamente: un bloque de texto por campo, uno con el
+    archivo, todos separados por el mismo `limite`.
+    """
+    partes = []
+    for clave, valor in campos.items():
+        partes.append(
+            f"--{limite}\r\n"
+            f'Content-Disposition: form-data; name="{clave}"\r\n\r\n'
+            f"{valor}\r\n".encode("utf-8")
+        )
+    partes.append(
+        (
+            f"--{limite}\r\n"
+            f'Content-Disposition: form-data; name="{nombre_archivo}"; filename="{ruta.name}"\r\n'
+            "Content-Type: application/pdf\r\n\r\n"
+        ).encode("utf-8")
+        + ruta.read_bytes()
+        + b"\r\n"
+    )
+    partes.append(f"--{limite}--\r\n".encode("utf-8"))
+    return b"".join(partes)
 
 
 REGISTRO: dict[str, Extractor] = {
     extractor.nombre: extractor
     for extractor in (
         PdfplumberExtractor(),
-        PyMuPDFExtractor(),
-        Pypdfium2Extractor(),
-        PyMuPDF4LLMExtractor(),
         DocxExtractor(),
-        TesseractExtractor(),
-        OcrmacExtractor(),
-        PaddleOCRExtractor(),
         GeminiExtractor(),
         DocumentAIExtractor(),
-        MistralOCRExtractor(),
+        UnstructuredExtractor(),
+        LlamaParseExtractor(),
     )
 }
 
