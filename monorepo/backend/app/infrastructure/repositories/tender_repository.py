@@ -38,12 +38,12 @@ class TenderRepository(ITenderRepository):
             name=model.name,
             description=model.description,
             status_id=model.status_id,
-            # Código semántico ('publicada', ...) derivado del status_id: la tabla
-            # tender_status guarda códigos únicos por fila (ej. '2', 'publicada_2'),
-            # pero el pipeline de matching filtra por el código semántico.
-            status_code=TENDER_STATUS_CODE_BY_ID.get(
-                model.status_id, model.status.code if model.status else None
-            ),
+            # El código semántico sale de la fila de tender_status, que guarda el
+            # valor tal como lo entrega la API. Antes se derivaba del status_id
+            # con un mapa heredado de la API de Licitaciones: esa traducción es
+            # justo lo que hacía que una licitación desierta figurara como
+            # publicada.
+            status_code=model.status.code if model.status else None,
             published_at=model.published_at,
             closing_at=model.closing_at,
             last_change_at=model.last_change_at,
@@ -235,29 +235,31 @@ class TenderRepository(ITenderRepository):
             await self.session.flush()
         return rut
 
-    async def get_or_create_status(self, status_id: int) -> int:
+    async def get_or_create_status(self, status_id: int, code: str) -> int:
+        """Devuelve el id de la fila de estado, creándola o corrigiéndola.
+
+        `code` es el `estado.codigo` de la API y es lo que después lee
+        `_to_entity`. Antes esta función escribía `str(id)` o `publicada_2` y el
+        código semántico se derivaba de un mapa aparte; guardarlo tal cual
+        elimina esa traducción.
+
+        Si la fila existe con otro código —el caso de las bases sembradas con la
+        numeración heredada de la API de Licitaciones— se corrige en el sitio.
+        Sin esto, una base ya poblada seguiría sirviendo el valor viejo para
+        siempre.
+        """
         statement = select(TenderStatusModel).where(TenderStatusModel.id == status_id)
         result = await self.session.exec(statement)
         status = result.first()
 
+        nombre = code.replace("_", " ").capitalize()
         if not status:
-            # Se deriva del mapeo medido en vez de repetirlo: eran tres copias
-            # (esta, el seeder y constants) y llevaban valores distintos entre sí.
-            ESTADOS_MAP = {
-                id_: codigo.replace("_", " ").capitalize()
-                for id_, codigo in TENDER_STATUS_CODE_BY_ID.items()
-            }
-
-            if status_id in ESTADOS_MAP:
-                # code tiene índice único: se sufija con el id; el código
-                # semántico se deriva en _to_entity vía TENDER_STATUS_CODE_BY_ID.
-                name_str = ESTADOS_MAP[status_id]
-                code_str = f"{name_str.lower().strip()}_{status_id}"
-            else:
-                name_str = f"Estado Desconocido ({status_id})"
-                code_str = f"desconocido_{status_id}"
-
-            status = TenderStatusModel(id=status_id, code=code_str, name=name_str)
+            status = TenderStatusModel(id=status_id, code=code, name=nombre)
+            self.session.add(status)
+            await self.session.flush()
+        elif status.code != code:
+            status.code = code
+            status.name = nombre
             self.session.add(status)
             await self.session.flush()
 

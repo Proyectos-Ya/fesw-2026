@@ -26,6 +26,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import to_utc_naive, utc_now_naive
 from app.shared.regions import to_region_id
 
@@ -94,21 +95,12 @@ class TenderIngestionService(ITenderIngestionService):
                     if not code:
                         continue
 
-                    # 1. Filtrar solo licitaciones abiertas / publicadas
+                    # 1. Filtrar solo licitaciones abiertas / publicadas.
+                    # Por `estado.codigo`, que es el enum documentado de la API,
+                    # y no por `id_estado`, cuya numeración la guía no publica.
                     estado = item.get("estado", {}) or {}
-                    id_estado = estado.get("id_estado")
-                    codigo_estado = str(estado.get("codigo", "")).lower()
-                    glosa_estado = str(estado.get("glosa", "")).lower()
-                    # Solo 2 (publicada). El conjunto anterior, {1,2,5,6}, dejaba
-                    # entrar el 5 (cancelada) y el 6 (desierta). Ver el mapeo
-                    # medido en shared/constants.TENDER_STATUS_CODE_BY_ID.
-                    ACTIVE_STATUS_IDS = {2}
-                    is_active_status = (
-                        (id_estado in ACTIVE_STATUS_IDS)
-                        or ("publicada" in codigo_estado)
-                        or ("publicada" in glosa_estado)
-                    )
-                    if not is_active_status:
+                    codigo_estado = str(estado.get("codigo") or "").strip().lower()
+                    if codigo_estado not in ACTIVE_TENDER_STATUSES:
                         continue
 
                     # 2. Filtrar licitaciones cuya fecha de cierre ya venció
@@ -340,7 +332,10 @@ class TenderIngestionService(ITenderIngestionService):
             CodigoExterno=str(detail.get("codigo")),
             Nombre=str(detail.get("nombre")),
             Descripcion=detail.get("descripcion"),
-            CodigoEstado=int(estado.get("id_estado", 5)),
+            # El id se conserva para el FK de tender_status; el estado real
+            # lo decide EstadoCodigo. El 0 marca "no vino" sin fingir un estado.
+            CodigoEstado=int(estado.get("id_estado") or 0),
+            EstadoCodigo=estado.get("codigo"),
             FechaPublicacion=parse_date(fechas.get("fecha_publicacion")),
             FechaCierre=parse_date(fechas.get("fecha_cierre")),
             RutComprador=str(institucion.get("rut", "Sin RUT")),

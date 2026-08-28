@@ -26,21 +26,24 @@ async def seed_database_metadata(session: AsyncSession):
             # sin pedirle una migración manual a nadie.
             exists.name = r_name
 
-    # Seed de Estados. El campo code tiene índice único, por lo que se usa str(id);
-    # el código semántico ('publicada', ...) se deriva del status_id vía
-    # TENDER_STATUS_CODE_BY_ID al construir la entidad (ver TenderRepository._to_entity).
+    # Seed de Estados. `code` guarda el `estado.codigo` de la API tal cual, que es
+    # lo que lee TenderRepository._to_entity. Antes guardaba str(id) y el código
+    # semántico se derivaba de un mapa aparte, heredado de la API de
+    # Licitaciones: ahí es donde el 6 figuraba como "publicada" siendo
+    # "desierta".
     #
-    # Los nombres se derivan del mapeo medido y no se repiten acá: cuando eran
-    # dos listas separadas llevaban valores distintos, con el 6 como "Publicada"
-    # en ambas cuando en realidad es "desierta".
-    estados_data = {
-        id_: codigo.replace("_", " ").capitalize()
-        for id_, codigo in TENDER_STATUS_CODE_BY_ID.items()
-    }
-    for e_id, e_name in estados_data.items():
+    # Una fila que ya exista con otro código se corrige: las bases sembradas con
+    # la numeración vieja seguirían sirviendo el valor equivocado para siempre.
+    for e_id, e_code in TENDER_STATUS_CODE_BY_ID.items():
+        e_name = e_code.replace("_", " ").capitalize()
         statement = select(TenderStatusModel).where(TenderStatusModel.id == e_id)
         results = await session.exec(statement)
-        if not results.first():
-            session.add(TenderStatusModel(id=e_id, code=str(e_id), name=e_name))
+        existente = results.first()
+        if not existente:
+            session.add(TenderStatusModel(id=e_id, code=e_code, name=e_name))
+        elif existente.code != e_code:
+            existente.code = e_code
+            existente.name = e_name
+            session.add(existente)
 
     await session.commit()

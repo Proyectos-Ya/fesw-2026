@@ -14,6 +14,11 @@ TENDER_STATUSES = {
     "PO_ISSUED": "oc_emitida",
 }
 
+# Estado para una licitación cuyo `estado.codigo` no llegó o no se reconoce.
+# Deliberadamente fuera de ACTIVE_TENDER_STATUSES: sin saber el estado, no se
+# afirma que esté abierta.
+UNKNOWN_TENDER_STATUS = "desconocido"
+
 # Estados que se consideran activos/abiertos para efectos de recomendación.
 ACTIVE_TENDER_STATUSES = {TENDER_STATUSES["PUBLISHED"]}
 

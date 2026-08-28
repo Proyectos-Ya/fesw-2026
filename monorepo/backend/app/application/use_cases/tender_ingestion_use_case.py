@@ -10,16 +10,10 @@ from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
-from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 from app.shared.datetime_utils import to_utc_epoch
 
 
 class TenderIngestionUseCase:
-    # Mapeo de CodigoEstado (int) al código de string usado en Qdrant y constantes.
-    # Definido en shared/constants para mantener una sola fuente de verdad con
-    # el seeder y el repositorio SQL.
-    _STATUS_CODE_MAP: dict[int, str] = TENDER_STATUS_CODE_BY_ID
-
     def __init__(
         self,
         repository: ITenderRepository,
@@ -86,7 +80,7 @@ class TenderIngestionUseCase:
 
             text = self.text_builder.build_from_tender(new_tender, tender_items)
             vectors = await self.embedding_service.embed([text])
-            status_code = self._STATUS_CODE_MAP.get(dto.status_code, "desconocido")
+            status_code = dto.status_semantic_code
 
             # Qdrant antes que SQL, deliberadamente. Las dos escrituras no
             # comparten transacción, así que una puede fallar tras la otra;
@@ -125,7 +119,9 @@ class TenderIngestionUseCase:
             await self.repo.get_or_create_buyer(
                 rut=safe_buyer_rut, name=dto.buyer_name, region_id=region_id
             )
-            await self.repo.get_or_create_status(status_id=dto.status_code)
+            await self.repo.get_or_create_status(
+                status_id=dto.status_code, code=dto.status_semantic_code
+            )
             await self.repo.save_complex_tender(new_tender, tender_items)
 
             return {"status": "success", "tender_code": dto.code}

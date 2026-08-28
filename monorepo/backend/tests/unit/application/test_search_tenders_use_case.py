@@ -114,7 +114,7 @@ class FakeTenderRepo(ITenderRepository):
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
         return rut
 
-    async def get_or_create_status(self, status_id: int) -> int:
+    async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
 
     async def save_complex_tender(
