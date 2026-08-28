@@ -90,17 +90,30 @@ class TenderIngestionService(ITenderIngestionService):
         self._tender_vector_repo = tender_vector_repo
 
     # Obtiene listado de cambios recientes y guarda códigos en tender_metadata si no existen
-    async def fetch_tenders_metadata(self) -> None:
+    async def fetch_tenders_metadata(
+        self,
+        *,
+        dias: int | None = None,
+        por_publicacion: bool = False,
+        estado: str | None = None,
+        limite: int | None = None,
+    ) -> int:
         async with AsyncSession(self.engine) as session:
             to_date = datetime.now(UTC)
-            from_date = to_date - timedelta(days=1)
-            limit = settings.mercadopublico_fetching_limit
+            from_date = to_date - timedelta(days=dias or 1)
+            limit = limite or settings.mercadopublico_fetching_limit
 
             print(
                 f"[IngestionService] Consultando licitaciones recientes (límite: {limit})..."
             )
             try:
-                items = await self.client.get_tenders(from_date, to_date, limit)
+                items = await self.client.get_tenders(
+                    from_date,
+                    to_date,
+                    limit,
+                    por_publicacion=por_publicacion,
+                    estado=estado,
+                )
                 codigos_candidatos: list[str] = []
                 for item in items:
                     code = item.get("codigo")
@@ -141,9 +154,11 @@ class TenderIngestionService(ITenderIngestionService):
 
                 await session.commit()
                 print(f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}.")
+                return new_count
             except Exception as e:
                 print(f"[IngestionService] Error al sincronizar metadatos: {e}")
                 await session.rollback()
+                return 0
 
     # Procesa todas las licitaciones marcadas como is_processed=False
     async def _insertar_metadata(

@@ -11,10 +11,22 @@ class ITenderIngestionService(ABC):
     """
 
     @abstractmethod
-    async def fetch_tenders_metadata(self) -> None:
-        """
-        Consulta la API externa para obtener el listado reciente de licitaciones
-        y guarda la metadata básica.
+    async def fetch_tenders_metadata(
+        self,
+        *,
+        dias: int | None = None,
+        por_publicacion: bool = False,
+        estado: str | None = None,
+        limite: int | None = None,
+    ) -> int:
+        """Consulta el listado de la API y guarda la metadata básica.
+
+        Sin argumentos hace lo de siempre: los cambios de las últimas 24 h, que
+        es la sincronización diaria. Los parámetros existen para la carga
+        inicial, que necesita una ventana ancha, filtrar por estado en el
+        servidor y pedir por fecha de publicación en vez de por cambio.
+
+        Devuelve cuántas licitaciones nuevas quedaron encoladas.
         """
         pass
 

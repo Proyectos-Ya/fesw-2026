@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx
@@ -19,6 +19,17 @@ class CuotaAgotadaError(ErrorTransitorioMercadoPublico):
 
 
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
+def _iso_8601(momento: datetime) -> str:
+    """Formato que documenta la guía para los rangos de fecha: 2026-04-01T12:00:00Z.
+
+    Se normaliza a UTC antes de formatear: mandar una hora local con el sufijo Z
+    desplazaría la ventana varias horas sin que nada avisara.
+    """
+    if momento.tzinfo is not None:
+        momento = momento.astimezone(UTC)
+    return momento.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class MercadoPublicoClient:
     def __init__(self, api_key: str, espera_base: float = 1.0):
         self.api_key = api_key
@@ -29,8 +40,26 @@ class MercadoPublicoClient:
 
     # Obtiene el listado de cambios recientes en base a una ventana de tiempo (en milisegundos)
     async def get_tenders(
-        self, from_date: datetime, to_date: datetime, quantity: int
+        self,
+        from_date: datetime,
+        to_date: datetime,
+        quantity: int,
+        *,
+        por_publicacion: bool = False,
+        estado: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Lista licitaciones en una ventana de tiempo.
+
+        Por defecto pregunta por lo que **cambió** (`ttl_cambio_ms`), que es lo
+        que quiere la sincronización diaria. Con `por_publicacion=True` pregunta
+        por lo que se **publicó** en el rango, que es lo que quiere una carga
+        inicial: un corpus, no un delta. La guía pone los dos en grupos
+        distintos de parámetros y advierte que no se combinan.
+
+        `estado` filtra en el servidor (`publicada`, o varios separados por
+        coma), así que las cerradas y desiertas ni siquiera se descargan. Medido:
+        sin una ventana de tiempo acompañándolo, la API responde 504.
+        """
         headers = {"ticket": self.api_key}
         # Calculamos la ventana de tiempo en milisegundos
         delta = to_date - from_date
@@ -50,11 +79,17 @@ class MercadoPublicoClient:
 
         async with httpx.AsyncClient() as client:
             while len(all_items) < quantity:
-                params = {
-                    "ttl_cambio_ms": time_window_ms,
+                params: dict[str, Any] = {
                     "tamano_pagina": api_page_size,
                     "numero_pagina": current_page,
                 }
+                if por_publicacion:
+                    params["publicado_desde"] = _iso_8601(from_date)
+                    params["publicado_hasta"] = _iso_8601(to_date)
+                else:
+                    params["ttl_cambio_ms"] = time_window_ms
+                if estado:
+                    params["estado"] = estado
                 try:
                     print(
                         f"[API MP] Consultando página {current_page} (listado de cambios) a {self.base_url}..."
