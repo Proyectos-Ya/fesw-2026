@@ -201,41 +201,81 @@ class MercadoPublicoClient:
     async def get_tender_detail(self, id: str) -> dict[str, Any]:
         """Detalle de una licitación. `{}` solo si de verdad no hay nada que traer.
 
-        Un 429, un 5xx o un timeout **no** devuelven `{}`: levantan
-        `ErrorTransitorioMercadoPublico`. Devolverlos como vacío hacía que la
-        ingesta los tomara por "esta licitación no tiene detalle" y la marcara
-        procesada para siempre, perdiéndola sin posibilidad de reintento.
+        Un 429, un 5xx o un timeout **no** devuelven `{}`: levantan una excepción.
+        Devolverlos como vacío hacía que la ingesta los tomara por "esta
+        licitación no tiene detalle" y la marcara procesada para siempre,
+        perdiéndola sin posibilidad de reintento.
+
+        Los tres se reintentan con espera creciente antes de rendirse. El 429 en
+        particular es pasajero —la API aplica un balde de tokens que se recarga
+        en segundos—, y al primero se cortaba la ingesta entera: en una carga
+        inicial de horas eso la detiene a los minutos.
+
+        Un 4xx que no sea 429 sí devuelve `{}`: esa licitación no está
+        disponible y volver a pedirla daría lo mismo.
+
+        El timeout es de 30 s y no de 15: el detalle tarda ~3,3 s de mediana pero
+        se han medido respuestas de 9 s, y un timeout corto convierte una
+        respuesta lenta en un reintento innecesario.
         """
         headers = {"ticket": self.api_key}
         detail_url = f"{self.base_url}/{id}"
+        intentos = 4
+
         async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(detail_url, headers=headers, timeout=15.0)
-                if response.status_code == 429:
-                    raise CuotaAgotadaError(
-                        f"Cuota diaria agotada al pedir el detalle de {id}."
+            for intento in range(1, intentos + 1):
+                ultimo = intento == intentos
+                try:
+                    response = await client.get(
+                        detail_url, headers=headers, timeout=30.0
                     )
-                if response.status_code >= 500:
-                    raise ErrorTransitorioMercadoPublico(
-                        f"HTTP {response.status_code} al pedir el detalle de {id}."
-                    )
-                response.raise_for_status()
-                detail_envelope = cast(dict[str, Any], response.json())
-                return cast(dict[str, Any], detail_envelope.get("payload", {}))
-            except (httpx.TimeoutException, httpx.TransportError) as e:
-                # La licitación está: fue la conexión la que falló.
-                raise ErrorTransitorioMercadoPublico(
-                    f"{type(e).__name__} al pedir el detalle de {id}."
-                ) from e
-            except httpx.HTTPStatusError as http_err:
-                # 4xx que no es 429: la licitación no está disponible y volver a
-                # pedirla daría lo mismo.
+                except (httpx.TimeoutException, httpx.TransportError) as e:
+                    # La licitación está: fue la conexión la que falló.
+                    if ultimo:
+                        raise ErrorTransitorioMercadoPublico(
+                            f"{type(e).__name__} al pedir el detalle de {id} "
+                            f"tras {intentos} intentos."
+                        ) from e
+                    motivo = type(e).__name__
+                else:
+                    if response.status_code == 429:
+                        if ultimo:
+                            raise CuotaAgotadaError(
+                                f"Cuota agotada al pedir el detalle de {id} "
+                                f"tras {intentos} intentos."
+                            )
+                        motivo = "HTTP 429"
+                    elif response.status_code >= 500:
+                        if ultimo:
+                            raise ErrorTransitorioMercadoPublico(
+                                f"HTTP {response.status_code} al pedir el detalle "
+                                f"de {id} tras {intentos} intentos."
+                            )
+                        motivo = f"HTTP {response.status_code}"
+                    elif response.status_code >= 400:
+                        print(
+                            f"[HTTP Error MP] Error al obtener detalle de {id}: "
+                            f"{response.status_code}"
+                        )
+                        return {}
+                    else:
+                        try:
+                            envelope = cast(dict[str, Any], response.json())
+                            return cast(dict[str, Any], envelope.get("payload", {}))
+                        except Exception as e:
+                            print(
+                                f"[Error MP] Respuesta ilegible en el detalle de "
+                                f"{id}: {e}"
+                            )
+                            return {}
+
+                espera = self._espera_base * (2**intento)
                 print(
-                    f"[HTTP Error MP] Error al obtener detalle de {id}: {http_err.response.status_code}"
+                    f"[API MP] {motivo} en el detalle de {id}. "
+                    f"Reintento {intento}/{intentos - 1} en {espera}s..."
                 )
-                return {}
-            except ErrorTransitorioMercadoPublico:
-                raise
-            except Exception as e:
-                print(f"[Error MP] Falla inesperada al obtener detalle de {id}: {e}")
-                return {}
+                if espera:
+                    await asyncio.sleep(espera)
+
+        # Inalcanzable: el último intento siempre devuelve o levanta.
+        raise ErrorTransitorioMercadoPublico(f"Sin respuesta para el detalle de {id}.")
