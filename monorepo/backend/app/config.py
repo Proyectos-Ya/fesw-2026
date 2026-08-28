@@ -65,7 +65,12 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "proyectosya"
     postgres_user: str = "postgres"
-    postgres_password: str
+    # Opcional a propósito: con DATABASE_URL puesta, estos POSTGRES_* no se usan
+    # para nada. Exigirla igual obligaba a inventar un valor en las variables del
+    # despliegue, y quien las configura sin conocer el código no tiene cómo saber
+    # que da lo mismo —lo razonable es suponer lo contrario—. El validador de más
+    # abajo se encarga de que no falten las dos a la vez.
+    postgres_password: str | None = None
 
     # --- Qdrant ---
     # URL completa del servicio. Tiene prioridad sobre qdrant_host/qdrant_http_port,
@@ -260,12 +265,29 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    @field_validator("embedding_api_key", "pinecone_api_key", mode="after")
+    @field_validator("embedding_api_key", "pinecone_api_key", "postgres_password", mode="after")
     @classmethod
     def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
         if valor is None:
             return None
         return valor.strip() or None
+
+    @model_validator(mode="after")
+    def _exigir_una_forma_de_conectar_a_postgres(self) -> "Settings":
+        """Hay dos formas válidas de configurar la base, y hace falta una.
+
+        Falla al construir Settings y no en la primera consulta: un error de
+        configuración tiene que impedir el arranque, no aparecer más tarde
+        disfrazado de fallo de conexión.
+        """
+        if not self.database_url_override and not self.postgres_password:
+            raise ValueError(
+                "Falta la configuración de la base de datos. Usa DATABASE_URL con "
+                "la cadena completa (lo habitual con Supabase, Neon o RDS), o bien "
+                "POSTGRES_PASSWORD junto a los demás POSTGRES_* (lo que hace el "
+                "compose local)."
+            )
+        return self
 
     @model_validator(mode="after")
     def _exigir_credencial_del_proveedor(self) -> "Settings":

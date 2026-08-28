@@ -9,35 +9,44 @@ Con este test, agregar un campo obligatorio sin agregarlo al relleno falla como
 un test normal y con un mensaje que dice exactamente qué hacer.
 """
 
-from pydantic_core import PydanticUndefined
+from pydantic import ValidationError
 
 from app.config import MIN_JWT_SECRET_BYTES, Settings
 from pytest_env_defaults import RELLENO_ENV
 
 
-def _campos_obligatorios() -> set[str]:
-    """Campos de Settings sin valor por defecto: hay que suministrarlos sí o sí."""
-    return {
-        nombre
-        for nombre, campo in Settings.model_fields.items()
-        if campo.default is PydanticUndefined and campo.default_factory is None
-    }
+def _construir(entorno: dict[str, str]) -> Settings:
+    """Construye Settings solo con lo que se le pasa, sin leer el .env."""
+    return Settings(_env_file=None, **{k.lower(): v for k, v in entorno.items()})  # type: ignore[arg-type]
 
 
-def test_el_relleno_cubre_todos_los_campos_obligatorios():
-    faltantes = _campos_obligatorios() - {c.lower() for c in RELLENO_ENV}
-    assert not faltantes, (
-        f"Campos obligatorios de Settings sin valor de relleno: {sorted(faltantes)}. "
-        "Agrégalos a RELLENO_ENV en backend/conftest.py o pytest fallará en la "
-        "recolección al no haber .env (por ejemplo, en CI)."
-    )
+def test_el_relleno_alcanza_para_construir_settings():
+    """La comprobación se hace construyendo, no comparando contra model_fields.
+
+    Un campo puede no tener default y aun así no ser lo único que hace falta: hay
+    validadores que exigen combinaciones —DATABASE_URL *o* POSTGRES_PASSWORD, por
+    ejemplo— y esos no se ven mirando los campos uno a uno.
+    """
+    assert _construir(RELLENO_ENV) is not None
 
 
-def test_el_relleno_no_trae_claves_de_mas():
-    """Una clave que ya no es obligatoria en Settings es relleno muerto."""
-    sobrantes = {c.lower() for c in RELLENO_ENV} - _campos_obligatorios()
+def test_cada_clave_del_relleno_hace_falta():
+    """Relleno muerto: una clave que se puede quitar sin que nada falle.
+
+    Se comprueba quitándola de verdad, por la misma razón que el test anterior.
+    """
+    sobrantes = []
+    for clave in RELLENO_ENV:
+        sin_ella = {k: v for k, v in RELLENO_ENV.items() if k != clave}
+        try:
+            _construir(sin_ella)
+        except ValidationError:
+            continue
+        sobrantes.append(clave)
+
     assert not sobrantes, (
-        f"RELLENO_ENV define claves que Settings ya no exige: {sorted(sobrantes)}."
+        f"RELLENO_ENV define claves que Settings ya no exige: {sorted(sobrantes)}. "
+        "Quítalas de pytest_env_defaults.py."
     )
 
 
