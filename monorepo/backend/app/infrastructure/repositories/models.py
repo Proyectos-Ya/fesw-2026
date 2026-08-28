@@ -14,8 +14,18 @@ from app.infrastructure.repositories.deep_analysis_model import (
 from app.infrastructure.repositories.matching_result_model import (
     MatchingResultModel,
 )
+from app.infrastructure.repositories.notification_model import (
+    NotificationDeliveryModel,
+    NotificationModel,
+    NotificationPreferenceModel,
+)
 from app.infrastructure.repositories.question_model import QuestionModel
+from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_chat_model import (
+    TenderChatDocumentModel,
+    TenderChatMessageModel,
+)
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -33,14 +43,20 @@ __all__ = [
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "MatchingResultModel",
+    "NotificationDeliveryModel",
+    "NotificationModel",
+    "NotificationPreferenceModel",
     "QuestionModel",
     "RegionModel",
+    "SavedTenderModel",
     "SupplierModel",
     "TenderAIAnalysisModel",
     "TenderItemModel",
     "TenderMetadataModel",
     "TenderModel",
     "TenderStatusModel",
+    "TenderChatDocumentModel",
+    "TenderChatMessageModel",
     "UserModel",
     "SavedTenderModel",
     "TenderChatDocumentModel",

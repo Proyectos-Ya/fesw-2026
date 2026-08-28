@@ -50,6 +50,14 @@ services:
     extra_hosts:
       # En Linux no se resuelve solo; en macOS y Windows Docker ya lo provee.
       - "host.docker.internal:host-gateway"
+    # Rotación del log: sin esto el archivo JSON del contenedor crece sin tope
+    # hasta llenar el disco, y cuando eso pasa la API deja de responder con
+    # errores que no apuntan a la causa real.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       qdrant:
         # Espera a que Qdrant esté listo, no solo a que el proceso exista: el
@@ -75,6 +83,14 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       QDRANT__SERVICE__ENABLE_CORS: "true"
+    # Rotación del log: sin esto el archivo JSON del contenedor crece sin tope
+    # hasta llenar el disco, y cuando eso pasa la API deja de responder con
+    # errores que no apuntan a la causa real.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       # La imagen de Qdrant no incluye curl ni wget, que es lo que se usaría
       # normalmente acá. Pero sí trae bash, y bash abre sockets TCP por

@@ -7,6 +7,7 @@ from app.domain.entities.tender_chat import TenderChatMessage, Citation
 
 class AIResponseDTO(BaseModel):
     """Respuesta generada por el asistente con citas estructuradas."""
+
     answer: str
     citations: List[Citation] = Field(default_factory=list)
     has_sufficient_info: bool = True
@@ -14,6 +15,7 @@ class AIResponseDTO(BaseModel):
 
 class DocumentContextDTO(BaseModel):
     """Contexto de un documento cargado para el asistente."""
+
     document_name: str
     file_type: str  # "pdf" | "xlsx" | "png"
     file_bytes: bytes
@@ -35,4 +37,3 @@ class ITenderAssistantAIService(ABC):
         los documentos adjuntos y el perfil de la empresa consultante, extrayendo citas textuales exactas.
         """
         pass
-

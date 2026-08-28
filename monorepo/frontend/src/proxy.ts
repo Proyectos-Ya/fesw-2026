@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 
 /** Nombre de la cookie httpOnly que deja el backend al iniciar sesión. */
 const AUTH_COOKIE = "access_token";
@@ -19,7 +20,11 @@ export default function proxy(request: NextRequest) {
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
   if (!hasSession && !isPublicPath) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    // Se conserva el destino: un enlace de alerta lleva a /matches/{id} y sin
+    // esto el usuario terminaría en el home tras iniciar sesión, teniendo que
+    // volver al correo para hacer clic de nuevo.
+    const destino = loginUrlWithReturn(pathname, request.nextUrl.search);
+    return NextResponse.redirect(new URL(destino, request.url));
   }
 
   if (hasSession && isPublicPath) {

@@ -43,19 +43,43 @@ describe("parseApiDate", () => {
   });
 });
 
+/**
+ * Sustituye los espacios duros por uno normal antes de comparar.
+ *
+ * ICU separa el "p. m." con un espacio que no se puede partir en dos líneas, y
+ * cuál exactamente depende de la versión: Node 24 emite NO-BREAK SPACE (U+00A0)
+ * donde las anteriores ponían uno normal, y otras locales usan el estrecho
+ * (U+202F). Los tres se ven idénticos en pantalla —de ahí que el error de
+ * vitest muestre dos cadenas aparentemente iguales— y cuál elija ICU no es
+ * asunto de la aplicación. Sin esta normalización el mismo test pasa o falla
+ * según la versión de Node que tenga instalada cada persona.
+ */
+function conEspaciosNormales(valor: string): string {
+  // Escritos como escapes y no como el carácter literal: en el código fuente
+  // un espacio duro es indistinguible de uno corriente, que es justo lo que
+  // vuelve difícil de ver este problema.
+  return valor.replace(/[\u00a0\u202f]/g, " ");
+}
+
 describe("formatDateTime", () => {
   it("muestra la hora convertida a la zona del navegador", () => {
     // 21:42 UTC son las 17:42 en Chile continental durante julio (UTC-4).
-    expect(formatDateTime("2026-07-27T21:42:00Z")).toBe("27 jul 2026, 05:42 p. m.");
+    expect(conEspaciosNormales(formatDateTime("2026-07-27T21:42:00Z"))).toBe(
+      "27 jul 2026, 05:42 p. m.",
+    );
   });
 
   it("convierte también un ISO sin offset enviado por el backend", () => {
-    expect(formatDateTime("2026-07-27T21:42:00")).toBe("27 jul 2026, 05:42 p. m.");
+    expect(conEspaciosNormales(formatDateTime("2026-07-27T21:42:00"))).toBe(
+      "27 jul 2026, 05:42 p. m.",
+    );
   });
 
   it("aplica el horario de verano cuando corresponde", () => {
     // En enero Chile está en UTC-3: 20:42 UTC son las 17:42 locales.
-    expect(formatDateTime("2026-01-15T20:42:00Z")).toBe("15 ene 2026, 05:42 p. m.");
+    expect(conEspaciosNormales(formatDateTime("2026-01-15T20:42:00Z"))).toBe(
+      "15 ene 2026, 05:42 p. m.",
+    );
   });
 
   it("devuelve un guion para valores ausentes o inválidos", () => {
