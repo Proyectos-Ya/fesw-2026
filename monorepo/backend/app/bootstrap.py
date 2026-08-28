@@ -439,6 +439,7 @@ def get_ask_tender_assistant_use_case(
     )
 
 
+
 def get_tender_chat_history_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
 ) -> GetTenderChatHistoryUseCase:
