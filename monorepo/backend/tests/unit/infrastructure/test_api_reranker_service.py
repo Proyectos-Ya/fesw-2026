@@ -41,21 +41,56 @@ class TestCorrespondenciaDeResultados:
 
         resultado = await _servicio().rerank("computadores", CANDIDATAS, limit=3)
 
-        assert resultado == [(ID_C, 0.9), (ID_A, 0.5), (ID_B, 0.1)]
+        # Solo los ids: las magnitudes las transforma la recalibración, y lo que
+        # este test cuida es a qué candidata queda pegado cada score.
+        assert [tid for tid, _ in resultado] == [ID_C, ID_A, ID_B]
+        assert [s for _, s in resultado] == sorted(
+            (s for _, s in resultado), reverse=True
+        )
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_no_aplica_la_calibracion_platt(self):
-        """temperature y bias se ajustaron sobre los logits crudos del ONNX INT8.
+    async def test_devuelve_el_score_en_la_escala_del_modo_local(self):
+        """Pinecone entrega sigmoid(logit); el modo local, sigmoid((logit+b)/T).
 
-        Pinecone devuelve un score ya normalizado; aplicarle encima la sigmoide
-        calibrada lo deforma. El score tiene que pasar tal cual.
+        Pasar el valor crudo no es neutro: quien lo consume lo trata como si
+        estuviera calibrado. `final_score` pondera el reranker al 50% y de ahí
+        salen el porcentaje que ve el usuario y el umbral con el que decide
+        recibir alertas. Sin recalibrar, los mismos datos dan un tercio del
+        puntaje en producción que en local, y las alertas dejan de dispararse.
+
+        El valor esperado se midió contra el reranker local el 28 de agosto de
+        2026: Pinecone dio 0,04751 donde el ONNX INT8 daba 0,2802.
         """
-        respx.post(URL).mock(return_value=_respuesta([(0, 0.42)]))
+        respx.post(URL).mock(return_value=_respuesta([(0, 0.04751419)]))
 
-        (_, score), = await _servicio().rerank("x", CANDIDATAS[:1], limit=1)
+        ((_, score),) = await _servicio().rerank("x", CANDIDATAS[:1], limit=1)
 
-        assert score == 0.42
+        assert score == pytest.approx(0.2692, abs=1e-4)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_la_recalibracion_conserva_el_orden(self):
+        """Es monótona: no puede reordenar lo que el proveedor ya ordenó."""
+        respx.post(URL).mock(
+            return_value=_respuesta([(0, 0.9), (1, 0.05), (2, 0.0001)])
+        )
+
+        scores = [s for _, s in await _servicio().rerank("x", CANDIDATAS, limit=3)]
+
+        assert scores == sorted(scores, reverse=True)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_los_extremos_no_revientan_al_invertir_la_sigmoide(self):
+        """Un 0 o un 1 exactos dan logit infinito: hay que acotarlos."""
+        respx.post(URL).mock(return_value=_respuesta([(0, 0.0), (1, 1.0)]))
+
+        scores = [s for _, s in await _servicio().rerank("x", CANDIDATAS[:2], limit=2)]
+
+        assert all(0.0 <= s <= 1.0 for s in scores)
+        # El 0.0 llegó en la posición 0 y el 1.0 en la 1, y el orden se respeta.
+        assert scores[0] < scores[1]
 
     @respx.mock
     @pytest.mark.asyncio
