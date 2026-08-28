@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from "react";
-import type { Tender } from "@/features/matches/tenderTypes";
+import type { MatchingResult } from "@/features/matches/tenderTypes";
 import {
   fetchSavedTenders,
   saveTenderApi,
@@ -9,7 +9,7 @@ import {
 } from "../services/savedTenders.service";
 
 export function useSavedTenders() {
-  const [savedTenders, setSavedTenders] = useState<Tender[]>([]);
+  const [savedMatches, setSavedMatches] = useState<MatchingResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -19,7 +19,7 @@ export function useSavedTenders() {
       setLoading(true);
       setError(null);
       const data = await fetchSavedTenders();
-      setSavedTenders(data.map((t) => ({ ...t, is_saved: true })));
+      setSavedMatches(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error al cargar licitaciones guardadas";
       setError(message);
@@ -32,26 +32,25 @@ export function useSavedTenders() {
     loadSaved();
   }, [loadSaved]);
 
-  const toggleSave = async (tender: Tender) => {
-    const isCurrentlySaved = tender.is_saved ?? true;
-    const previousState = [...savedTenders];
+  const toggleSave = async (tenderId: string, isCurrentlySaved: boolean = true) => {
+    const previousState = [...savedMatches];
 
     // Actualización optimista en memoria
     if (isCurrentlySaved) {
-      setSavedTenders((prev) => prev.filter((item) => item.id !== tender.id));
-    } else {
-      setSavedTenders((prev) => [{ ...tender, is_saved: true }, ...prev]);
+      setSavedMatches((prev) =>
+        prev.filter((m) => (m.tender?.id ?? m.id) !== tenderId)
+      );
     }
 
     try {
       if (isCurrentlySaved) {
-        await unsaveTenderApi(tender.id);
+        await unsaveTenderApi(tenderId);
       } else {
-        await saveTenderApi(tender.id);
+        await saveTenderApi(tenderId);
       }
     } catch {
       // Rollback en caso de error de red o servidor
-      setSavedTenders(previousState);
+      setSavedMatches(previousState);
       setToastMessage(
         isCurrentlySaved
           ? "No se pudo quitar la licitación. Inténtalo de nuevo."
@@ -60,11 +59,13 @@ export function useSavedTenders() {
     }
   };
 
+
   const clearToast = () => setToastMessage(null);
 
   return {
-    savedTenders,
+    savedTenders: savedMatches,
     loading,
+
     error,
     toastMessage,
     clearToast,
