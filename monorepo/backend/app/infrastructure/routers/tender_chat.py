@@ -16,6 +16,7 @@ from app.application.schemas.tender_chat_schema import (
     TenderChatMessageResponse,
     TenderChatDocumentResponse,
     CitationResponse,
+    DiscrepancyResponse,
 )
 from app.domain.entities.tender_chat import (
     TenderChatMessage,
@@ -33,6 +34,8 @@ from app.domain.errors.tender_chat_errors import (
     OutOfScopeQueryError,
     ChatSessionNotFoundError,
     ChatHistoryLoadError,
+    CorruptedDocumentError,
+    UnreadableDocumentError,
 )
 
 
@@ -77,6 +80,21 @@ def create_tender_chat_router(
             )
             for c in msg.citations
         ]
+        discrepancies = [
+            DiscrepancyResponse(
+                topic=d.topic,
+                description=d.description,
+                conflicting_sources=[
+                    CitationResponse(
+                        document_name=cs.document_name,
+                        page_or_sheet=cs.page_or_sheet,
+                        quote=cs.quote,
+                    )
+                    for cs in d.conflicting_sources
+                ]
+            )
+            for d in msg.discrepancies
+        ]
         return TenderChatMessageResponse(
             id=msg.id,
             session_id=msg.session_id,
@@ -85,6 +103,10 @@ def create_tender_chat_router(
             role=msg.role,
             content=msg.content,
             citations=citations,
+            discrepancies=discrepancies,
+            warnings=msg.warnings,
+            unbacked_aspects=msg.unbacked_aspects,
+            has_sufficient_info=msg.has_sufficient_info,
             created_at=msg.created_at,
         )
 
@@ -123,11 +145,13 @@ def create_tender_chat_router(
                 file_bytes=file_bytes,
             )
             return _to_doc_response(doc)
-        except UnsupportedDocumentTypeError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        except MaxDocumentsExceededError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        except ValueError as e:
+        except (
+            UnsupportedDocumentTypeError,
+            MaxDocumentsExceededError,
+            CorruptedDocumentError,
+            UnreadableDocumentError,
+            ValueError,
+        ) as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
