@@ -313,6 +313,7 @@ def get_ask_tender_assistant_use_case(
     )
 
 
+
 def get_tender_chat_history_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
 ) -> GetTenderChatHistoryUseCase:
@@ -406,6 +407,7 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     app.state.reranker_service = build_reranker_service()
+
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo

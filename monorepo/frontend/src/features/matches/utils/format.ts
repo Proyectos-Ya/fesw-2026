@@ -70,6 +70,7 @@ export function daysUntilClosing(closingAtIso: string, now: Date = new Date()): 
 }
 
 const closingFormatter = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
   day: "2-digit",
   month: "short",
   year: "numeric",
@@ -78,10 +79,11 @@ const closingFormatter = new Intl.DateTimeFormat("es-CL", {
 export function formatClosingDate(closingAtIso: string): string {
   const closing = parseApiDate(closingAtIso);
   if (closing === null) return "—";
-  return closingFormatter.format(closing);
+  return closingFormatter.format(closing).replace(/\u00a0/g, " ");
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
   day: "2-digit",
   month: "short",
   year: "numeric",
@@ -89,8 +91,9 @@ const dateTimeFormatter = new Intl.DateTimeFormat("es-CL", {
   minute: "2-digit",
 });
 
+
 export function formatDateTime(iso: string | null | undefined): string {
   const d = parseApiDate(iso);
   if (d === null) return "—";
-  return dateTimeFormatter.format(d);
+  return dateTimeFormatter.format(d).replace(/\u00a0/g, " ");
 }
