@@ -40,8 +40,12 @@ WORKDIR /build
 
 # Capa separada de la copia del código: mientras requirements.txt no cambie,
 # esta capa se reutiliza y el rebuild es de segundos.
+#
+# El `id=` del montaje de caché no es opcional: BuildKit lo deriva del target si
+# falta, pero el constructor de Railway lo exige explícitamente y falla el build
+# con "flag is missing an id argument".
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
     pip install -r requirements.txt
 
 
@@ -56,7 +60,7 @@ FROM builder AS builder-dev
 # tanto a amd64 como a arm64: PyTorch publica wheels con CUDA para las dos.
 # El índice /whl/cpu entrega la variante CPU-only.
 COPY requirements-dev.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
     pip install --index-url https://download.pytorch.org/whl/cpu torch \
     && pip install -r requirements-dev.txt
 
