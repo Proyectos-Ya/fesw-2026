@@ -40,6 +40,10 @@ def make_question(**kwargs) -> Question:
 def make_supplier(sectors: list):
     supplier = MagicMock()
     supplier.sectors = sectors
+    # Mismo id que el usuario en estas pruebas: el caso de uso ahora resuelve la
+    # empresa desde la sesión, y la cola de preguntas se guarda por empresa.
+    # Igualarlos mantiene las aserciones legibles sin dos constantes casi iguales.
+    supplier.id = PROVIDER_ID
     return supplier
 
 
@@ -238,9 +242,9 @@ class TestSmartQuestionUseCase:
 
         supplier_repo = AsyncMock()
         if supplier_sectors is None:
-            supplier_repo.get_by_id.return_value = None
+            supplier_repo.get_by_user_id.return_value = None
         else:
-            supplier_repo.get_by_id.return_value = make_supplier(supplier_sectors)
+            supplier_repo.get_by_user_id.return_value = make_supplier(supplier_sectors)
 
         uc = SmartQuestionUseCase(
             smart_question_service=smart_service,
@@ -339,7 +343,7 @@ class TestSmartQuestionUseCase:
         """El use case debe buscar al supplier usando el provider_id recibido."""
         uc, _, supplier_repo = self._make_use_case(supplier_sectors=["ti"])
         await uc.execute(PROVIDER_ID)
-        supplier_repo.get_by_id.assert_called_once_with(supplier_id=PROVIDER_ID)
+        supplier_repo.get_by_user_id.assert_called_once_with(user_id=PROVIDER_ID)
 
 
 # ─────────────────────────────────────────────

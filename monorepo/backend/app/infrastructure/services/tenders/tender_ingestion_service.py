@@ -374,13 +374,13 @@ class TenderIngestionService(ITenderIngestionService):
 
         def parse_date(date_str) -> datetime:
             if not date_str:
-                return datetime.utcnow()
+                return datetime.now(UTC).replace(tzinfo=None)
             try:
                 return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
                     tzinfo=None
                 )
             except Exception:
-                return datetime.utcnow()
+                return datetime.now(UTC).replace(tzinfo=None)
 
         return TenderIngestaDTO(
             CodigoExterno=str(detail.get("codigo")),
