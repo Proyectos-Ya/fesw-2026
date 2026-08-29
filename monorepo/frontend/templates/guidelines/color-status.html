@@ -1,0 +1,19 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Status colors" subtitle="Soft, warm semantic states" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:20px;background:var(--bg-page);font-family:var(--font-sans)}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .chip{border-radius:var(--radius-md);padding:12px 14px;border:1px solid var(--border-subtle);background:var(--surface-card)}
+  .dot{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--text-strong)}
+  .dot i{width:14px;height:14px;border-radius:50%}
+  .pill{margin-top:10px;display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:var(--radius-pill)}
+  .hex{margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--text-subtle)}
+</style></head>
+<body>
+  <div class="grid">
+    <div class="chip"><div class="dot"><i style="background:var(--success)"></i>Success</div><span class="pill" style="background:var(--success-soft);color:var(--green-600)">Adjudicado</span><div class="hex">--success #2F8F5B</div></div>
+    <div class="chip"><div class="dot"><i style="background:var(--warning)"></i>Warning</div><span class="pill" style="background:var(--warning-soft);color:var(--amber-600)">Cierra pronto</span><div class="hex">--warning #D6960F</div></div>
+    <div class="chip"><div class="dot"><i style="background:var(--danger)"></i>Danger</div><span class="pill" style="background:var(--danger-soft);color:var(--red-600)">Vencida</span><div class="hex">--danger #CC3B2E</div></div>
+    <div class="chip"><div class="dot"><i style="background:var(--info)"></i>Info</div><span class="pill" style="background:var(--info-soft);color:var(--blue-500)">En revisión</span><div class="hex">--info #2E78A6</div></div>
+  </div>
+</body></html>

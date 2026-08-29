@@ -1,0 +1,4 @@
+# Los documentos del corpus llevan datos de empresas reales y no se versionan.
+# Los hallazgos y resultados de OCR quedan en ../1.2-ocr-alternativas.md.
+*
+!.gitignore

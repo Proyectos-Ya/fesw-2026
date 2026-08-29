@@ -1,0 +1,141 @@
+# ============================================================
+# docker-compose.yml — Entorno local de ProyectosYA
+# Servicios: API (FastAPI) + PostgreSQL (datos relacionales)
+#            + Qdrant (búsqueda vectorial)
+#
+# El frontend NO vive acá: corre nativo con `pnpm dev` en el host.
+# ============================================================
+
+services:
+
+  # ------------------------------------------------------------
+  # API: FastAPI en modo desarrollo (hot reload sobre bind mount)
+  # ------------------------------------------------------------
+  api:
+    build:
+      context: ./backend
+      target: dev
+    container_name: proyectosya_api
+    restart: unless-stopped
+    # Carga el .env compartido y luego pisa lo que cambia dentro de Docker.
+    env_file:
+      - .env
+    environment:
+      # La base la pone Supabase, no este compose: en local con `supabase start`
+      # y en producción con el proyecto gestionado. Por eso ya no hay servicio
+      # `postgres` acá. Supabase corre en su propia red de Docker, así que desde
+      # este contenedor se llega por host.docker.internal, no por localhost.
+      # El 54322 es el Postgres de Supabase local; el 54321 es su API REST.
+      # Variable propia y NO ${DATABASE_URL}: Compose interpola desde este mismo
+      # .env, y ahí la URL dice 127.0.0.1 —correcto para correr alembic y pytest
+      # desde el host, pero dentro del contenedor apunta a su propio loopback.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
+      QDRANT_HOST: qdrant
+      QDRANT_HTTP_PORT: 6333
+      # Modelos en proceso, no por API. Explícito y no heredado del .env a
+      # propósito: en local no debería hacer falta ninguna cuenta de terceros
+      # ni gastarse créditos, y un EMBEDDING_PROVIDER suelto en el .env —puesto
+      # para probar el despliegue— dejaría el entorno local pegándole a la API
+      # sin que nadie lo note. En producción (Railway) van en "huggingface" y
+      # "pinecone"; esa es la única diferencia real entre los dos entornos.
+      EMBEDDING_PROVIDER: local
+      RERANKER_PROVIDER: local
+    ports:
+      - "${API_PORT:-8000}:8000"
+    # En desarrollo se migra antes de arrancar. En producción NO debe ir acá:
+    # con varias réplicas, todas competirían por migrar a la vez. Ahí
+    # `alembic upgrade head` es un paso propio del despliegue, previo al deploy.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      # Código montado desde el host: uvicorn --reload recoge los cambios
+      # sin reconstruir la imagen.
+      - ./backend:/app
+      # Caché de HuggingFace: sin esto, bge-m3 (~2 GB) se redescarga cada
+      # vez que se recrea el contenedor.
+      - models_cache:/models
+    extra_hosts:
+      # En Linux no se resuelve solo; en macOS y Windows Docker ya lo provee.
+      - "host.docker.internal:host-gateway"
+    # Rotación del log: sin esto el archivo JSON del contenedor crece sin tope
+    # hasta llenar el disco, y cuando eso pasa la API deja de responder con
+    # errores que no apuntan a la causa real.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      qdrant:
+        # Espera a que Qdrant esté listo, no solo a que el proceso exista: el
+        # healthcheck de más abajo pregunta por /readyz. Sin esto, la API podía
+        # arrancar y disparar sus primeras consultas contra un Qdrant que
+        # todavía estaba cargando las colecciones desde disco.
+        condition: service_healthy
+    networks:
+      - proyectosya_network
+
+  # ------------------------------------------------------------
+  # Motor de búsqueda vectorial: matching semántico de licitaciones
+  # ------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    container_name: proyectosya_qdrant
+    restart: unless-stopped
+    ports:
+      # Puerto REST/gRPC HTTP, solo en loopback (ver nota en postgres)
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__ENABLE_CORS: "true"
+    # Rotación del log: sin esto el archivo JSON del contenedor crece sin tope
+    # hasta llenar el disco, y cuando eso pasa la API deja de responder con
+    # errores que no apuntan a la causa real.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # La imagen de Qdrant no incluye curl ni wget, que es lo que se usaría
+      # normalmente acá. Pero sí trae bash, y bash abre sockets TCP por
+      # /dev/tcp, así que la petición HTTP se escribe a mano: se pide /readyz
+      # y se comprueba que la respuesta traiga el 200.
+      #
+      # /readyz y no /healthz a propósito: healthz responde apenas el proceso
+      # está vivo, readyz solo cuando las colecciones ya están cargadas. Esa
+      # diferencia es justamente la que hace útil el healthcheck.
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf "GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "200 OK" <&3'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Margen para cargar del disco las colecciones ya existentes. Mientras
+      # corre, un fallo no cuenta como intento perdido ni marca al servicio
+      # como unhealthy.
+      start_period: 30s
+    networks:
+      - proyectosya_network
+
+# ------------------------------------------------------------
+# Volúmenes nombrados para persistencia de datos
+# ------------------------------------------------------------
+volumes:
+  qdrant_data:
+    driver: local
+  models_cache:
+    driver: local
+
+# ------------------------------------------------------------
+# Red interna compartida: la API llega a qdrant por el nombre del servicio
+# (QDRANT_HOST=qdrant). Postgres queda fuera de esta red: lo sirve Supabase.
+# ------------------------------------------------------------
+networks:
+  proyectosya_network:
+    driver: bridge

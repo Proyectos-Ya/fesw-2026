@@ -1,0 +1,6 @@
+<svg width="312" height="64" viewBox="0 0 312 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ProyectosYa">
+  <rect width="64" height="64" rx="16" fill="#FBF8F3"></rect>
+  <path d="M19 33.5 L28 42 L45 22" stroke="#0E8580" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"></path>
+  <circle cx="45" cy="22" r="5.4" fill="#E0552F"></circle>
+  <text x="80" y="42.5" font-family="&#39;Bricolage Grotesque&#39;,&#39;Hanken Grotesk&#39;,sans-serif" font-size="30" font-weight="700" letter-spacing="-0.5" fill="#FBF8F3">Proyectos<tspan fill="#EA6E48">Ya</tspan></text>
+</svg>

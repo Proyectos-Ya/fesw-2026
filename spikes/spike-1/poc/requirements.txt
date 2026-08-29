@@ -1,0 +1,20 @@
+# Dependencias del **perfilamiento** (#156): mapeo de perfil desde actividades
+# económicas (perfilamiento/, perfilar_rut.py, cargar_catalogo.py,
+# perfilar_ruts.ipynb). Las de OCR (#157) están aparte en `ocr/requirements.txt`
+# — son subsistemas independientes del mismo spike, y uno no necesita las
+# dependencias del otro para correr.
+#
+#   python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# Ambos subsistemas comparten el mismo `.venv` de este directorio (`poc/`);
+# instalar los dos `requirements.txt` en el mismo entorno no da conflicto.
+
+# Para importar is_valid_rut desde app/domain (ver puente_backend.py) sin
+# reimplementarlo. También la necesita `ocr/requirements.txt` de forma
+# independiente, porque ocr/ocr_bench/dominio.py hace el mismo puente.
+pydantic>=2.6.0
+
+# Lee .env para las URL/token de cada API de perfilamiento (ver perfilar_rut.py
+# y .env.example). Así el notebook corrido desde VS Code no depende de
+# variables exportadas en una terminal.
+python-dotenv>=1.0

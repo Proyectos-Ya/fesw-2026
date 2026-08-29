@@ -1,0 +1,15 @@
+# Normaliza los saltos de línea a LF dentro del repositorio, sin importar el
+# sistema operativo ni la configuración de core.autocrlf de cada desarrollador.
+# Evita que un checkout en Windows introduzca CRLF en archivos que después se
+# ejecutan dentro de la imagen Linux.
+* text=auto eol=lf
+
+# Binarios: nunca tocar.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

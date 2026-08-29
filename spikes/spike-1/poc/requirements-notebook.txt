@@ -1,0 +1,18 @@
+# Jupyter, solo para el notebook de prueba manual (perfilar_ruts.ipynb).
+# Va aparte de requirements.txt porque no es parte del pipeline: es una
+# herramienta de inspección para revisar RUTs uno por uno, no algo que corra en
+# producción ni que necesite el resto del equipo para reproducir las cifras del
+# spike (eso lo hacen benchmark.py y perfilar_rut.py por línea de comandos).
+#
+#   .venv/bin/pip install -r requirements-notebook.txt
+#   .venv/bin/python -m ipykernel install --user --name spike-1-perfilamiento
+#   .venv/bin/jupyter notebook perfilar_ruts.ipynb
+#
+# El paso de ipykernel es necesario: sin él, Jupyter corre con el Python del
+# sistema en vez del venv del spike, y las importaciones de `perfilamiento`
+# fallan aunque `pip install` haya funcionado bien.
+
+-r requirements.txt
+
+notebook>=7.0
+ipykernel>=6.29

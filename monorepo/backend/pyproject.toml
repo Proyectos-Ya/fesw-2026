@@ -1,0 +1,38 @@
+[tool.ruff]
+# Target Python version
+target-version = "py312"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+# Enable lint rules
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort (import sorting)
+# B: flake8-bugbear
+# Q: flake8-quotes
+# UP: pyupgrade (modern Python syntax suggestions)
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "Q", "UP"]
+ignore = ["E501"]
+
+# tests/matching_evaluation no son tests: son scripts de investigación del
+# matching que se corren a mano (benchmarks, grid search, carga del dataset).
+# Arrancan con un bootstrap de sys.path antes de importar la app, de ahí los
+# E402. Los B023 son falsos positivos: los lambda se pasan a run_in_executor y
+# se esperan dentro de la misma iteración, así que el late-binding no alcanza a
+# ocurrir.
+[tool.ruff.lint.per-file-ignores]
+"tests/matching_evaluation/*" = ["E402", "E701", "B007", "B023"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
