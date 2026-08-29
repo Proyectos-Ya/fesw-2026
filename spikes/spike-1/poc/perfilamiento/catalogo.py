@@ -1,14 +1,18 @@
 """Datos oficiales por código, leídos del catálogo del SII ya procesado.
 
+Este archivo se llamó `catalogo_glosas.py`; se renombró porque ahora también
+expone `seccion_titulo`, no solo la glosa.
+
 Es la fuente de verdad para cualquier código de actividad: glosa y sección,
 **tal como aparecen en el xlsx real** (`cargar_catalogo.py` los extrajo ahí,
 sin inventar ni calcular nada). Reemplaza el cálculo de sección por rangos de
-división que tenía `ciiu.py`: ese cálculo existía porque este catálogo todavía
-no se había procesado cuando se escribió el diccionario por primera vez, y ya
-demostró que puede tener errores propios (la división 04 del cobre, un caso
-chileno fuera del estándar CIIU internacional, que no se detectó hasta
-comparar contra este mismo archivo). Consultar la sección real es más simple y
-no puede tener ese tipo de error: es una lectura, no una cuenta.
+división que tenía `tipos.py` (entonces `ciiu.py`): ese cálculo existía porque
+este catálogo todavía no se había procesado cuando se escribió el diccionario
+por primera vez, y ya demostró que puede tener errores propios (la división 04
+del cobre, un caso chileno fuera del estándar CIIU internacional, que no se
+detectó hasta comparar contra este mismo archivo). Consultar la sección real
+es más simple y no puede tener ese tipo de error: es una lectura, no una
+cuenta.
 
 Dos usos concretos:
 

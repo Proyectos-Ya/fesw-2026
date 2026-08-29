@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 from puente_backend import asegurar_path
 
-from . import catalogo_glosas
-from .ciiu import Actividad
+from . import catalogo
+from .tipos import Actividad
 from .diccionario import analizar
 
 asegurar_path()
@@ -137,7 +137,7 @@ def construir_perfil(
     # asignado tiene sentido. Se lee directo del catálogo, no se calcula.
     rubros_ciiu: list[str] = []
     for actividad in actividades:
-        titulo = catalogo_glosas.seccion_titulo(actividad.codigo)
+        titulo = catalogo.seccion_titulo(actividad.codigo)
         if titulo and titulo not in rubros_ciiu:
             rubros_ciiu.append(titulo)
 

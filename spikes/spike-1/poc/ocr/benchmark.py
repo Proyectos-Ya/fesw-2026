@@ -17,7 +17,7 @@ Uso
 ---
     python benchmark.py --listar                      # qué extractores hay instalados
     python benchmark.py                               # todo el corpus, todos los extractores
-    python benchmark.py --extractores pymupdf tesseract
+    python benchmark.py --extractores pdfplumber gemini
     python benchmark.py --categorias escaneado-malo   # dónde se rompen
     python benchmark.py --json resultados.json --md tablas.md
 
@@ -41,6 +41,13 @@ from pathlib import Path
 # `python benchmark.py`, Python solo agrega al `sys.path` la carpeta del
 # script que se ejecuta, no la de sus padres.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dotenv import load_dotenv
+
+# Credenciales de Gemini/Unstructured/LlamaParse (ver `.env.example`). Mismo
+# mecanismo que `perfilamiento/`: sin esto habría que exportar variables a
+# mano en la terminal, lo que no funciona bien si se corre desde un editor.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from ocr_bench.corpus import cargar_corpus
 from ocr_bench.extractors import REGISTRO, disponibles
