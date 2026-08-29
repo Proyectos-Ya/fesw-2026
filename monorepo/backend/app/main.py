@@ -40,8 +40,13 @@ async def lifespan(app: FastAPI):
     # vez de más adelante con un error de "relation does not exist".
     await verificar_esquema_migrado()
 
-    app.state.qdrant_client = QdrantClient(url=settings.qdrant_url)
-    app.state.qdrant_async_client = AsyncQdrantClient(url=settings.qdrant_url)
+    # api_key va en None contra el Qdrant del compose local, que no autentica.
+    app.state.qdrant_client = QdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    app.state.qdrant_async_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
@@ -109,13 +114,23 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if metadata_task:
-        metadata_task.cancel()
-    if processing_task:
-        processing_task.cancel()
-    for task in (scan_task, delivery_task, digest_task):
-        if task:
-            task.cancel()
+    # `cancel()` solo *pide* la cancelación: marca la tarea y devuelve el control
+    # de inmediato. Sin esperarlas, el proceso seguía apagándose mientras los
+    # bucles todavía estaban dentro de una consulta, y en producción el SIGTERM
+    # del despliegue cortaba transacciones a medias. `gather` con
+    # return_exceptions=True espera a que cada una termine de propagar su
+    # CancelledError, y no se traga nada porque justamente esa excepción es el
+    # resultado esperado aquí.
+    tareas = [
+        t
+        for t in (metadata_task, processing_task, scan_task, delivery_task, digest_task)
+        if t
+    ]
+    for tarea in tareas:
+        tarea.cancel()
+    if tareas:
+        await asyncio.gather(*tareas, return_exceptions=True)
+
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
 

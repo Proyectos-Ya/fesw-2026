@@ -104,7 +104,7 @@ async def _existing_point_ids(client: AsyncQdrantClient, ids: list[UUID]) -> set
 async def run(dry_run: bool) -> Stats:
     stats = Stats()
     engine = create_async_engine(settings.database_url)
-    client = AsyncQdrantClient(url=settings.qdrant_url)
+    client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
     try:
         async with engine.connect() as conn:

@@ -153,14 +153,30 @@ def create_supplier_router(
     )
     async def get_supplier(
         supplier_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
     ):
-        # Busca un proveedor por su id interno
+        """Busca una empresa por su id interno, solo si es la del usuario.
+
+        Sin la comprobación, cualquier usuario autenticado con un id de empresa
+        ajeno obtenía su perfil completo **incluido el `user_id`**, que es
+        justo lo que necesitaban las otras rutas que tomaban la identidad del
+        cliente: un id filtrado se convertía en la llave de las demás.
+
+        Devuelve 404 y no 403 a propósito: un 403 confirmaría que ese id existe.
+        """
         try:
-            return await GetSupplierUseCase(repo).execute(supplier_id)
+            supplier = await GetSupplierUseCase(repo).execute(supplier_id)
         except SupplierNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
+
+        if supplier.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No existe una empresa con ese identificador.",
+            )
+        return supplier
 
     return router

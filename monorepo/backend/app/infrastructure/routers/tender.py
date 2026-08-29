@@ -33,7 +33,6 @@ from app.application.use_cases.tender.search_tenders import (
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.saved_tender import SavedTender
-from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
@@ -215,19 +214,28 @@ def create_tender_router(
     )
     async def get_recommended_tenders(
         request: Request,
-        profile_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         force_refresh: bool = False,
-        # use_case: RankTendersUseCase = Depends(get_rank_tenders_use_case),
     ):
-        """
-        Retorna la lista de licitaciones recomendadas para el perfil de proveedor especificado.
+        """Licitaciones recomendadas para la empresa del usuario autenticado.
+
+        Antes recibía un `profile_id` por query y lo usaba tal cual como
+        `user_id`, sin mirar la sesión: era el único de los siete endpoints de
+        este router que no usaba `current_user.id`. Con el UUID de otra empresa
+        se obtenía su lista completa de recomendaciones con sus puntajes —en una
+        plataforma de compras públicas, inteligencia competitiva— y con
+        `force_refresh=true` se le reescribía además su caché de matching.
+
+        El parámetro se elimina en vez de validarse: FastAPI ignora los query
+        params que no declara, así que un cliente que siga enviándolo no se
+        rompe, y no queda ninguna identidad que suplantar.
         """
         try:
             # Se pasa el request para que el caso de uso pueda abortar el
             # pipeline si el cliente ya cerró la conexión.
             return await use_case.execute(
-                user_id=profile_id, force_refresh=force_refresh, request=request
+                user_id=current_user.id, force_refresh=force_refresh, request=request
             )
         except SupplierNotFoundForUser as e:
             raise HTTPException(

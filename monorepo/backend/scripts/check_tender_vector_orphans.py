@@ -165,7 +165,7 @@ class DiagnosticError(RuntimeError):
 
 async def diagnose() -> Report:
     report = Report()
-    client = AsyncQdrantClient(url=settings.qdrant_url)
+    client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     # Engine propio en vez del compartido: `app.infrastructure.db` fija
     # echo=True, y ese log de SQL en stdout rompe la salida --json.
     engine = create_async_engine(settings.database_url, echo=False)

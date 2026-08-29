@@ -72,7 +72,7 @@ class InMemoryTenderRepository(ITenderRepository):
     ) -> None:
         pass
 
-    async def get_or_create_status(self, status_id: int) -> int:
+    async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
 
     async def rollback(self) -> None:

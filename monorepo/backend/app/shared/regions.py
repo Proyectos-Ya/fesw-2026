@@ -98,7 +98,7 @@ def to_region_id(raw: object) -> int:
     quede archivada bajo una región real que no le corresponde.
     """
     try:
-        region_id = int(raw)  # type: ignore[arg-type]
+        region_id = int(raw)  # type: ignore[arg-type] 
     except (TypeError, ValueError):
         return UNKNOWN_REGION_ID
     return region_id if region_id in CHILE_REGIONS else UNKNOWN_REGION_ID

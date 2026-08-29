@@ -11,6 +11,12 @@ ruff>=0.3.0
 # Type checker (configurado en pyrightconfig.json)
 pyright>=1.1.350
 
+# Modelos de embedding y re-ranking corriendo en proceso. Solo para local:
+# permiten EMBEDDING_PROVIDER=local y RERANKER_PROVIDER=local sin depender de
+# cuentas de terceros ni gastar créditos mientras se desarrolla.
+sentence-transformers>=3.0.0
+onnxruntime==1.26.0
+
 # Pruebas
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
