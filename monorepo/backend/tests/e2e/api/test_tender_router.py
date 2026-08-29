@@ -59,22 +59,30 @@ async def test_get_recommended_tenders_success(api: AsyncClient) -> None:
         "password": "supersecretpassword",
         "full_name": "Juan Pérez",
     }
-    await api.post("/auth/register", json=register_data)
+    registro = await api.post("/auth/register", json=register_data)
+    id_del_usuario = UUID(registro.json()["id"])
     await api.post(
         "/auth/login",
         json={"email": register_data["email"], "password": register_data["password"]},
     )
 
+    # `profile_id` va a propósito, y con el id de OTRA empresa: el endpoint lo
+    # aceptaba y lo usaba tal cual como identidad. Se conserva en la petición
+    # para comprobar que ahora se ignora.
     response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
 
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
-    assert data[0]["supplier_id"] == str(profile_id)
     assert data[0]["final_score"] == 0.95
     mock_uc.execute.assert_called_once()
     kwargs = mock_uc.execute.call_args.kwargs
-    assert kwargs["user_id"] == profile_id
+    # La identidad sale de la sesión, no de la query. La versión anterior de este
+    # test afirmaba lo contrario —`kwargs["user_id"] == profile_id`—, o sea que
+    # fijaba el comportamiento vulnerable: cualquier usuario autenticado obtenía
+    # las recomendaciones y los puntajes de la empresa cuyo UUID pusiera ahí.
+    assert kwargs["user_id"] == id_del_usuario
+    assert kwargs["user_id"] != profile_id
     assert kwargs["force_refresh"] is False
     assert "request" in kwargs
 
