@@ -1,68 +1,50 @@
-import { describe, expect, it } from "vitest";
-import { NextRequest } from "next/server";
-import proxy from "@/proxy";
+/**
+ * El guardia de borde ya no decide nada sobre la sesión.
+ *
+ * Comprobaba la cookie `access_token`, lo que solo funciona con frontend y
+ * backend en el mismo dominio. En producción están separados —Vercel y
+ * Railway—, la cookie pertenece al dominio del backend, y el guardia devolvía
+ * al usuario a /login en bucle justo después de iniciar sesión.
+ *
+ * Estas pruebas fijan que **deja pasar todo**, para que nadie reintroduzca la
+ * comprobación sin resolver antes el problema de dominios (ver PENDIENTES 3.9).
+ * La protección real vive en el backend y, en el cliente, en `RequireAuth`.
+ */
 
-function makeRequest(path: string, withCookie: boolean): NextRequest {
-  return new NextRequest(`http://localhost:3000${path}`, {
-    headers: withCookie ? { cookie: "access_token=jwt-de-prueba" } : {},
-  });
+import { describe, expect, it } from "vitest";
+import type { NextRequest } from "next/server";
+import proxy from "../proxy";
+
+function peticion(pathname: string, conCookie: boolean): NextRequest {
+  return {
+    nextUrl: { pathname, search: "" },
+    url: `https://app.vercel.app${pathname}`,
+    cookies: { has: () => conCookie },
+  } as unknown as NextRequest;
 }
 
-describe("proxy (guardia de autenticación)", () => {
-  it("redirige a /login cuando no hay cookie de sesión en una ruta protegida", () => {
-    const response = proxy(makeRequest("/", false));
+describe("guardia de borde", () => {
+  it.each([
+    ["/", false],
+    ["/matches", false],
+    ["/configuracion/notificaciones", false],
+    ["/login", false],
+    ["/register", false],
+    ["/", true],
+    ["/login", true],
+  ])("deja pasar %s (cookie visible: %s)", (ruta, conCookie) => {
+    const respuesta = proxy(peticion(ruta, conCookie));
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+    // 200 y sin cabecera de redirección: la petición continúa hacia la página.
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.headers.get("location")).toBeNull();
   });
 
-  it("permite pasar a /login sin cookie de sesión", () => {
-    const response = proxy(makeRequest("/login", false));
+  it("no redirige aunque la cookie no exista en una ruta protegida", () => {
+    // El caso exacto del bucle: sin cookie visible para el borde, la ruta
+    // protegida tiene que servirse igual y dejar que RequireAuth resuelva.
+    const respuesta = proxy(peticion("/matches", false));
 
-    expect(response.headers.get("location")).toBeNull();
-  });
-
-  it("permite pasar a /register sin cookie de sesión", () => {
-    const response = proxy(makeRequest("/register", false));
-
-    expect(response.headers.get("location")).toBeNull();
-  });
-
-  it("deja entrar al home cuando hay cookie de sesión", () => {
-    const response = proxy(makeRequest("/", true));
-
-    expect(response.headers.get("location")).toBeNull();
-  });
-
-  it("redirige al home cuando un usuario con sesión visita /login", () => {
-    const response = proxy(makeRequest("/login", true));
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost:3000/");
-  });
-
-  it("redirige al home cuando un usuario con sesión visita /register", () => {
-    const response = proxy(makeRequest("/register", true));
-
-    expect(response.headers.get("location")).toBe("http://localhost:3000/");
-  });
-
-  it("conserva el destino al redirigir una ruta profunda a /login", () => {
-    // Es el enlace de un correo de alerta: sin el parámetro, tras iniciar
-    // sesión el usuario aterrizaría en el home y tendría que volver al correo.
-    const response = proxy(makeRequest("/matches/abc-123", false));
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "http://localhost:3000/login?next=%2Fmatches%2Fabc-123",
-    );
-  });
-
-  it("incluye la query del destino en el parámetro de retorno", () => {
-    const response = proxy(makeRequest("/matches?region=RM", false));
-
-    expect(response.headers.get("location")).toBe(
-      "http://localhost:3000/login?next=%2Fmatches%3Fregion%3DRM",
-    );
+    expect(respuesta.headers.get("location")).toBeNull();
   });
 });
