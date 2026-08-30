@@ -109,7 +109,9 @@ class TestToUtcEpoch:
         if not hasattr(time, "tzset"):
             # En plataformas sin tzset (Windows), verificar consistencia directa
             value = datetime(2026, 7, 27, 21, 42, 0)
-            assert to_utc_epoch(value) == int(datetime(2026, 7, 27, 21, 42, 0, tzinfo=timezone.utc).timestamp())
+            assert to_utc_epoch(value) == int(
+                datetime(2026, 7, 27, 21, 42, 0, tzinfo=timezone.utc).timestamp()
+            )
             return
 
         value = datetime(2026, 7, 27, 21, 42, 0)
@@ -127,4 +129,3 @@ class TestToUtcEpoch:
             else:
                 os.environ["TZ"] = original
             time.tzset()
-

@@ -6,6 +6,7 @@ from app.application.services.password_hasher import IPasswordHasher
 from app.application.services.token_service import ITokenService
 from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.health import create_health_router
+from app.infrastructure.routers.notification import create_notification_router
 from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
@@ -31,6 +32,14 @@ def create_router(
     get_save_tender_use_case: Callable,
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
+    get_tender_detail_use_case: Callable,
+    get_list_notifications_use_case: Callable,
+    get_count_unread_use_case: Callable,
+    get_mark_notification_read_use_case: Callable,
+    get_mark_all_read_use_case: Callable,
+    get_notification_preferences_use_case: Callable,
+    get_update_notification_preferences_use_case: Callable,
+    get_list_deliveries_use_case: Callable,
     get_upload_tender_chat_doc_use_case: Callable,
     get_list_tender_chat_docs_use_case: Callable,
     get_delete_tender_chat_doc_use_case: Callable,
@@ -38,7 +47,6 @@ def create_router(
     get_tender_chat_history_use_case: Callable,
     get_create_tender_chat_session_use_case: Callable,
 ) -> APIRouter:
-
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
     Públicos: health (root + /health) y auth (register/login/logout).
@@ -78,6 +86,20 @@ def create_router(
             get_save_tender_use_case=get_save_tender_use_case,
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
+            get_tender_detail_use_case=get_tender_detail_use_case,
+        )
+    )
+
+    root.include_router(
+        create_notification_router(
+            get_current_user=get_current_user,
+            get_list_notifications_use_case=get_list_notifications_use_case,
+            get_count_unread_use_case=get_count_unread_use_case,
+            get_mark_notification_read_use_case=get_mark_notification_read_use_case,
+            get_mark_all_read_use_case=get_mark_all_read_use_case,
+            get_notification_preferences_use_case=get_notification_preferences_use_case,
+            get_update_notification_preferences_use_case=get_update_notification_preferences_use_case,
+            get_list_deliveries_use_case=get_list_deliveries_use_case,
         )
     )
 

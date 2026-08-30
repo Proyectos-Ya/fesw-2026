@@ -15,6 +15,9 @@ class ISupplierRepository(ABC):
     async def get_by_user_id(self, user_id: UUID) -> Supplier | None: ...
 
     @abstractmethod
+    async def list_user_ids_with_profile(self) -> list[UUID]: ...
+
+    @abstractmethod
     async def save(self, supplier: Supplier) -> Supplier: ...
 
     @abstractmethod

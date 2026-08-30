@@ -7,6 +7,7 @@ import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
 import { useCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useAuth } from "@/features/auth/AuthContext";
+import { useUnreadCount } from "@/features/notifications/hooks/useNotifications";
 
 interface NavItemProps {
   icon: string;
@@ -91,6 +92,7 @@ const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = 
   { icon: "sparkles", label: "Inicio", href: "/" },
   { icon: "target", label: "Matches", href: "/matches" },
   { icon: "bookmark", label: "Guardados", href: "/guardados" },
+  { icon: "bell", label: "Alertas", href: "/alertas" },
 ];
 
 // Solo visible cuando el usuario ya tiene una empresa asignada
@@ -110,6 +112,7 @@ export function Sidebar() {
   const pathname = usePathname() ?? "/";
   const { user, logout } = useAuth();
   const { company } = useCompany();
+  const unreadCount = useUnreadCount();
 
   const currentUser = {
     name: user?.full_name ?? "Usuario",
@@ -147,6 +150,8 @@ export function Sidebar() {
             label={item.label}
             href={item.href}
             active={isActive(pathname, item.href)}
+            // Solo Alertas lleva contador; el resto no tiene nada que contar.
+            badge={item.href === "/alertas" ? unreadCount : undefined}
           />
         ))}
       </nav>
@@ -163,6 +168,13 @@ export function Sidebar() {
             {currentUser.company}
           </div>
         </div>
+        <Link
+          href="/configuracion/notificaciones"
+          className="p-1.5 rounded-md text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-all duration-200"
+          title="Preferencias de alertas"
+        >
+          <Icon name="settings" size={18} />
+        </Link>
         <button
           type="button"
           onClick={() => void handleLogout()}

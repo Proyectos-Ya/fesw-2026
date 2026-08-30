@@ -11,7 +11,11 @@ import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
-import { getRecommendedTenders, getDeepAnalysisOnly } from "../services/tenderService";
+import {
+  getRecommendedTenders,
+  getDeepAnalysisOnly,
+  getTenderDetail,
+} from "../services/tenderService";
 import {
   fetchSavedTenders,
   saveTenderApi,
@@ -37,7 +41,7 @@ interface TenderDetailViewProps {
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; match: MatchingResult }
+  | { kind: "ready"; match: MatchingResult; isClosed: boolean }
   | { kind: "not-found" }
   | { kind: "error"; message: string };
 
@@ -101,17 +105,39 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
         if (cancelled) return;
 
-        const found = matches.find((m) => m.tender?.id === tenderId);
-        if (!found) {
-          setState({ kind: "not-found" });
-          return;
-        }
-
-        const isCurrentlySaved = savedList.some(
-          (item) => (item.tender?.id ?? item.tender_id ?? item.id) === tenderId
+        // Vale para los dos caminos de abajo: una licitación cerrada también
+        // puede estar guardada, así que esto no depende de las recomendaciones.
+        setIsSaved(
+          savedList.some(
+            (item) => (item.tender?.id ?? item.tender_id ?? item.id) === tenderId
+          )
         );
-        setIsSaved(isCurrentlySaved);
-        setState({ kind: "ready", match: found });
+
+        const found = matches.find((m) => m.tender?.id === tenderId);
+        if (found) {
+          setState({ kind: "ready", match: found, isClosed: false });
+        } else {
+          // Las recomendaciones descartan lo que ya cerró, así que no encontrarla
+          // ahí no significa que no exista: puede ser una alerta de hace días.
+          // El detalle directo sí la devuelve, marcada como cerrada.
+          const detalle = await getTenderDetail(tenderId);
+          if (cancelled) return;
+          setState({
+            kind: "ready",
+            isClosed: detalle.is_closed,
+            match: {
+              id: detalle.tender.id,
+              supplier_id: "",
+              tender_id: detalle.tender.id,
+              similarity_score: 0,
+              reranker_score: null,
+              final_score: (detalle.score_pct ?? 0) / 100,
+              model_version: "",
+              calculated_at: detalle.tender.updated_at,
+              tender: detalle.tender,
+            },
+          });
+        }
 
         // Cargar el análisis de compatibilidad si ya existe
         setAnalysisLoading(true);
@@ -129,6 +155,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         }
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setState({ kind: "not-found" });
+          return;
+        }
         if (err instanceof ApiError || err instanceof TimeoutError) {
           setState({ kind: "error", message: err.message });
           return;
@@ -219,10 +249,35 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
+  // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
+  // una ficha abierta desde los matches cuyo plazo venció mientras se miraba.
+  const cerrada = state.isClosed || closing.tone === "expired";
 
   return (
     <section className="mx-auto w-full max-w-4xl">
       <BackLink />
+
+      {/* Criterio de la HdU 08: al abrir la alerta de una licitación cuyo plazo
+          ya pasó, hay que decirlo en vez de mostrar la ficha como si siguiera
+          disponible. */}
+      {cerrada && (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4"
+        >
+          <Icon name="triangle-alert" size={18} color="var(--amber-500)" />
+          <div>
+            <p className="text-sm font-semibold text-text-strong">
+              Esta licitación ya cerró
+            </p>
+            <p className="mt-1 text-sm text-text-body">
+              El plazo de postulación venció el{" "}
+              {formatClosingDate(tender.closing_at)}. Es posible que ya haya sido
+              adjudicada; puedes revisar su estado oficial en Mercado Público.
+            </p>
+          </div>
+        </div>
+      )}
 
       {actionError && (
         <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">

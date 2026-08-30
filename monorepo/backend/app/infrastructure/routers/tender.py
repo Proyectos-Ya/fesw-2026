@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from qdrant_client.http.exceptions import UnexpectedResponse as QdrantException
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.schemas.notification_schema import TenderDetailResponse
 from app.application.schemas.tender_schema import (
     TenderFilterCriteria,
     TenderSearchResult,
@@ -21,6 +22,9 @@ from app.application.use_cases.saved_tenders.list_saved_tenders import (
 )
 from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
 from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
+from app.application.use_cases.tender.get_tender_detail import (
+    GetTenderDetailUseCase,
+)
 from app.application.use_cases.tender.search_tenders import (
     DEFAULT_RESULT_LIMIT,
     MAX_RESULT_LIMIT,
@@ -29,7 +33,6 @@ from app.application.use_cases.tender.search_tenders import (
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.saved_tender import SavedTender
-from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
@@ -89,6 +92,7 @@ def create_tender_router(
     get_save_tender_use_case: Callable,
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
+    get_tender_detail_use_case: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -210,19 +214,28 @@ def create_tender_router(
     )
     async def get_recommended_tenders(
         request: Request,
-        profile_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         force_refresh: bool = False,
-        # use_case: RankTendersUseCase = Depends(get_rank_tenders_use_case),
     ):
-        """
-        Retorna la lista de licitaciones recomendadas para el perfil de proveedor especificado.
+        """Licitaciones recomendadas para la empresa del usuario autenticado.
+
+        Antes recibía un `profile_id` por query y lo usaba tal cual como
+        `user_id`, sin mirar la sesión: era el único de los siete endpoints de
+        este router que no usaba `current_user.id`. Con el UUID de otra empresa
+        se obtenía su lista completa de recomendaciones con sus puntajes —en una
+        plataforma de compras públicas, inteligencia competitiva— y con
+        `force_refresh=true` se le reescribía además su caché de matching.
+
+        El parámetro se elimina en vez de validarse: FastAPI ignora los query
+        params que no declara, así que un cliente que siga enviándolo no se
+        rompe, y no queda ninguna identidad que suplantar.
         """
         try:
             # Se pasa el request para que el caso de uso pueda abortar el
             # pipeline si el cliente ya cerró la conexión.
             return await use_case.execute(
-                user_id=profile_id, force_refresh=force_refresh, request=request
+                user_id=current_user.id, force_refresh=force_refresh, request=request
             )
         except SupplierNotFoundForUser as e:
             raise HTTPException(
@@ -366,5 +379,44 @@ def create_tender_router(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
             ) from e
+
+    # Va al final, después de `/search`, `/recommended` y `/saved`: es la ruta
+    # más genérica y capturaría esos segmentos como si fueran un UUID.
+    @router.get(
+        "/{tender_id}",
+        response_model=TenderDetailResponse,
+        responses={404: {"description": "La licitación no existe"}},
+    )
+    async def get_tender_detail(
+        tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            GetTenderDetailUseCase, Depends(get_tender_detail_use_case)
+        ],
+    ):
+        """Ficha de una licitación, incluidas las ya cerradas.
+
+        `/recommended` filtra por `closing_at > now`, así que no sirve para
+        abrir el enlace de una alerta enviada hace días. Acá la licitación se
+        devuelve igual, marcada con `is_closed`, para que la interfaz pueda
+        avisar que ya cerró en vez de decir que no existe.
+        """
+        try:
+            detalle = await use_case.execute(
+                user_id=current_user.id, tender_id=tender_id
+            )
+        except TenderNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        return TenderDetailResponse(
+            tender=detalle.tender,
+            score_pct=(
+                round(detalle.final_score * 100)
+                if detalle.final_score is not None
+                else None
+            ),
+            is_closed=detalle.is_closed,
+        )
 
     return router

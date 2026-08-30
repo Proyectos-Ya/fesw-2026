@@ -1,5 +1,6 @@
 import { apiFetch } from "@/features/shared/api/client";
 import type { MatchingResult, DeepAnalysis } from "../tenderTypes";
+import type { TenderDetail } from "@/features/notifications/notificationTypes";
 import { ApiError } from "@/features/shared/api/client";
 
 interface GetRecommendedOptions {
@@ -61,4 +62,15 @@ export async function getDeepAnalysisOnly(tenderId: string): Promise<DeepAnalysi
  */
 export function getDeepAnalysis(tenderId: string): Promise<DeepAnalysis> {
   return generateDeepAnalysis(tenderId, undefined, false);
+}
+
+/**
+ * Backend route: GET /tenders/{tender_id}
+ *
+ * A diferencia de `/recommended`, devuelve la licitación aunque ya haya
+ * cerrado. Es lo que permite abrir el enlace de una alerta enviada hace días y
+ * ver que el plazo venció, en vez de un "no encontrada".
+ */
+export function getTenderDetail(tenderId: string): Promise<TenderDetail> {
+  return apiFetch<TenderDetail>(`/tenders/${encodeURIComponent(tenderId)}`);
 }

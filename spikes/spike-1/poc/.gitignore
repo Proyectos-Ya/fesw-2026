@@ -1,0 +1,10 @@
+# Entorno virtual del PoC: se instala con requirements.txt, no se versiona.
+.venv/
+__pycache__/
+# URLs y tokens reales de cada API. Se versiona solo .env.example (sin
+# valores). Cubre tanto perfilamiento/ (perfilar_rut.py, el notebook) como
+# ocr/ (benchmark.py) — el patrón sin "/" aplica a cualquier profundidad.
+.env
+# Salidas de una corrida (las cifras se pegan en el .md del spike, no acá).
+resultados.json
+tablas.md

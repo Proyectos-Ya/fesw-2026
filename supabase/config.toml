@@ -113,7 +113,9 @@ enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
 # Uncomment to expose additional ports for testing user applications that send emails.
-# smtp_port = 54325
+# Las alertas de licitaciones (HdU 08) envían por SMTP; sin este puerto abierto
+# solo se vería la bandeja web, no habría dónde entregar el correo.
+smtp_port = 54325
 # pop3_port = 54326
 # admin_email = "admin@email.com"
 # sender_name = "Admin"

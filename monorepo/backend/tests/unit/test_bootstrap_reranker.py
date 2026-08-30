@@ -14,9 +14,9 @@ import logging
 
 import pytest
 
-from app import bootstrap as bootstrap_module
 from app.bootstrap import MockRerankerService, build_reranker_service
 from app.config import settings
+from app.infrastructure.services import bge_reranker_service as modulo_reranker
 
 
 class _RerankerRoto:
@@ -28,7 +28,10 @@ class _RerankerRoto:
 
 @pytest.fixture
 def reranker_roto(monkeypatch):
-    monkeypatch.setattr(bootstrap_module, "BgeRerankerService", _RerankerRoto)
+    # Se parchea en el módulo de origen y no en bootstrap: build_reranker_service
+    # lo importa tarde, dentro de la función, para que la imagen que corre en
+    # modo API no necesite onnxruntime ni transformers instalados.
+    monkeypatch.setattr(modulo_reranker, "BgeRerankerService", _RerankerRoto)
 
 
 def test_desactivado_por_configuracion_usa_el_mock(monkeypatch):

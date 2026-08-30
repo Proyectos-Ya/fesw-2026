@@ -19,6 +19,14 @@ _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 # atributos con guion bajo inicial en ModelPrivateAttr, no en el entero.
 MIN_JWT_SECRET_BYTES = 32
 
+# Host oficial de cada proveedor de embeddings. "local" no llama a ninguno, pero
+# tiene entrada para que `embedding_api_url` no falle si alguien la consulta.
+_URL_POR_PROVEEDOR = {
+    "local": "",
+    "deepinfra": "https://api.deepinfra.com/v1/openai",
+    "huggingface": "https://router.huggingface.co",
+}
+
 # La clave de ejemplo que estuvo publicada en el repositorio como valor por
 # defecto de `jwt_secret_key`. Se rechaza explícitamente: sin esto, alguien
 # podría recuperarla del historial de git, ponerla en su .env y quedar tan
@@ -57,9 +65,23 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "proyectosya"
     postgres_user: str = "postgres"
-    postgres_password: str
+    # Opcional a propósito: con DATABASE_URL puesta, estos POSTGRES_* no se usan
+    # para nada. Exigirla igual obligaba a inventar un valor en las variables del
+    # despliegue, y quien las configura sin conocer el código no tiene cómo saber
+    # que da lo mismo —lo razonable es suponer lo contrario—. El validador de más
+    # abajo se encarga de que no falten las dos a la vez.
+    postgres_password: str | None = None
 
     # --- Qdrant ---
+    # URL completa del servicio. Tiene prioridad sobre qdrant_host/qdrant_http_port,
+    # que siguen sirviendo para el compose local. Un servicio gestionado (Qdrant
+    # Cloud) entrega un endpoint https con un puerto propio, y armarlo a mano
+    # desde las piezas obliga a asumir el esquema http.
+    qdrant_url_override: str | None = Field(default=None, alias="QDRANT_URL")
+    # Solo la exigen los servicios gestionados; el Qdrant del compose local no
+    # pide autenticación, así que por defecto no se manda nada.
+    qdrant_api_key: str | None = None
+
     qdrant_host: str = "localhost"
     qdrant_http_port: int = 6333
     qdrant_grpc_port: int = 6334
@@ -96,6 +118,28 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_vector_size: int = 1024
 
+    # De dónde sale el modelo: "local" lo carga en el proceso (sentence-transformers,
+    # ~938 MB de RAM) y el resto lo delega a un proveedor externo, que tiene que servir
+    # el MISMO modelo: cambiarlo invalida todo lo ya indexado en Qdrant, porque los
+    # vectores de dos modelos distintos no son comparables entre sí.
+    #
+    # Se nombra al proveedor en vez de un genérico "api" porque no hablan el mismo
+    # protocolo: DeepInfra expone el dialecto OpenAI (`data[].embedding`) y Hugging
+    # Face devuelve un array de arrays plano por su endpoint de feature-extraction.
+    embedding_provider: Literal["local", "deepinfra", "huggingface"] = "local"
+    embedding_api_key: str | None = None
+    # Solo para apuntar a otro host (un proxy, una instancia dedicada). Vacío usa el
+    # oficial del proveedor elegido.
+    embedding_api_base_url: str | None = None
+
+    # Mismo esquema para el reranker, que en local es ONNX (~1,3 GB de RAM).
+    reranker_provider: Literal["local", "pinecone"] = "local"
+    pinecone_api_key: str | None = None
+    pinecone_base_url: str = "https://api.pinecone.io"
+    pinecone_rerank_model: str = "bge-reranker-v2-m3"
+    # La API de Pinecone versiona por header y rechaza las peticiones sin él.
+    pinecone_api_version: str = "2025-04"
+
     # --- Mercado Público ---
     mercado_publico_api_key: str
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
@@ -122,6 +166,26 @@ class Settings(BaseSettings):
     # --- Gemini ---
     gemini_api_key: str
     gemini_model: str
+
+    # --- Alertas de licitaciones (HdU 08) ---
+    # SMTP plano: es el denominador común de Mailpit en local y de Brevo o
+    # SendGrid en producción, así que cambiar de entorno es cambiar estas
+    # variables y nada de código. Los defaults apuntan al Mailpit que levanta
+    # `supabase start` (hay que descomentar `smtp_port` en supabase/config.toml).
+    smtp_host: str = "host.docker.internal"
+    smtp_port: int = 54325
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "alertas@proyectosya.local"
+    # STARTTLS sobre el 587. Mailpit escucha en claro, por eso el default apagado.
+    smtp_use_tls: bool = False
+    # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
+    # lo que el usuario abre desde su bandeja.
+    app_base_url: str = "http://localhost:3000"
+    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    run_notification_scan: bool = True
+    notification_scan_interval_seconds: int = 300
+    notification_digest_hour: int = 8
 
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
@@ -201,8 +265,82 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @field_validator("embedding_api_key", "pinecone_api_key", "postgres_password", mode="after")
+    @classmethod
+    def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return valor.strip() or None
+
+    @model_validator(mode="after")
+    def _exigir_una_forma_de_conectar_a_postgres(self) -> "Settings":
+        """Hay dos formas válidas de configurar la base, y hace falta una.
+
+        Falla al construir Settings y no en la primera consulta: un error de
+        configuración tiene que impedir el arranque, no aparecer más tarde
+        disfrazado de fallo de conexión.
+        """
+        if not self.database_url_override and not self.postgres_password:
+            raise ValueError(
+                "Falta la configuración de la base de datos. Usa DATABASE_URL con "
+                "la cadena completa (lo habitual con Supabase, Neon o RDS), o bien "
+                "POSTGRES_PASSWORD junto a los demás POSTGRES_* (lo que hace el "
+                "compose local)."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _exigir_credencial_del_proveedor(self) -> "Settings":
+        """En modo API, sin credencial la aplicación no arranca.
+
+        Dejarlo pasar convierte un error de configuración en un fallo en la
+        primera petición del primer usuario. Para el embedding es peor todavía:
+        la ingesta escribiría vectores fallidos en Qdrant, y eso no se arregla
+        corrigiendo la variable —hay que reindexar.
+        """
+        faltantes = []
+        if self.embedding_provider != "local" and not self.embedding_api_key:
+            faltantes.append(
+                f"EMBEDDING_API_KEY (EMBEDDING_PROVIDER={self.embedding_provider})"
+            )
+        if self.reranker_provider != "local" and not self.pinecone_api_key:
+            faltantes.append(
+                f"PINECONE_API_KEY (RERANKER_PROVIDER={self.reranker_provider})"
+            )
+        if faltantes:
+            raise ValueError("Falta configurar: " + ", ".join(faltantes))
+        return self
+
+    @field_validator("qdrant_url_override", "qdrant_api_key", mode="after")
+    @classmethod
+    def _vacio_es_ausente(cls, valor: str | None) -> str | None:
+        """Una variable declarada pero vacía es ausencia, no un valor.
+
+        Es el caso habitual de una plantilla de `.env` con `QDRANT_API_KEY=` sin
+        rellenar: sin esto, el cliente mandaría una key vacía y el servidor
+        respondería 401 en vez de dejar pasar la conexión anónima.
+        """
+        if valor is None:
+            return None
+        valor = valor.strip()
+        return valor or None
+
+    @property
+    def embedding_api_url(self) -> str:
+        """Host del proveedor de embeddings, con el override por delante."""
+        if self.embedding_api_base_url:
+            return self.embedding_api_base_url.rstrip("/")
+        return _URL_POR_PROVEEDOR[self.embedding_provider]
+
     @property
     def qdrant_url(self) -> str:
+        """URL del servicio, con el override por delante del host y el puerto."""
+        if self.qdrant_url_override:
+            # Una barra final concatenada con la ruta del cliente da "//". Los
+            # paneles la entregan de las dos formas y copiarla tal cual no
+            # debería cambiar el comportamiento.
+            return self.qdrant_url_override.rstrip("/")
+
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
 
 

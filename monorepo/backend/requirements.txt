@@ -17,14 +17,22 @@ greenlet==3.5.1
 # Cliente HTTP (usado por MercadoPublicoClient)
 httpx>=0.27.0
 
-# Embeddings y búsqueda vectorial
-sentence-transformers>=3.0.0
-onnxruntime==1.26.0
+# Búsqueda vectorial
 qdrant-client==1.18.0
+
+# Los modelos locales (sentence-transformers para BGE-M3, onnxruntime para el
+# reranker) NO van acá: son ~4,3 GB y ~588 MB de caché, y no caben en el free
+# tier de Railway. En producción se corre con EMBEDDING_PROVIDER=api y
+# RERANKER_PROVIDER=api, que solo necesitan httpx. Para correrlos localmente,
+# instalar requirements-dev.txt.
 
 # Autenticación
 bcrypt==5.0.0
 pyjwt==2.13.0
+# Envío de correo de las alertas de licitaciones (HdU 08). SMTP asíncrono para
+# no bloquear el event loop mientras se habla con el servidor de correo.
+aiosmtplib>=3.0.0
+
+# Carga y lectura de documentos para el asistente de licitaciones.
 python-multipart>=0.0.9
 openpyxl>=3.1.2
-
