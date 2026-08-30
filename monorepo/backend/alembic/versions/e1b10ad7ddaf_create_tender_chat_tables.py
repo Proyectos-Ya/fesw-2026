@@ -20,7 +20,13 @@ import sqlmodel
 revision: str = 'e1b10ad7ddaf'
 down_revision: str | Sequence[str] | None = '82786321a8db'
 branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+# Esta migración añade `session_id` a `tender_chat_messages`, tabla que crea
+# `869745767a10` en la rama hermana. El `down_revision` apunta al ancestro
+# común, así que sin esto Alembic puede aplicarlas en cualquier orden y falla
+# con `relation "tender_chat_messages" does not exist`. `depends_on` fija el
+# orden sin tocar la genealogía, que es lo que corresponde cuando la dependencia
+# está en otra rama.
+depends_on: str | Sequence[str] | None = "869745767a10"
 
 
 def upgrade() -> None:
