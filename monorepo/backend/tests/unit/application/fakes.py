@@ -176,16 +176,91 @@ class FakeTokenService(ITokenService):
             raise InvalidToken() from exc
 
 
+from app.domain.entities.tender_chat import TenderChatSession
+
+
 class InMemoryTenderChatRepository:
     def __init__(self) -> None:
         self.messages: list = []
         self.documents: dict[UUID, tuple] = {}  # doc_id: (doc_entity, file_bytes)
+        self.sessions: dict[UUID, TenderChatSession] = {}
+
+    async def create_session(
+        self, user_id: UUID, tender_id: UUID, title: str | None = None
+    ) -> TenderChatSession:
+        from uuid import uuid4
+
+        for s in self.sessions.values():
+            if s.user_id == user_id and s.tender_id == tender_id:
+                s.is_active = False
+
+        new_session = TenderChatSession(
+            id=uuid4(),
+            tender_id=tender_id,
+            user_id=user_id,
+            title=title,
+            is_active=True,
+        )
+        self.sessions[new_session.id] = new_session
+        return new_session
+
+    async def get_or_create_active_session(
+        self, user_id: UUID, tender_id: UUID
+    ) -> TenderChatSession:
+        active = [
+            s
+            for s in self.sessions.values()
+            if s.user_id == user_id and s.tender_id == tender_id and s.is_active
+        ]
+        if active:
+            return active[-1]
+        return await self.create_session(user_id=user_id, tender_id=tender_id)
+
+    async def get_session_by_id(
+        self, session_id: UUID, user_id: UUID
+    ) -> TenderChatSession | None:
+        s = self.sessions.get(session_id)
+        if s and s.user_id == user_id:
+            return s
+        return None
+
+    async def get_session_history(
+        self, session_id: UUID, user_id: UUID, limit: int = 50
+    ):
+        matched = [
+            m
+            for m in self.messages
+            if m.session_id == session_id and m.user_id == user_id
+        ]
+        return matched[-limit:]
+
+    async def archive_session(self, session_id: UUID, user_id: UUID) -> bool:
+        s = self.sessions.get(session_id)
+        if s and s.user_id == user_id:
+            s.is_active = False
+            return True
+        return False
 
     async def save_message(self, message):
+        if message.session_id is None:
+            active = await self.get_or_create_active_session(
+                user_id=message.user_id, tender_id=message.tender_id
+            )
+            message.session_id = active.id
         self.messages.append(message)
         return message
 
     async def get_history(self, user_id: UUID, tender_id: UUID, limit: int = 50):
+        active = [
+            s
+            for s in self.sessions.values()
+            if s.user_id == user_id and s.tender_id == tender_id and s.is_active
+        ]
+        if active:
+            return await self.get_session_history(
+                session_id=active[-1].id, user_id=user_id, limit=limit
+            )
+
         matched = [
             m
             for m in self.messages
@@ -218,6 +293,7 @@ class InMemoryTenderChatRepository:
                 del self.documents[document_id]
                 return True
         return False
+
 
 
 class InMemoryTenderRepository(ITenderRepository):

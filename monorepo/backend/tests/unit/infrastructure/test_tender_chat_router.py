@@ -42,6 +42,7 @@ def mock_use_cases():
         delete_doc = None
         ask_assistant = None
         get_history = None
+        create_session = None
     return MockUseCases()
 
 
@@ -67,6 +68,9 @@ def app(mock_user, mock_use_cases):
     def get_history_use_case():
         return mock_use_cases.get_history
 
+    def get_create_session_use_case():
+        return mock_use_cases.create_session
+
     router = create_tender_chat_router(
         get_current_user=get_current_user,
         get_upload_doc_use_case=get_upload_use_case,
@@ -74,9 +78,11 @@ def app(mock_user, mock_use_cases):
         get_delete_doc_use_case=get_delete_use_case,
         get_ask_assistant_use_case=get_ask_use_case,
         get_chat_history_use_case=get_history_use_case,
+        get_create_chat_session_use_case=get_create_session_use_case,
     )
     app.include_router(router)
     return app
+
 
 
 @pytest.mark.asyncio
@@ -194,9 +200,10 @@ async def test_ask_assistant_endpoint_success(app, mock_use_cases, mock_user):
     msg_id = uuid4()
 
     class FakeAskUseCase:
-        async def execute(self, tender_id, user_id, question):
+        async def execute(self, tender_id, user_id, question, session_id=None):
             return TenderChatMessage(
                 id=msg_id,
+                session_id=session_id,
                 tender_id=tender_id,
                 user_id=user_id,
                 role="assistant",
@@ -224,7 +231,7 @@ async def test_ask_assistant_when_out_of_service_returns_503(app, mock_use_cases
     tender_id = uuid4()
 
     class FailingAskUseCase:
-        async def execute(self, tender_id, user_id, question):
+        async def execute(self, tender_id, user_id, question, session_id=None):
             raise TenderAssistantUnavailableError()
 
     mock_use_cases.ask_assistant = FailingAskUseCase()
@@ -242,7 +249,7 @@ async def test_ask_assistant_prompt_injection_returns_400(app, mock_use_cases):
     tender_id = uuid4()
 
     class InjectionBlockedAskUseCase:
-        async def execute(self, tender_id, user_id, question):
+        async def execute(self, tender_id, user_id, question, session_id=None):
             raise InvalidPromptInstruction()
 
     mock_use_cases.ask_assistant = InjectionBlockedAskUseCase()
@@ -266,7 +273,7 @@ async def test_get_history_endpoint_success(app, mock_use_cases, mock_user):
     )
 
     class FakeHistoryUseCase:
-        async def execute(self, tender_id, user_id, limit=50):
+        async def execute(self, tender_id, user_id, limit=50, session_id=None):
             return [msg]
 
     mock_use_cases.get_history = FakeHistoryUseCase()
@@ -277,4 +284,120 @@ async def test_get_history_endpoint_success(app, mock_use_cases, mock_user):
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert len(data) == 1
+
     assert data[0]["content"] == "Pregunta previa"
+
+
+@pytest.mark.asyncio
+async def test_create_session_endpoint_success(app, mock_use_cases, mock_user):
+    from app.domain.entities.tender_chat import TenderChatSession
+
+    tender_id = uuid4()
+    session_id = uuid4()
+
+    class FakeCreateSessionUseCase:
+        async def execute(self, user_id, tender_id, title=None):
+            return TenderChatSession(
+                id=session_id,
+                tender_id=tender_id,
+                user_id=user_id,
+                title=title,
+                is_active=True,
+            )
+
+    mock_use_cases.create_session = FakeCreateSessionUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        payload = {"title": "Nuevo Hilo de Consulta"}
+        response = await client.post(f"/tenders/{tender_id}/assistant/sessions", json=payload)
+
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()
+    assert data["id"] == str(session_id)
+    assert data["title"] == "Nuevo Hilo de Consulta"
+    assert data["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_history_with_session_id_success(app, mock_use_cases, mock_user):
+    tender_id = uuid4()
+    session_id = uuid4()
+    msg = TenderChatMessage(
+        session_id=session_id,
+        tender_id=tender_id,
+        user_id=mock_user.id,
+        role="user",
+        content="Pregunta en sesión",
+    )
+
+    class FakeHistoryUseCase:
+        async def execute(self, tender_id, user_id, limit=50, session_id=None):
+            return [msg]
+
+    mock_use_cases.get_history = FakeHistoryUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/tenders/{tender_id}/assistant/history",
+            params={"session_id": str(session_id)},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["session_id"] == str(session_id)
+    assert data[0]["content"] == "Pregunta en sesión"
+
+
+@pytest.mark.asyncio
+async def test_get_history_session_not_found_returns_404(app, mock_use_cases):
+    from app.domain.errors.tender_chat_errors import ChatSessionNotFoundError
+
+    tender_id = uuid4()
+    fake_session_id = uuid4()
+
+    class FailingHistoryUseCase:
+        async def execute(self, tender_id, user_id, limit=50, session_id=None):
+            raise ChatSessionNotFoundError()
+
+    mock_use_cases.get_history = FailingHistoryUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/tenders/{tender_id}/assistant/history",
+            params={"session_id": str(fake_session_id)},
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_with_session_id_success(app, mock_use_cases, mock_user):
+    tender_id = uuid4()
+    session_id = uuid4()
+    msg_id = uuid4()
+
+    class FakeAskUseCase:
+        async def execute(self, tender_id, user_id, question, session_id=None):
+            return TenderChatMessage(
+                id=msg_id,
+                session_id=session_id,
+                tender_id=tender_id,
+                user_id=user_id,
+                role="assistant",
+                content="Respuesta en sesión",
+                citations=[],
+            )
+
+    mock_use_cases.ask_assistant = FakeAskUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        payload = {"question": "¿Cuál es el monto?", "session_id": str(session_id)}
+        response = await client.post(f"/tenders/{tender_id}/assistant/ask", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["id"] == str(msg_id)
+    assert data["session_id"] == str(session_id)
+    assert data["content"] == "Respuesta en sesión"
+

@@ -67,6 +67,7 @@ class AskTenderAssistantUseCase:
         tender_id: UUID,
         user_id: UUID,
         question: str,
+        session_id: Optional[UUID] = None,
     ) -> TenderChatMessage:
         # 1. Validar pregunta no vacía
         cleaned_question = question.strip() if question else ""
@@ -80,8 +81,31 @@ class AskTenderAssistantUseCase:
         # 3. Validar guardarraíles de seguridad (Anti-Prompt Injection)
         self._validate_guardrails(cleaned_question)
 
-        # 4. Guardar mensaje de la pregunta del usuario
+        # 4. Resolver o validar la sesión de chat activa
+        from app.domain.errors.tender_chat_errors import ChatSessionNotFoundError
+
+        if session_id is not None:
+            session = await self.chat_repo.get_session_by_id(
+                session_id=session_id, user_id=user_id
+            )
+            if not session or session.tender_id != tender_id:
+                raise ChatSessionNotFoundError(
+                    "La sesión de chat no existe o no pertenece a esta licitación."
+                )
+        else:
+            session = await self.chat_repo.get_or_create_active_session(
+                user_id=user_id, tender_id=tender_id
+            )
+            session_id = session.id
+
+        # 5. Obtener historial reciente de esta sesión específica
+        history = await self.chat_repo.get_session_history(
+            session_id=session_id, user_id=user_id, limit=20
+        )
+
+        # 6. Guardar mensaje de la pregunta del usuario asociado a la sesión
         user_msg = TenderChatMessage(
+            session_id=session_id,
             tender_id=tender_id,
             user_id=user_id,
             role="user",
@@ -89,11 +113,10 @@ class AskTenderAssistantUseCase:
         )
         await self.chat_repo.save_message(user_msg)
 
-        # 5. Obtener historial reciente para dar contexto de conversación
-        history = await self.chat_repo.get_history(user_id=user_id, tender_id=tender_id, limit=20)
-
-        # 6. Obtener documentos adjuntos asociados a este chat/licitación
-        chat_docs = await self.chat_repo.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
+        # 7. Obtener documentos adjuntos asociados a esta licitación
+        chat_docs = await self.chat_repo.get_documents_by_chat(
+            user_id=user_id, tender_id=tender_id
+        )
         document_contexts: List[DocumentContextDTO] = []
         for doc in chat_docs:
             raw_bytes = await self.chat_repo.get_document_bytes(doc.id, user_id)
@@ -106,7 +129,7 @@ class AskTenderAssistantUseCase:
                     )
                 )
 
-        # 7. Obtener perfil de la empresa proveedora si existe
+        # 8. Obtener perfil de la empresa proveedora si existe
         supplier_context_str: Optional[str] = None
         if self.supplier_repo:
             try:
@@ -128,7 +151,7 @@ class AskTenderAssistantUseCase:
             except Exception:
                 supplier_context_str = None
 
-        # 8. Invocar servicio de IA
+        # 9. Invocar servicio de IA con historial multi-turn
         try:
             ai_response = await self.ai_service.generate_response(
                 question=cleaned_question,
@@ -144,8 +167,9 @@ class AskTenderAssistantUseCase:
                 f"El asistente virtual se encuentra temporalmente fuera de servicio: {e}"
             ) from e
 
-        # 7. Crear y guardar mensaje de respuesta del asistente
+        # 10. Crear y guardar mensaje de respuesta del asistente ligado a la sesión
         assistant_msg = TenderChatMessage(
+            session_id=session_id,
             tender_id=tender_id,
             user_id=user_id,
             role="assistant",
@@ -154,3 +178,4 @@ class AskTenderAssistantUseCase:
         )
         saved_response = await self.chat_repo.save_message(assistant_msg)
         return saved_response
+

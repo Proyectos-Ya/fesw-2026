@@ -56,6 +56,22 @@ class InvalidPromptInstruction(TenderChatError):
 class OutOfScopeQueryError(TenderChatError):
     """Excepción lanzada cuando la consulta está completamente fuera del alcance del asistente de licitaciones."""
 
+
+class ChatSessionNotFoundError(TenderChatError):
+    """Excepción lanzada cuando la sesión de chat no existe o no pertenece al usuario."""
+    def __init__(self, message: str = "La sesión de chat solicitada no existe."):
+        super().__init__(message)
+
+
+class ChatHistoryLoadError(TenderChatError):
+    """Excepción lanzada cuando ocurre un error al recuperar el historial desde la base de datos."""
+    def __init__(
+        self,
+        message: str = "No se pudo cargar el historial de la conversación. Por favor reintente más tarde o inicie un nuevo chat.",
+    ):
+        super().__init__(message)
+
+
     def __init__(
         self,
         message: str = "La consulta está fuera del ámbito de análisis de esta licitación.",

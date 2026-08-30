@@ -29,6 +29,7 @@ def repo(mock_session, tmp_path):
 @pytest.mark.asyncio
 async def test_save_message_adds_model_and_commits(repo, mock_session):
     msg = TenderChatMessage(
+        session_id=uuid4(),
         tender_id=uuid4(),
         user_id=uuid4(),
         role="assistant",
@@ -42,6 +43,7 @@ async def test_save_message_adds_model_and_commits(repo, mock_session):
     assert saved.content == "Respuesta"
     mock_session.add.assert_called_once()
     mock_session.commit.assert_awaited_once()
+
 
 
 @pytest.mark.asyncio
@@ -161,3 +163,57 @@ async def test_delete_document_removes_file_and_model(repo, mock_session, tmp_pa
     assert success is True
     mock_session.delete.assert_called_once_with(doc_model)
     mock_session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_session_deactivates_older_and_creates_new(repo, mock_session):
+    from app.infrastructure.repositories.tender_chat_model import TenderChatSessionModel
+
+    tender_id = uuid4()
+    user_id = uuid4()
+
+    older_model = TenderChatSessionModel(
+        id=uuid4(),
+        tender_id=tender_id,
+        user_id=user_id,
+        is_active=True,
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    mock_exec_result = MagicMock()
+    mock_exec_result.all.return_value = [older_model]
+    mock_session.exec.return_value = mock_exec_result
+
+    new_session = await repo.create_session(user_id=user_id, tender_id=tender_id, title="Nuevo Hilo")
+
+    assert older_model.is_active is False
+    assert new_session.is_active is True
+    assert new_session.title == "Nuevo Hilo"
+    assert mock_session.commit.assert_awaited
+
+
+@pytest.mark.asyncio
+async def test_get_session_history_returns_mapped_entities(repo, mock_session):
+    session_id = uuid4()
+    user_id = uuid4()
+    tender_id = uuid4()
+
+    msg_model = TenderChatMessageModel(
+        id=uuid4(),
+        session_id=session_id,
+        tender_id=tender_id,
+        user_id=user_id,
+        role="user",
+        content="Pregunta sesión",
+        citations=[],
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    mock_exec_result = MagicMock()
+    mock_exec_result.all.return_value = [msg_model]
+    mock_session.exec.return_value = mock_exec_result
+
+    history = await repo.get_session_history(session_id=session_id, user_id=user_id)
+    assert len(history) == 1
+    assert history[0].session_id == session_id
+    assert history[0].content == "Pregunta sesión"
+
