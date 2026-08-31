@@ -90,6 +90,7 @@ function CompanyFooter() {
 
 const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = [
   { icon: "sparkles", label: "Inicio", href: "/" },
+  { icon: "search", label: "Buscar", href: "/buscar" },
   { icon: "target", label: "Matches", href: "/matches" },
   { icon: "bookmark", label: "Guardados", href: "/guardados" },
   { icon: "bell", label: "Alertas", href: "/alertas" },

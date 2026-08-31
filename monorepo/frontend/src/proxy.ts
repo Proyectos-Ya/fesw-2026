@@ -27,7 +27,9 @@ import { NextResponse } from "next/server";
  * cookie vuelva a ser de primera parte (ver PENDIENTES 3.9); con eso este
  * guardia podría recuperarse tal como estaba.
  */
-export default function proxy() {
+import type { NextRequest } from "next/server";
+
+export default function proxy(_request?: NextRequest) {
   return NextResponse.next();
 }
 

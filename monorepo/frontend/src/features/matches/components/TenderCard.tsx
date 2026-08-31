@@ -48,8 +48,8 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
   const tender: Tender | null = rawTender ?? match?.tender ?? null;
   if (!tender) return null;
 
-  // Toma el score del match; si viene el tender suelto sin score, se evalúa a 0
-  const score = normalizeScore(match?.final_score ?? 0);
+  // Solo calcula el score si viene un objeto match definido
+  const score = match ? normalizeScore(match.final_score) : null;
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const savedState = isSaved ?? tender.is_saved ?? false;
@@ -66,18 +66,20 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
       className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
-      {/* Medidor de compatibilidad: siempre visible */}
-      <div className="flex-none">
-        <MatchMeter
-          value={score}
-          size="lg"
-          thresholds={DASHBOARD_THRESHOLDS}
-          colors={DASHBOARD_COLORS}
-        />
-        <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
-          <ScoreLabel score={score} />
+      {/* Medidor de compatibilidad: solo visible si hay match con score */}
+      {score !== null && (
+        <div className="flex-none">
+          <MatchMeter
+            value={score}
+            size="lg"
+            thresholds={DASHBOARD_THRESHOLDS}
+            colors={DASHBOARD_COLORS}
+          />
+          <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <ScoreLabel score={score} />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="mb-2 flex flex-wrap items-center gap-2">
