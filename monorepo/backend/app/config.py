@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     # busca el nombre de cualquier comuna en cualquier parte del texto, no solo
     # tras "Municipalidad de". Más cobertura, algo más de riesgo de falso
     # positivo -- apagada por defecto hasta decidir si vale la pena el riesgo.
-    enable_comuna_generic_heuristic: bool = False
+    enable_comuna_generic_heuristic: bool = True
 
     # --- Matching ---
     # Escape para entornos sin RAM suficiente para el reranker ONNX.
