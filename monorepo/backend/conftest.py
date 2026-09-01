@@ -33,4 +33,20 @@ def _completar_variables_faltantes() -> None:
             os.environ[clave] = valor
 
 
+def _forzar_modo_desarrollo() -> None:
+    """La suite corre siempre en modo desarrollo, aunque el `.env` diga otra cosa.
+
+    `IS_DEV` no va en `RELLENO_ENV` porque ese diccionario es solo para campos
+    **obligatorios** de `Settings`, y `is_dev` tiene valor por defecto.
+
+    Fuera de modo desarrollo, `auth_cookie_secure` se deriva en True y la cookie
+    de sesión sale con el atributo `Secure`. El cliente de pruebas habla por
+    `http://test`, así que httpx no la devuelve: todo test que iniciaba sesión
+    recibía 401 en la petición siguiente, y el error parecía un fallo de
+    autenticación cuando era la configuración de la cookie.
+    """
+    os.environ["IS_DEV"] = "true"
+
+
 _completar_variables_faltantes()
+_forzar_modo_desarrollo()

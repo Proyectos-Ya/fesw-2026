@@ -17,6 +17,7 @@ from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.tender import Tender
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
+from app.shared.constants import ACTIVE_TENDER_STATUSES
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
     FakeTenderVectorRepository,
@@ -50,7 +51,7 @@ class FakeTenderRepository(ITenderRepository):
     async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:  # noqa: ARG002
         return rut
 
-    async def get_or_create_status(self, status_id: int) -> int:
+    async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
 
     async def save_complex_tender(
@@ -73,13 +74,18 @@ class FakeTenderRepository(ITenderRepository):
         return None
 
 
-def _make_dto(code: str = "LIC-001", status_code: int = 1) -> TenderIngestaDTO:
+def _make_dto(
+    code: str = "LIC-001",
+    status_code: int = 2,
+    estado_codigo: str = "publicada",
+) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
         {
             "CodigoExterno": code,
             "Nombre": "Construcción de sede comunal",
             "Descripcion": "Se requiere construir edificio de 2 pisos",
             "CodigoEstado": status_code,
+            "EstadoCodigo": estado_codigo,
             "FechaPublicacion": "2026-01-01T00:00:00",
             "FechaCierre": "2026-06-30T23:59:00",
             "RutComprador": "12.345.678-9",
@@ -186,10 +192,32 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute(_make_dto(status_code=1))
+    await use_case.execute(_make_dto(estado_codigo="publicada"))
 
     _, _, payload = vector_repo.upserts[0]
     assert payload["status_code"] == "publicada"
+
+
+async def test_una_desierta_no_se_indexa_como_publicada():
+    """La regresión que motivó el cambio a códigos de string.
+
+    `id_estado = 6` es "desierta" en Compra Ágil v2, pero el mapa heredado de la
+    API de Licitaciones lo traducía a "publicada". La licitación quedaba
+    marcada como abierta y entraba en recomendaciones, ficha y alertas. Ahora el
+    estado sale de `estado.codigo`, así que no hay traducción que equivocar.
+    """
+    vector_repo = FakeTenderVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=vector_repo,
+    )
+
+    await use_case.execute(_make_dto(status_code=6, estado_codigo="desierta"))
+
+    _, _, payload = vector_repo.upserts[0]
+    assert payload["status_code"] == "desierta"
+    assert payload["status_code"] not in ACTIVE_TENDER_STATUSES
 
 
 async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:

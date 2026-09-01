@@ -9,6 +9,7 @@ from typing import Any
 
 from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
 from app.infrastructure.seeder import seed_database_metadata
+from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 from app.shared.regions import CHILE_REGIONS, UNKNOWN_REGION_ID
 
 
@@ -88,10 +89,29 @@ class TestSeedRegions:
 
 
 class TestSeedStatuses:
-    async def test_sigue_sembrando_los_estados(self):
+    async def test_siembra_exactamente_los_estados_medidos(self):
+        """Se compara contra el mapeo y no contra una lista repetida acá.
+
+        La versión anterior fijaba {1, 2, 6, 7, 8, 18}, heredados de la API de
+        Licitaciones. Al ser una cuarta copia del mapeo, cambiar la fuente no la
+        hacía fallar: solo fallaba el día que alguien tocaba el seeder.
+        """
         session = FakeSession()
 
         await seed_database_metadata(session)  # type: ignore[arg-type]
 
         estados = [s for s in session.added if isinstance(s, TenderStatusModel)]
-        assert {s.id for s in estados} == {1, 2, 6, 7, 8, 18}
+        assert {s.id for s in estados} == set(TENDER_STATUS_CODE_BY_ID)
+
+    async def test_el_nombre_se_deriva_del_codigo_semantico(self):
+        session = FakeSession()
+
+        await seed_database_metadata(session)  # type: ignore[arg-type]
+
+        por_id = {
+            s.id: s.name
+            for s in session.added
+            if isinstance(s, TenderStatusModel)
+        }
+        assert por_id[2] == "Publicada"
+        assert por_id[6] == "Desierta"

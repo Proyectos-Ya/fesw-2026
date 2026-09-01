@@ -3,6 +3,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -25,10 +27,53 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.shared.constants import ACTIVE_TENDER_STATUSES
+from app.shared.datetime_utils import to_utc_naive, utc_now_naive
 from app.shared.regions import to_region_id
 
-
 # Implementación del servicio de ingesta de licitaciones
+# Filas por sentencia al insertar metadata. Postgres topa en 65.535 parámetros
+# por sentencia y cada fila lleva 5 columnas, así que el techo real ronda las
+# 13.000. Mil deja margen de sobra y mantiene las transacciones cortas.
+LOTE_METADATA = 1000
+
+
+def _lotes(elementos: list, tamano: int):
+    """Trocea una lista en sublistas de a lo más `tamano`."""
+    for inicio in range(0, len(elementos), tamano):
+        yield elementos[inicio : inicio + tamano]
+
+
+def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bool:
+    """Si el plazo de cotización ya pasó. Ante la duda, False: se conserva.
+
+    La conversión de zona la hace `to_utc_naive` y no un `replace(tzinfo=None)`:
+    `replace` **descarta** el offset en vez de convertir, así que un cierre con
+    `-04:00` —la hora de Chile— se comparaba contra UTC con cuatro horas de
+    error, y descartaba licitaciones que seguían abiertas. Con sufijo `Z` el
+    error no se notaba, porque ahí la hora de pared ya es UTC.
+
+    Descartar una licitación viva es peor que ingerir una ya cerrada: lo segundo
+    lo corrige el barrido de vencidas, lo primero no lo nota nadie.
+    """
+    if not fecha_cierre:
+        return False
+
+    texto = fecha_cierre.replace("Z", "+00:00")
+    try:
+        if " " in texto and "T" not in texto:
+            # Formato sin zona que la API no documenta, pero que se vio en la
+            # práctica. `to_utc_naive` lo interpreta en hora de Chile.
+            parseada = datetime.strptime(texto, "%Y-%m-%d %H:%M")
+        else:
+            parseada = datetime.fromisoformat(texto)
+    except (ValueError, TypeError):
+        return False
+
+    cierre = to_utc_naive(parseada)
+    return cierre is not None and cierre <= ahora_utc_naive
+
+
 class TenderIngestionService(ITenderIngestionService):
     def __init__(
         self,
@@ -45,57 +90,48 @@ class TenderIngestionService(ITenderIngestionService):
         self._tender_vector_repo = tender_vector_repo
 
     # Obtiene listado de cambios recientes y guarda códigos en tender_metadata si no existen
-    async def fetch_tenders_metadata(self) -> None:
+    async def fetch_tenders_metadata(
+        self,
+        *,
+        dias: int | None = None,
+        por_publicacion: bool = False,
+        estado: str | None = None,
+        limite: int | None = None,
+    ) -> int:
         async with AsyncSession(self.engine) as session:
             to_date = datetime.now(UTC)
-            from_date = to_date - timedelta(days=1)
-            limit = settings.mercadopublico_fetching_limit
+            from_date = to_date - timedelta(days=dias or 1)
+            limit = limite or settings.mercadopublico_fetching_limit
 
             print(
                 f"[IngestionService] Consultando licitaciones recientes (límite: {limit})..."
             )
             try:
-                items = await self.client.get_tenders(from_date, to_date, limit)
-                new_count = 0
+                items = await self.client.get_tenders(
+                    from_date,
+                    to_date,
+                    limit,
+                    por_publicacion=por_publicacion,
+                    estado=estado,
+                )
+                codigos_candidatos: list[str] = []
                 for item in items:
                     code = item.get("codigo")
                     if not code:
                         continue
 
-                    # 1. Filtrar solo licitaciones abiertas / publicadas
+                    # 1. Filtrar solo licitaciones abiertas / publicadas.
+                    # Por `estado.codigo`, que es el enum documentado de la API,
+                    # y no por `id_estado`, cuya numeración la guía no publica.
                     estado = item.get("estado", {}) or {}
-                    id_estado = estado.get("id_estado")
-                    codigo_estado = str(estado.get("codigo", "")).lower()
-                    glosa_estado = str(estado.get("glosa", "")).lower()
-                    ACTIVE_STATUS_IDS = {1, 2, 5, 6}
-                    is_active_status = (
-                        (id_estado in ACTIVE_STATUS_IDS)
-                        or ("publicada" in codigo_estado)
-                        or ("publicada" in glosa_estado)
-                    )
-                    if not is_active_status:
+                    codigo_estado = str(estado.get("codigo") or "").strip().lower()
+                    if codigo_estado not in ACTIVE_TENDER_STATUSES:
                         continue
 
                     # 2. Filtrar licitaciones cuya fecha de cierre ya venció
                     fechas = item.get("fechas", {}) or {}
-                    fecha_cierre_str = fechas.get("fecha_cierre")
-                    if fecha_cierre_str:
-                        try:
-                            fc_clean = fecha_cierre_str.replace("Z", "+00:00")
-                            if " " in fc_clean and "T" not in fc_clean:
-                                closing_dt = datetime.strptime(
-                                    fc_clean, "%Y-%m-%d %H:%M"
-                                )
-                            else:
-                                closing_dt = datetime.fromisoformat(fc_clean).replace(
-                                    tzinfo=None
-                                )
-
-                            now_naive = datetime.now(UTC).replace(tzinfo=None)
-                            if closing_dt <= now_naive:
-                                continue
-                        except Exception:
-                            pass
+                    if _cierre_ya_vencio(fechas.get("fecha_cierre"), utc_now_naive()):
+                        continue
 
                     # 3. Filtrar por región en el listado si TARGET_REGION está configurado
                     if settings.target_region:
@@ -110,29 +146,72 @@ class TenderIngestionService(ITenderIngestionService):
                             ):
                                 continue
 
-                    # Comprobar si ya existe en metadata para no duplicar
-                    stmt = select(TenderMetadataModel).where(
-                        TenderMetadataModel.code == code
-                    )
-                    existing = (await session.exec(stmt)).first()
-                    if not existing:
-                        metadata = TenderMetadataModel(
-                            id=uuid.uuid4(),
-                            code=code,
-                            is_processed=False,
-                            created_at=datetime.now(UTC).replace(tzinfo=None),
-                            updated_at=datetime.now(UTC).replace(tzinfo=None),
-                        )
-                        session.add(metadata)
-                        new_count += 1
+                    codigos_candidatos.append(code)
+
+                new_count = await self._insertar_metadata(
+                    session, codigos_candidatos
+                )
 
                 await session.commit()
                 print(f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}.")
+                return new_count
             except Exception as e:
                 print(f"[IngestionService] Error al sincronizar metadatos: {e}")
                 await session.rollback()
+                return 0
 
     # Procesa todas las licitaciones marcadas como is_processed=False
+    async def _insertar_metadata(
+        self, session: AsyncSession, codigos: list[str]
+    ) -> int:
+        """Inserta los códigos que falten y devuelve cuántos eran nuevos.
+
+        Sin consultar antes: `tender_metadata.code` tiene índice único, así que
+        el duplicado lo resuelve Postgres con ON CONFLICT. La versión anterior
+        hacía un SELECT por licitación, y desde Chile contra Supabase en US East
+        cada viaje son ~133 ms: con 2.000 licitaciones, 4,4 minutos de espera
+        que no calculan nada.
+        """
+        if not codigos:
+            return 0
+
+        ahora = utc_now_naive()
+        nuevos = 0
+        for lote in _lotes(codigos, LOTE_METADATA):
+            filas = [
+                {
+                    "id": uuid.uuid4(),
+                    "code": code,
+                    "is_processed": False,
+                    "created_at": ahora,
+                    "updated_at": ahora,
+                }
+                for code in lote
+            ]
+            stmt = (
+                pg_insert(TenderMetadataModel)
+                .values(filas)
+                .on_conflict_do_nothing(index_elements=["code"])
+                .returning(TenderMetadataModel.code)
+            )
+            resultado = await session.exec(stmt)  # type: ignore[call-overload]
+            nuevos += len(resultado.all())
+        return nuevos
+
+    async def ultima_sincronizacion(self) -> datetime | None:
+        """Fecha del registro de metadata más reciente, en UTC con zona.
+
+        La columna se guarda naive —en UTC, por convención del proyecto—, así que
+        se le pone la zona antes de devolverla: quien compara contra `ahora` está
+        en hora de Chile, y restar un naive de un aware lanza TypeError.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = select(func.max(col(TenderMetadataModel.created_at)))
+            ultima = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
+            if ultima is None:
+                return None
+            return ultima.replace(tzinfo=UTC)
+
     async def process_unprocessed_tenders(self) -> None:
         async with AsyncSession(self.engine) as session:
             # `is_(False)` y no `not ...`: la comparación tiene que generar
@@ -295,19 +374,22 @@ class TenderIngestionService(ITenderIngestionService):
 
         def parse_date(date_str) -> datetime:
             if not date_str:
-                return datetime.utcnow()
+                return datetime.now(UTC).replace(tzinfo=None)
             try:
                 return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
                     tzinfo=None
                 )
             except Exception:
-                return datetime.utcnow()
+                return datetime.now(UTC).replace(tzinfo=None)
 
         return TenderIngestaDTO(
             CodigoExterno=str(detail.get("codigo")),
             Nombre=str(detail.get("nombre")),
             Descripcion=detail.get("descripcion"),
-            CodigoEstado=int(estado.get("id_estado", 5)),
+            # El id se conserva para el FK de tender_status; el estado real
+            # lo decide EstadoCodigo. El 0 marca "no vino" sin fingir un estado.
+            CodigoEstado=int(estado.get("id_estado") or 0),
+            EstadoCodigo=estado.get("codigo"),
             FechaPublicacion=parse_date(fechas.get("fecha_publicacion")),
             FechaCierre=parse_date(fechas.get("fecha_cierre")),
             RutComprador=str(institucion.get("rut", "Sin RUT")),

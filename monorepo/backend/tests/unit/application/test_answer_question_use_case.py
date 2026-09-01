@@ -29,8 +29,10 @@ async def test_answer_question_updates_keywords_successfully(
 ) -> None:
     """Verifica que al responder una pregunta, la respuesta se guarde en las keywords del supplier."""
     supplier_id = uuid4()
+    user_id = uuid4()
     supplier = Supplier(
         id=supplier_id,
+        user_id=user_id,
         rut=VALID_RUT,
         legal_name="Empresa Test SpA",
         keywords=[],  # Inicialmente vacío
@@ -38,7 +40,7 @@ async def test_answer_question_updates_keywords_successfully(
     await supplier_repo.save(supplier)
 
     await use_case.execute(
-        supplier_id=supplier_id,
+        user_id=user_id,
         field_name="bim_capabilities",
         answer="Sí, nivel básico/intermedio",
     )

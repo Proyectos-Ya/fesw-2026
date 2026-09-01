@@ -1,0 +1,22 @@
+# Jupyter, solo para el notebook de exhibición de resultados
+# (ocr_resultados.ipynb). Va aparte de requirements.txt porque no es parte
+# del pipeline: benchmark.py ya genera las cifras por línea de comandos,
+# esto solo las muestra como tablas y gráficos para revisar de un vistazo.
+#
+#   ../.venv/bin/pip install -r requirements-notebook.txt
+#   ../.venv/bin/python -m ipykernel install --user --name spike-1-ocr
+#   ../.venv/bin/jupyter notebook ocr_resultados.ipynb
+#
+# El paso de ipykernel es necesario: sin él, Jupyter corre con el Python del
+# sistema en vez del venv del spike, y las importaciones de `ocr_bench`
+# fallan aunque `pip install` haya funcionado bien.
+
+-r requirements.txt
+
+notebook>=7.0
+ipykernel>=6.29
+
+# Único extra frente a perfilar_ruts.ipynb: acá sí vale la pena un gráfico
+# (comparar CER/WER entre 4 proveedores de pago no se lee bien solo en
+# texto). Las tablas siguen siendo Markdown/HTML simple, sin pandas.
+matplotlib>=3.8
