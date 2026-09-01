@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -16,6 +17,23 @@ class ErrorTransitorioMercadoPublico(Exception):
 
 class CuotaAgotadaError(ErrorTransitorioMercadoPublico):
     """429: se acabaron las peticiones del día. Insistir solo gasta más."""
+
+
+@dataclass
+class ListadoLicitaciones:
+    """Lo que devolvió el listado, y si alcanzó a recorrerlo entero.
+
+    `completo` es False cuando la paginación se cortó antes de tiempo: un 5xx o
+    un 429 que sobrevivieron a los reintentos, una página ilegible, o el tope de
+    licitaciones que pidió el llamador.
+
+    Existe por el cursor persistente. Sin este dato, una corrida truncada se
+    registraba como buena, el cursor avanzaba hasta el final de la ventana, y lo
+    que quedó sin listar no se volvía a pedir nunca.
+    """
+
+    items: list[dict[str, Any]] = field(default_factory=list)
+    completo: bool = True
 
 
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
@@ -47,7 +65,7 @@ class MercadoPublicoClient:
         *,
         por_publicacion: bool = False,
         estado: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> ListadoLicitaciones:
         """Lista licitaciones en una ventana de tiempo.
 
         Por defecto pregunta por lo que **cambió** (`ttl_cambio_ms`), que es lo
@@ -76,6 +94,9 @@ class MercadoPublicoClient:
         api_page_size = 20
         all_items: list[dict[str, Any]] = []
         current_page = 1
+        # Optimista: solo se baja a False si la paginación se corta antes de
+        # haber visto la última página que la API declara.
+        completo = True
 
         async with httpx.AsyncClient() as client:
             while len(all_items) < quantity:
@@ -104,6 +125,7 @@ class MercadoPublicoClient:
                             "intentos. Se detiene la paginación con "
                             f"{len(all_items)} licitaciones listadas."
                         )
+                        completo = False
                         break
                     if response.status_code == 429:
                         # Llega aquí solo tras agotar los reintentos: un 429
@@ -113,6 +135,7 @@ class MercadoPublicoClient:
                             f"Se detiene la paginación con {len(all_items)} "
                             "licitaciones listadas."
                         )
+                        completo = False
                         break
                     response.raise_for_status()
 
@@ -139,14 +162,22 @@ class MercadoPublicoClient:
                     print(
                         f"[HTTP Error MP] Error en página {current_page} al listar licitaciones: {http_err.response.status_code}"
                     )
+                    completo = False
                     break
                 except Exception as e:
                     print(
                         f"[Error MP] Falla inesperada en página {current_page} al listar licitaciones: {e}"
                     )
+                    completo = False
                     break
 
-        return all_items[:quantity]
+        # El `while` termina solo cuando ya se juntaron `quantity` items, y en
+        # ese caso quedan páginas sin mirar: el corte lo puso el llamador con su
+        # tope, no la API diciendo que no hay más.
+        if len(all_items) >= quantity:
+            completo = False
+
+        return ListadoLicitaciones(items=all_items[:quantity], completo=completo)
 
     async def _get_con_reintentos(
         self,

@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 if TYPE_CHECKING:
     from app.infrastructure.services.tenders.tender_ingestion_service import (
+        ResultadoListado,
         ResultadoProceso,
     )
 
@@ -24,7 +26,9 @@ class ITenderIngestionService(ABC):
         por_publicacion: bool = False,
         estado: str | None = None,
         limite: int | None = None,
-    ) -> int:
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+    ) -> "ResultadoListado":
         """Consulta el listado de la API y guarda la metadata básica.
 
         Sin argumentos hace lo de siempre: los cambios de las últimas 24 h, que
@@ -32,7 +36,11 @@ class ITenderIngestionService(ABC):
         inicial, que necesita una ventana ancha, filtrar por estado en el
         servidor y pedir por fecha de publicación en vez de por cambio.
 
-        Devuelve cuántas licitaciones nuevas quedaron encoladas.
+        `desde`/`hasta` mandan sobre `dias` cuando vienen: es como el cron le
+        pasa la ventana que salió del cursor.
+
+        Devuelve cuántas quedaron encoladas y —lo que decide si el cursor
+        avanza— si alcanzó a recorrer la ventana entera.
         """
         pass
 
@@ -46,6 +54,33 @@ class ITenderIngestionService(ABC):
         error va hacia el lado seguro —se descarga de más, nunca de menos—, y
         evita tener que mantener una tabla de estado solo para esto.
         """
+        pass
+
+    @abstractmethod
+    async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
+        """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
+
+        Reemplaza a `ultima_sincronizacion` para decidir la ventana. Solo cuentan
+        las corridas que alcanzaron a listar su ventana entera.
+        """
+        pass
+
+    @abstractmethod
+    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> UUID:
+        """Abre una corrida en estado `running` y devuelve su id."""
+        pass
+
+    @abstractmethod
+    async def registrar_fin(
+        self,
+        run_id: UUID,
+        *,
+        status: str,
+        listed: int = 0,
+        processed: int = 0,
+        failed: int = 0,
+    ) -> None:
+        """Cierra la corrida. Solo `ok` mueve el cursor."""
         pass
 
     @abstractmethod

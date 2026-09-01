@@ -225,13 +225,19 @@ async def cargar(args: argparse.Namespace) -> None:
         if not args.reanudar:
             print(f"--- Fase 1: listado ({args.dias} días) ---")
             t0 = time.perf_counter()
-            nuevas = await servicio.fetch_tenders_metadata(
+            listado = await servicio.fetch_tenders_metadata(
                 dias=args.dias,
                 por_publicacion=args.por_publicacion,
                 estado=args.estado,
                 limite=args.limite,
             )
+            nuevas = listado.nuevas
             print(f"{nuevas} licitaciones encoladas en {time.perf_counter() - t0:.0f} s")
+            if not listado.completo:
+                print(
+                    "AVISO: el listado quedó incompleto (la API cortó la paginación"
+                    " o se llegó al tope). Quedaron licitaciones sin encolar."
+                )
             techo = args.limite or settings.mercadopublico_fetching_limit
             if nuevas >= techo:
                 print(

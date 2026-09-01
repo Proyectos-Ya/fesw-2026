@@ -21,7 +21,10 @@ from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderInge
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
-from app.infrastructure.repositories.tender_model import TenderMetadataModel
+from app.infrastructure.repositories.tender_model import (
+    IngestionRunModel,
+    TenderMetadataModel,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
@@ -30,6 +33,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
 )
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import to_utc_naive, utc_now_naive
+from app.shared.ingestion_window import calcular_ventana
 from app.shared.regions import to_region_id
 
 # Implementación del servicio de ingesta de licitaciones
@@ -49,6 +53,20 @@ LOTE_PROCESAMIENTO = 200
 # por código y no la vuelve a ofrecer. No rendirse nunca tampoco sirve: una
 # licitación que la API devuelve rota bloquearía la cola.
 MAX_INTENTOS_INGESTA = 3
+
+
+@dataclass
+class ResultadoListado:
+    """Qué dejó la fase de listado, y si alcanzó a recorrer la ventana entera.
+
+    `completo` decide si el cursor avanza. Devolver solo el número de nuevas no
+    alcanzaba: cero significa tanto "no había nada" como "falló", y con un cron
+    diario confundir las dos cosas deja huecos permanentes.
+    """
+
+    nuevas: int = 0
+    listadas: int = 0
+    completo: bool = False
 
 
 @dataclass
@@ -124,17 +142,25 @@ class TenderIngestionService(ITenderIngestionService):
         por_publicacion: bool = False,
         estado: str | None = None,
         limite: int | None = None,
-    ) -> int:
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+    ) -> ResultadoListado:
+        """Lista la ventana pedida y encola los códigos que falten.
+
+        `desde`/`hasta` mandan sobre `dias` cuando vienen: es como el cron le
+        pasa la ventana que salió del cursor. Sin ellos se conserva el
+        comportamiento de siempre, una ventana relativa a `ahora`.
+        """
         async with AsyncSession(self.engine) as session:
-            to_date = datetime.now(UTC)
-            from_date = to_date - timedelta(days=dias or 1)
+            to_date = hasta or datetime.now(UTC)
+            from_date = desde or (to_date - timedelta(days=dias or 1))
             limit = limite or settings.mercadopublico_fetching_limit
 
             print(
                 f"[IngestionService] Consultando licitaciones recientes (límite: {limit})..."
             )
             try:
-                items = await self.client.get_tenders(
+                listado = await self.client.get_tenders(
                     from_date,
                     to_date,
                     limit,
@@ -142,7 +168,7 @@ class TenderIngestionService(ITenderIngestionService):
                     estado=estado,
                 )
                 codigos_candidatos: list[str] = []
-                for item in items:
+                for item in listado.items:
                     code = item.get("codigo")
                     if not code:
                         continue
@@ -185,12 +211,21 @@ class TenderIngestionService(ITenderIngestionService):
                 new_count = await self._insertar_metadata(session, codigos_candidatos)
 
                 await session.commit()
-                print(f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}.")
-                return new_count
+                print(
+                    f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}."
+                    + ("" if listado.completo else " (listado INCOMPLETO)")
+                )
+                return ResultadoListado(
+                    nuevas=new_count,
+                    listadas=len(listado.items),
+                    completo=listado.completo,
+                )
             except Exception as e:
                 print(f"[IngestionService] Error al sincronizar metadatos: {e}")
                 await session.rollback()
-                return 0
+                # `completo=False` es lo que impide que el cursor avance sobre
+                # una ventana que no se alcanzó a listar.
+                return ResultadoListado()
 
     # Procesa todas las licitaciones marcadas como is_processed=False
     async def _insertar_metadata(
@@ -243,6 +278,64 @@ class TenderIngestionService(ITenderIngestionService):
             if ultima is None:
                 return None
             return ultima.replace(tzinfo=UTC)
+
+    async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
+        """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
+
+        Solo cuentan las corridas con estado `ok`, que es "se listó la ventana
+        entera". Una `partial` —el listado se cortó a mitad— o una `failed` no
+        mueven el cursor: si lo movieran, el tramo que no se alcanzó a listar no
+        se volvería a pedir nunca, que es justo el agujero que esto tapa.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = select(func.max(col(IngestionRunModel.window_to))).where(
+                IngestionRunModel.status == "ok"
+            )
+            ultimo_cierre = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
+        return calcular_ventana(ultimo_cierre, utc_now_naive())
+
+    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> uuid.UUID:
+        """Abre la corrida en estado `running`.
+
+        Se escribe al empezar y no al terminar a propósito: si el proceso muere
+        a mitad, la fila queda visible como colgada en vez de no existir. Y como
+        `running` no mueve el cursor, una corrida interrumpida no se lleva por
+        delante la ventana que no alcanzó a listar.
+        """
+        run_id = uuid.uuid4()
+        async with AsyncSession(self.engine) as session:
+            session.add(
+                IngestionRunModel(
+                    id=run_id,
+                    window_from=to_utc_naive(desde) or utc_now_naive(),
+                    window_to=to_utc_naive(hasta) or utc_now_naive(),
+                    status="running",
+                )
+            )
+            await session.commit()
+        return run_id
+
+    async def registrar_fin(
+        self,
+        run_id: uuid.UUID,
+        *,
+        status: str,
+        listed: int = 0,
+        processed: int = 0,
+        failed: int = 0,
+    ) -> None:
+        """Cierra la corrida. Solo `ok` mueve el cursor."""
+        async with AsyncSession(self.engine) as session:
+            corrida = await session.get(IngestionRunModel, run_id)
+            if corrida is None:
+                return
+            corrida.status = status
+            corrida.listed = listed
+            corrida.processed = processed
+            corrida.failed = failed
+            corrida.finished_at = utc_now_naive()
+            session.add(corrida)
+            await session.commit()
 
     async def process_unprocessed_tenders(
         self, limite: int | None = None
