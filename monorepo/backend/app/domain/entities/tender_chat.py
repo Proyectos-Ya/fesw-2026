@@ -23,6 +23,20 @@ class Citation(BaseModel):
         return value.strip()
 
 
+class DocumentDiscrepancy(BaseModel):
+    """Representa una contradicción o discrepancia detectada entre distintos documentos."""
+    topic: str
+    description: str
+    conflicting_sources: List[Citation] = Field(default_factory=list)
+
+    @field_validator("topic", "description")
+    @classmethod
+    def validate_not_blank(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("El tema y la descripción de la discrepancia no pueden estar vacíos.")
+        return value.strip()
+
+
 class TenderChatSession(BaseModel):
     """Representa una sesión o hilo de conversación independiente para una licitación."""
     id: UUID = Field(default_factory=uuid4)
@@ -43,6 +57,10 @@ class TenderChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     citations: List[Citation] = Field(default_factory=list)
+    discrepancies: List[DocumentDiscrepancy] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    unbacked_aspects: List[str] = Field(default_factory=list)
+    has_sufficient_info: bool = True
     created_at: datetime = Field(default_factory=utc_now_naive)
 
 

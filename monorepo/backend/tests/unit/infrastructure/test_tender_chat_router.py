@@ -401,3 +401,73 @@ async def test_ask_assistant_with_session_id_success(app, mock_use_cases, mock_u
     assert data["session_id"] == str(session_id)
     assert data["content"] == "Respuesta en sesión"
 
+
+@pytest.mark.asyncio
+async def test_upload_corrupted_document_returns_400(app, mock_use_cases):
+    from app.domain.errors.tender_chat_errors import CorruptedDocumentError
+
+    tender_id = uuid4()
+
+    class CorruptUploadUseCase:
+        async def execute(self, **kwargs):
+            raise CorruptedDocumentError("El archivo 'bases_danadas.pdf' está dañado o no posee cabecera válida.")
+
+    mock_use_cases.upload_doc = CorruptUploadUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        files = {"file": ("bases_danadas.pdf", b"corrupted data", "application/pdf")}
+        response = await client.post(f"/tenders/{tender_id}/assistant/documents", files=files)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "está dañado o no posee cabecera válida" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_returns_enriched_response_with_discrepancies_and_warnings(app, mock_use_cases, mock_user):
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    tender_id = uuid4()
+    msg_id = uuid4()
+
+    discrepancy = DocumentDiscrepancy(
+        topic="Plazo de entrega",
+        description="30 días en bases administrativas vs 45 días en técnicas.",
+        conflicting_sources=[
+            Citation(document_name="Admin.pdf", page_or_sheet="Pág 1", quote="30 días"),
+            Citation(document_name="Tecnicas.pdf", page_or_sheet="Pág 2", quote="45 días"),
+        ]
+    )
+
+    class EnrichedAskUseCase:
+        async def execute(self, tender_id, user_id, question, session_id=None):
+            return TenderChatMessage(
+                id=msg_id,
+                session_id=session_id,
+                tender_id=tender_id,
+                user_id=user_id,
+                role="assistant",
+                content="Respuesta con discrepancias.",
+                citations=[Citation(document_name="Admin.pdf", quote="30 días")],
+                discrepancies=[discrepancy],
+                warnings=["El archivo anexo_extra.pdf no pudo ser leído."],
+                unbacked_aspects=["Presupuesto disponible"],
+                has_sufficient_info=False
+            )
+
+    mock_use_cases.ask_assistant = EnrichedAskUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        payload = {"question": "¿Cuál es el plazo y el presupuesto?"}
+        response = await client.post(f"/tenders/{tender_id}/assistant/ask", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["id"] == str(msg_id)
+    assert len(data["discrepancies"]) == 1
+    assert data["discrepancies"][0]["topic"] == "Plazo de entrega"
+    assert len(data["discrepancies"][0]["conflicting_sources"]) == 2
+    assert data["warnings"] == ["El archivo anexo_extra.pdf no pudo ser leído."]
+    assert data["unbacked_aspects"] == ["Presupuesto disponible"]
+    assert data["has_sufficient_info"] is False
+
+

@@ -12,6 +12,7 @@ from app.domain.entities.tender_chat import (
     TenderChatDocument,
     TenderChatSession,
     Citation,
+    DocumentDiscrepancy,
     utc_now_naive,
 )
 from app.infrastructure.repositories.tender_chat_model import (
@@ -51,6 +52,31 @@ class SQLTenderChatRepository(ITenderChatRepository):
                     quote=c.get("quote", ""),
                 )
             )
+
+        discrepancies = []
+        for d in getattr(model, "discrepancies", []) or []:
+            conflicting_sources = [
+                Citation(
+                    document_name=cs.get("document_name", ""),
+                    page_or_sheet=cs.get("page_or_sheet"),
+                    quote=cs.get("quote", "")
+                )
+                for cs in d.get("conflicting_sources", [])
+            ]
+            discrepancies.append(
+                DocumentDiscrepancy(
+                    topic=d.get("topic", "Discrepancia"),
+                    description=d.get("description", ""),
+                    conflicting_sources=conflicting_sources,
+                )
+            )
+
+        warnings = list(getattr(model, "warnings", []) or [])
+        unbacked_aspects = list(getattr(model, "unbacked_aspects", []) or [])
+        has_sufficient_info = getattr(model, "has_sufficient_info", True)
+        if has_sufficient_info is None:
+            has_sufficient_info = True
+
         return TenderChatMessage(
             id=model.id,
             session_id=model.session_id,
@@ -59,6 +85,10 @@ class SQLTenderChatRepository(ITenderChatRepository):
             role=model.role,  # type: ignore[arg-type]
             content=model.content,
             citations=citations,
+            discrepancies=discrepancies,
+            warnings=warnings,
+            unbacked_aspects=unbacked_aspects,
+            has_sufficient_info=has_sufficient_info,
             created_at=model.created_at,
         )
 
@@ -71,6 +101,23 @@ class SQLTenderChatRepository(ITenderChatRepository):
             }
             for c in entity.citations
         ]
+
+        discrepancies_data = [
+            {
+                "topic": d.topic,
+                "description": d.description,
+                "conflicting_sources": [
+                    {
+                        "document_name": cs.document_name,
+                        "page_or_sheet": cs.page_or_sheet,
+                        "quote": cs.quote,
+                    }
+                    for cs in d.conflicting_sources
+                ]
+            }
+            for d in entity.discrepancies
+        ]
+
         return TenderChatMessageModel(
             id=entity.id,
             session_id=entity.session_id,
@@ -79,6 +126,10 @@ class SQLTenderChatRepository(ITenderChatRepository):
             role=entity.role,
             content=entity.content,
             citations=citations_data,
+            discrepancies=discrepancies_data,
+            warnings=entity.warnings,
+            unbacked_aspects=entity.unbacked_aspects,
+            has_sufficient_info=entity.has_sufficient_info,
             created_at=entity.created_at,
         )
 
