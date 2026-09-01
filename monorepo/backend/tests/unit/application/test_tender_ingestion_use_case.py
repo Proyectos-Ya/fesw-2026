@@ -296,3 +296,63 @@ async def test_buyer_nuevo_sin_nombre_reconocible_no_resuelve_comuna() -> None:
     buyer = repo.buyers_created[0]
     assert buyer["comuna_id"] is None
     assert buyer["comuna_resolution_source"] is None
+
+
+async def test_respaldo_generico_apagado_por_defecto() -> None:
+    """ "Hospital de Lota" no matchea "Municipalidad de X", y sin habilitar el
+    respaldo genérico (comportamiento por defecto) queda sin resolver."""
+    repo = FakeTenderRepository(comuna_ids_by_name={"Lota": 151})
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    await use_case.execute(
+        _make_dto(organismo="SERVICIO NACIONAL DE SALUD HOSPITAL DE LOTA")
+    )
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] is None
+    assert buyer["comuna_resolution_source"] is None
+
+
+async def test_buyer_nuevo_sin_nombre_municipal_cae_al_respaldo_generico_si_esta_habilitado() -> (
+    None
+):
+    repo = FakeTenderRepository(comuna_ids_by_name={"Lota": 151})
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        enable_comuna_generic_heuristic=True,
+    )
+
+    await use_case.execute(
+        _make_dto(organismo="SERVICIO NACIONAL DE SALUD HOSPITAL DE LOTA")
+    )
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] == 151
+    assert buyer["comuna_resolution_source"] == "organismo_name_generic"
+
+
+async def test_heuristica_especifica_sigue_activa_con_el_respaldo_apagado() -> None:
+    """El interruptor solo afecta al respaldo genérico -- "Municipalidad de X"
+    corre siempre, esté prendido o apagado el respaldo."""
+    repo = FakeTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        enable_comuna_generic_heuristic=False,
+    )
+
+    await use_case.execute(_make_dto(organismo="I Municipalidad de Santiago"))
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] == 295
+    assert buyer["comuna_resolution_source"] == "organismo_name"

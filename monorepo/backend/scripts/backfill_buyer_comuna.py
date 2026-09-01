@@ -2,12 +2,22 @@
 
 Contexto
 --------
-`get_or_create_buyer` solo resuelve comuna (path "a": nombre de municipalidad,
-ver `app/shared/comunas.py`) al **crear** un organismo — es un get-or-create
-puro, así que un buyer que ya existía antes de esta feature (o que se creó sin
+`get_or_create_buyer` solo resuelve comuna (ver `resolve_comuna` en
+`app/shared/comunas.py`) al **crear** un organismo — es un get-or-create puro,
+así que un buyer que ya existía antes de esta feature (o que se creó sin
 comuna porque su nombre no matcheaba en ese momento) nunca la gana de forma
-automática. Este script aplica la misma heurística, una vez, sobre lo que ya
-está en base.
+automática. Este script aplica la misma cascada, una vez, sobre lo que ya está
+en base.
+
+`resolve_comuna` intenta primero el nombre de municipalidad (alta confianza,
+`comuna_resolution_source="organismo_name"`) y, solo si se pide `--include-
+generic`, cae al respaldo que busca cualquier nombre de comuna en cualquier
+parte del texto (más cobertura, algo más de riesgo,
+`"organismo_name_generic"`). Apagado por defecto en el script igual que en la
+ingesta (`ENABLE_COMUNA_GENERIC_HEURISTIC`), pero como opt-in explícito de
+línea de comando en vez de leer `settings` — un backfill manual es una
+decisión puntual, no debería depender de qué valga la variable de entorno ese
+día.
 
 No dispara ningún camino caro (barrido de Licitaciones v1, geocoding — no
 implementados todavía, ver PENDIENTES.md 6.19). Es idempotente: solo toca
@@ -16,18 +26,20 @@ filas con `comuna_id IS NULL`, y nunca pisa una comuna ya resuelta.
 Uso
 ---
     python -m scripts.backfill_buyer_comuna --dry-run   # muestra sin escribir
-    python -m scripts.backfill_buyer_comuna             # aplica
+    python -m scripts.backfill_buyer_comuna             # aplica (solo heurística específica)
+    python -m scripts.backfill_buyer_comuna --include-generic  # aplica ambas heurísticas
 """
 
 import argparse
 import asyncio
+from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import settings
-from app.shared.comunas import resolve_comuna_from_organismo_name
+from app.shared.comunas import resolve_comuna
 
 _SELECT_SIN_COMUNA = text("""
     SELECT rut, name FROM buyer_institution WHERE comuna_id IS NULL
@@ -37,7 +49,7 @@ _SELECT_COMUNA_ID_BY_NAME = text("SELECT id FROM comuna WHERE name = :name")
 
 _UPDATE_BUYER = text("""
     UPDATE buyer_institution
-    SET comuna_id = :comuna_id, comuna_resolution_source = 'organismo_name'
+    SET comuna_id = :comuna_id, comuna_resolution_source = :fuente
     WHERE rut = :rut
 """)
 
@@ -45,11 +57,15 @@ _UPDATE_BUYER = text("""
 @dataclass
 class Stats:
     sin_comuna: int = 0
-    resueltos: int = 0
+    resueltos_por_fuente: Counter = field(default_factory=Counter)
     no_reconocidos: list[str] = field(default_factory=list)
 
+    @property
+    def resueltos(self) -> int:
+        return sum(self.resueltos_por_fuente.values())
 
-async def run(dry_run: bool) -> Stats:
+
+async def run(dry_run: bool, include_generic: bool) -> Stats:
     stats = Stats()
     engine = create_async_engine(settings.database_url)
 
@@ -61,7 +77,9 @@ async def run(dry_run: bool) -> Stats:
             return stats
 
         for fila in filas:
-            comuna_name = resolve_comuna_from_organismo_name(fila.name)
+            comuna_name, comuna_source = resolve_comuna(
+                fila.name, use_generic_fallback=include_generic
+            )
             if not comuna_name:
                 stats.no_reconocidos.append(fila.name)
                 continue
@@ -75,16 +93,18 @@ async def run(dry_run: bool) -> Stats:
                 stats.no_reconocidos.append(fila.name)
                 continue
 
-            stats.resueltos += 1
+            stats.resueltos_por_fuente[comuna_source] += 1
             if dry_run:
                 print(
-                    f"  [dry-run] {fila.rut} ({fila.name!r}) -> comuna_id={comuna_id}"
+                    f"  [dry-run] {fila.rut} ({fila.name!r}) -> "
+                    f"comuna_id={comuna_id} ({comuna_source})"
                 )
                 continue
 
             async with engine.begin() as conn:
                 await conn.execute(
-                    _UPDATE_BUYER, {"comuna_id": comuna_id, "rut": fila.rut}
+                    _UPDATE_BUYER,
+                    {"comuna_id": comuna_id, "fuente": comuna_source, "rut": fila.rut},
                 )
     finally:
         await engine.dispose()
@@ -97,6 +117,8 @@ def _report(stats: Stats, dry_run: bool) -> None:
     print(f"\n=== Backfill de comuna del comprador — {modo} ===")
     print(f"  organismos sin comuna : {stats.sin_comuna}")
     print(f"  resueltos             : {stats.resueltos}")
+    for fuente, cantidad in stats.resueltos_por_fuente.items():
+        print(f"    {fuente:25s}: {cantidad}")
     print(f"  sin reconocer         : {len(stats.no_reconocidos)}")
 
     if stats.no_reconocidos:
@@ -107,7 +129,7 @@ def _report(stats: Stats, dry_run: bool) -> None:
             else f" (+{len(stats.no_reconocidos) - 10})"
         )
         print(f"    {muestra}{resto}")
-        print("    → no son municipalidades reconocibles; quedan solo con región")
+        print("    → ninguna heurística los reconoce; quedan solo con región")
 
 
 def main() -> int:
@@ -117,9 +139,18 @@ def main() -> int:
         action="store_true",
         help="Muestra qué organismos se resolverían, sin escribir en la base.",
     )
+    parser.add_argument(
+        "--include-generic",
+        action="store_true",
+        help=(
+            "Además de la heurística de municipalidad, aplica el respaldo "
+            "genérico (nombre de comuna en cualquier parte del texto). "
+            "Apagado por defecto."
+        ),
+    )
     args = parser.parse_args()
 
-    stats = asyncio.run(run(dry_run=args.dry_run))
+    stats = asyncio.run(run(dry_run=args.dry_run, include_generic=args.include_generic))
     _report(stats, dry_run=args.dry_run)
     return 0
 
