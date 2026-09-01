@@ -1,0 +1,25 @@
+# ============================================================
+# railway.toml — configuración de despliegue de la API
+#
+# Railway lee este archivo desde el *root directory* del servicio, que en este
+# monorepo es `monorepo/backend` (el mismo directorio que se usa como contexto
+# de build). Si algún día se cambia esa raíz en el panel, hay que mover el
+# archivo con ella o dejará de aplicarse en silencio.
+# ============================================================
+
+[deploy]
+# Las migraciones NO van en el CMD del Dockerfile a propósito: ahí correrían en
+# cada arranque de cada réplica y en cada reinicio del contenedor, con dos
+# instancias migrando en paralelo. `preDeployCommand` corre una sola vez por
+# despliegue, en un contenedor con la imagen ya construida y las variables del
+# servicio, y **antes** de levantar la versión nueva. Si falla, el despliegue se
+# aborta y la versión anterior sigue sirviendo.
+#
+# El contrapeso a tener presente: como la migración se aplica antes del cambio
+# de versión, la versión vieja convive un momento con el esquema nuevo. Por eso
+# las migraciones tienen que ser compatibles hacia atrás (agregar columnas
+# nullable, no renombrar ni borrar en el mismo despliegue que las deja de usar).
+#
+# Alembic saca la URL de `settings.database_url` (ver alembic/env.py), así que
+# no hay nada que configurar acá más allá de las variables del servicio.
+preDeployCommand = ["alembic upgrade head"]
