@@ -54,12 +54,17 @@ class _Simple:
 
 
 async def _leer_licitaciones() -> list[dict]:
+    # `comuna_id` es directo en `buyer_institution`; `provincia_id` sale de un
+    # salto más a través de `comuna` (no hay FK propia a provincia). LEFT JOIN
+    # porque no todos los organismos tienen comuna resuelta.
     consulta = text("""
         SELECT t.id, t.name, t.description, t.status_id, t.closing_at,
                t.published_at, t.available_amount_clp, b.region_id,
+               b.comuna_id, c.provincia_id,
                ti.name AS item_name, ti.description AS item_description
         FROM tender t
         LEFT JOIN buyer_institution b ON b.rut = t.buyer_rut
+        LEFT JOIN comuna c ON c.id = b.comuna_id
         LEFT JOIN tender_item ti ON ti.tender_id = t.id
         ORDER BY t.id
     """)
@@ -80,6 +85,8 @@ async def _leer_licitaciones() -> list[dict]:
                 "published_at": f["published_at"],
                 "available_amount_clp": f["available_amount_clp"],
                 "region_id": f["region_id"],
+                "comuna_id": f["comuna_id"],
+                "provincia_id": f["provincia_id"],
                 "items": [],
             },
         )
@@ -131,6 +138,8 @@ async def main() -> None:
                     # filtra el matching.
                     "status_code": TENDER_STATUS_CODE_BY_ID.get(t["status_id"]),
                     "region_id": t["region_id"],
+                    "provincia_id": t["provincia_id"],
+                    "comuna_id": t["comuna_id"],
                     "available_amount_clp": t["available_amount_clp"],
                     # Epoch entero: Qdrant no compara `datetime`.
                     "closing_at": to_utc_epoch(t["closing_at"]),

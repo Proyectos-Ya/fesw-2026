@@ -23,6 +23,13 @@ Por eso se traducen por nombre.
 queda ninguna licitación vigente y el matching, que descarta lo cerrado, no
 devuelve nada. Antes de insertar, a cada licitación vencida se le suman los meses
 necesarios (ver `date_shift.py`), así el dataset sirve igual de aquí a un año.
+
+**Comuna/provincia.** El xlsx no las trae (ninguna API de Mercado Público las
+entrega tampoco). Se resuelven acá con la misma heurística que usa la ingesta
+real (`resolve_comuna`, sobre el nombre del organismo comprador), así que el
+dump queda listo para el filtro de provincia/comuna sin un backfill aparte. La
+provincia no se guarda directo: sale del join `comuna -> provincia` en tiempo de
+consulta, igual que en producción.
 """
 
 import asyncio
@@ -43,6 +50,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.infrastructure.db import engine  # noqa: E402
 from app.infrastructure.seeder import seed_database_metadata  # noqa: E402
+from app.shared.comunas import resolve_comuna  # noqa: E402
 from app.shared.regions import UNKNOWN_REGION_ID, normalize_region_name  # noqa: E402
 from tests.matching_evaluation.date_shift import (  # noqa: E402
     desplazar_licitaciones_vencidas,
@@ -107,10 +115,16 @@ def _mapa_de_regiones(hoja_region: pd.DataFrame) -> dict[int, int]:
 
 
 async def _sembrar_metadata() -> None:
-    """Siembra regiones y estados con el mismo seeder de la aplicación."""
+    """Siembra regiones, provincias, comunas y estados con el mismo seeder de la aplicación."""
     async with AsyncSession(engine) as sesion:
         await seed_database_metadata(sesion)
     await engine.dispose()
+
+
+async def _mapa_de_comunas(conn: asyncpg.Connection) -> dict[str, int]:
+    """nombre de comuna -> id, ya sembradas por `_sembrar_metadata`."""
+    filas = await conn.fetch("SELECT id, name FROM comuna")
+    return {fila["name"]: fila["id"] for fila in filas}
 
 
 async def main() -> None:
@@ -161,18 +175,43 @@ async def main() -> None:
             )
         print(f"[OK] {len(estados)} estados", flush=True)
 
+        # Igual que la ingesta real (`TenderIngestionUseCase`): comuna se resuelve
+        # por el nombre del organismo, nunca la entrega el xlsx. Se hace acá y no
+        # con un backfill aparte para que cargar el dump ya deje el dato listo,
+        # sin un segundo paso manual.
+        comunas_por_nombre = await _mapa_de_comunas(conn)
+        sin_comuna = 0
         for _, c in compradores.iterrows():
+            nombre = _texto(c["name"])
+            comuna_nombre, comuna_fuente = resolve_comuna(
+                nombre, use_generic_fallback=settings.enable_comuna_generic_heuristic
+            )
+            comuna_id = comunas_por_nombre.get(comuna_nombre) if comuna_nombre else None
+            if comuna_id is None:
+                sin_comuna += 1
+
             await conn.execute(
-                """INSERT INTO buyer_institution (rut, name, region_id, created_at, updated_at)
-                   VALUES ($1,$2,$3,$4,$5)
-                   ON CONFLICT (rut) DO UPDATE SET region_id = EXCLUDED.region_id""",
+                """INSERT INTO buyer_institution
+                       (rut, name, region_id, comuna_id, comuna_resolution_source,
+                        created_at, updated_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7)
+                   ON CONFLICT (rut) DO UPDATE SET
+                       region_id = EXCLUDED.region_id,
+                       comuna_id = EXCLUDED.comuna_id,
+                       comuna_resolution_source = EXCLUDED.comuna_resolution_source""",
                 _texto(c["rut"]),
-                _limpiar(c["name"]),
+                nombre,
                 traduccion.get(_entero(c["region_id"]), UNKNOWN_REGION_ID),
+                comuna_id,
+                comuna_fuente if comuna_id else None,
                 _limpiar(c["created_at"]),
                 _limpiar(c["updated_at"]),
             )
-        print(f"[OK] {len(compradores)} compradores (regiones traducidas)", flush=True)
+        print(
+            f"[OK] {len(compradores)} compradores (regiones traducidas, "
+            f"{len(compradores) - sin_comuna} con comuna resuelta)",
+            flush=True,
+        )
 
         # `province` existe en el xlsx pero no en el esquema: la columna se
         # eliminó porque ninguna de las dos APIs de Mercado Público la entrega.
