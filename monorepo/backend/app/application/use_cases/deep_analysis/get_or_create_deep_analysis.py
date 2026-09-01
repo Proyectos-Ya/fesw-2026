@@ -96,8 +96,25 @@ class GetOrCreateDeepAnalysisUseCase:
                 else None
             )
 
-            if sup_updated and ana_updated and sup_updated > ana_updated:
-                # Regeneración automática silenciosa por cambio de perfil.
+            # La licitación también cambia, desde que la ingesta refresca las
+            # existentes en vez de descartarlas (6.3). Sin esta comparación, una
+            # licitación cuyo alcance cambió seguiría mostrando una
+            # justificación escrita sobre el contenido anterior: eso no es un
+            # dato viejo, es contenido incorrecto presentado como vigente, y el
+            # usuario lo lee y le cree.
+            lic_updated = (
+                tender.updated_at.replace(tzinfo=None) if tender.updated_at else None
+            )
+
+            cambio_el_proveedor = bool(
+                sup_updated and ana_updated and sup_updated > ana_updated
+            )
+            cambio_la_licitacion = bool(
+                lic_updated and ana_updated and lic_updated > ana_updated
+            )
+
+            if cambio_el_proveedor or cambio_la_licitacion:
+                # Regeneración automática silenciosa.
                 # Se mantiene la instrucción de refinamiento previa del usuario para conservar personalización.
                 should_generate = True
                 active_prompt = existing_analysis.prompt_instruction

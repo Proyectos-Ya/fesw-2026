@@ -94,6 +94,8 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
 
 class FakeTenderRepo(ITenderRepository):
     def __init__(self) -> None:
+        self.items_reemplazados: list = []
+        self.actualizadas: list = []
         self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
         self.sql_search_calls: list[tuple[TenderFilterCriteria, int, int]] = []
@@ -112,6 +114,15 @@ class FakeTenderRepo(ITenderRepository):
     ) -> tuple[list[Tender], int]:
         self.sql_search_calls.append((criteria, limit, offset))
         return self.sql_results
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
+        return []
+
+    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
+        self.items_reemplazados = list(items)
+
+    async def update_tender(self, tender) -> None:
+        self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
         return []

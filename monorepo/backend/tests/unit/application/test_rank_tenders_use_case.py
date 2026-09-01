@@ -40,6 +40,8 @@ class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
 
     def __init__(self) -> None:
+        self.items_reemplazados: list = []
+        self.actualizadas: list = []
         self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
 
@@ -61,6 +63,15 @@ class InMemoryTenderRepository(ITenderRepository):
         offset: int = 0,
     ) -> tuple[list[Tender], int]:  # noqa: ARG002
         return ([], 0)
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
+        return []
+
+    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
+        self.items_reemplazados = list(items)
+
+    async def update_tender(self, tender) -> None:
+        self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
         return []

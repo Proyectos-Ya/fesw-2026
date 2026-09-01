@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, update
+from sqlalchemy import delete, func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
@@ -258,6 +258,35 @@ class TenderRepository(ITenderRepository):
         statement = select(TenderModel).where(TenderModel.code == code)
         result = await self.session.exec(statement)
         return result.first()
+
+    async def get_items_by_tender_id(
+        self, tender_id: uuid.UUID
+    ) -> list[TenderItemModel]:
+        statement = select(TenderItemModel).where(
+            col(TenderItemModel.tender_id) == tender_id
+        )
+        result = await self.session.exec(statement)
+        return list(result.all())
+
+    async def replace_tender_items(
+        self, tender_id: uuid.UUID, items: list[TenderItemModel]
+    ) -> None:
+        """Borra las partidas actuales y deja las nuevas, en una transacción.
+
+        Reemplazo completo y no diff: nada tiene clave foránea hacia
+        `tender_item` —verificado—, y las partidas de la API no traen un
+        identificador estable con el que emparejarlas entre corridas.
+        """
+        await self.session.exec(  # type: ignore[call-overload]
+            delete(TenderItemModel).where(col(TenderItemModel.tender_id) == tender_id)
+        )
+        for item in items:
+            self.session.add(item)
+        await self.session.commit()
+
+    async def update_tender(self, tender: TenderModel) -> None:
+        self.session.add(tender)
+        await self.session.commit()
 
     async def get_expired_published_ids(self) -> list[uuid.UUID]:
         """Vencidas que aún figuran publicadas.
