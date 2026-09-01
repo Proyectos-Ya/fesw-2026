@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -268,9 +269,19 @@ class TenderRepository(ITenderRepository):
         result = await self.session.exec(statement)
         buyer = result.first()
 
-        if not buyer:
-            now = utc_now_naive()
-            buyer = BuyerInstitutionModel(
+        if buyer:
+            return rut
+
+        # ON CONFLICT y no `add` + `flush`: desde que la ingesta baja varios
+        # detalles en paralelo, dos licitaciones del mismo organismo —el caso
+        # normal, un municipio publica decenas— hacen el SELECT a la vez, las
+        # dos lo ven vacío y la segunda revienta con UniqueViolationError sobre
+        # buyer_institution_pkey. El SELECT de arriba se conserva porque resuelve
+        # el caso frecuente sin escribir nada.
+        now = utc_now_naive()
+        stmt = (
+            pg_insert(BuyerInstitutionModel)
+            .values(
                 rut=rut,
                 name=name,
                 region_id=region_id,
@@ -279,8 +290,9 @@ class TenderRepository(ITenderRepository):
                 created_at=now,
                 updated_at=now,
             )
-            self.session.add(buyer)
-            await self.session.flush()
+            .on_conflict_do_nothing(index_elements=["rut"])
+        )
+        await self.session.exec(stmt)  # type: ignore[call-overload]
         return rut
 
     async def get_comuna_id_by_name(self, name: str) -> int | None:
@@ -312,9 +324,16 @@ class TenderRepository(ITenderRepository):
 
         nombre = code.replace("_", " ").capitalize()
         if not status:
-            status = TenderStatusModel(id=status_id, code=code, name=nombre)
-            self.session.add(status)
-            await self.session.flush()
+            # Mismo motivo que en get_or_create_buyer: con la ingesta en
+            # paralelo, varias licitaciones estrenan el mismo estado a la vez.
+            # Sin `index_elements`: la tabla tiene único el id y también el
+            # code, y cualquiera de los dos puede ser el que choque.
+            stmt = (
+                pg_insert(TenderStatusModel)
+                .values(id=status_id, code=code, name=nombre)
+                .on_conflict_do_nothing()
+            )
+            await self.session.exec(stmt)  # type: ignore[call-overload]
         elif status.code != code:
             status.code = code
             status.name = nombre

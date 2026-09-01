@@ -61,6 +61,13 @@ from app.shared.constants import TENDER_STATUSES
 
 HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "db"}
 
+# Rondas seguidas sin procesar nada antes de rendirse. Antes bastaba una, y
+# tenía sentido cuando cada pasada vaciaba la cola entera. Ahora cada pasada
+# toma un lote acotado y las licitaciones que fallan se van al final del orden,
+# así que la ronda siguiente trabaja sobre otras: una sola ronda en blanco ya no
+# significa que no se pueda avanzar.
+RONDAS_SIN_AVANCE_MAX = 3
+
 
 def _es_local(url: str) -> bool:
     return (urlsplit(url).hostname or "") in HOSTS_LOCALES
@@ -242,17 +249,40 @@ async def cargar(args: argparse.Namespace) -> None:
 
         t0 = time.perf_counter()
         ronda = 0
+        sin_avance = 0
         while pendientes:
             ronda += 1
-            await servicio.process_unprocessed_tenders()
+            resultado = await servicio.process_unprocessed_tenders()
             restantes = await _pendientes(engine)
-            if restantes == pendientes:
-                # Sin avance: insistir solo repetiría el mismo fallo.
+
+            if resultado.cuota_agotada:
+                # Insistir gasta los cuatro reintentos del cliente contra una
+                # cuota que ya no existe. Se corta y se retoma mañana.
                 print(
-                    f"Ronda {ronda} no avanzó ({restantes} pendientes). Se detiene; "
-                    "revisa los errores de más arriba y reanuda con --reanudar."
+                    f"\nCuota diaria agotada con {restantes} licitaciones "
+                    "pendientes.\nRetoma mañana con --reanudar."
                 )
                 break
+
+            if restantes == pendientes:
+                # Una ronda sin avance ya no es concluyente: como cada pasada
+                # procesa un lote acotado y las que fallan se van al final de la
+                # cola, la ronda siguiente toma licitaciones distintas. Se
+                # insiste unas cuantas veces antes de rendirse.
+                sin_avance += 1
+                print(
+                    f"  ronda {ronda}: sin avance ({restantes} pendientes), "
+                    f"intento {sin_avance}/{RONDAS_SIN_AVANCE_MAX}"
+                )
+                if sin_avance >= RONDAS_SIN_AVANCE_MAX:
+                    print(
+                        "\nVarias rondas seguidas sin avanzar. Se detiene; revisa "
+                        "los errores de más arriba y reanuda con --reanudar."
+                    )
+                    break
+                continue
+
+            sin_avance = 0
             hechas = pendientes - restantes
             pendientes = restantes
             print(f"  ronda {ronda}: {hechas} procesadas, quedan {restantes}")

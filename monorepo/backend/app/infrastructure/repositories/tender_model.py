@@ -123,5 +123,13 @@ class TenderMetadataModel(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     code: str = Field(unique=True, index=True)
     is_processed: bool = Field(default=False, index=True)
+    # Veces que se intentó bajar el detalle y falló. Existe por dos razones:
+    # ordena la cola —una licitación que falla siempre se va al final en vez de
+    # acaparar cada lote— y permite rendirse tras unos cuantos intentos en vez de
+    # descartar al primero. Descartar al primero perdía la licitación para
+    # siempre, porque el listado deduplica por código y no la vuelve a ofrecer.
+    attempts: int = Field(default=0, nullable=False)
+    # Último error, para saber por qué quedó atrás sin tener que reproducirlo.
+    last_error: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: datetime = Field(default_factory=utc_now_naive)

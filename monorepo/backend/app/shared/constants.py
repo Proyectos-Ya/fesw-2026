@@ -48,6 +48,12 @@ TENDER_STATUS_CODE_BY_ID = {
 # Valores por defecto para la API de Mercado Público
 DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT = 2000
 DEFAULT_MERCADOPUBLICO_DETAIL_DELAY = 2.0
+# Detalles en vuelo a la vez. Más del 85% del tiempo por licitación es red y una
+# pausa artificial, así que solapar las descargas es lo único que mueve la aguja.
+# Cinco es conservador a propósito: la API aplica un balde de tokens de capacidad
+# pequeña y responde 429 cuando se la aprieta, aunque el backoff del cliente lo
+# absorbe. Subirlo sin medir es la forma rápida de gastar la cuota en reintentos.
+DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY = 5
 
 
 # Umbral "verde" de compatibilidad (HdU 03 y HdU 08). Se expresa en la misma

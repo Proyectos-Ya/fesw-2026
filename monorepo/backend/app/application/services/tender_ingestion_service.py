@@ -1,5 +1,11 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.infrastructure.services.tenders.tender_ingestion_service import (
+        ResultadoProceso,
+    )
 
 
 class ITenderIngestionService(ABC):
@@ -43,9 +49,15 @@ class ITenderIngestionService(ABC):
         pass
 
     @abstractmethod
-    async def process_unprocessed_tenders(self) -> None:
-        """
-        Procesa las licitaciones marcadas como no procesadas, descargando su
-        detalle y ejecutando la ingesta.
+    async def process_unprocessed_tenders(
+        self, limite: int | None = None
+    ) -> "ResultadoProceso":
+        """Procesa un lote de licitaciones pendientes, bajando su detalle.
+
+        Procesa a lo más `limite` y vuelve, en vez de vaciar la cola entera:
+        quien llama decide si insiste. Devuelve qué pasó en la pasada, y en
+        particular si la cuota se agotó — sin ese dato, el bucle de la carga
+        inicial vuelve a intentar y gasta los reintentos del cliente contra una
+        cuota que ya no existe.
         """
         pass
