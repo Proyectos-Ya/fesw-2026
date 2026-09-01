@@ -1,5 +1,18 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { TenderChatDocument, TenderChatMessage } from "../types";
+import type { TenderChatDocument, TenderChatMessage, TenderChatSession } from "../types";
+
+/**
+ * Crea un nuevo hilo / sesión de conversación limpia para la licitación.
+ */
+export function createTenderChatSession(
+  tenderId: string,
+  title?: string,
+): Promise<TenderChatSession> {
+  return apiFetch<TenderChatSession>(`/tenders/${tenderId}/assistant/sessions`, {
+    method: "POST",
+    body: JSON.stringify({ title }),
+  });
+}
 
 /**
  * Carga un documento adjunto para el asistente de la licitación (.pdf, .xlsx, .png).
@@ -37,26 +50,36 @@ export function deleteTenderDocument(
 }
 
 /**
- * Envía una consulta en lenguaje natural al asistente virtual de la licitación.
+ * Envía una consulta en lenguaje natural al asistente virtual de la licitación en una sesión dada.
  */
 export function askTenderAssistant(
   tenderId: string,
   question: string,
+  sessionId?: string | null,
 ): Promise<TenderChatMessage> {
   return apiFetch<TenderChatMessage>(`/tenders/${tenderId}/assistant/ask`, {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({
+      question,
+      session_id: sessionId ?? null,
+    }),
   });
 }
 
 /**
- * Obtiene el historial de mensajes de la licitación.
+ * Obtiene el historial de mensajes de la licitación para la sesión activa o especificada.
  */
 export function getTenderChatHistory(
   tenderId: string,
+  sessionId?: string | null,
   limit: number = 50,
 ): Promise<TenderChatMessage[]> {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (sessionId) {
+    params.set("session_id", sessionId);
+  }
   return apiFetch<TenderChatMessage[]>(
-    `/tenders/${tenderId}/assistant/history?limit=${limit}`,
+    `/tenders/${tenderId}/assistant/history?${params.toString()}`,
   );
 }
+

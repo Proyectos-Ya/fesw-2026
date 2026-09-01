@@ -57,4 +57,15 @@ describe("ChatInput", () => {
     const submitBtn = screen.getByRole("button", { name: /enviando/i });
     expect(submitBtn).toBeDisabled();
   });
+
+  it("deshabilita el textarea y el botón cuando disabled es true", () => {
+    render(<ChatInput onSend={vi.fn()} disabled={true} />);
+
+    const textarea = screen.getByPlaceholderText(/Haz una pregunta sobre esta licitación/i);
+    expect(textarea).toBeDisabled();
+
+    const submitBtn = screen.getByRole("button", { name: /enviar/i });
+    expect(submitBtn).toBeDisabled();
+  });
 });
+
