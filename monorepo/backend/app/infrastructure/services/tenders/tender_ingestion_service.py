@@ -148,9 +148,7 @@ class TenderIngestionService(ITenderIngestionService):
 
                     codigos_candidatos.append(code)
 
-                new_count = await self._insertar_metadata(
-                    session, codigos_candidatos
-                )
+                new_count = await self._insertar_metadata(session, codigos_candidatos)
 
                 await session.commit()
                 print(f"[IngestionService] Metadata sincronizada. Nuevas: {new_count}.")
@@ -241,6 +239,7 @@ class TenderIngestionService(ITenderIngestionService):
                 repository=repo,
                 embedding_service=self.embedding_service,
                 tender_vector_repo=tender_vector_repo,
+                enable_comuna_generic_heuristic=settings.enable_comuna_generic_heuristic,
             )
 
             # Extraemos los datos necesarios antes de iterar para evitar expiración por commits intermedios

@@ -10,9 +10,14 @@ automática. Este script aplica la misma cascada, una vez, sobre lo que ya está
 en base.
 
 `resolve_comuna` intenta primero el nombre de municipalidad (alta confianza,
-`comuna_resolution_source="organismo_name"`) y si no matchea, cae al respaldo
-que busca cualquier nombre de comuna en cualquier parte del texto (más
-cobertura, algo más de riesgo, `"organismo_name_generic"`).
+`comuna_resolution_source="organismo_name"`) y, solo si se pide `--include-
+generic`, cae al respaldo que busca cualquier nombre de comuna en cualquier
+parte del texto (más cobertura, algo más de riesgo,
+`"organismo_name_generic"`). Apagado por defecto en el script igual que en la
+ingesta (`ENABLE_COMUNA_GENERIC_HEURISTIC`), pero como opt-in explícito de
+línea de comando en vez de leer `settings` — un backfill manual es una
+decisión puntual, no debería depender de qué valga la variable de entorno ese
+día.
 
 No dispara ningún camino caro (barrido de Licitaciones v1, geocoding — no
 implementados todavía, ver PENDIENTES.md 6.19). Es idempotente: solo toca
@@ -21,7 +26,8 @@ filas con `comuna_id IS NULL`, y nunca pisa una comuna ya resuelta.
 Uso
 ---
     python -m scripts.backfill_buyer_comuna --dry-run   # muestra sin escribir
-    python -m scripts.backfill_buyer_comuna             # aplica
+    python -m scripts.backfill_buyer_comuna             # aplica (solo heurística específica)
+    python -m scripts.backfill_buyer_comuna --include-generic  # aplica ambas heurísticas
 """
 
 import argparse
@@ -59,7 +65,7 @@ class Stats:
         return sum(self.resueltos_por_fuente.values())
 
 
-async def run(dry_run: bool) -> Stats:
+async def run(dry_run: bool, include_generic: bool) -> Stats:
     stats = Stats()
     engine = create_async_engine(settings.database_url)
 
@@ -71,7 +77,9 @@ async def run(dry_run: bool) -> Stats:
             return stats
 
         for fila in filas:
-            comuna_name, comuna_source = resolve_comuna(fila.name)
+            comuna_name, comuna_source = resolve_comuna(
+                fila.name, use_generic_fallback=include_generic
+            )
             if not comuna_name:
                 stats.no_reconocidos.append(fila.name)
                 continue
@@ -131,9 +139,18 @@ def main() -> int:
         action="store_true",
         help="Muestra qué organismos se resolverían, sin escribir en la base.",
     )
+    parser.add_argument(
+        "--include-generic",
+        action="store_true",
+        help=(
+            "Además de la heurística de municipalidad, aplica el respaldo "
+            "genérico (nombre de comuna en cualquier parte del texto). "
+            "Apagado por defecto."
+        ),
+    )
     args = parser.parse_args()
 
-    stats = asyncio.run(run(dry_run=args.dry_run))
+    stats = asyncio.run(run(dry_run=args.dry_run, include_generic=args.include_generic))
     _report(stats, dry_run=args.dry_run)
     return 0
 

@@ -147,6 +147,12 @@ class Settings(BaseSettings):
     # Ingesta automática al arrancar y región a la que acotarla (None = todas).
     run_auto_ingestion: bool = True
     target_region: str | None = None
+    # Heurística de respaldo para resolver comuna del comprador
+    # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
+    # busca el nombre de cualquier comuna en cualquier parte del texto, no solo
+    # tras "Municipalidad de". Más cobertura, algo más de riesgo de falso
+    # positivo -- apagada por defecto hasta decidir si vale la pena el riesgo.
+    enable_comuna_generic_heuristic: bool = False
 
     # --- Matching ---
     # Escape para entornos sin RAM suficiente para el reranker ONNX.

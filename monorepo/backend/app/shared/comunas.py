@@ -514,15 +514,21 @@ def resolve_comuna_from_organismo_name_generic(
     return candidatos[-1][2]
 
 
-def resolve_comuna(raw_organismo_name: str | None) -> tuple[str | None, str | None]:
+def resolve_comuna(
+    raw_organismo_name: str | None, *, use_generic_fallback: bool = True
+) -> tuple[str | None, str | None]:
     """Comuna canónica y la heurística que la resolvió, en cascada:
 
     1. `resolve_comuna_from_organismo_name` (nombre de municipalidad) — alta
-       confianza, se intenta primero.
+       confianza, se intenta primero, siempre.
     2. `resolve_comuna_from_organismo_name_generic` (comuna en cualquier parte
-       del texto) — respaldo, mayor cobertura, algo más de riesgo.
+       del texto) — respaldo, mayor cobertura, algo más de riesgo. Se salta
+       por completo si `use_generic_fallback=False` (ver
+       `settings.enable_comuna_generic_heuristic`, apagado por defecto hasta
+       decidir si el riesgo de falso positivo vale la pena).
 
-    Devuelve `(None, None)` si ninguna de las dos resuelve. El segundo valor
+    Devuelve `(None, None)` si ninguna resuelve (o si la única que resolvía
+    era la genérica y está desactivada). El segundo valor
     (`"organismo_name"` / `"organismo_name_generic"`) es lo que se guarda en
     `buyer_institution.comuna_resolution_source`, para poder auditar o revisar
     por separado los casos que vinieron del camino menos confiable.
@@ -530,6 +536,8 @@ def resolve_comuna(raw_organismo_name: str | None) -> tuple[str | None, str | No
     comuna = resolve_comuna_from_organismo_name(raw_organismo_name)
     if comuna:
         return comuna, "organismo_name"
+    if not use_generic_fallback:
+        return None, None
     comuna = resolve_comuna_from_organismo_name_generic(raw_organismo_name)
     if comuna:
         return comuna, "organismo_name_generic"

@@ -177,6 +177,22 @@ def test_resolve_comuna_cae_a_la_generica_si_la_especifica_no_matchea():
     assert fuente == "organismo_name_generic"
 
 
+def test_resolve_comuna_con_generica_desactivada_no_cae_al_respaldo():
+    """El interruptor `use_generic_fallback=False` deja solo la heurística
+    específica -- para cuando se apaga la genérica (ENABLE_COMUNA_GENERIC_HEURISTIC)."""
+    assert resolve_comuna(
+        "SERVICIO NACIONAL DE SALUD HOSPITAL DE LOTA", use_generic_fallback=False
+    ) == (None, None)
+
+
+def test_resolve_comuna_con_generica_desactivada_la_especifica_sigue_andando():
+    comuna, fuente = resolve_comuna(
+        "I MUNICIPALIDAD DE VITACURA", use_generic_fallback=False
+    )
+    assert comuna == "Vitacura"
+    assert fuente == "organismo_name"
+
+
 def test_resolve_comuna_ninguna_resuelve():
     assert resolve_comuna("MINISTERIO PUBLICO") == (None, None)
 

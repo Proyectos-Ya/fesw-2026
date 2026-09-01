@@ -20,11 +20,16 @@ class TenderIngestionUseCase:
         repository: ITenderRepository,
         embedding_service: IEmbeddingService,
         tender_vector_repo: ITenderVectorRepository,
+        enable_comuna_generic_heuristic: bool = False,
     ):
         self.repo = repository
         self.embedding_service = embedding_service
         self.tender_vector_repo = tender_vector_repo
         self.text_builder = TextBuilder()
+        # Ver settings.enable_comuna_generic_heuristic: apagado por defecto
+        # hasta decidir si el riesgo de falso positivo de la heurística
+        # genérica (app/shared/comunas.py) vale la pena.
+        self.enable_comuna_generic_heuristic = enable_comuna_generic_heuristic
 
     async def execute(self, dto: TenderIngestaDTO) -> dict[str, Any]:
         """Ingesta una licitación. La cola de pendientes la maneja el servicio."""
@@ -117,7 +122,10 @@ class TenderIngestionUseCase:
             # hacen flush, así que dejarlos antes del embedding mantendría
             # los locks tomados durante toda la inferencia del modelo.
             # Son las claves foráneas de new_tender: deben existir al commit.
-            comuna_name, comuna_source = resolve_comuna(dto.buyer_name)
+            comuna_name, comuna_source = resolve_comuna(
+                dto.buyer_name,
+                use_generic_fallback=self.enable_comuna_generic_heuristic,
+            )
             comuna_id = (
                 await self.repo.get_comuna_id_by_name(comuna_name)
                 if comuna_name
