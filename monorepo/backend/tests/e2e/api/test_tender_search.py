@@ -157,6 +157,35 @@ async def test_los_filtros_llegan_al_caso_de_uso(api: AsyncClient) -> None:
     assert criteria.closing_from == datetime(2026, 9, 1, 0, 0, 0)
 
 
+@pytest.mark.asyncio
+async def test_provincia_y_comuna_llegan_al_criterio_por_id(api: AsyncClient) -> None:
+    """A diferencia de región, viajan directo por id, sin resolución de nombre."""
+    mock = _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?province_id=22&commune_id=333")
+
+    assert response.status_code == 200
+    criteria = mock.execute.call_args.kwargs["criteria"]
+    assert criteria.province_id == 22
+    assert criteria.commune_id == 333
+
+
+@pytest.mark.asyncio
+async def test_sin_provincia_ni_comuna_el_criterio_los_deja_en_none(
+    api: AsyncClient,
+) -> None:
+    mock = _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?q=cables")
+
+    assert response.status_code == 200
+    criteria = mock.execute.call_args.kwargs["criteria"]
+    assert criteria.province_id is None
+    assert criteria.commune_id is None
+
+
 # ---------------------------------------------------------------------------
 # Errores
 # ---------------------------------------------------------------------------

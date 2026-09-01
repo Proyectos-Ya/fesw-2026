@@ -31,10 +31,15 @@ from tests.unit.application.fakes import (
 class FakeTenderRepository(ITenderRepository):
     """Repositorio SQL en memoria que deja pasar todas las operaciones."""
 
-    def __init__(self, comuna_ids_by_name: dict[str, int] | None = None) -> None:
+    def __init__(
+        self,
+        comuna_ids_by_name: dict[str, int] | None = None,
+        provincia_ids_by_comuna_id: dict[int, int] | None = None,
+    ) -> None:
         self.saved: list = []
         self.buyers_created: list[dict] = []
         self._comuna_ids_by_name = comuna_ids_by_name or {"Santiago": 295}
+        self._provincia_ids_by_comuna_id = provincia_ids_by_comuna_id or {295: 51}
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:  # noqa: ARG002
         return []
@@ -71,6 +76,9 @@ class FakeTenderRepository(ITenderRepository):
 
     async def get_comuna_id_by_name(self, name: str) -> int | None:
         return self._comuna_ids_by_name.get(name)
+
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None:
+        return self._provincia_ids_by_comuna_id.get(comuna_id)
 
     async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
@@ -218,6 +226,40 @@ async def test_payload_qdrant_contiene_status_code_publicada() -> None:
 
     _, _, payload = vector_repo.upserts[0]
     assert payload["status_code"] == "publicada"
+
+
+async def test_payload_qdrant_incluye_comuna_id_y_provincia_id_cuando_se_resuelve() -> (
+    None
+):
+    """Filtrar `/tenders/search` por provincia/comuna se apoya en el payload de
+    Qdrant (igual que región), así que ambos campos tienen que viajar ahí."""
+    vector_repo = FakeTenderVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=vector_repo,
+    )
+
+    await use_case.execute(_make_dto(organismo="I Municipalidad de Santiago"))
+
+    _, _, payload = vector_repo.upserts[0]
+    assert payload["comuna_id"] == 295
+    assert payload["provincia_id"] == 51
+
+
+async def test_payload_qdrant_sin_comuna_resuelta_deja_esos_campos_en_none() -> None:
+    vector_repo = FakeTenderVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=vector_repo,
+    )
+
+    await use_case.execute(_make_dto(organismo="Servicio Electoral"))
+
+    _, _, payload = vector_repo.upserts[0]
+    assert payload["comuna_id"] is None
+    assert payload["provincia_id"] is None
 
 
 async def test_una_desierta_no_se_indexa_como_publicada():

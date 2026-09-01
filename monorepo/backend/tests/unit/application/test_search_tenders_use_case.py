@@ -124,6 +124,9 @@ class FakeTenderRepo(ITenderRepository):
     async def get_comuna_id_by_name(self, name: str) -> int | None:
         return None
 
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None:
+        return None
+
     async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
 

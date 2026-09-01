@@ -88,6 +88,27 @@ class TenderIngestionUseCase:
             vectors = await self.embedding_service.embed([text])
             status_code = dto.status_semantic_code
 
+            # Resolución de comuna/provincia: son lecturas puras (sin
+            # escritura), así que da igual que ocurran antes de abrir la
+            # transacción SQL. Tienen que estar listas antes del upsert a
+            # Qdrant para poder viajar en su payload -- es ahí donde
+            # `/tenders/search` filtra por provincia/comuna, igual que ya
+            # hace con región.
+            comuna_name, comuna_source = resolve_comuna(
+                dto.buyer_name,
+                use_generic_fallback=self.enable_comuna_generic_heuristic,
+            )
+            comuna_id = (
+                await self.repo.get_comuna_id_by_name(comuna_name)
+                if comuna_name
+                else None
+            )
+            provincia_id = (
+                await self.repo.get_provincia_id_by_comuna_id(comuna_id)
+                if comuna_id
+                else None
+            )
+
             # Qdrant antes que SQL, deliberadamente. Las dos escrituras no
             # comparten transacción, así que una puede fallar tras la otra;
             # lo que sí se elige es hacia qué lado queda el desbalance:
@@ -107,6 +128,8 @@ class TenderIngestionUseCase:
                 payload={
                     "status_code": status_code,
                     "region_id": region_id,
+                    "provincia_id": provincia_id,
+                    "comuna_id": comuna_id,
                     "available_amount_clp": dto.available_amount_clp,
                     # Como epoch entero: Qdrant no compara `datetime`, y el
                     # buscador manual pre-filtra por rango de fechas sobre el
@@ -122,15 +145,6 @@ class TenderIngestionUseCase:
             # hacen flush, así que dejarlos antes del embedding mantendría
             # los locks tomados durante toda la inferencia del modelo.
             # Son las claves foráneas de new_tender: deben existir al commit.
-            comuna_name, comuna_source = resolve_comuna(
-                dto.buyer_name,
-                use_generic_fallback=self.enable_comuna_generic_heuristic,
-            )
-            comuna_id = (
-                await self.repo.get_comuna_id_by_name(comuna_name)
-                if comuna_name
-                else None
-            )
             await self.repo.get_or_create_buyer(
                 rut=safe_buyer_rut,
                 name=dto.buyer_name,

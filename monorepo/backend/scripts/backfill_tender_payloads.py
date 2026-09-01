@@ -11,7 +11,10 @@ que califican.
 Los puntos indexados antes de este cambio traen solo `status_code`, `region_id` y
 `available_amount_clp`. Sin `closing_at` ni `published_at` no pasan ningún filtro
 de fecha, así que quedarían invisibles para cualquier búsqueda que acote por
-plazo.
+plazo. Lo mismo pasa con `provincia_id`/`comuna_id`: las licitaciones ingeridas
+antes de agregar el filtro de provincia/comuna no tienen esos campos en el
+payload, así que no calzan con ningún filtro por esas dos condiciones aunque su
+`buyer_institution.comuna_id` sí esté resuelto en Postgres.
 
 No recalcula embeddings: `set_payload` actualiza solo los metadatos, de modo que
 la corrida es barata y repetible. Postgres es la fuente de verdad; Qdrant se
@@ -49,6 +52,10 @@ _COLLECTION = "tenders"
 _BATCH_SIZE = 500
 
 # `region_id` vive en la institución compradora, no en la licitación.
+# `comuna_id` es directo en `buyer_institution`; `provincia_id` sale de un
+# salto más a través de `comuna` (`buyer_institution` no tiene FK propia a
+# provincia). Ambos LEFT JOIN porque `comuna_id` puede ser NULL: no todos los
+# organismos se resuelven (ver app/shared/comunas.py).
 _SELECT_TENDERS = text("""
     SELECT t.id,
            t.code,
@@ -56,9 +63,12 @@ _SELECT_TENDERS = text("""
            t.closing_at,
            t.published_at,
            t.available_amount_clp,
-           b.region_id
+           b.region_id,
+           b.comuna_id,
+           c.provincia_id
     FROM tender t
     JOIN buyer_institution b ON b.rut = t.buyer_rut
+    LEFT JOIN comuna c ON c.id = b.comuna_id
 """)
 
 
@@ -80,6 +90,8 @@ def _build_payload(row) -> dict:
     return {
         "status_code": TENDER_STATUS_CODE_BY_ID.get(row.status_id),
         "region_id": row.region_id,
+        "provincia_id": row.provincia_id,
+        "comuna_id": row.comuna_id,
         "available_amount_clp": row.available_amount_clp,
         "closing_at": to_utc_epoch(row.closing_at),
         "published_at": to_utc_epoch(row.published_at),

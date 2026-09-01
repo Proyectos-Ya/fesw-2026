@@ -106,6 +106,8 @@ async def test_ensure_collection_crea_los_indices_de_payload(
     assert indexados == {
         "status_code",
         "region_id",
+        "provincia_id",
+        "comuna_id",
         "available_amount_clp",
         "closing_at",
         "published_at",
@@ -126,7 +128,7 @@ async def test_los_indices_se_crean_aunque_la_coleccion_ya_exista(
     await repository.ensure_collection()
 
     client.create_collection.assert_not_called()
-    assert client.create_payload_index.call_count == 5
+    assert client.create_payload_index.call_count == 7
 
 
 @pytest.mark.anyio
@@ -144,6 +146,8 @@ async def test_cada_indice_declara_su_tipo(
     }
     assert esquemas["status_code"] == "keyword"
     assert esquemas["region_id"] == "integer"
+    assert esquemas["provincia_id"] == "integer"
+    assert esquemas["comuna_id"] == "integer"
     assert esquemas["closing_at"] == "integer"
     assert esquemas["published_at"] == "integer"
     assert esquemas["available_amount_clp"] == "float"
@@ -272,6 +276,44 @@ async def test_las_listas_se_traducen_a_match_any(
 
 
 @pytest.mark.anyio
+async def test_provincia_y_comuna_se_traducen_a_match_value(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """A diferencia de región, `province_id`/`commune_id` son un solo valor
+    (selección única en el frontend), así que usan `MatchValue`, no `MatchAny`."""
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
+
+    await repository.search_by_vector(
+        _make_vector(),
+        limit=5,
+        criteria=TenderFilterCriteria(province_id=22, commune_id=333),
+    )
+
+    condiciones = _conditions_by_key(_captured_filter(client))
+    assert condiciones["provincia_id"].match.value == 22
+    assert condiciones["comuna_id"].match.value == 333
+
+
+@pytest.mark.anyio
+async def test_sin_provincia_ni_comuna_no_agrega_esas_condiciones(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
+
+    await repository.search_by_vector(
+        _make_vector(), limit=5, criteria=TenderFilterCriteria(region_ids=[13])
+    )
+
+    condiciones = _conditions_by_key(_captured_filter(client))
+    assert "provincia_id" not in condiciones
+    assert "comuna_id" not in condiciones
+
+
+@pytest.mark.anyio
 async def test_el_rango_de_monto_es_inclusivo_en_ambos_extremos(
     repository: QdrantTenderRepository, client: AsyncMock
 ) -> None:
@@ -367,6 +409,8 @@ async def test_los_criterios_se_combinan_en_un_must(
         criteria=TenderFilterCriteria(
             status_codes=["publicada"],
             region_ids=[13],
+            province_id=22,
+            commune_id=333,
             closing_from=datetime(2026, 8, 1),
             min_amount=1000.0,
         ),
@@ -376,6 +420,8 @@ async def test_los_criterios_se_combinan_en_un_must(
     assert set(condiciones) == {
         "status_code",
         "region_id",
+        "provincia_id",
+        "comuna_id",
         "closing_at",
         "available_amount_clp",
     }

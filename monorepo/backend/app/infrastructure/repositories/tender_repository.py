@@ -189,24 +189,46 @@ class TenderRepository(ITenderRepository):
         """
         conditions = self._search_conditions(criteria)
 
-        # La región vive en la institución compradora, así que necesita join. Se
+        # Región, provincia y comuna viven en la institución compradora (la
+        # provincia, un salto más, en la comuna), así que necesitan join. Se
         # aplica a las dos consultas para que el total corresponda a los mismos
         # resultados que se devuelven.
-        def _with_region(query):
-            if not criteria.region_ids:
+        def _with_location(query):
+            needs_buyer_join = bool(
+                criteria.region_ids or criteria.province_id or criteria.commune_id
+            )
+            if not needs_buyer_join:
                 return query.where(*conditions) if conditions else query
+
             query = query.join(
                 BuyerInstitutionModel,
                 col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
-            ).where(col(BuyerInstitutionModel.region_id).in_(criteria.region_ids))
+            )
+            if criteria.region_ids:
+                query = query.where(
+                    col(BuyerInstitutionModel.region_id).in_(criteria.region_ids)
+                )
+            if criteria.commune_id:
+                # Comuna es directa: `buyer_institution.comuna_id` ya es la FK.
+                query = query.where(
+                    col(BuyerInstitutionModel.comuna_id) == criteria.commune_id
+                )
+            elif criteria.province_id:
+                # Provincia no tiene FK propia en `buyer_institution`: un salto
+                # más a través de `comuna`. No hace falta si ya se filtró por
+                # comuna (una comuna implica una única provincia).
+                query = query.join(
+                    ComunaModel,
+                    col(BuyerInstitutionModel.comuna_id) == col(ComunaModel.id),
+                ).where(col(ComunaModel.provincia_id) == criteria.province_id)
             return query.where(*conditions) if conditions else query
 
         total_result = await self.session.exec(
-            _with_region(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
+            _with_location(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
         )
         total = total_result.one()
 
-        page_query = _with_region(
+        page_query = _with_location(
             select(TenderModel).options(
                 selectinload(TenderModel.status),  # type: ignore[arg-type]
                 selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
@@ -266,6 +288,10 @@ class TenderRepository(ITenderRepository):
         result = await self.session.exec(statement)
         comuna = result.first()
         return comuna.id if comuna else None
+
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None:
+        comuna = await self.session.get(ComunaModel, comuna_id)
+        return comuna.provincia_id if comuna else None
 
     async def get_or_create_status(self, status_id: int, code: str) -> int:
         """Devuelve el id de la fila de estado, creándola o corrigiéndola.
