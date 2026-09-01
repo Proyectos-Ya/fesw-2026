@@ -3,8 +3,9 @@
 346 comunas en 56 provincias en 16 regiones, estable desde la creación de la
 Región de Ñuble (2018). A diferencia de la región, ninguna de las tres APIs de
 Mercado Público (Compra Ágil, Licitaciones, Órdenes de Compra) entrega comuna
-ni provincia directamente — se resuelve por `resolve_comuna_from_organismo_name`
-o queda sin dato. Ver PENDIENTES.md 6.16/6.19.
+ni provincia directamente — se resuelve por `resolve_comuna` (cascada de
+heurísticas sobre el nombre del organismo) o queda sin dato. Ver
+PENDIENTES.md 6.16/6.19.
 
 Fuente del dataset: JSON público de
 climoralesg/api-regiones-provincias-comunas-Chile, verificado contra los
@@ -465,3 +466,71 @@ def resolve_comuna_from_organismo_name(raw_organismo_name: str | None) -> str | 
         if resto == normalized or resto.startswith(normalized + " "):
             return canonical
     return None
+
+
+# Un match se descarta si viene precedido de la palabra "región" (sola, no
+# "regional" — la Delegación Presidencial *Regional* sí puede resolver a la
+# comuna de su sede). Sin este resguardo, "CENTRO DE FORMACION TECNICA DE LA
+# REGION METROPOLITANA DE SANTIAGO" resolvía a "Santiago" porque el nombre
+# completo de la región termina justo así — no porque el organismo esté en esa
+# comuna. La ventana de 25 caracteres alcanza para "región metropolitana de ".
+_REGION_CONTEXT_RE = re.compile(r"\bregion\b[\w\s']{0,25}$")
+
+
+def resolve_comuna_from_organismo_name_generic(
+    raw_organismo_name: str | None,
+) -> str | None:
+    """Respaldo de `resolve_comuna_from_organismo_name`: busca el nombre de
+    cualquier comuna en cualquier parte del texto, no solo tras "Municipalidad
+    de". Cubre patrones reales de `buyer_institution` que la heurística
+    específica no ve: "Hospital de X", "Corporación (Municipal) de X",
+    "Departamento Provincial de X", "Dirección Regional ... - X",
+    "Universidad de X", etc. (ver PENDIENTES.md 6.19).
+
+    Menos confiable que el camino específico — por eso es un respaldo, no el
+    primer intento — con un resguardo adicional al de `_REGION_CONTEXT_RE`:
+    **gana el match más a la derecha, no el más largo**. Con "más largo gana",
+    "SERVICIO DE SALUD DEL LIBERTADOR B O'HIGGINS HOSPITAL REG RANCAGUA"
+    resolvía a "O'Higgins" (una comuna real, pero de Aysén, sin relación) en
+    vez de "Rancagua" — la comuna correcta, que aparece al final. El patrón
+    habitual en estos nombres pone el lugar específico al final, no en medio
+    del nombre de una región.
+
+    `None` si ningún nombre de comuna aparece como palabra completa fuera de
+    ese contexto.
+    """
+    if not raw_organismo_name:
+        return None
+    limpio = _clean(raw_organismo_name)
+    candidatos: list[tuple[int, int, str]] = []
+    for normalized, canonical in _COMUNA_NAMES_SORTED:
+        for m in re.finditer(r"(?<!\w)" + re.escape(normalized) + r"(?!\w)", limpio):
+            if _REGION_CONTEXT_RE.search(limpio[: m.start()]):
+                continue
+            candidatos.append((m.start(), len(normalized), canonical))
+    if not candidatos:
+        return None
+    candidatos.sort(key=lambda c: (c[0], c[1]))
+    return candidatos[-1][2]
+
+
+def resolve_comuna(raw_organismo_name: str | None) -> tuple[str | None, str | None]:
+    """Comuna canónica y la heurística que la resolvió, en cascada:
+
+    1. `resolve_comuna_from_organismo_name` (nombre de municipalidad) — alta
+       confianza, se intenta primero.
+    2. `resolve_comuna_from_organismo_name_generic` (comuna en cualquier parte
+       del texto) — respaldo, mayor cobertura, algo más de riesgo.
+
+    Devuelve `(None, None)` si ninguna de las dos resuelve. El segundo valor
+    (`"organismo_name"` / `"organismo_name_generic"`) es lo que se guarda en
+    `buyer_institution.comuna_resolution_source`, para poder auditar o revisar
+    por separado los casos que vinieron del camino menos confiable.
+    """
+    comuna = resolve_comuna_from_organismo_name(raw_organismo_name)
+    if comuna:
+        return comuna, "organismo_name"
+    comuna = resolve_comuna_from_organismo_name_generic(raw_organismo_name)
+    if comuna:
+        return comuna, "organismo_name_generic"
+    return None, None

@@ -296,3 +296,22 @@ async def test_buyer_nuevo_sin_nombre_reconocible_no_resuelve_comuna() -> None:
     buyer = repo.buyers_created[0]
     assert buyer["comuna_id"] is None
     assert buyer["comuna_resolution_source"] is None
+
+
+async def test_buyer_nuevo_sin_nombre_municipal_cae_al_respaldo_generico() -> None:
+    """ "Hospital de Lota" no matchea "Municipalidad de X", pero sí el respaldo."""
+    repo = FakeTenderRepository(comuna_ids_by_name={"Lota": 151})
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    await use_case.execute(
+        _make_dto(organismo="SERVICIO NACIONAL DE SALUD HOSPITAL DE LOTA")
+    )
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] == 151
+    assert buyer["comuna_resolution_source"] == "organismo_name_generic"
