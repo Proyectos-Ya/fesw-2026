@@ -65,6 +65,9 @@ class ITenderRepository(ABC):
     async def get_comuna_id_by_name(self, name: str) -> int | None: ...
 
     @abstractmethod
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None: ...
+
+    @abstractmethod
     async def save_complex_tender(
         self, tender_model: TenderModel, items: list[TenderItemModel]
     ) -> None: ...

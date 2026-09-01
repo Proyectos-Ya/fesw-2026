@@ -7,6 +7,7 @@ from qdrant_client.http.models import (
     FieldCondition,
     Filter,
     MatchAny,
+    MatchValue,
     PointIdsList,
     PointStruct,
     Range,
@@ -35,6 +36,8 @@ class QdrantTenderRepository(ITenderVectorRepository):
     _PAYLOAD_INDEXES: dict[str, str] = {
         "status_code": "keyword",
         "region_id": "integer",
+        "provincia_id": "integer",
+        "comuna_id": "integer",
         "available_amount_clp": "float",
         "closing_at": "integer",
         "published_at": "integer",
@@ -175,6 +178,20 @@ class QdrantTenderRepository(ITenderVectorRepository):
             conditions.append(
                 FieldCondition(
                     key="region_id", match=MatchAny(any=list(criteria.region_ids))
+                )
+            )
+        # `MatchValue`, no `MatchAny`: a diferencia de región, provincia/comuna
+        # son un solo valor (el frontend las selecciona de a una, en cascada).
+        if criteria.province_id is not None:
+            conditions.append(
+                FieldCondition(
+                    key="provincia_id", match=MatchValue(value=criteria.province_id)
+                )
+            )
+        if criteria.commune_id is not None:
+            conditions.append(
+                FieldCondition(
+                    key="comuna_id", match=MatchValue(value=criteria.commune_id)
                 )
             )
 
