@@ -186,3 +186,98 @@ def test_domain_errors_messages_and_hierarchy():
 
     err_max = MaxDocumentsExceededError()
     assert isinstance(err_max, TenderChatError)
+
+
+def test_create_valid_document_discrepancy():
+    """Verifica la creación válida de una discrepancia entre documentos."""
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    citation_a = Citation(
+        document_name="Bases_Administrativas.pdf",
+        page_or_sheet="Página 12",
+        quote="El plazo de ejecución será de 30 días corridos."
+    )
+    citation_b = Citation(
+        document_name="Especificaciones_Tecnicas.pdf",
+        page_or_sheet="Página 3",
+        quote="El plazo de ejecución será de 45 días corridos."
+    )
+
+    discrepancy = DocumentDiscrepancy(
+        topic="Plazo de ejecución",
+        description="Las bases administrativas indican 30 días mientras que las especificaciones técnicas indican 45 días.",
+        conflicting_sources=[citation_a, citation_b]
+    )
+
+    assert discrepancy.topic == "Plazo de ejecución"
+    assert "30 días" in discrepancy.description
+    assert len(discrepancy.conflicting_sources) == 2
+    assert discrepancy.conflicting_sources[0].document_name == "Bases_Administrativas.pdf"
+
+
+def test_document_discrepancy_empty_fields_raises_validation_error():
+    """Verifica que DocumentDiscrepancy valide que topic y description no estén vacíos."""
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    with pytest.raises(ValidationError):
+        DocumentDiscrepancy(
+            topic="   ",
+            description="Alguna descripción",
+            conflicting_sources=[]
+        )
+
+    with pytest.raises(ValidationError):
+        DocumentDiscrepancy(
+            topic="Tema válido",
+            description="",
+            conflicting_sources=[]
+        )
+
+
+def test_assistant_chat_message_with_discrepancies_and_warnings():
+    """Verifica que TenderChatMessage soporte discrepancias, advertencias y aspectos sin respaldo."""
+    from app.domain.entities.tender_chat import DocumentDiscrepancy
+
+    discrepancy = DocumentDiscrepancy(
+        topic="Garantía de seriedad",
+        description="Inconsistencia en el porcentaje de garantía exigido.",
+        conflicting_sources=[
+            Citation(document_name="Doc1.pdf", quote="5%"),
+            Citation(document_name="Doc2.pdf", quote="10%"),
+        ]
+    )
+
+    msg = TenderChatMessage(
+        tender_id=uuid4(),
+        user_id=uuid4(),
+        role="assistant",
+        content="Se detectaron discrepancias entre los documentos de la licitación.",
+        discrepancies=[discrepancy],
+        warnings=["El archivo anexo_3.pdf está corrupto y no pudo ser analizado."],
+        unbacked_aspects=["Presupuesto disponible estimado"],
+        has_sufficient_info=False
+    )
+
+    assert len(msg.discrepancies) == 1
+    assert msg.discrepancies[0].topic == "Garantía de seriedad"
+    assert len(msg.warnings) == 1
+    assert "anexo_3.pdf" in msg.warnings[0]
+    assert msg.unbacked_aspects == ["Presupuesto disponible estimado"]
+    assert msg.has_sufficient_info is False
+
+
+def test_corrupted_and_unreadable_document_errors():
+    """Verifica que CorruptedDocumentError y UnreadableDocumentError hereden de TenderChatError y tengan mensajes adecuados."""
+    from app.domain.errors.tender_chat_errors import (
+        CorruptedDocumentError,
+        UnreadableDocumentError,
+    )
+
+    err_corrupt = CorruptedDocumentError("El archivo anexo.pdf está dañado o no tiene formato válido.")
+    assert isinstance(err_corrupt, TenderChatError)
+    assert "dañado" in str(err_corrupt)
+
+    err_unreadable = UnreadableDocumentError("No fue posible extraer o leer el contenido del documento.")
+    assert isinstance(err_unreadable, TenderChatError)
+    assert "leer el contenido" in str(err_unreadable)
+

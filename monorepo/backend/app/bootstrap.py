@@ -36,6 +36,12 @@ from app.application.services.smart_question_service import ISmartQuestionServic
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
+from app.application.services.document_validator_service import (
+    IDocumentValidatorService,
+)
+from app.infrastructure.services.document_validator_service import (
+    DocumentValidatorService,
+)
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
@@ -415,10 +421,19 @@ def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIServi
     return request.app.state.tender_assistant_ai_service
 
 
+def get_document_validator_service() -> IDocumentValidatorService:
+    return DocumentValidatorService()
+
+
 def get_upload_tender_chat_doc_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    validator_service: Annotated[
+        IDocumentValidatorService, Depends(get_document_validator_service)
+    ],
 ) -> UploadTenderChatDocumentUseCase:
-    return UploadTenderChatDocumentUseCase(chat_repo=chat_repo)
+    return UploadTenderChatDocumentUseCase(
+        chat_repo=chat_repo, validator_service=validator_service
+    )
 
 
 def get_list_tender_chat_docs_use_case(
@@ -439,11 +454,15 @@ def get_ask_tender_assistant_use_case(
         ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
     ],
     supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    validator_service: Annotated[
+        IDocumentValidatorService, Depends(get_document_validator_service)
+    ],
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
         ai_service=ai_service,
         supplier_repo=supplier_repo,
+        validator_service=validator_service,
     )
 
 

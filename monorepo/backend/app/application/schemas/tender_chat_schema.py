@@ -11,6 +11,13 @@ class CitationResponse(BaseModel):
     quote: str
 
 
+class DiscrepancyResponse(BaseModel):
+    """Esquema de respuesta para una discrepancia o contradicción entre documentos."""
+    topic: str
+    description: str
+    conflicting_sources: List[CitationResponse] = Field(default_factory=list)
+
+
 class AskQuestionRequest(BaseModel):
     """Esquema de entrada para realizar una pregunta al asistente."""
     question: str = Field(
@@ -54,6 +61,10 @@ class TenderChatMessageResponse(BaseModel):
     role: str
     content: str
     citations: List[CitationResponse] = Field(default_factory=list)
+    discrepancies: List[DiscrepancyResponse] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    unbacked_aspects: List[str] = Field(default_factory=list)
+    has_sufficient_info: bool = True
     created_at: datetime
 
 
