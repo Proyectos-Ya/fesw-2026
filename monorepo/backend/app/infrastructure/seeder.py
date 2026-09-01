@@ -1,12 +1,19 @@
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.infrastructure.repositories.tender_model import RegionModel, TenderStatusModel
+from app.infrastructure.repositories.tender_model import (
+    ComunaModel,
+    ProvinciaModel,
+    RegionModel,
+    TenderStatusModel,
+)
+from app.shared.comunas import CHILE_COMUNAS, CHILE_PROVINCIAS
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID
 from app.shared.regions import (
     CHILE_REGIONS,
     UNKNOWN_REGION_ID,
     UNKNOWN_REGION_NAME,
+    region_id_by_name,
 )
 
 
@@ -45,5 +52,32 @@ async def seed_database_metadata(session: AsyncSession):
             existente.code = e_code
             existente.name = e_name
             session.add(existente)
+
+    # Seed de Provincias y Comunas. Ninguna de las tres APIs de Mercado
+    # Público entrega este dato directamente (ver PENDIENTES.md 6.16/6.19),
+    # así que la fuente es un dataset estático de shared/comunas.py, sembrado
+    # una vez y corregido in-place igual que región/estado.
+    for p_id, (p_name, region_name) in CHILE_PROVINCIAS.items():
+        region_id = region_id_by_name(region_name)
+        assert region_id is not None, f"Región desconocida en seed: {region_name!r}"
+        provincia = await session.get(ProvinciaModel, p_id)
+        if not provincia:
+            session.add(ProvinciaModel(id=p_id, name=p_name, region_id=region_id))
+        elif provincia.name != p_name or provincia.region_id != region_id:
+            provincia.name = p_name
+            provincia.region_id = region_id
+
+    provincia_id_by_name = {
+        name: p_id for p_id, (name, _region) in CHILE_PROVINCIAS.items()
+    }
+
+    for c_id, (c_name, prov_name) in CHILE_COMUNAS.items():
+        provincia_id = provincia_id_by_name[prov_name]
+        comuna = await session.get(ComunaModel, c_id)
+        if not comuna:
+            session.add(ComunaModel(id=c_id, name=c_name, provincia_id=provincia_id))
+        elif comuna.name != c_name or comuna.provincia_id != provincia_id:
+            comuna.name = c_name
+            comuna.provincia_id = provincia_id
 
     await session.commit()

@@ -31,8 +31,10 @@ from tests.unit.application.fakes import (
 class FakeTenderRepository(ITenderRepository):
     """Repositorio SQL en memoria que deja pasar todas las operaciones."""
 
-    def __init__(self) -> None:
+    def __init__(self, comuna_ids_by_name: dict[str, int] | None = None) -> None:
         self.saved: list = []
+        self.buyers_created: list[dict] = []
+        self._comuna_ids_by_name = comuna_ids_by_name or {"Santiago": 295}
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:  # noqa: ARG002
         return []
@@ -48,8 +50,27 @@ class FakeTenderRepository(ITenderRepository):
     ) -> tuple[list[Tender], int]:
         return [], 0
 
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:  # noqa: ARG002
+    async def get_or_create_buyer(
+        self,
+        rut: str,
+        name: str,
+        region_id: int,
+        comuna_id: int | None = None,
+        comuna_resolution_source: str | None = None,
+    ) -> str:
+        self.buyers_created.append(
+            {
+                "rut": rut,
+                "name": name,
+                "region_id": region_id,
+                "comuna_id": comuna_id,
+                "comuna_resolution_source": comuna_resolution_source,
+            }
+        )
         return rut
+
+    async def get_comuna_id_by_name(self, name: str) -> int | None:
+        return self._comuna_ids_by_name.get(name)
 
     async def get_or_create_status(self, status_id: int, code: str) -> int:
         return status_id
@@ -78,6 +99,7 @@ def _make_dto(
     code: str = "LIC-001",
     status_code: int = 2,
     estado_codigo: str = "publicada",
+    organismo: str = "Municipalidad de Santiago",
 ) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
         {
@@ -89,7 +111,7 @@ def _make_dto(
             "FechaPublicacion": "2026-01-01T00:00:00",
             "FechaCierre": "2026-06-30T23:59:00",
             "RutComprador": "12.345.678-9",
-            "NombreOrganismo": "Municipalidad de Santiago",
+            "NombreOrganismo": organismo,
             "UnidadCompra": "Depto. Obras",
             "RegionId": 13,
             "RegionUnidad": "Región Metropolitana de Santiago",
@@ -237,3 +259,40 @@ async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
     await use_case.execute(_make_dto())
 
     assert len(vector_repo.upserts) == 0
+
+
+# ---------------------------------------------------------------------------
+# Resolución de comuna del comprador (path "a": nombre de municipalidad)
+# ---------------------------------------------------------------------------
+
+
+async def test_buyer_nuevo_con_nombre_municipal_reconocible_resuelve_comuna() -> None:
+    repo = FakeTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    await use_case.execute(_make_dto(organismo="I Municipalidad de Santiago"))
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] == 295
+    assert buyer["comuna_resolution_source"] == "organismo_name"
+
+
+async def test_buyer_nuevo_sin_nombre_reconocible_no_resuelve_comuna() -> None:
+    repo = FakeTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    await use_case.execute(_make_dto(organismo="Servicio Electoral"))
+
+    assert len(repo.buyers_created) == 1
+    buyer = repo.buyers_created[0]
+    assert buyer["comuna_id"] is None
+    assert buyer["comuna_resolution_source"] is None

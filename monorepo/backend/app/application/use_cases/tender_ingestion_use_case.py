@@ -10,6 +10,7 @@ from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
+from app.shared.comunas import resolve_comuna_from_organismo_name
 from app.shared.datetime_utils import to_utc_epoch
 
 
@@ -116,8 +117,18 @@ class TenderIngestionUseCase:
             # hacen flush, así que dejarlos antes del embedding mantendría
             # los locks tomados durante toda la inferencia del modelo.
             # Son las claves foráneas de new_tender: deben existir al commit.
+            comuna_name = resolve_comuna_from_organismo_name(dto.buyer_name)
+            comuna_id = (
+                await self.repo.get_comuna_id_by_name(comuna_name)
+                if comuna_name
+                else None
+            )
             await self.repo.get_or_create_buyer(
-                rut=safe_buyer_rut, name=dto.buyer_name, region_id=region_id
+                rut=safe_buyer_rut,
+                name=dto.buyer_name,
+                region_id=region_id,
+                comuna_id=comuna_id,
+                comuna_resolution_source="organismo_name" if comuna_id else None,
             )
             await self.repo.get_or_create_status(
                 status_id=dto.status_code, code=dto.status_semantic_code

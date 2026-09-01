@@ -54,8 +54,18 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
     async def get_by_code(self, code: str) -> Any | None:
         return None
 
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+    async def get_or_create_buyer(
+        self,
+        rut: str,
+        name: str,
+        region_id: int,
+        comuna_id: int | None = None,
+        comuna_resolution_source: str | None = None,
+    ) -> str:
         return rut
+
+    async def get_comuna_id_by_name(self, name: str) -> int | None:
+        return None
 
     async def save_complex_tender(self, tender_model: Any, items: list[Any]) -> None:
         pass
