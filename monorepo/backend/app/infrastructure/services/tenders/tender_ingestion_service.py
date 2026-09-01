@@ -123,8 +123,15 @@ class TenderIngestionService(ITenderIngestionService):
                     # 1. Filtrar solo licitaciones abiertas / publicadas.
                     # Por `estado.codigo`, que es el enum documentado de la API,
                     # y no por `id_estado`, cuya numeración la guía no publica.
-                    estado = item.get("estado", {}) or {}
-                    codigo_estado = str(estado.get("codigo") or "").strip().lower()
+                    # `estado_item` y no `estado`: ese nombre es el parámetro
+                    # de la función —el filtro que se le manda a la API— y
+                    # reasignarlo acá lo convertía en un dict a mitad de camino.
+                    # Hoy no rompe nada porque `get_tenders` ya se llamó, pero
+                    # cualquier uso posterior del filtro fallaría.
+                    estado_item = item.get("estado", {}) or {}
+                    codigo_estado = (
+                        str(estado_item.get("codigo") or "").strip().lower()
+                    )
                     if codigo_estado not in ACTIVE_TENDER_STATUSES:
                         continue
 
