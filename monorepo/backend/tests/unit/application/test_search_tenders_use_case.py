@@ -55,6 +55,7 @@ def _make_tender(tender_id: UUID, name: str = "Licitación") -> Tender:
 
 class FakeTenderVectorRepo(ITenderVectorRepository):
     def __init__(self) -> None:
+        self.payloads: dict[UUID, dict] = {}
         self.search_results: list[tuple[UUID, float]] = []
         self.total = 0
         self.searched_vectors: list[list[float]] = []
@@ -67,6 +68,9 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
 
     async def upsert(self, tender_id: UUID, embedding: list[float], p: dict) -> None:
         pass
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
 
     async def delete(self, tender_id: UUID) -> None:
         pass
@@ -90,6 +94,7 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
 
 class FakeTenderRepo(ITenderRepository):
     def __init__(self) -> None:
+        self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
         self.sql_search_calls: list[tuple[TenderFilterCriteria, int, int]] = []
         self.sql_results: tuple[list[Tender], int] = ([], 0)
@@ -107,6 +112,12 @@ class FakeTenderRepo(ITenderRepository):
     ) -> tuple[list[Tender], int]:
         self.sql_search_calls.append((criteria, limit, offset))
         return self.sql_results
+
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
 
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None

@@ -30,6 +30,18 @@ class ITenderVectorRepository(ABC):
         ...
 
     @abstractmethod
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        """Actualiza campos del payload sin tocar el vector.
+
+        Es la operación barata: cambiar el estado o la fecha de cierre de una
+        licitación no cambia lo que pide, así que recalcular el embedding sería
+        pagar una inferencia para escribir el mismo vector.
+
+        Actualiza solo las claves entregadas; las que no vienen se conservan.
+        """
+        ...
+
+    @abstractmethod
     async def delete(self, tender_id: UUID) -> None:
         """
         Elimina el vector de una licitación en Qdrant.

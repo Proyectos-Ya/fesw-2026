@@ -44,6 +44,12 @@ class FakeTenderRepository(ITenderRepository):
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:  # noqa: ARG002
         return []
 
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
+
     async def get_by_code(self, code: str) -> TenderModel | None:  # noqa: ARG002
         return None
 

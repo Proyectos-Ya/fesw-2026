@@ -52,6 +52,20 @@ class ITenderRepository(ABC):
     async def get_by_code(self, code: str) -> TenderModel | None: ...
 
     @abstractmethod
+    async def get_expired_published_ids(self) -> list[UUID]:
+        """Ids de las licitaciones que siguen figurando publicadas pero ya cerraron.
+
+        Solo las que dicen `publicada`: una cancelada o desierta con el plazo
+        vencido no se reabre ni se reescribe.
+        """
+        ...
+
+    @abstractmethod
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        """Pasa esas licitaciones al estado `cerrada`, en una sola sentencia."""
+        ...
+
+    @abstractmethod
     async def get_or_create_buyer(
         self,
         rut: str,

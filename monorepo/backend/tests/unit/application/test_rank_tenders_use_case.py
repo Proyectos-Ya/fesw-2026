@@ -40,6 +40,7 @@ class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
 
     def __init__(self) -> None:
+        self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
@@ -60,6 +61,12 @@ class InMemoryTenderRepository(ITenderRepository):
         offset: int = 0,
     ) -> tuple[list[Tender], int]:  # noqa: ARG002
         return ([], 0)
+
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
 
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None
@@ -112,6 +119,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     """Fake repository vectorial para buscar licitaciones."""
 
     def __init__(self) -> None:
+        self.payloads: dict[UUID, dict] = {}
         self.search_results: list[tuple[UUID, float]] = []
         self.searched_vectors: list[list[float]] = []
         self.search_criteria: list[TenderFilterCriteria | None] = []
@@ -124,6 +132,9 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         self, tender_id: UUID, embedding: list[float], payload: dict
     ) -> None:
         pass
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
 
     async def delete(self, tender_id: UUID) -> None:
         self.deleted.append(tender_id)

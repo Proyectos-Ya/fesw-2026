@@ -45,6 +45,17 @@ TENDER_STATUS_CODE_BY_ID = {
 }
 
 
+# Ids de estado que el código necesita nombrar. Se derivan del mapa de arriba en
+# vez de repetirse como literales: si la numeración medida vuelve a cambiar —ya
+# pasó una vez, ver la migración b9e6574f8007— se corrige en un solo lugar.
+PUBLICADA_STATUS_ID = next(
+    i for i, c in TENDER_STATUS_CODE_BY_ID.items() if c == TENDER_STATUSES["PUBLISHED"]
+)
+CERRADA_STATUS_ID = next(
+    i for i, c in TENDER_STATUS_CODE_BY_ID.items() if c == TENDER_STATUSES["CLOSED"]
+)
+
+
 # Valores por defecto para la API de Mercado Público
 DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT = 2000
 DEFAULT_MERCADOPUBLICO_DETAIL_DELAY = 2.0

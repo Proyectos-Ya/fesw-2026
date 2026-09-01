@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
@@ -23,7 +23,11 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     TenderStatusModel,
 )
-from app.shared.constants import TENDER_STATUS_CODE_BY_ID
+from app.shared.constants import (
+    CERRADA_STATUS_ID,
+    PUBLICADA_STATUS_ID,
+    TENDER_STATUS_CODE_BY_ID,
+)
 
 
 class TenderRepository(ITenderRepository):
@@ -254,6 +258,37 @@ class TenderRepository(ITenderRepository):
         statement = select(TenderModel).where(TenderModel.code == code)
         result = await self.session.exec(statement)
         return result.first()
+
+    async def get_expired_published_ids(self) -> list[uuid.UUID]:
+        """Vencidas que aún figuran publicadas.
+
+        El estado se compara contra el id numérico y no contra el código de
+        texto porque es la columna que tiene `tender`; el join a `tender_status`
+        sería un viaje de más para un valor que ya es una constante conocida.
+        """
+        statement = select(TenderModel.id).where(
+            col(TenderModel.closing_at) < utc_now_naive(),
+            col(TenderModel.status_id) == PUBLICADA_STATUS_ID,
+        )
+        result = await self.session.exec(statement)  # type: ignore[call-overload]
+        return list(result.all())
+
+    async def mark_as_closed(self, tender_ids: list[uuid.UUID]) -> None:
+        """Una sola sentencia y no una fila por vez.
+
+        Cada viaje a Supabase desde Chile son ~133 ms medidos: con un día de
+        rotación normal esto son cientos de licitaciones, y de a una serían
+        minutos de espera que no calculan nada.
+        """
+        if not tender_ids:
+            return
+        statement = (
+            update(TenderModel)
+            .where(col(TenderModel.id).in_(tender_ids))
+            .values(status_id=CERRADA_STATUS_ID, updated_at=utc_now_naive())
+        )
+        await self.session.exec(statement)  # type: ignore[call-overload]
+        await self.session.commit()
 
     async def get_or_create_buyer(
         self,
