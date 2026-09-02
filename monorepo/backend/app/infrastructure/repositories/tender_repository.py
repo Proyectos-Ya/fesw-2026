@@ -133,7 +133,11 @@ class TenderRepository(ITenderRepository):
 
         return [self._to_entity(m) for m in models]
 
-    def _search_conditions(self, criteria: TenderFilterCriteria) -> list:
+    def _search_conditions(
+        self,
+        criteria: TenderFilterCriteria,
+        q: str | None = None,
+        ) -> list:
         """Traduce el criterio de búsqueda a condiciones de SQLModel.
 
         Todo pasa por `col(...) == valor`, que genera parámetros ligados: los
