@@ -91,7 +91,7 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
 class FakeTenderRepo(ITenderRepository):
     def __init__(self) -> None:
         self.tenders: dict[UUID, Tender] = {}
-        self.sql_search_calls: list[tuple[TenderFilterCriteria, int, int]] = []
+        self.sql_search_calls: list[tuple[TenderFilterCriteria, int, int, str | None]] = []
         self.sql_results: tuple[list[Tender], int] = ([], 0)
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
@@ -103,10 +103,24 @@ class FakeTenderRepo(ITenderRepository):
         return list(reversed(encontrados))
 
     async def search_tenders(
-        self, criteria: TenderFilterCriteria, limit: int, offset: int = 0
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+        q: str | None = None,
     ) -> tuple[list[Tender], int]:
-        self.sql_search_calls.append((criteria, limit, offset))
-        return self.sql_results
+        self.sql_search_calls.append((criteria, limit, offset, q))
+        if self.sql_results != ([], 0):
+            return self.sql_results
+        todas = list(self.tenders.values())
+        if q:
+            todas = [
+                t
+                for t in todas
+                if q.lower() in t.name.lower()
+                or (t.description and q.lower() in t.description.lower())
+            ]
+        return todas[offset : offset + limit], len(todas)
 
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None
@@ -190,13 +204,15 @@ async def _build(
 
 
 @pytest.mark.asyncio
-async def test_con_texto_busca_con_el_vector_de_la_consulta() -> None:
-    use_case, user_id, vector_repo, _, embedding = await _build()
+async def test_con_texto_busca_lexicamente_en_repositorio_sql() -> None:
+    use_case, user_id, vector_repo, tender_repo, embedding = await _build()
 
     await use_case.execute(user_id=user_id, q="construcción de techumbre")
 
-    assert embedding.calls == [["construcción de techumbre"]]
-    assert vector_repo.searched_vectors == [[0.3] * 1024]
+    assert len(tender_repo.sql_search_calls) == 1
+    assert tender_repo.sql_search_calls[0][3] == "construcción de techumbre"
+    assert embedding.calls == []
+    assert vector_repo.searched_vectors == []
 
 
 @pytest.mark.asyncio
@@ -227,12 +243,12 @@ async def test_el_texto_en_blanco_equivale_a_no_haber_texto() -> None:
 
 
 @pytest.mark.asyncio
-async def test_el_texto_se_recorta_antes_de_embeber() -> None:
-    use_case, user_id, _, _, embedding = await _build()
+async def test_el_texto_se_recorta_y_sanitiza() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build()
 
     await use_case.execute(user_id=user_id, q="  cables  ")
 
-    assert embedding.calls == [["cables"]]
+    assert tender_repo.sql_search_calls[0][3] == "cables"
 
 
 # ---------------------------------------------------------------------------
@@ -272,20 +288,20 @@ async def test_sin_perfil_de_proveedor_tambien_cae_al_camino_sql() -> None:
 
 @pytest.mark.asyncio
 async def test_con_texto_no_necesita_vector_del_proveedor() -> None:
-    """El texto se embebe solo; no hace falta perfil para buscar."""
+    """La búsqueda léxica consulta SQL directamente; no hace falta perfil para buscar."""
     use_case, user_id, vector_repo, tender_repo, embedding = await _build(
         con_vector=False
     )
 
     await use_case.execute(user_id=user_id, q="cables")
 
-    assert embedding.calls == [["cables"]]
-    assert vector_repo.searched_vectors == [[0.3] * 1024]
-    assert tender_repo.sql_search_calls == []
+    assert len(tender_repo.sql_search_calls) == 1
+    assert tender_repo.sql_search_calls[0][3] == "cables"
+    assert vector_repo.searched_vectors == []
 
 
 # ---------------------------------------------------------------------------
-# Filtros, total y truncado
+# Filtros, total y truncado (camino vectorial por afinidad)
 # ---------------------------------------------------------------------------
 
 
@@ -294,7 +310,7 @@ async def test_los_filtros_llegan_intactos_al_repositorio_vectorial() -> None:
     use_case, user_id, vector_repo, _, _ = await _build()
     criterio = TenderFilterCriteria(region_ids=[13], min_amount=100_000)
 
-    await use_case.execute(user_id=user_id, q="cables", criteria=criterio)
+    await use_case.execute(user_id=user_id, q=None, criteria=criterio)
 
     assert vector_repo.search_criteria == [criterio]
 
@@ -309,7 +325,7 @@ async def test_el_total_sale_de_count_y_no_del_largo_de_la_pagina() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 137
 
-    resultado = await use_case.execute(user_id=user_id, q="cables")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert len(resultado.items) == 2
     assert resultado.total == 137
@@ -324,7 +340,7 @@ async def test_marca_truncado_cuando_quedan_resultados_fuera() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 137
 
-    resultado = await use_case.execute(user_id=user_id, q="cables")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert resultado.is_truncated is True
 
@@ -337,7 +353,7 @@ async def test_no_marca_truncado_cuando_llego_todo() -> None:
     vector_repo.search_results = [(t1, 0.9)]
     vector_repo.total = 1
 
-    resultado = await use_case.execute(user_id=user_id, q="cables")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert resultado.is_truncated is False
 
@@ -346,7 +362,7 @@ async def test_no_marca_truncado_cuando_llego_todo() -> None:
 async def test_el_tope_se_pasa_como_limite_a_qdrant() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=500)
 
-    await use_case.execute(user_id=user_id, q="cables")
+    await use_case.execute(user_id=user_id, q=None)
 
     assert vector_repo.search_limits == [500]
 
@@ -355,7 +371,7 @@ async def test_el_tope_se_pasa_como_limite_a_qdrant() -> None:
 async def test_el_offset_se_propaga_para_pedir_el_bloque_siguiente() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=500)
 
-    await use_case.execute(user_id=user_id, q="cables", offset=500)
+    await use_case.execute(user_id=user_id, q=None, offset=500)
 
     assert vector_repo.search_offsets == [500]
 
@@ -370,7 +386,7 @@ async def test_el_truncado_considera_el_offset() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 4
 
-    resultado = await use_case.execute(user_id=user_id, q="cables", offset=2)
+    resultado = await use_case.execute(user_id=user_id, q=None, offset=2)
 
     # offset 2 + 2 entregadas = 4, que es el total: no queda nada más.
     assert resultado.is_truncated is False
@@ -395,7 +411,7 @@ async def test_conserva_el_orden_del_ranking_tras_hidratar() -> None:
     vector_repo.search_results = [(ids[0], 0.95), (ids[1], 0.80), (ids[2], 0.60)]
     vector_repo.total = 3
 
-    resultado = await use_case.execute(user_id=user_id, q="cables")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert [t.id for t in resultado.items] == ids
 
@@ -412,7 +428,7 @@ async def test_descarta_los_ids_sin_fila_en_sql() -> None:
     vector_repo.search_results = [(huerfano, 0.99), (presente, 0.80)]
     vector_repo.total = 2
 
-    resultado = await use_case.execute(user_id=user_id, q="cables")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert [t.id for t in resultado.items] == [presente]
 
@@ -424,7 +440,7 @@ async def test_sin_resultados_devuelve_lista_vacia_y_no_hidrata() -> None:
     vector_repo.search_results = []
     vector_repo.total = 0
 
-    resultado = await use_case.execute(user_id=user_id, q="algo que no existe")
+    resultado = await use_case.execute(user_id=user_id, q=None)
 
     assert resultado.items == []
     assert resultado.total == 0
@@ -503,7 +519,7 @@ async def test_acepta_un_rango_con_extremos_iguales() -> None:
 
     await use_case.execute(
         user_id=user_id,
-        q="cables",
+        q=None,
         criteria=TenderFilterCriteria(closing_from=base, closing_to=base),
     )
 
@@ -519,7 +535,7 @@ async def test_acepta_un_rango_con_extremos_iguales() -> None:
 async def test_sin_limite_explicito_usa_el_por_defecto() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
 
-    await use_case.execute(user_id=user_id, q="cables")
+    await use_case.execute(user_id=user_id, q=None)
 
     assert vector_repo.search_limits == [100]
 
@@ -529,7 +545,7 @@ async def test_el_limite_pedido_llega_a_qdrant() -> None:
     """Permite que el cliente pida páginas chicas y pagine contra el backend."""
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
 
-    await use_case.execute(user_id=user_id, q="cables", limit=20)
+    await use_case.execute(user_id=user_id, q=None, limit=20)
 
     assert vector_repo.search_limits == [20]
 
@@ -540,7 +556,7 @@ async def test_el_limite_se_recorta_al_maximo() -> None:
     HTTP valide bien: pedir 5.000 no puede traducirse en 5.000 hidrataciones."""
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100, max_limit=500)
 
-    await use_case.execute(user_id=user_id, q="cables", limit=5000)
+    await use_case.execute(user_id=user_id, q=None, limit=5000)
 
     assert vector_repo.search_limits == [500]
 
@@ -550,7 +566,7 @@ async def test_rechaza_un_limite_menor_a_uno() -> None:
     use_case, user_id, _, _, _ = await _build()
 
     with pytest.raises(InvalidSearchCriteria):
-        await use_case.execute(user_id=user_id, q="cables", limit=0)
+        await use_case.execute(user_id=user_id, q=None, limit=0)
 
 
 @pytest.mark.asyncio
@@ -559,7 +575,7 @@ async def test_el_limite_tambien_aplica_al_camino_sql() -> None:
 
     await use_case.execute(user_id=user_id, limit=20)
 
-    _, limite, _ = tender_repo.sql_search_calls[0]
+    _, limite, _, _ = tender_repo.sql_search_calls[0]
     assert limite == 20
 
 
@@ -573,7 +589,7 @@ async def test_el_truncado_se_calcula_con_el_limite_pedido() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 50
 
-    resultado = await use_case.execute(user_id=user_id, q="cables", limit=2)
+    resultado = await use_case.execute(user_id=user_id, q=None, limit=2)
 
     assert resultado.total == 50
     assert resultado.is_truncated is True

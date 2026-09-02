@@ -52,6 +52,7 @@ class FakeTenderRepository(ITenderRepository):
         criteria: TenderFilterCriteria,  # noqa: ARG002
         limit: int,  # noqa: ARG002
         offset: int = 0,  # noqa: ARG002
+        q: str | None = None,  # noqa: ARG002
     ) -> tuple[list[Tender], int]:
         return [], 0
 

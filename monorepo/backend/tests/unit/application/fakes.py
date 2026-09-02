@@ -348,9 +348,8 @@ class InMemoryTenderRepository(ITenderRepository):
         criteria: TenderFilterCriteria,  # noqa: ARG002
         limit: int,
         offset: int = 0,
+        q: str | None = None,  # noqa: ARG002
     ) -> tuple[list[Tender], int]:
-        # Sin filtrar: los casos de uso que se prueban acá no dependen de los
-        # criterios, solo de que el método exista y respete el paginado.
         todas = list(self.tenders.values())
         return todas[offset : offset + limit], len(todas)
 

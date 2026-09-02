@@ -181,4 +181,108 @@ describe("useTenderSearch", () => {
     expect(window.sessionStorage.getItem(SEARCH_STORAGE_KEY)).toBeNull();
     expect(replaceMock).toHaveBeenCalledWith("/buscar", { scroll: false });
   });
+
+  it("actualiza la URL y sessionStorage al definir rango explícito de fechas (CA-1)", () => {
+    const { result } = renderHook(() => useTenderSearch());
+
+    act(() => {
+      result.current.setClosingDateRange("2026-09-01", "2026-09-15");
+    });
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?closing_from=2026-09-01&closing_to=2026-09-15",
+      { scroll: false },
+    );
+    const stored = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
+    expect(stored).toContain("closing_from=2026-09-01");
+    expect(stored).toContain("closing_to=2026-09-15");
+  });
+
+  it("envía closing_from y closing_to en ISO al servicio cuando están en URL (CA-1)", async () => {
+    mockSearchParams = new URLSearchParams("closing_from=2026-09-01&closing_to=2026-09-15");
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalledWith(
+        expect.objectContaining({
+          closing_from: "2026-09-01T00:00:00Z",
+          closing_to: "2026-09-15T23:59:59Z",
+        }),
+      );
+    });
+  });
+
+  it("parsea province_id y commune_id desde URL searchParams como enteros", () => {
+    mockSearchParams = new URLSearchParams("province_id=51&commune_id=295");
+    const { result } = renderHook(() => useTenderSearch());
+
+    expect(result.current.provinceId).toBe(51);
+    expect(result.current.communeId).toBe(295);
+    expect(result.current.activeFilterCount).toBe(2);
+    expect(result.current.hasActiveFilters).toBe(true);
+  });
+
+  it("actualiza la URL y sessionStorage al seleccionar provincia y resetea comuna", () => {
+    mockSearchParams = new URLSearchParams("province_id=51&commune_id=295");
+    const { result } = renderHook(() => useTenderSearch());
+
+    act(() => {
+      result.current.setProvinceId(52);
+    });
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?province_id=52",
+      { scroll: false },
+    );
+    const stored = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
+    expect(stored).toContain("province_id=52");
+    expect(stored).not.toContain("commune_id");
+  });
+
+  it("actualiza la URL y sessionStorage al seleccionar comuna", () => {
+    mockSearchParams = new URLSearchParams("province_id=51");
+    const { result } = renderHook(() => useTenderSearch());
+
+    act(() => {
+      result.current.setCommuneId(295);
+    });
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?province_id=51&commune_id=295",
+      { scroll: false },
+    );
+    const stored = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
+    expect(stored).toContain("commune_id=295");
+  });
+
+  it("resetea province_id y commune_id al cambiar regiones", () => {
+    mockSearchParams = new URLSearchParams("regions=Metropolitana&province_id=51&commune_id=295");
+    const { result } = renderHook(() => useTenderSearch());
+
+    act(() => {
+      result.current.setRegions(["Valparaíso"]);
+    });
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?regions=Valpara%C3%ADso",
+      { scroll: false },
+    );
+    const stored = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
+    expect(stored).not.toContain("province_id");
+    expect(stored).not.toContain("commune_id");
+  });
+
+  it("envía province_id y commune_id al servicio de búsqueda cuando están en la URL", async () => {
+    mockSearchParams = new URLSearchParams("province_id=51&commune_id=295");
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalledWith(
+        expect.objectContaining({
+          province_id: 51,
+          commune_id: 295,
+        }),
+      );
+    });
+  });
 });

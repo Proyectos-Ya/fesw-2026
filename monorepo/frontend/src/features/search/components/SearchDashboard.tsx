@@ -16,8 +16,15 @@ export function SearchDashboard() {
     setInputText,
     regions,
     setRegions,
+    provinceId,
+    setProvinceId,
+    communeId,
+    setCommuneId,
     availability,
     setAvailability,
+    closingFrom,
+    closingTo,
+    setClosingDateRange,
     minAmount,
     maxAmount,
     setAmountRange,
@@ -104,8 +111,15 @@ export function SearchDashboard() {
       <SearchFilters
         regions={regions}
         onRegionsChange={setRegions}
+        provinceId={provinceId}
+        onProvinceChange={setProvinceId}
+        communeId={communeId}
+        onCommuneChange={setCommuneId}
         availability={availability}
         onAvailabilityChange={setAvailability}
+        closingFrom={closingFrom}
+        closingTo={closingTo}
+        onClosingDateRangeChange={setClosingDateRange}
         minAmount={minAmount}
         maxAmount={maxAmount}
         onAmountRangeChange={setAmountRange}

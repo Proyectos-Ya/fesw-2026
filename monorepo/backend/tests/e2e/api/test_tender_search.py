@@ -327,3 +327,15 @@ async def test_un_limit_de_cero_se_rechaza(api: AsyncClient) -> None:
     response = await api.get("/tenders/search?limit=0")
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_sqli_payload_en_query_se_recibe_de_forma_segura(api: AsyncClient) -> None:
+    mock = _mock_use_case()
+    await _login(api)
+
+    response = await api.get("/tenders/search?q=%27+OR+1%3D1+--")
+
+    assert response.status_code == 200
+    assert mock.execute.call_args.kwargs["q"] == "' OR 1=1 --"
+
