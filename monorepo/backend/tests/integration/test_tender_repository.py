@@ -8,6 +8,8 @@ from app.application.repositories.tender_repository import TenderFilters
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
+    ComunaModel,
+    ProvinciaModel,
     RegionModel,
     TenderModel,
     TenderStatusModel,
@@ -361,3 +363,370 @@ async def test_search_hidrata_la_region(db_session: AsyncSession):
     )
 
     assert items[0].region == CHILE_REGIONS[5]
+
+
+# ---------------------------------------------------------------------------
+# search_tenders: filtro por provincia/comuna
+# ---------------------------------------------------------------------------
+
+PROVINCIA_CORDILLERA_ID = 1
+PROVINCIA_SANTIAGO_ID = 2
+COMUNA_PUENTE_ALTO_SEARCH_ID = 1
+COMUNA_SANTIAGO_SEARCH_ID = 2
+
+
+async def _seed_para_busqueda_geografica(session: AsyncSession) -> None:
+    """Dos provincias dentro de la misma región, más un buyer sin comuna.
+
+    - Puente Alto (comuna) / Cordillera (provincia) / RM (región 13)
+    - Santiago (comuna) / Santiago (provincia) / RM (región 13)
+    - Valparaíso: buyer sin comuna resuelta, región 5
+    """
+    session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
+    session.add(RegionModel(id=5, name=CHILE_REGIONS[5]))
+    session.add(
+        ProvinciaModel(id=PROVINCIA_CORDILLERA_ID, name="Cordillera", region_id=13)
+    )
+    session.add(ProvinciaModel(id=PROVINCIA_SANTIAGO_ID, name="Santiago", region_id=13))
+    session.add(
+        ComunaModel(
+            id=COMUNA_PUENTE_ALTO_SEARCH_ID,
+            name="Puente Alto",
+            provincia_id=PROVINCIA_CORDILLERA_ID,
+        )
+    )
+    session.add(
+        ComunaModel(
+            id=COMUNA_SANTIAGO_SEARCH_ID,
+            name="Santiago",
+            provincia_id=PROVINCIA_SANTIAGO_ID,
+        )
+    )
+    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
+    for rut, nombre, region_id, comuna_id in (
+        (
+            "11.111.111-1",
+            "I Municipalidad de Puente Alto",
+            13,
+            COMUNA_PUENTE_ALTO_SEARCH_ID,
+        ),
+        ("22.222.222-2", "I Municipalidad de Santiago", 13, COMUNA_SANTIAGO_SEARCH_ID),
+        ("33.333.333-3", "Servicio Electoral Valparaíso", 5, None),
+    ):
+        session.add(
+            BuyerInstitutionModel(
+                rut=rut,
+                name=nombre,
+                region_id=region_id,
+                comuna_id=comuna_id,
+                created_at=utc_now_naive(),
+                updated_at=utc_now_naive(),
+            )
+        )
+    await session.commit()
+
+    base = datetime(2026, 9, 1, 12, 0, 0)
+    for code, buyer in (
+        ("PUENTE-ALTO", "11.111.111-1"),
+        ("SANTIAGO", "22.222.222-2"),
+        ("VALPO-SIN-COMUNA", "33.333.333-3"),
+    ):
+        session.add(
+            TenderModel(
+                id=uuid4(),
+                code=code,
+                name=f"Licitación {code}",
+                status_id=1,
+                published_at=base - timedelta(days=30),
+                closing_at=base + timedelta(days=5),
+                last_change_at=base,
+                buyer_rut=buyer,
+                buyer_unit="Obras",
+                available_amount_clp=500_000.0,
+                created_at=utc_now_naive(),
+                updated_at=utc_now_naive(),
+            )
+        )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_search_filtra_por_comuna(db_session: AsyncSession):
+    await _seed_para_busqueda_geografica(db_session)
+    repo = TenderRepository(db_session)
+
+    items, total = await repo.search_tenders(
+        TenderFilterCriteria(commune_id=COMUNA_PUENTE_ALTO_SEARCH_ID), limit=100
+    )
+
+    assert total == 1
+    assert [t.code for t in items] == ["PUENTE-ALTO"]
+
+
+@pytest.mark.asyncio
+async def test_search_filtra_por_provincia(db_session: AsyncSession):
+    """Dos comunas distintas dentro de la misma provincia deben calzar ambas."""
+    await _seed_para_busqueda_geografica(db_session)
+    repo = TenderRepository(db_session)
+
+    items, total = await repo.search_tenders(
+        TenderFilterCriteria(province_id=PROVINCIA_SANTIAGO_ID), limit=100
+    )
+
+    assert total == 1
+    assert [t.code for t in items] == ["SANTIAGO"]
+
+
+@pytest.mark.asyncio
+async def test_search_provincia_no_confunde_comunas_de_otra_provincia(
+    db_session: AsyncSession,
+):
+    """Cordillera y Santiago comparten región; filtrar por una no debe traer la otra."""
+    await _seed_para_busqueda_geografica(db_session)
+    repo = TenderRepository(db_session)
+
+    items, _ = await repo.search_tenders(
+        TenderFilterCriteria(province_id=PROVINCIA_CORDILLERA_ID), limit=100
+    )
+
+    assert [t.code for t in items] == ["PUENTE-ALTO"]
+
+
+@pytest.mark.asyncio
+async def test_search_combina_provincia_con_region(db_session: AsyncSession):
+    await _seed_para_busqueda_geografica(db_session)
+    repo = TenderRepository(db_session)
+
+    items, total = await repo.search_tenders(
+        TenderFilterCriteria(region_ids=[13], province_id=PROVINCIA_SANTIAGO_ID),
+        limit=100,
+    )
+
+    assert total == 1
+    assert [t.code for t in items] == ["SANTIAGO"]
+
+
+@pytest.mark.asyncio
+async def test_search_comuna_sin_coincidencias(db_session: AsyncSession):
+    """El buyer sin comuna resuelta no debe calzar con ningún filtro de comuna/provincia."""
+    await _seed_para_busqueda_geografica(db_session)
+    repo = TenderRepository(db_session)
+
+    items, total = await repo.search_tenders(
+        TenderFilterCriteria(commune_id=999), limit=100
+    )
+
+    assert total == 0
+    assert items == []
+
+
+# ---------------------------------------------------------------------------
+# comuna/provincia del organismo comprador
+# ---------------------------------------------------------------------------
+
+
+COMUNA_PUENTE_ALTO_ID = 1
+
+
+async def _seed_comuna(session: AsyncSession) -> int:
+    """Región 13 -> provincia Cordillera -> comuna Puente Alto, ya sembradas.
+
+    Devuelve el id de la comuna (ids fijados a mano, no leídos de vuelta del
+    ORM tras el commit: un `AsyncSession` expira los atributos al confirmar, y
+    releerlos dispara una recarga perezosa que no funciona en este contexto).
+    """
+    session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
+    session.add(ProvinciaModel(id=1, name="Cordillera", region_id=13))
+    session.add(
+        ComunaModel(id=COMUNA_PUENTE_ALTO_ID, name="Puente Alto", provincia_id=1)
+    )
+    await session.commit()
+    return COMUNA_PUENTE_ALTO_ID
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_buyer_crea_con_comuna(db_session: AsyncSession):
+    comuna_id = await _seed_comuna(db_session)
+    repo = TenderRepository(db_session)
+
+    await repo.get_or_create_buyer(
+        rut="12.345.678-9",
+        name="I Municipalidad de Puente Alto",
+        region_id=13,
+        comuna_id=comuna_id,
+        comuna_resolution_source="organismo_name",
+    )
+
+    buyer = await db_session.get(BuyerInstitutionModel, "12.345.678-9")
+    assert buyer is not None
+    assert buyer.comuna_id == comuna_id
+    assert buyer.comuna_resolution_source == "organismo_name"
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_buyer_no_actualiza_uno_ya_existente(
+    db_session: AsyncSession,
+):
+    """Get-or-create puro: un buyer ya creado nunca gana comuna en una llamada posterior."""
+    comuna_id = await _seed_comuna(db_session)
+    repo = TenderRepository(db_session)
+
+    await repo.get_or_create_buyer(
+        rut="12.345.678-9", name="Organismo Original", region_id=13
+    )
+    await repo.get_or_create_buyer(
+        rut="12.345.678-9",
+        name="Nombre Distinto",
+        region_id=13,
+        comuna_id=comuna_id,
+        comuna_resolution_source="organismo_name",
+    )
+
+    buyer = await db_session.get(BuyerInstitutionModel, "12.345.678-9")
+    assert buyer is not None
+    assert buyer.name == "Organismo Original"
+    assert buyer.comuna_id is None
+    assert buyer.comuna_resolution_source is None
+
+
+@pytest.mark.asyncio
+async def test_get_comuna_id_by_name(db_session: AsyncSession):
+    comuna_id = await _seed_comuna(db_session)
+    repo = TenderRepository(db_session)
+
+    assert await repo.get_comuna_id_by_name("Puente Alto") == comuna_id
+    assert await repo.get_comuna_id_by_name("Comuna Inexistente") is None
+
+
+@pytest.mark.asyncio
+async def test_get_tenders_hidrata_province_y_commune(db_session: AsyncSession):
+    comuna_id = await _seed_comuna(db_session)
+    repo = TenderRepository(db_session)
+
+    session = db_session
+    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
+    session.add(
+        BuyerInstitutionModel(
+            rut="12.345.678-9",
+            name="I Municipalidad de Puente Alto",
+            region_id=13,
+            comuna_id=comuna_id,
+            comuna_resolution_source="organismo_name",
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    tender_id = uuid4()
+    session.add(
+        TenderModel(
+            id=tender_id,
+            code="COT-PUENTE-ALTO",
+            name="Tender Puente Alto",
+            status_id=1,
+            published_at=utc_now_naive(),
+            closing_at=utc_now_naive(),
+            last_change_at=utc_now_naive(),
+            buyer_rut="12.345.678-9",
+            buyer_unit="Obras",
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert len(results) == 1
+    assert results[0].commune == "Puente Alto"
+    assert results[0].province == "Cordillera"
+    assert results[0].region == CHILE_REGIONS[13]
+
+
+@pytest.mark.asyncio
+async def test_search_hidrata_province_y_commune(db_session: AsyncSession):
+    comuna_id = await _seed_comuna(db_session)
+    repo = TenderRepository(db_session)
+
+    session = db_session
+    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
+    session.add(
+        BuyerInstitutionModel(
+            rut="12.345.678-9",
+            name="I Municipalidad de Puente Alto",
+            region_id=13,
+            comuna_id=comuna_id,
+            comuna_resolution_source="organismo_name",
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    session.add(
+        TenderModel(
+            id=uuid4(),
+            code="COT-PUENTE-ALTO",
+            name="Tender Puente Alto",
+            status_id=1,
+            published_at=utc_now_naive(),
+            closing_at=utc_now_naive(),
+            last_change_at=utc_now_naive(),
+            buyer_rut="12.345.678-9",
+            buyer_unit="Obras",
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    items, _ = await repo.search_tenders(TenderFilterCriteria(), limit=100)
+
+    assert items[0].commune == "Puente Alto"
+    assert items[0].province == "Cordillera"
+
+
+@pytest.mark.asyncio
+async def test_get_tenders_buyer_sin_comuna_no_falla(db_session: AsyncSession):
+    """Sin comuna resuelta, province/commune quedan en None, sin regresión."""
+    repo = TenderRepository(db_session)
+    session = db_session
+
+    session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
+    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
+    session.add(
+        BuyerInstitutionModel(
+            rut="12.345.678-9",
+            name="Servicio Electoral",
+            region_id=13,
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    tender_id = uuid4()
+    session.add(
+        TenderModel(
+            id=tender_id,
+            code="COT-SIN-COMUNA",
+            name="Tender sin comuna",
+            status_id=1,
+            published_at=utc_now_naive(),
+            closing_at=utc_now_naive(),
+            last_change_at=utc_now_naive(),
+            buyer_rut="12.345.678-9",
+            buyer_unit="Obras",
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert len(results) == 1
+    assert results[0].commune is None
+    assert results[0].province is None
+    assert results[0].region == CHILE_REGIONS[13]

@@ -54,3 +54,6 @@ export interface DeepAnalysis {
   created_at: string;
   updated_at: string;
 }
+
+export type { TenderSearchParams, TenderSearchResult } from "@/features/search/types";
+

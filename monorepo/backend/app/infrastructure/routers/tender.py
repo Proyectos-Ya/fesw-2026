@@ -133,6 +133,20 @@ def create_tender_router(
             list[str] | None,
             Query(description="Nombres de región, tal como los expone la API."),
         ] = None,
+        province_id: Annotated[
+            int | None,
+            Query(
+                description="Id de provincia, tal como lo expone "
+                "GET /catalogs/locations. Selección única, a diferencia de región."
+            ),
+        ] = None,
+        commune_id: Annotated[
+            int | None,
+            Query(
+                description="Id de comuna, tal como lo expone "
+                "GET /catalogs/locations. Selección única, a diferencia de región."
+            ),
+        ] = None,
         status_codes: Annotated[
             list[str] | None,
             Query(description="Estados: publicada, cerrada, desierta, adjudicada..."),
@@ -172,6 +186,8 @@ def create_tender_router(
             # InvalidSearchCriteria y debe traducirse a 422, no escaparse como 500.
             criteria = TenderFilterCriteria(
                 region_ids=_resolve_region_ids(regions),
+                province_id=province_id,
+                commune_id=commune_id,
                 status_codes=status_codes,
                 closing_from=closing_from,
                 closing_to=closing_to,

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
+from app.application.services.document_validator_service import IDocumentValidatorService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
     DocumentContextDTO,
@@ -48,10 +49,12 @@ class AskTenderAssistantUseCase:
         chat_repo: ITenderChatRepository,
         ai_service: ITenderAssistantAIService,
         supplier_repo: Optional[ISupplierRepository] = None,
+        validator_service: Optional[IDocumentValidatorService] = None,
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.supplier_repo = supplier_repo
+        self.validator_service = validator_service
 
     def _validate_guardrails(self, question: str) -> None:
         """Valida sintáctica y preventivamente intentos de manipulación del asistente (Prompt Injection)."""
@@ -67,6 +70,7 @@ class AskTenderAssistantUseCase:
         tender_id: UUID,
         user_id: UUID,
         question: str,
+        session_id: Optional[UUID] = None,
     ) -> TenderChatMessage:
         # 1. Validar pregunta no vacía
         cleaned_question = question.strip() if question else ""
@@ -80,8 +84,31 @@ class AskTenderAssistantUseCase:
         # 3. Validar guardarraíles de seguridad (Anti-Prompt Injection)
         self._validate_guardrails(cleaned_question)
 
-        # 4. Guardar mensaje de la pregunta del usuario
+        # 4. Resolver o validar la sesión de chat activa
+        from app.domain.errors.tender_chat_errors import ChatSessionNotFoundError
+
+        if session_id is not None:
+            session = await self.chat_repo.get_session_by_id(
+                session_id=session_id, user_id=user_id
+            )
+            if not session or session.tender_id != tender_id:
+                raise ChatSessionNotFoundError(
+                    "La sesión de chat no existe o no pertenece a esta licitación."
+                )
+        else:
+            session = await self.chat_repo.get_or_create_active_session(
+                user_id=user_id, tender_id=tender_id
+            )
+            session_id = session.id
+
+        # 5. Obtener historial reciente de esta sesión específica
+        history = await self.chat_repo.get_session_history(
+            session_id=session_id, user_id=user_id, limit=20
+        )
+
+        # 6. Guardar mensaje de la pregunta del usuario asociado a la sesión
         user_msg = TenderChatMessage(
+            session_id=session_id,
             tender_id=tender_id,
             user_id=user_id,
             role="user",
@@ -89,24 +116,43 @@ class AskTenderAssistantUseCase:
         )
         await self.chat_repo.save_message(user_msg)
 
-        # 5. Obtener historial reciente para dar contexto de conversación
-        history = await self.chat_repo.get_history(user_id=user_id, tender_id=tender_id, limit=20)
-
-        # 6. Obtener documentos adjuntos asociados a este chat/licitación
-        chat_docs = await self.chat_repo.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
+        # 7. Obtener y validar documentos adjuntos asociados a esta licitación
+        chat_docs = await self.chat_repo.get_documents_by_chat(
+            user_id=user_id, tender_id=tender_id
+        )
         document_contexts: List[DocumentContextDTO] = []
+        unprocessed_warnings: List[str] = []
+
         for doc in chat_docs:
             raw_bytes = await self.chat_repo.get_document_bytes(doc.id, user_id)
-            if raw_bytes:
-                document_contexts.append(
-                    DocumentContextDTO(
-                        document_name=doc.file_name,
-                        file_type=doc.file_type,
-                        file_bytes=raw_bytes,
-                    )
+            if not raw_bytes:
+                unprocessed_warnings.append(
+                    f"Advertencia: El documento '{doc.file_name}' no pudo ser recuperado del almacenamiento."
                 )
+                continue
 
-        # 7. Obtener perfil de la empresa proveedora si existe
+            # Validar integridad técnica del archivo para aislar corruptos (CA6)
+            if self.validator_service:
+                val_result = self.validator_service.validate_integrity(
+                    file_bytes=raw_bytes,
+                    file_name=doc.file_name,
+                    declared_type=doc.file_type,
+                )
+                if not val_result.is_valid:
+                    unprocessed_warnings.append(
+                        f"Advertencia: El documento '{doc.file_name}' está dañado o ilegible y no pudo ser procesado."
+                    )
+                    continue
+
+            document_contexts.append(
+                DocumentContextDTO(
+                    document_name=doc.file_name,
+                    file_type=doc.file_type,
+                    file_bytes=raw_bytes,
+                )
+            )
+
+        # 8. Obtener perfil de la empresa proveedora si existe
         supplier_context_str: Optional[str] = None
         if self.supplier_repo:
             try:
@@ -128,7 +174,7 @@ class AskTenderAssistantUseCase:
             except Exception:
                 supplier_context_str = None
 
-        # 8. Invocar servicio de IA
+        # 9. Invocar servicio de IA con historial multi-turn y documentos cruzados
         try:
             ai_response = await self.ai_service.generate_response(
                 question=cleaned_question,
@@ -144,13 +190,20 @@ class AskTenderAssistantUseCase:
                 f"El asistente virtual se encuentra temporalmente fuera de servicio: {e}"
             ) from e
 
-        # 7. Crear y guardar mensaje de respuesta del asistente
+        # 10. Crear y guardar mensaje de respuesta del asistente enriquecido
         assistant_msg = TenderChatMessage(
+            session_id=session_id,
             tender_id=tender_id,
             user_id=user_id,
             role="assistant",
             content=ai_response.answer,
             citations=ai_response.citations,
+            discrepancies=ai_response.discrepancies,
+            warnings=unprocessed_warnings,
+            unbacked_aspects=ai_response.unbacked_aspects,
+            has_sufficient_info=ai_response.has_sufficient_info,
         )
         saved_response = await self.chat_repo.save_message(assistant_msg)
         return saved_response
+
+

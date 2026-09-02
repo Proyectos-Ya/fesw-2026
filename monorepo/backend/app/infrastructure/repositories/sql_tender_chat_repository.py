@@ -10,22 +10,37 @@ from app.application.repositories.tender_chat_repository import ITenderChatRepos
 from app.domain.entities.tender_chat import (
     TenderChatMessage,
     TenderChatDocument,
+    TenderChatSession,
     Citation,
+    DocumentDiscrepancy,
+    utc_now_naive,
 )
 from app.infrastructure.repositories.tender_chat_model import (
     TenderChatMessageModel,
     TenderChatDocumentModel,
+    TenderChatSessionModel,
 )
 
 
 class SQLTenderChatRepository(ITenderChatRepository):
-    """Implementación relacional (SQLModel / PostgreSQL) del repositorio de chat y documentos."""
+    """Implementación relacional (SQLModel / PostgreSQL) del repositorio de chat, documentos y sesiones."""
 
     def __init__(self, session: AsyncSession, storage_dir: Optional[Path] = None):
         self.session = session
         self.storage_dir = storage_dir or Path("storage/chat_uploads")
 
     # --- Conversiones de Modelos a Entidades ---
+
+    def _session_to_entity(self, model: TenderChatSessionModel) -> TenderChatSession:
+        return TenderChatSession(
+            id=model.id,
+            tender_id=model.tender_id,
+            user_id=model.user_id,
+            title=model.title,
+            is_active=model.is_active,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
 
     def _message_to_entity(self, model: TenderChatMessageModel) -> TenderChatMessage:
         citations = []
@@ -37,13 +52,43 @@ class SQLTenderChatRepository(ITenderChatRepository):
                     quote=c.get("quote", ""),
                 )
             )
+
+        discrepancies = []
+        for d in getattr(model, "discrepancies", []) or []:
+            conflicting_sources = [
+                Citation(
+                    document_name=cs.get("document_name", ""),
+                    page_or_sheet=cs.get("page_or_sheet"),
+                    quote=cs.get("quote", "")
+                )
+                for cs in d.get("conflicting_sources", [])
+            ]
+            discrepancies.append(
+                DocumentDiscrepancy(
+                    topic=d.get("topic", "Discrepancia"),
+                    description=d.get("description", ""),
+                    conflicting_sources=conflicting_sources,
+                )
+            )
+
+        warnings = list(getattr(model, "warnings", []) or [])
+        unbacked_aspects = list(getattr(model, "unbacked_aspects", []) or [])
+        has_sufficient_info = getattr(model, "has_sufficient_info", True)
+        if has_sufficient_info is None:
+            has_sufficient_info = True
+
         return TenderChatMessage(
             id=model.id,
+            session_id=model.session_id,
             tender_id=model.tender_id,
             user_id=model.user_id,
             role=model.role,  # type: ignore[arg-type]
             content=model.content,
             citations=citations,
+            discrepancies=discrepancies,
+            warnings=warnings,
+            unbacked_aspects=unbacked_aspects,
+            has_sufficient_info=has_sufficient_info,
             created_at=model.created_at,
         )
 
@@ -56,13 +101,35 @@ class SQLTenderChatRepository(ITenderChatRepository):
             }
             for c in entity.citations
         ]
+
+        discrepancies_data = [
+            {
+                "topic": d.topic,
+                "description": d.description,
+                "conflicting_sources": [
+                    {
+                        "document_name": cs.document_name,
+                        "page_or_sheet": cs.page_or_sheet,
+                        "quote": cs.quote,
+                    }
+                    for cs in d.conflicting_sources
+                ]
+            }
+            for d in entity.discrepancies
+        ]
+
         return TenderChatMessageModel(
             id=entity.id,
+            session_id=entity.session_id,
             tender_id=entity.tender_id,
             user_id=entity.user_id,
             role=entity.role,
             content=entity.content,
             citations=citations_data,
+            discrepancies=discrepancies_data,
+            warnings=entity.warnings,
+            unbacked_aspects=entity.unbacked_aspects,
+            has_sufficient_info=entity.has_sufficient_info,
             created_at=entity.created_at,
         )
 
@@ -80,13 +147,131 @@ class SQLTenderChatRepository(ITenderChatRepository):
 
     # --- Métodos del Contrato ITenderChatRepository ---
 
+    async def create_session(
+        self, user_id: UUID, tender_id: UUID, title: Optional[str] = None
+    ) -> TenderChatSession:
+        # Desactivar cualquier sesión previa activa
+        query = select(TenderChatSessionModel).where(
+            TenderChatSessionModel.user_id == user_id,
+            TenderChatSessionModel.tender_id == tender_id,
+            TenderChatSessionModel.is_active == True,  # noqa: E712
+        )
+        active_models = (await self.session.exec(query)).all()
+        now = utc_now_naive()
+        for act in active_models:
+            act.is_active = False
+            act.updated_at = now
+            self.session.add(act)
+
+        from uuid import uuid4
+
+        new_session = TenderChatSessionModel(
+            id=uuid4(),
+            tender_id=tender_id,
+            user_id=user_id,
+            title=title,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(new_session)
+        await self.session.commit()
+        return self._session_to_entity(new_session)
+
+    async def get_or_create_active_session(
+        self, user_id: UUID, tender_id: UUID
+    ) -> TenderChatSession:
+        query = (
+            select(TenderChatSessionModel)
+            .where(
+                TenderChatSessionModel.user_id == user_id,
+                TenderChatSessionModel.tender_id == tender_id,
+                TenderChatSessionModel.is_active == True,  # noqa: E712
+            )
+            .order_by(col(TenderChatSessionModel.created_at).desc())
+            .limit(1)
+        )
+        result = await self.session.exec(query)
+        model = result.first()
+        if model:
+            return self._session_to_entity(model)
+        return await self.create_session(user_id=user_id, tender_id=tender_id)
+
+    async def get_session_by_id(
+        self, session_id: UUID, user_id: UUID
+    ) -> Optional[TenderChatSession]:
+        query = select(TenderChatSessionModel).where(
+            TenderChatSessionModel.id == session_id,
+            TenderChatSessionModel.user_id == user_id,
+        )
+        result = await self.session.exec(query)
+        model = result.first()
+        return self._session_to_entity(model) if model else None
+
+    async def get_session_history(
+        self, session_id: UUID, user_id: UUID, limit: int = 50
+    ) -> List[TenderChatMessage]:
+        query = (
+            select(TenderChatMessageModel)
+            .where(
+                TenderChatMessageModel.session_id == session_id,
+                TenderChatMessageModel.user_id == user_id,
+            )
+            .order_by(col(TenderChatMessageModel.created_at).asc())
+            .limit(limit)
+        )
+        result = await self.session.exec(query)
+        models = result.all()
+        return [self._message_to_entity(m) for m in models]
+
+    async def archive_session(self, session_id: UUID, user_id: UUID) -> bool:
+        query = select(TenderChatSessionModel).where(
+            TenderChatSessionModel.id == session_id,
+            TenderChatSessionModel.user_id == user_id,
+        )
+        result = await self.session.exec(query)
+        model = result.first()
+        if not model:
+            return False
+        model.is_active = False
+        model.updated_at = utc_now_naive()
+        self.session.add(model)
+        await self.session.commit()
+        return True
+
     async def save_message(self, message: TenderChatMessage) -> TenderChatMessage:
+        # Si el mensaje no trae session_id, intentar asociarlo a la sesión activa
+        if message.session_id is None:
+            active_session = await self.get_or_create_active_session(
+                user_id=message.user_id, tender_id=message.tender_id
+            )
+            message.session_id = active_session.id
+
         model = self._message_to_model(message)
         self.session.add(model)
         await self.session.commit()
         return message
 
     async def get_history(self, user_id: UUID, tender_id: UUID, limit: int = 50) -> List[TenderChatMessage]:
+        # Buscar sesión activa primero
+        active_query = (
+            select(TenderChatSessionModel)
+            .where(
+                TenderChatSessionModel.user_id == user_id,
+                TenderChatSessionModel.tender_id == tender_id,
+                TenderChatSessionModel.is_active == True,  # noqa: E712
+            )
+            .order_by(col(TenderChatSessionModel.created_at).desc())
+            .limit(1)
+        )
+        active_res = await self.session.exec(active_query)
+        active_session = active_res.first()
+        if active_session:
+            return await self.get_session_history(
+                session_id=active_session.id, user_id=user_id, limit=limit
+            )
+
+        # Fallback para mensajes anteriores no asignados a sesiones
         query = (
             select(TenderChatMessageModel)
             .where(
@@ -99,6 +284,7 @@ class SQLTenderChatRepository(ITenderChatRepository):
         result = await self.session.exec(query)
         models = result.all()
         return [self._message_to_entity(m) for m in models]
+
 
     async def save_document(self, doc: TenderChatDocument, file_bytes: bytes) -> TenderChatDocument:
         # 1. Guardar archivo físico en disco

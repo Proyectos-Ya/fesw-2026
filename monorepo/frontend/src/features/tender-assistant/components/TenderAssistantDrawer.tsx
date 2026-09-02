@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, X, Plus, AlertTriangle, RefreshCw } from "lucide-react";
 
 import { useTenderChat } from "../hooks/useTenderChat";
 import { useTenderDocuments } from "../hooks/useTenderDocuments";
@@ -23,7 +23,11 @@ export function TenderAssistantDrawer({
   const {
     messages,
     isAsking,
+    isStartingNewChat,
     error: chatError,
+    historyError,
+    startNewChat,
+    retryHistory,
     sendMessage,
   } = useTenderChat(isOpen ? tenderId : "");
 
@@ -59,14 +63,27 @@ export function TenderAssistantDrawer({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Cerrar asistente"
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void startNewChat()}
+            disabled={isStartingNewChat || isAsking}
+            aria-label="Nuevo Chat"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Nuevo Chat</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar asistente"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* Attachments Section */}
@@ -79,6 +96,37 @@ export function TenderAssistantDrawer({
         />
       </div>
 
+      {/* History Error Banner */}
+      {historyError && (
+        <div
+          role="alert"
+          className="mx-4 mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-2xs"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <span className="font-medium leading-relaxed">{historyError}</span>
+          </div>
+          <div className="flex items-center gap-2 pl-6">
+            <button
+              type="button"
+              onClick={() => void retryHistory()}
+              className="flex items-center gap-1 rounded-md bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-700 transition-colors"
+            >
+              <RefreshCw className="h-3 w-3" />
+              <span>Reintentar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void startNewChat()}
+              className="flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100/50 transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Nuevo Chat</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Chat Messages */}
       <ChatMessageList
         messages={messages}
@@ -90,7 +138,9 @@ export function TenderAssistantDrawer({
       <ChatInput
         onSend={sendMessage}
         isAsking={isAsking}
+        disabled={Boolean(historyError)}
       />
     </aside>
   );
 }
+

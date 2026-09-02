@@ -34,6 +34,14 @@ class TenderFilterCriteria(BaseModel):
     """
 
     region_ids: list[int] | None = None
+    # Singulares, a diferencia de `region_ids`: `LocationFilter` en el
+    # frontend es de selección única (cascada región -> provincia -> comuna),
+    # no un multi-select como región. Viajan por id, no por nombre: a
+    # diferencia de las 16 regiones, 56 provincias y 346 comunas no dan para
+    # hardcodear del lado del frontend, así que el id sale directo del
+    # catálogo (`GET /catalogs/locations`) sin resolución de nombre acá.
+    province_id: int | None = None
+    commune_id: int | None = None
     status_codes: list[str] | None = None
     closing_from: datetime | None = None
     closing_to: datetime | None = None

@@ -14,6 +14,27 @@ class RegionModel(SQLModel, table=True):
     name: str
 
     institutions: list["BuyerInstitutionModel"] = Relationship(back_populates="region")
+    provincias: list["ProvinciaModel"] = Relationship(back_populates="region")
+
+
+class ProvinciaModel(SQLModel, table=True):
+    __tablename__ = "provincia"  # type: ignore
+    id: int = Field(primary_key=True)
+    name: str
+    region_id: int = Field(foreign_key="region.id")
+
+    region: RegionModel | None = Relationship(back_populates="provincias")
+    comunas: list["ComunaModel"] = Relationship(back_populates="provincia")
+
+
+class ComunaModel(SQLModel, table=True):
+    __tablename__ = "comuna"  # type: ignore
+    id: int = Field(primary_key=True)
+    name: str
+    provincia_id: int = Field(foreign_key="provincia.id")
+
+    provincia: ProvinciaModel | None = Relationship(back_populates="comunas")
+    institutions: list["BuyerInstitutionModel"] = Relationship(back_populates="comuna")
 
 
 class TenderStatusModel(SQLModel, table=True):
@@ -30,10 +51,18 @@ class BuyerInstitutionModel(SQLModel, table=True):
     rut: str = Field(primary_key=True)
     name: str
     region_id: int = Field(foreign_key="region.id")
+    # Nullable: no todos los organismos se resuelven (ver
+    # app/shared/comunas.py). La provincia sale del join comuna -> provincia,
+    # no se guarda una columna separada para no poder desincronizarse.
+    comuna_id: int | None = Field(default=None, foreign_key="comuna.id")
+    # Qué heurística resolvió comuna_id ("organismo_name" por ahora). Sirve
+    # para auditar/depurar cuando se sumen más caminos de resolución.
+    comuna_resolution_source: str | None = None
     created_at: datetime
     updated_at: datetime
 
     region: RegionModel | None = Relationship(back_populates="institutions")
+    comuna: ComunaModel | None = Relationship(back_populates="institutions")
     tenders: list["TenderModel"] = Relationship(back_populates="buyer")
 
 

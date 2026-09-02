@@ -16,6 +16,7 @@ from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
+    ComunaModel,
     RegionModel,
     TenderItemModel,
     TenderModel,
@@ -52,6 +53,12 @@ class TenderRepository(ITenderRepository):
             buyer_unit=model.buyer_unit,
             region=model.buyer.region.name
             if model.buyer and model.buyer.region
+            else None,
+            province=model.buyer.comuna.provincia.name
+            if model.buyer and model.buyer.comuna and model.buyer.comuna.provincia
+            else None,
+            commune=model.buyer.comuna.name
+            if model.buyer and model.buyer.comuna
             else None,
             available_amount_clp=model.available_amount_clp,
             created_at=model.created_at,
@@ -98,6 +105,9 @@ class TenderRepository(ITenderRepository):
             selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
                 BuyerInstitutionModel.region  # type: ignore[arg-type]
             ),
+            selectinload(TenderModel.buyer)  # type: ignore[arg-type]
+            .selectinload(BuyerInstitutionModel.comuna)  # type: ignore[arg-type]
+            .selectinload(ComunaModel.provincia),  # type: ignore[arg-type]
             selectinload(TenderModel.items),  # type: ignore[arg-type]
         )
 
@@ -179,29 +189,54 @@ class TenderRepository(ITenderRepository):
         """
         conditions = self._search_conditions(criteria)
 
-        # La región vive en la institución compradora, así que necesita join. Se
+        # Región, provincia y comuna viven en la institución compradora (la
+        # provincia, un salto más, en la comuna), así que necesitan join. Se
         # aplica a las dos consultas para que el total corresponda a los mismos
         # resultados que se devuelven.
-        def _with_region(query):
-            if not criteria.region_ids:
+        def _with_location(query):
+            needs_buyer_join = bool(
+                criteria.region_ids or criteria.province_id or criteria.commune_id
+            )
+            if not needs_buyer_join:
                 return query.where(*conditions) if conditions else query
+
             query = query.join(
                 BuyerInstitutionModel,
                 col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
-            ).where(col(BuyerInstitutionModel.region_id).in_(criteria.region_ids))
+            )
+            if criteria.region_ids:
+                query = query.where(
+                    col(BuyerInstitutionModel.region_id).in_(criteria.region_ids)
+                )
+            if criteria.commune_id:
+                # Comuna es directa: `buyer_institution.comuna_id` ya es la FK.
+                query = query.where(
+                    col(BuyerInstitutionModel.comuna_id) == criteria.commune_id
+                )
+            elif criteria.province_id:
+                # Provincia no tiene FK propia en `buyer_institution`: un salto
+                # más a través de `comuna`. No hace falta si ya se filtró por
+                # comuna (una comuna implica una única provincia).
+                query = query.join(
+                    ComunaModel,
+                    col(BuyerInstitutionModel.comuna_id) == col(ComunaModel.id),
+                ).where(col(ComunaModel.provincia_id) == criteria.province_id)
             return query.where(*conditions) if conditions else query
 
         total_result = await self.session.exec(
-            _with_region(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
+            _with_location(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
         )
         total = total_result.one()
 
-        page_query = _with_region(
+        page_query = _with_location(
             select(TenderModel).options(
                 selectinload(TenderModel.status),  # type: ignore[arg-type]
                 selectinload(TenderModel.buyer).selectinload(  # type: ignore[arg-type]
                     BuyerInstitutionModel.region  # type: ignore[arg-type]
                 ),
+                selectinload(TenderModel.buyer)  # type: ignore[arg-type]
+                .selectinload(BuyerInstitutionModel.comuna)  # type: ignore[arg-type]
+                .selectinload(ComunaModel.provincia),  # type: ignore[arg-type]
                 selectinload(TenderModel.items),  # type: ignore[arg-type]
             )
         )
@@ -219,7 +254,14 @@ class TenderRepository(ITenderRepository):
         result = await self.session.exec(statement)
         return result.first()
 
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str:
+    async def get_or_create_buyer(
+        self,
+        rut: str,
+        name: str,
+        region_id: int,
+        comuna_id: int | None = None,
+        comuna_resolution_source: str | None = None,
+    ) -> str:
         statement = select(BuyerInstitutionModel).where(
             BuyerInstitutionModel.rut == rut
         )
@@ -229,11 +271,27 @@ class TenderRepository(ITenderRepository):
         if not buyer:
             now = utc_now_naive()
             buyer = BuyerInstitutionModel(
-                rut=rut, name=name, region_id=region_id, created_at=now, updated_at=now
+                rut=rut,
+                name=name,
+                region_id=region_id,
+                comuna_id=comuna_id,
+                comuna_resolution_source=comuna_resolution_source,
+                created_at=now,
+                updated_at=now,
             )
             self.session.add(buyer)
             await self.session.flush()
         return rut
+
+    async def get_comuna_id_by_name(self, name: str) -> int | None:
+        statement = select(ComunaModel).where(ComunaModel.name == name)
+        result = await self.session.exec(statement)
+        comuna = result.first()
+        return comuna.id if comuna else None
+
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None:
+        comuna = await self.session.get(ComunaModel, comuna_id)
+        return comuna.provincia_id if comuna else None
 
     async def get_or_create_status(self, status_id: int, code: str) -> int:
         """Devuelve el id de la fila de estado, creándola o corrigiéndola.

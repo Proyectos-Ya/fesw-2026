@@ -20,8 +20,6 @@ class TenderFilters(BaseModel):
     """Filters class to query tenders by multiple dynamic parameters."""
 
     ids: list[UUID] | None = None
-    # La granularidad geográfica llega hasta la región: ninguna de las dos APIs de
-    # Mercado Público entrega provincia. Ver PENDIENTES.md 6.17.
     regions: list[str] | None = None  # Filter by Region Names (e.g. ['Metropolitana'])
 
 
@@ -54,7 +52,20 @@ class ITenderRepository(ABC):
     async def get_by_code(self, code: str) -> TenderModel | None: ...
 
     @abstractmethod
-    async def get_or_create_buyer(self, rut: str, name: str, region_id: int) -> str: ...
+    async def get_or_create_buyer(
+        self,
+        rut: str,
+        name: str,
+        region_id: int,
+        comuna_id: int | None = None,
+        comuna_resolution_source: str | None = None,
+    ) -> str: ...
+
+    @abstractmethod
+    async def get_comuna_id_by_name(self, name: str) -> int | None: ...
+
+    @abstractmethod
+    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None: ...
 
     @abstractmethod
     async def save_complex_tender(
