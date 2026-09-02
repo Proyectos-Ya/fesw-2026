@@ -16,8 +16,15 @@ export function SearchDashboard() {
     setInputText,
     regions,
     setRegions,
+    provinceId,
+    setProvinceId,
+    communeId,
+    setCommuneId,
     availability,
     setAvailability,
+    closingFrom,
+    closingTo,
+    setClosingDateRange,
     minAmount,
     maxAmount,
     setAmountRange,
@@ -81,7 +88,10 @@ export function SearchDashboard() {
 
       {/* Action Error Banner (e.g. save tender failed) */}
       {actionError && (
-        <div className="flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+        <div
+          role="alert"
+          className="flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger"
+        >
           <span>{actionError}</span>
           <button
             type="button"
@@ -104,8 +114,15 @@ export function SearchDashboard() {
       <SearchFilters
         regions={regions}
         onRegionsChange={setRegions}
+        provinceId={provinceId}
+        onProvinceChange={setProvinceId}
+        communeId={communeId}
+        onCommuneChange={setCommuneId}
         availability={availability}
         onAvailabilityChange={setAvailability}
+        closingFrom={closingFrom}
+        closingTo={closingTo}
+        onClosingDateRangeChange={setClosingDateRange}
         minAmount={minAmount}
         maxAmount={maxAmount}
         onAmountRangeChange={setAmountRange}

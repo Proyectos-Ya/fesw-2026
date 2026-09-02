@@ -8,6 +8,7 @@ import {
   saveTenderApi,
   unsaveTenderApi,
 } from "@/features/saved-tenders/services/savedTenders.service";
+import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import { searchTenders } from "../services/searchService";
 import type { Tender } from "@/features/matches/tenderTypes";
 import type { TenderSearchParams } from "../types";
@@ -64,6 +65,22 @@ export function useTenderSearch() {
   const urlMaxAmount = searchParams.get("max_amount")
     ? Number(searchParams.get("max_amount"))
     : undefined;
+  const rawProvince = searchParams.get("province_id");
+  const parsedProvince = rawProvince ? parseInt(rawProvince, 10) : undefined;
+  const urlProvinceId =
+    parsedProvince !== undefined && !Number.isNaN(parsedProvince)
+      ? parsedProvince
+      : undefined;
+
+  const rawCommune = searchParams.get("commune_id");
+  const parsedCommune = rawCommune ? parseInt(rawCommune, 10) : undefined;
+  const urlCommuneId =
+    parsedCommune !== undefined && !Number.isNaN(parsedCommune)
+      ? parsedCommune
+      : undefined;
+
+  const urlClosingFrom = searchParams.get("closing_from") ?? "";
+  const urlClosingTo = searchParams.get("closing_to") ?? "";
   const urlPage = searchParams.get("page")
     ? Math.max(1, parseInt(searchParams.get("page")!, 10))
     : 1;
@@ -109,7 +126,11 @@ export function useTenderSearch() {
     (newParams: {
       q?: string;
       regions?: string[];
+      province_id?: number;
+      commune_id?: number;
       availability?: AvailabilityFilter;
+      closing_from?: string;
+      closing_to?: string;
       min_amount?: number;
       max_amount?: number;
       page?: number;
@@ -117,10 +138,22 @@ export function useTenderSearch() {
       const qVal = newParams.q !== undefined ? newParams.q : urlQuery;
       const regionsVal =
         newParams.regions !== undefined ? newParams.regions : urlRegions;
+      const provinceIdVal =
+        "province_id" in newParams ? newParams.province_id : urlProvinceId;
+      const communeIdVal =
+        "commune_id" in newParams ? newParams.commune_id : urlCommuneId;
       const availabilityVal =
         newParams.availability !== undefined
           ? newParams.availability
           : urlAvailability;
+      const closingFromVal =
+        newParams.closing_from !== undefined
+          ? newParams.closing_from
+          : urlClosingFrom;
+      const closingToVal =
+        newParams.closing_to !== undefined
+          ? newParams.closing_to
+          : urlClosingTo;
       const minVal =
         newParams.min_amount !== undefined
           ? newParams.min_amount
@@ -136,8 +169,20 @@ export function useTenderSearch() {
       for (const r of regionsVal) {
         if (r) sp.append("regions", r);
       }
+      if (provinceIdVal !== undefined && provinceIdVal !== null && !isNaN(provinceIdVal)) {
+        sp.set("province_id", String(provinceIdVal));
+      }
+      if (communeIdVal !== undefined && communeIdVal !== null && !isNaN(communeIdVal)) {
+        sp.set("commune_id", String(communeIdVal));
+      }
       if (availabilityVal) {
         sp.set("availability", availabilityVal);
+      }
+      if (closingFromVal && closingFromVal.trim()) {
+        sp.set("closing_from", closingFromVal.trim());
+      }
+      if (closingToVal && closingToVal.trim()) {
+        sp.set("closing_to", closingToVal.trim());
       }
       if (minVal !== undefined && minVal !== null && !isNaN(minVal)) {
         sp.set("min_amount", String(minVal));
@@ -170,7 +215,11 @@ export function useTenderSearch() {
       router,
       urlQuery,
       urlRegions,
+      urlProvinceId,
+      urlCommuneId,
       urlAvailability,
+      urlClosingFrom,
+      urlClosingTo,
       urlMinAmount,
       urlMaxAmount,
     ],
@@ -210,11 +259,27 @@ export function useTenderSearch() {
     if (urlRegions.length > 0) {
       params.regions = urlRegions;
     }
+    if (urlProvinceId !== undefined) {
+      params.province_id = urlProvinceId;
+    }
+    if (urlCommuneId !== undefined) {
+      params.commune_id = urlCommuneId;
+    }
 
-    // Temporal availability filtering (Opción A)
+    // Temporal availability & explicit date range (CA-1)
     const nowIso = new Date().toISOString();
-    if (urlAvailability === "vigentes") {
+    if (urlClosingFrom) {
+      params.closing_from = urlClosingFrom.includes("T")
+        ? urlClosingFrom
+        : `${urlClosingFrom}T00:00:00Z`;
+    } else if (urlAvailability === "vigentes") {
       params.closing_from = nowIso;
+    }
+
+    if (urlClosingTo) {
+      params.closing_to = urlClosingTo.includes("T")
+        ? urlClosingTo
+        : `${urlClosingTo}T23:59:59Z`;
     } else if (urlAvailability === "cerradas") {
       params.closing_to = nowIso;
     }
@@ -260,7 +325,11 @@ export function useTenderSearch() {
   }, [
     urlQuery,
     urlRegions,
+    urlProvinceId,
+    urlCommuneId,
     urlAvailability,
+    urlClosingFrom,
+    urlClosingTo,
     urlMinAmount,
     urlMaxAmount,
     urlPage,
@@ -270,7 +339,21 @@ export function useTenderSearch() {
   // 9. Filter mutation handlers
   const handleSetRegions = useCallback(
     (regions: string[]) => {
-      updateUrl({ regions, page: 1 });
+      updateUrl({ regions, province_id: undefined, commune_id: undefined, page: 1 });
+    },
+    [updateUrl],
+  );
+
+  const handleSetProvinceId = useCallback(
+    (provinceId?: number) => {
+      updateUrl({ province_id: provinceId, commune_id: undefined, page: 1 });
+    },
+    [updateUrl],
+  );
+
+  const handleSetCommuneId = useCallback(
+    (communeId?: number) => {
+      updateUrl({ commune_id: communeId, page: 1 });
     },
     [updateUrl],
   );
@@ -285,6 +368,17 @@ export function useTenderSearch() {
   const handleSetAmountRange = useCallback(
     (min?: number, max?: number) => {
       updateUrl({ min_amount: min, max_amount: max, page: 1 });
+    },
+    [updateUrl],
+  );
+
+  const handleSetClosingDateRange = useCallback(
+    (from?: string, to?: string) => {
+      updateUrl({
+        closing_from: from ?? "",
+        closing_to: to ?? "",
+        page: 1,
+      });
     },
     [updateUrl],
   );
@@ -337,22 +431,24 @@ export function useTenderSearch() {
           else next.delete(tenderId);
           return next;
         });
-        setActionError(
-          err instanceof ApiError
-            ? err.message
-            : "No pudimos guardar los cambios. Revisa tu conexión.",
-        );
+        setActionError(getSaveErrorMessage(isCurrentlySaved));
       }
     },
     [savedTenderIds],
   );
 
+  const activeFilterCount =
+    urlRegions.length +
+    (urlProvinceId !== undefined ? 1 : 0) +
+    (urlCommuneId !== undefined ? 1 : 0) +
+    (urlAvailability !== null ? 1 : 0) +
+    (urlClosingFrom ? 1 : 0) +
+    (urlClosingTo ? 1 : 0) +
+    (urlMinAmount !== undefined ? 1 : 0) +
+    (urlMaxAmount !== undefined ? 1 : 0);
+
   const hasActiveFilters = Boolean(
-    urlQuery.trim() ||
-      urlRegions.length > 0 ||
-      urlAvailability !== null ||
-      urlMinAmount !== undefined ||
-      urlMaxAmount !== undefined,
+    urlQuery.trim() || activeFilterCount > 0,
   );
 
   return {
@@ -361,8 +457,15 @@ export function useTenderSearch() {
     query: urlQuery,
     regions: urlRegions,
     setRegions: handleSetRegions,
+    provinceId: urlProvinceId,
+    setProvinceId: handleSetProvinceId,
+    communeId: urlCommuneId,
+    setCommuneId: handleSetCommuneId,
     availability: urlAvailability,
     setAvailability: handleSetAvailability,
+    closingFrom: urlClosingFrom,
+    closingTo: urlClosingTo,
+    setClosingDateRange: handleSetClosingDateRange,
     minAmount: urlMinAmount,
     maxAmount: urlMaxAmount,
     setAmountRange: handleSetAmountRange,
@@ -371,6 +474,7 @@ export function useTenderSearch() {
     pageSize: PAGE_SIZE,
     clearFilters: handleClearFilters,
     hasActiveFilters,
+    activeFilterCount,
     state,
     retry: handleRetry,
     savedTenderIds,

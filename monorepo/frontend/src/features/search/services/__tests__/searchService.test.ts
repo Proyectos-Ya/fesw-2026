@@ -113,4 +113,25 @@ describe("searchTenders", () => {
       "adjudicada",
     ]);
   });
+
+  it("formatea correctamente los query params province_id y commune_id como enteros", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockResult,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchTenders({
+      province_id: 51,
+      commune_id: 295,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url] = fetchMock.mock.calls[0] as [string];
+    const parsedUrl = new URL(url);
+
+    expect(parsedUrl.pathname).toBe("/tenders/search");
+    expect(parsedUrl.searchParams.get("province_id")).toBe("51");
+    expect(parsedUrl.searchParams.get("commune_id")).toBe("295");
+  });
 });

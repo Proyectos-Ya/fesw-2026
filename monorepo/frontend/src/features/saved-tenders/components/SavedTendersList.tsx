@@ -11,8 +11,8 @@ import {
   fetchSavedTenders,
   unsaveTenderApi,
 } from "../services/savedTenders.service";
+import { SAVED_TENDERS_ERRORS } from "../constants";
 import type { MatchingResult } from "@/features/matches/tenderTypes";
-import { ApiError } from "@/features/shared/api/client";
 
 export function SavedTendersList() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
@@ -54,11 +54,7 @@ export function SavedTendersList() {
     } catch (err) {
       console.error("Error al desguardar:", err);
       setMatches(previous);
-      setActionError(
-        err instanceof ApiError
-          ? err.message
-          : "No pudimos retirar la licitación de guardados. Revisa tu conexión."
-      );
+      setActionError(SAVED_TENDERS_ERRORS.UNSAVE_FAILED);
     }
   };
 
@@ -108,7 +104,10 @@ export function SavedTendersList() {
       </div>
 
       {actionError && (
-        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+        <div
+          role="alert"
+          className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger"
+        >
           <span>{actionError}</span>
           <button
             type="button"
