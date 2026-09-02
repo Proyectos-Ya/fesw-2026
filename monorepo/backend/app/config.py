@@ -5,6 +5,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.shared.constants import (
+    DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY,
     DEFAULT_MERCADOPUBLICO_DETAIL_DELAY,
     DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT,
 )
@@ -144,6 +145,9 @@ class Settings(BaseSettings):
     mercado_publico_api_key: str
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
     mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
+    mercadopublico_detail_concurrency: int = (
+        DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
+    )
     # Ingesta automática al arrancar y región a la que acotarla (None = todas).
     run_auto_ingestion: bool = True
     target_region: str | None = None

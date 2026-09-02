@@ -1,5 +1,13 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.infrastructure.services.tenders.tender_ingestion_service import (
+        ResultadoListado,
+        ResultadoProceso,
+    )
 
 
 class ITenderIngestionService(ABC):
@@ -18,7 +26,9 @@ class ITenderIngestionService(ABC):
         por_publicacion: bool = False,
         estado: str | None = None,
         limite: int | None = None,
-    ) -> int:
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+    ) -> "ResultadoListado":
         """Consulta el listado de la API y guarda la metadata básica.
 
         Sin argumentos hace lo de siempre: los cambios de las últimas 24 h, que
@@ -26,7 +36,11 @@ class ITenderIngestionService(ABC):
         inicial, que necesita una ventana ancha, filtrar por estado en el
         servidor y pedir por fecha de publicación en vez de por cambio.
 
-        Devuelve cuántas licitaciones nuevas quedaron encoladas.
+        `desde`/`hasta` mandan sobre `dias` cuando vienen: es como el cron le
+        pasa la ventana que salió del cursor.
+
+        Devuelve cuántas quedaron encoladas y —lo que decide si el cursor
+        avanza— si alcanzó a recorrer la ventana entera.
         """
         pass
 
@@ -43,9 +57,42 @@ class ITenderIngestionService(ABC):
         pass
 
     @abstractmethod
-    async def process_unprocessed_tenders(self) -> None:
+    async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
+        """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
+
+        Reemplaza a `ultima_sincronizacion` para decidir la ventana. Solo cuentan
+        las corridas que alcanzaron a listar su ventana entera.
         """
-        Procesa las licitaciones marcadas como no procesadas, descargando su
-        detalle y ejecutando la ingesta.
+        pass
+
+    @abstractmethod
+    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> UUID:
+        """Abre una corrida en estado `running` y devuelve su id."""
+        pass
+
+    @abstractmethod
+    async def registrar_fin(
+        self,
+        run_id: UUID,
+        *,
+        status: str,
+        listed: int = 0,
+        processed: int = 0,
+        failed: int = 0,
+    ) -> None:
+        """Cierra la corrida. Solo `ok` mueve el cursor."""
+        pass
+
+    @abstractmethod
+    async def process_unprocessed_tenders(
+        self, limite: int | None = None
+    ) -> "ResultadoProceso":
+        """Procesa un lote de licitaciones pendientes, bajando su detalle.
+
+        Procesa a lo más `limite` y vuelve, en vez de vaciar la cola entera:
+        quien llama decide si insiste. Devuelve qué pasó en la pasada, y en
+        particular si la cuota se agotó — sin ese dato, el bucle de la carga
+        inicial vuelve a intentar y gasta los reintentos del cliente contra una
+        cuota que ya no existe.
         """
         pass

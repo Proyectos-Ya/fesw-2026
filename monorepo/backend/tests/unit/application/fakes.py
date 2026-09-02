@@ -113,6 +113,7 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     """Repositorio vectorial de licitaciones en memoria para pruebas."""
 
     def __init__(self) -> None:
+        self.payloads: dict[UUID, dict] = {}
         self.upserts: list[tuple[UUID, list[float], dict]] = []
 
     async def ensure_collection(self) -> None:
@@ -122,6 +123,9 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         self, tender_id: UUID, embedding: list[float], payload: dict
     ) -> None:
         self.upserts.append((tender_id, embedding, payload))
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
 
     async def delete(self, tender_id: UUID) -> None:
         self.upserts = [
@@ -299,6 +303,9 @@ class InMemoryTenderRepository(ITenderRepository):
     """Fake repository en memoria para licitaciones."""
 
     def __init__(self) -> None:
+        self.items_reemplazados: list = []
+        self.actualizadas: list = []
+        self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
         # Registro de llamadas: permite verificar que un caso de uso NO consulte
         # la base cuando no tiene ids que buscar.
@@ -315,6 +322,21 @@ class InMemoryTenderRepository(ITenderRepository):
                 pass
             results.append(t)
         return results
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
+        return []
+
+    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
+        self.items_reemplazados = list(items)
+
+    async def update_tender(self, tender) -> None:
+        self.actualizadas.append(tender)
+
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
 
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None

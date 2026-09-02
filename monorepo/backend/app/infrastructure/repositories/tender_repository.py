@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import delete, func, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -22,7 +23,11 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     TenderStatusModel,
 )
-from app.shared.constants import TENDER_STATUS_CODE_BY_ID
+from app.shared.constants import (
+    CERRADA_STATUS_ID,
+    PUBLICADA_STATUS_ID,
+    TENDER_STATUS_CODE_BY_ID,
+)
 
 
 class TenderRepository(ITenderRepository):
@@ -254,6 +259,66 @@ class TenderRepository(ITenderRepository):
         result = await self.session.exec(statement)
         return result.first()
 
+    async def get_items_by_tender_id(
+        self, tender_id: uuid.UUID
+    ) -> list[TenderItemModel]:
+        statement = select(TenderItemModel).where(
+            col(TenderItemModel.tender_id) == tender_id
+        )
+        result = await self.session.exec(statement)
+        return list(result.all())
+
+    async def replace_tender_items(
+        self, tender_id: uuid.UUID, items: list[TenderItemModel]
+    ) -> None:
+        """Borra las partidas actuales y deja las nuevas, en una transacción.
+
+        Reemplazo completo y no diff: nada tiene clave foránea hacia
+        `tender_item` —verificado—, y las partidas de la API no traen un
+        identificador estable con el que emparejarlas entre corridas.
+        """
+        await self.session.exec(  # type: ignore[call-overload]
+            delete(TenderItemModel).where(col(TenderItemModel.tender_id) == tender_id)
+        )
+        for item in items:
+            self.session.add(item)
+        await self.session.commit()
+
+    async def update_tender(self, tender: TenderModel) -> None:
+        self.session.add(tender)
+        await self.session.commit()
+
+    async def get_expired_published_ids(self) -> list[uuid.UUID]:
+        """Vencidas que aún figuran publicadas.
+
+        El estado se compara contra el id numérico y no contra el código de
+        texto porque es la columna que tiene `tender`; el join a `tender_status`
+        sería un viaje de más para un valor que ya es una constante conocida.
+        """
+        statement = select(TenderModel.id).where(
+            col(TenderModel.closing_at) < utc_now_naive(),
+            col(TenderModel.status_id) == PUBLICADA_STATUS_ID,
+        )
+        result = await self.session.exec(statement)  # type: ignore[call-overload]
+        return list(result.all())
+
+    async def mark_as_closed(self, tender_ids: list[uuid.UUID]) -> None:
+        """Una sola sentencia y no una fila por vez.
+
+        Cada viaje a Supabase desde Chile son ~133 ms medidos: con un día de
+        rotación normal esto son cientos de licitaciones, y de a una serían
+        minutos de espera que no calculan nada.
+        """
+        if not tender_ids:
+            return
+        statement = (
+            update(TenderModel)
+            .where(col(TenderModel.id).in_(tender_ids))
+            .values(status_id=CERRADA_STATUS_ID, updated_at=utc_now_naive())
+        )
+        await self.session.exec(statement)  # type: ignore[call-overload]
+        await self.session.commit()
+
     async def get_or_create_buyer(
         self,
         rut: str,
@@ -268,9 +333,19 @@ class TenderRepository(ITenderRepository):
         result = await self.session.exec(statement)
         buyer = result.first()
 
-        if not buyer:
-            now = utc_now_naive()
-            buyer = BuyerInstitutionModel(
+        if buyer:
+            return rut
+
+        # ON CONFLICT y no `add` + `flush`: desde que la ingesta baja varios
+        # detalles en paralelo, dos licitaciones del mismo organismo —el caso
+        # normal, un municipio publica decenas— hacen el SELECT a la vez, las
+        # dos lo ven vacío y la segunda revienta con UniqueViolationError sobre
+        # buyer_institution_pkey. El SELECT de arriba se conserva porque resuelve
+        # el caso frecuente sin escribir nada.
+        now = utc_now_naive()
+        stmt = (
+            pg_insert(BuyerInstitutionModel)
+            .values(
                 rut=rut,
                 name=name,
                 region_id=region_id,
@@ -279,8 +354,9 @@ class TenderRepository(ITenderRepository):
                 created_at=now,
                 updated_at=now,
             )
-            self.session.add(buyer)
-            await self.session.flush()
+            .on_conflict_do_nothing(index_elements=["rut"])
+        )
+        await self.session.exec(stmt)  # type: ignore[call-overload]
         return rut
 
     async def get_comuna_id_by_name(self, name: str) -> int | None:
@@ -312,9 +388,16 @@ class TenderRepository(ITenderRepository):
 
         nombre = code.replace("_", " ").capitalize()
         if not status:
-            status = TenderStatusModel(id=status_id, code=code, name=nombre)
-            self.session.add(status)
-            await self.session.flush()
+            # Mismo motivo que en get_or_create_buyer: con la ingesta en
+            # paralelo, varias licitaciones estrenan el mismo estado a la vez.
+            # Sin `index_elements`: la tabla tiene único el id y también el
+            # code, y cualquiera de los dos puede ser el que choque.
+            stmt = (
+                pg_insert(TenderStatusModel)
+                .values(id=status_id, code=code, name=nombre)
+                .on_conflict_do_nothing()
+            )
+            await self.session.exec(stmt)  # type: ignore[call-overload]
         elif status.code != code:
             status.code = code
             status.name = nombre

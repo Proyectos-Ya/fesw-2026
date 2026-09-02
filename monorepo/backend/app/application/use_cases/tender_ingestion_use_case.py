@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from app.application.repositories.tender_repository import ITenderRepository
@@ -12,6 +13,18 @@ from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.comunas import resolve_comuna
 from app.shared.datetime_utils import to_utc_epoch
+
+
+@dataclass
+class _TenderTexto:
+    """Lo mínimo que `TextBuilder` necesita de una licitación.
+
+    Existe para poder armar el texto del detalle nuevo sin construir un
+    `TenderModel` completo solo para compararlo y tirarlo.
+    """
+
+    name: str
+    description: str | None
 
 
 class TenderIngestionUseCase:
@@ -34,11 +47,9 @@ class TenderIngestionUseCase:
     async def execute(self, dto: TenderIngestaDTO) -> dict[str, Any]:
         """Ingesta una licitación. La cola de pendientes la maneja el servicio."""
         try:
-            if await self.repo.get_by_code(dto.code):
-                return {
-                    "status": "skipped",
-                    "message": f"Tender {dto.code} already exists",
-                }
+            existente = await self.repo.get_by_code(dto.code)
+            if existente:
+                return await self._actualizar(existente, dto)
 
             if (
                 not dto.buyer_rut
@@ -71,18 +82,7 @@ class TenderIngestionUseCase:
                 updated_at=now,
             )
 
-            tender_items = [
-                TenderItemModel(
-                    id=uuid.uuid4(),
-                    tender_id=tender_id,
-                    product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
-                    name=item.nombre_producto,
-                    description=item.descripcion,
-                    quantity=item.cantidad,
-                    unit_of_measure=item.unidad_medida,
-                )
-                for item in dto.items
-            ]
+            tender_items = self._construir_items(tender_id, dto)
 
             text = self.text_builder.build_from_tender(new_tender, tender_items)
             vectors = await self.embedding_service.embed([text])
@@ -165,3 +165,115 @@ class TenderIngestionUseCase:
             print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
             await self.repo.rollback()
             raise
+
+    async def _actualizar(
+        self, existente: TenderModel, dto: TenderIngestaDTO
+    ) -> dict[str, Any]:
+        """Refleja en la licitación guardada lo que cambió en la API.
+
+        Antes esto era un `return {"status": "skipped"}`: se le pedía a Mercado
+        Público el endpoint de **cambios** y se descartaban justamente los
+        cambios, así que monto, fecha de cierre y estado quedaban congelados en
+        lo que se vio el día de la ingesta.
+
+        Se separan dos casos porque tienen precios muy distintos:
+
+        - **Cambio semántico** — nombre, descripción o partidas, que es lo que
+          `TextBuilder` mete en el texto. Cambia el vector, así que hay que pagar
+          una inferencia y reescribir el punto entero.
+        - **Cambio de metadatos** — estado, cierre, monto. No cambia lo que la
+          licitación pide: basta actualizar SQL y el payload. Es el caso
+          frecuente, porque lo que se mueve a diario son las fechas y el estado.
+
+        Para distinguirlos no hace falta una columna nueva: se reconstruye el
+        texto desde lo persistido y se compara con el que saldría del detalle
+        nuevo.
+        """
+        items_nuevos = self._construir_items(existente.id, dto)
+        items_actuales = await self.repo.get_items_by_tender_id(existente.id)
+
+        texto_actual = self.text_builder.build_from_tender(existente, items_actuales)
+        texto_nuevo = self.text_builder.build_from_tender(
+            _TenderTexto(name=dto.name, description=dto.description), items_nuevos
+        )
+        cambio_semantico = texto_actual != texto_nuevo
+        cambio_metadatos = self._metadatos_cambiaron(existente, dto)
+
+        if not cambio_semantico and not cambio_metadatos:
+            # No escribir es parte del contrato, no una optimización: mover
+            # `updated_at` sin motivo haría que el análisis de Gemini se
+            # regenerara para cada proveedor todos los días (ver 6.4).
+            return {"status": "unchanged", "tender_code": dto.code}
+
+        payload = {
+            "status_code": dto.status_semantic_code,
+            "region_id": dto.region_id,
+            "available_amount_clp": dto.available_amount_clp,
+            "closing_at": to_utc_epoch(dto.closing_at),
+            "published_at": to_utc_epoch(dto.published_at),
+        }
+
+        # Qdrant antes que SQL, igual que en el alta y por lo mismo: las dos
+        # escrituras no comparten transacción. Si SQL falla después, la corrida
+        # siguiente vuelve a ver la diferencia y se autocorrige.
+        if cambio_semantico:
+            vectors = await self.embedding_service.embed([texto_nuevo])
+            await self.tender_vector_repo.upsert(
+                tender_id=existente.id, embedding=vectors[0], payload=payload
+            )
+            await self.repo.replace_tender_items(existente.id, items_nuevos)
+        else:
+            await self.tender_vector_repo.set_payload(existente.id, payload)
+
+        self._aplicar_cambios(existente, dto)
+        await self.repo.update_tender(existente)
+
+        return {
+            "status": "updated",
+            "tender_code": dto.code,
+            "semantico": cambio_semantico,
+        }
+
+    def _construir_items(
+        self, tender_id: uuid.UUID, dto: TenderIngestaDTO
+    ) -> list[TenderItemModel]:
+        return [
+            TenderItemModel(
+                id=uuid.uuid4(),
+                tender_id=tender_id,
+                product_code=str(item.codigo_unspsc) if item.codigo_unspsc else "0",
+                name=item.nombre_producto,
+                description=item.descripcion,
+                quantity=item.cantidad,
+                unit_of_measure=item.unidad_medida,
+            )
+            for item in dto.items
+        ]
+
+    @staticmethod
+    def _metadatos_cambiaron(existente: TenderModel, dto: TenderIngestaDTO) -> bool:
+        return (
+            existente.status_id != dto.status_code
+            or existente.closing_at != dto.closing_at
+            or existente.published_at != dto.published_at
+            or existente.available_amount_clp != dto.available_amount_clp
+            or existente.buyer_unit != dto.buyer_unit
+        )
+
+    @staticmethod
+    def _aplicar_cambios(existente: TenderModel, dto: TenderIngestaDTO) -> None:
+        """Vuelca el detalle sobre la fila. No toca `code` ni `created_at`.
+
+        `buyer_rut` tampoco: si el organismo cambiara habría que crear el nuevo
+        comprador antes, y no se ha visto que pase. Se deja fuera a propósito en
+        vez de arriesgar una violación de clave foránea en la corrida diaria.
+        """
+        existente.name = dto.name
+        existente.description = dto.description
+        existente.status_id = dto.status_code
+        existente.published_at = dto.published_at
+        existente.closing_at = dto.closing_at
+        existente.available_amount_clp = dto.available_amount_clp
+        existente.buyer_unit = dto.buyer_unit
+        existente.last_change_at = utc_now_naive()
+        existente.updated_at = utc_now_naive()
