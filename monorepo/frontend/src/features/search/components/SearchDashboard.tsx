@@ -88,7 +88,10 @@ export function SearchDashboard() {
 
       {/* Action Error Banner (e.g. save tender failed) */}
       {actionError && (
-        <div className="flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+        <div
+          role="alert"
+          className="flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger"
+        >
           <span>{actionError}</span>
           <button
             type="button"

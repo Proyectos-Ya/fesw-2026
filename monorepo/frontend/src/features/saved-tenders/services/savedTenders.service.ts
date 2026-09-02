@@ -1,6 +1,8 @@
 import { apiFetch } from "@/features/shared/api/client";
 import type { MatchingResult } from "@/features/matches/tenderTypes";
 
+export { SAVED_TENDERS_ERRORS, getSaveErrorMessage } from "../constants";
+
 export async function fetchSavedTenders(): Promise<MatchingResult[]> {
   return apiFetch<MatchingResult[]>("/tenders/saved");
 }

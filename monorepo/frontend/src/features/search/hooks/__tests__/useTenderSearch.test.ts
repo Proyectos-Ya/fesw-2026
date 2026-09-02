@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTenderSearch, SEARCH_STORAGE_KEY } from "../useTenderSearch";
 import * as searchService from "../../services/searchService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
+import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { TenderSearchResult } from "../../types";
 
 const replaceMock = vi.fn();
@@ -283,6 +284,83 @@ describe("useTenderSearch", () => {
           commune_id: 295,
         }),
       );
+    });
+  });
+
+  describe("handleToggleSave (CA-5)", () => {
+    it("aplica rollback restaurando el estado previo y notifica ante fallo al guardar licitación", async () => {
+      vi.mocked(savedService.saveTenderApi).mockRejectedValue(
+        new TypeError("Failed to fetch"),
+      );
+
+      const { result } = renderHook(() => useTenderSearch());
+
+      await waitFor(() => {
+        expect(result.current.state.isLoading).toBe(false);
+      });
+
+      expect(result.current.savedTenderIds.has("tender-1")).toBe(false);
+
+      await act(async () => {
+        await result.current.toggleSave("tender-1");
+      });
+
+      // Rollback verificado
+      expect(result.current.savedTenderIds.has("tender-1")).toBe(false);
+      expect(result.current.actionError).toBe(SAVED_TENDERS_ERRORS.SAVE_FAILED);
+    });
+
+    it("aplica rollback restaurando el estado previo y notifica ante fallo al quitar licitación guardada", async () => {
+      vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([
+        {
+          id: "match-1",
+          supplier_id: "s-1",
+          tender_id: "tender-1",
+          similarity_score: 80,
+          reranker_score: 80,
+          final_score: 80,
+          model_version: "v1",
+          calculated_at: "2026-06-01T00:00:00Z",
+          tender: {
+            id: "tender-1",
+            code: "111-22-COT26",
+            name: "Compra de Insumos",
+            description: "Prueba",
+            status_id: 1,
+            status_code: "publicada",
+            published_at: "2026-06-01T00:00:00Z",
+            closing_at: "2026-06-15T00:00:00Z",
+            last_change_at: "2026-06-01T00:00:00Z",
+            buyer_rut: "111-1",
+            buyer_name: "Municipalidad",
+            buyer_unit: "Salud",
+            region: "Valparaíso",
+            province: "Valparaíso",
+            commune: "Valparaíso",
+            available_amount_clp: 1000000,
+            created_at: "2026-06-01T00:00:00Z",
+            updated_at: "2026-06-01T00:00:00Z",
+            items: [],
+          },
+        },
+      ]);
+      vi.mocked(savedService.unsaveTenderApi).mockRejectedValue(
+        new TypeError("Failed to fetch"),
+      );
+
+      const { result } = renderHook(() => useTenderSearch());
+
+      await waitFor(() => {
+        expect(result.current.savedTenderIds.has("tender-1")).toBe(true);
+      });
+
+      await act(async () => {
+        await result.current.toggleSave("tender-1");
+      });
+
+      // Rollback verificado: la licitación sigue guardada
+      expect(result.current.savedTenderIds.has("tender-1")).toBe(true);
+      expect(result.current.actionError).toBe(SAVED_TENDERS_ERRORS.UNSAVE_FAILED);
     });
   });
 });

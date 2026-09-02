@@ -8,6 +8,7 @@ import {
   saveTenderApi,
   unsaveTenderApi,
 } from "@/features/saved-tenders/services/savedTenders.service";
+import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import { searchTenders } from "../services/searchService";
 import type { Tender } from "@/features/matches/tenderTypes";
 import type { TenderSearchParams } from "../types";
@@ -430,11 +431,7 @@ export function useTenderSearch() {
           else next.delete(tenderId);
           return next;
         });
-        setActionError(
-          err instanceof ApiError
-            ? err.message
-            : "No pudimos guardar los cambios. Revisa tu conexión.",
-        );
+        setActionError(getSaveErrorMessage(isCurrentlySaved));
       }
     },
     [savedTenderIds],
