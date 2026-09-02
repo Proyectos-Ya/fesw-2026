@@ -52,6 +52,42 @@ class ITenderRepository(ABC):
     async def get_by_code(self, code: str) -> TenderModel | None: ...
 
     @abstractmethod
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list[TenderItemModel]:
+        """Partidas de una licitación, para comparar contra las que llegan."""
+        ...
+
+    @abstractmethod
+    async def replace_tender_items(
+        self, tender_id: UUID, items: list[TenderItemModel]
+    ) -> None:
+        """Borra las partidas actuales y deja las nuevas.
+
+        Reemplazo completo y no diff: nada tiene clave foránea hacia
+        `tender_item`, así que borrar e insertar es seguro y bastante más simple
+        que emparejar partidas que no traen identificador estable.
+        """
+        ...
+
+    @abstractmethod
+    async def update_tender(self, tender: TenderModel) -> None:
+        """Persiste los cambios de una licitación ya existente."""
+        ...
+
+    @abstractmethod
+    async def get_expired_published_ids(self) -> list[UUID]:
+        """Ids de las licitaciones que siguen figurando publicadas pero ya cerraron.
+
+        Solo las que dicen `publicada`: una cancelada o desierta con el plazo
+        vencido no se reabre ni se reescribe.
+        """
+        ...
+
+    @abstractmethod
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        """Pasa esas licitaciones al estado `cerrada`, en una sola sentencia."""
+        ...
+
+    @abstractmethod
     async def get_or_create_buyer(
         self,
         rut: str,

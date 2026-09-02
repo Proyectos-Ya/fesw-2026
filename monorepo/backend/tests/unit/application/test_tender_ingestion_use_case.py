@@ -5,7 +5,7 @@ y se indexa en el repositorio vectorial (Qdrant).
 """
 
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.application.repositories.tender_repository import (
     ITenderRepository,
@@ -36,6 +36,8 @@ class FakeTenderRepository(ITenderRepository):
         comuna_ids_by_name: dict[str, int] | None = None,
         provincia_ids_by_comuna_id: dict[int, int] | None = None,
     ) -> None:
+        self.items_reemplazados: list = []
+        self.actualizadas: list = []
         self.saved: list = []
         self.buyers_created: list[dict] = []
         self._comuna_ids_by_name = comuna_ids_by_name or {"Santiago": 295}
@@ -43,6 +45,21 @@ class FakeTenderRepository(ITenderRepository):
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:  # noqa: ARG002
         return []
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
+        return []
+
+    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
+        self.items_reemplazados = list(items)
+
+    async def update_tender(self, tender) -> None:
+        self.actualizadas.append(tender)
+
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
 
     async def get_by_code(self, code: str) -> TenderModel | None:  # noqa: ARG002
         return None
@@ -101,6 +118,10 @@ class FakeTenderRepository(ITenderRepository):
 
     async def get_latest_tender_created_at(self) -> datetime | None:
         return None
+
+
+# Id fijo para las licitaciones que un fake finge tener ya guardadas.
+_ID_EXISTENTE = uuid4()
 
 
 def _make_dto(
@@ -284,23 +305,67 @@ async def test_una_desierta_no_se_indexa_como_publicada():
     assert payload["status_code"] not in ACTIVE_TENDER_STATUSES
 
 
-async def test_licitacion_duplicada_no_genera_upsert_en_qdrant() -> None:
-    """Si el código ya existe en SQL no se llama a Qdrant."""
+async def test_una_licitacion_sin_cambios_no_toca_qdrant() -> None:
+    """Un detalle idéntico al guardado no escribe en ningún lado.
 
-    class RepoConDuplicado(FakeTenderRepository):
+    Este test decía antes "si el código ya existe no se llama a Qdrant", que era
+    fijar el defecto 6.3: se pedía el endpoint de cambios y se descartaban los
+    cambios. Ahora una licitación existente **sí** se actualiza; lo que se
+    conserva de aquella intención —y es lo que de verdad importaba— es que un
+    detalle sin novedades no pague una inferencia ni una escritura.
+
+    Que no escriba tiene además una consecuencia que no es de rendimiento: mover
+    `updated_at` sin motivo haría que el análisis de Gemini se regenerara para
+    cada proveedor todos los días.
+    """
+    dto = _make_dto()
+
+    class RepoSinCambios(FakeTenderRepository):
+        """Ya tiene exactamente esta licitación, con sus mismas partidas."""
+
         async def get_by_code(self, code: str) -> TenderModel:  # noqa: ARG002
-            return TenderModel.__new__(TenderModel)  # simula que ya existe
+            return TenderModel(
+                id=_ID_EXISTENTE,
+                code=dto.code,
+                name=dto.name,
+                description=dto.description,
+                status_id=dto.status_code,
+                published_at=dto.published_at,
+                closing_at=dto.closing_at,
+                last_change_at=dto.published_at,
+                buyer_rut=dto.buyer_rut,
+                buyer_unit=dto.buyer_unit,
+                available_amount_clp=dto.available_amount_clp,
+            )
 
+        async def get_items_by_tender_id(self, tender_id: UUID) -> list:  # noqa: ARG002
+            return [
+                TenderItemModel(
+                    id=uuid4(),
+                    tender_id=_ID_EXISTENTE,
+                    product_code="0",
+                    name=item.nombre_producto,
+                    description=item.descripcion,
+                    quantity=item.cantidad,
+                    unit_of_measure=item.unidad_medida,
+                )
+                for item in dto.items
+            ]
+
+    repo = RepoSinCambios()
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
-        repository=RepoConDuplicado(),
+        repository=repo,
         embedding_service=FakeEmbeddingService(),
         tender_vector_repo=vector_repo,
     )
 
-    await use_case.execute(_make_dto())
+    resultado = await use_case.execute(dto)
 
-    assert len(vector_repo.upserts) == 0
+    assert resultado["status"] == "unchanged"
+    assert vector_repo.upserts == []
+    assert vector_repo.payloads == {}
+    assert repo.actualizadas == []
 
 
 # ---------------------------------------------------------------------------

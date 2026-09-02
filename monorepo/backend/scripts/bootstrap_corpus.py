@@ -19,8 +19,10 @@ Uso
     # Diagnóstico: 1 petición, no escribe nada. Empieza siempre por aquí.
     python -m scripts.bootstrap_corpus --solo-contar --dias 30
 
-    # Carga completa
-    python -m scripts.bootstrap_corpus --dias 30
+    # Carga completa. `--limite` sale del total que reportó --solo-contar y es
+    # obligatorio contra una base no local: sin él la carga se corta en
+    # MERCADOPUBLICO_FETCHING_LIMIT (2000) y lo reporta como éxito.
+    python -m scripts.bootstrap_corpus --dias 30 --limite 5000
 
     # Terminar lo que quedó pendiente tras una interrupción
     python -m scripts.bootstrap_corpus --reanudar
@@ -59,9 +61,42 @@ from app.shared.constants import TENDER_STATUSES
 
 HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "db"}
 
+# Rondas seguidas sin procesar nada antes de rendirse. Antes bastaba una, y
+# tenía sentido cuando cada pasada vaciaba la cola entera. Ahora cada pasada
+# toma un lote acotado y las licitaciones que fallan se van al final del orden,
+# así que la ronda siguiente trabaja sobre otras: una sola ronda en blanco ya no
+# significa que no se pueda avanzar.
+RONDAS_SIN_AVANCE_MAX = 3
+
 
 def _es_local(url: str) -> bool:
     return (urlsplit(url).hostname or "") in HOSTS_LOCALES
+
+
+def _falta_limite_explicito(limite: int | None, es_local: bool) -> bool:
+    """Si hay que abortar por no haber dicho cuántas licitaciones se quieren.
+
+    Sin `--limite`, `fetch_tenders_metadata` cae en
+    `MERCADOPUBLICO_FETCHING_LIMIT` (2000) y `get_tenders` corta la lista ahí.
+    Un corpus mayor se carga a medias y el log lo reporta como éxito.
+
+    Contra una base local da igual: la corrida se repite cuando se quiera. Contra
+    producción no, porque la cuota es del ticket y son 10.000 peticiones al día
+    para todo el equipo. Mismo criterio que `--confirmar-produccion`: lo caro e
+    irreversible no puede depender de acordarse de un argumento.
+    """
+    return limite is None and not es_local
+
+
+def _hay_riesgo_de_truncado(total: int, limite: int | None, tope: int) -> bool:
+    """Si el techo efectivo se queda por debajo de lo que la API dice que hay.
+
+    `total` viene de `total_resultados` del listado. Un 0 significa que no se
+    pudo saber, no que no haya nada: en ese caso no se afirma nada.
+    """
+    if total <= 0:
+        return False
+    return total > (limite if limite is not None else tope)
 
 
 def _construir_servicio() -> tuple[TenderIngestionService, object, AsyncQdrantClient]:
@@ -141,6 +176,17 @@ async def contar(args: argparse.Namespace) -> None:
         f"\n  peticiones : ~{total + total // 20} de las 10.000 diarias del ticket"
         f"\n  tiempo     : ~{horas:.1f} h (el detalle tarda ~3,3 s cada uno)"
     )
+
+    tope = settings.mercadopublico_fetching_limit
+    if _hay_riesgo_de_truncado(total, args.limite, tope):
+        efectivo = args.limite if args.limite is not None else tope
+        print(
+            f"\nAVISO: el techo efectivo son {efectivo} licitaciones y la API dice"
+            f" que hay {total}.\n"
+            f"Sin --limite la carga se queda en {efectivo} y el log igual dirá que"
+            " terminó bien.\n"
+            f"Corre la carga con: --limite {total + total // 10}"
+        )
     if total >= 10000:
         print(
             "\nAVISO: 10.000 es sospechosamente redondo y puede ser un tope de la\n"
@@ -179,13 +225,27 @@ async def cargar(args: argparse.Namespace) -> None:
         if not args.reanudar:
             print(f"--- Fase 1: listado ({args.dias} días) ---")
             t0 = time.perf_counter()
-            nuevas = await servicio.fetch_tenders_metadata(
+            listado = await servicio.fetch_tenders_metadata(
                 dias=args.dias,
                 por_publicacion=args.por_publicacion,
                 estado=args.estado,
                 limite=args.limite,
             )
-            print(f"{nuevas} licitaciones encoladas en {time.perf_counter() - t0:.0f} s\n")
+            nuevas = listado.nuevas
+            print(f"{nuevas} licitaciones encoladas en {time.perf_counter() - t0:.0f} s")
+            if not listado.completo:
+                print(
+                    "AVISO: el listado quedó incompleto (la API cortó la paginación"
+                    " o se llegó al tope). Quedaron licitaciones sin encolar."
+                )
+            techo = args.limite or settings.mercadopublico_fetching_limit
+            if nuevas >= techo:
+                print(
+                    f"AVISO: se encolaron exactamente {nuevas}, que es el techo"
+                    f" pedido. Es casi seguro que quedaron licitaciones fuera;"
+                    f" vuelve a correr con un --limite mayor."
+                )
+            print()
 
         pendientes = await _pendientes(engine)
         print(f"--- Fase 2: detalle ({pendientes} pendientes) ---")
@@ -195,17 +255,40 @@ async def cargar(args: argparse.Namespace) -> None:
 
         t0 = time.perf_counter()
         ronda = 0
+        sin_avance = 0
         while pendientes:
             ronda += 1
-            await servicio.process_unprocessed_tenders()
+            resultado = await servicio.process_unprocessed_tenders()
             restantes = await _pendientes(engine)
-            if restantes == pendientes:
-                # Sin avance: insistir solo repetiría el mismo fallo.
+
+            if resultado.cuota_agotada:
+                # Insistir gasta los cuatro reintentos del cliente contra una
+                # cuota que ya no existe. Se corta y se retoma mañana.
                 print(
-                    f"Ronda {ronda} no avanzó ({restantes} pendientes). Se detiene; "
-                    "revisa los errores de más arriba y reanuda con --reanudar."
+                    f"\nCuota diaria agotada con {restantes} licitaciones "
+                    "pendientes.\nRetoma mañana con --reanudar."
                 )
                 break
+
+            if restantes == pendientes:
+                # Una ronda sin avance ya no es concluyente: como cada pasada
+                # procesa un lote acotado y las que fallan se van al final de la
+                # cola, la ronda siguiente toma licitaciones distintas. Se
+                # insiste unas cuantas veces antes de rendirse.
+                sin_avance += 1
+                print(
+                    f"  ronda {ronda}: sin avance ({restantes} pendientes), "
+                    f"intento {sin_avance}/{RONDAS_SIN_AVANCE_MAX}"
+                )
+                if sin_avance >= RONDAS_SIN_AVANCE_MAX:
+                    print(
+                        "\nVarias rondas seguidas sin avanzar. Se detiene; revisa "
+                        "los errores de más arriba y reanuda con --reanudar."
+                    )
+                    break
+                continue
+
+            sin_avance = 0
             hechas = pendientes - restantes
             pendientes = restantes
             print(f"  ronda {ronda}: {hechas} procesadas, quedan {restantes}")
@@ -252,6 +335,14 @@ def main() -> None:
                 f"La base ({destino}) no es local y falta --confirmar-produccion.\n"
                 "Cargar contra producción es deliberado, no algo que deba pasar por\n"
                 "olvidar una variable de entorno."
+            )
+        if _falta_limite_explicito(args.limite, es_local=False):
+            sys.exit(
+                "Falta --limite y la base no es local.\n"
+                f"Sin él la carga se corta en {settings.mercadopublico_fetching_limit}"
+                " licitaciones y lo reporta como éxito.\n"
+                "Corre primero el diagnóstico, que gasta una sola petición:\n"
+                f"  python -m scripts.bootstrap_corpus --solo-contar --dias {args.dias}"
             )
         print("!! Cargando contra una base NO local !!\n")
 

@@ -99,6 +99,20 @@ class QdrantTenderRepository(ITenderVectorRepository):
             points=[point],
         )
 
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        """
+        Actualiza campos del payload de una licitación sin tocar su vector.
+
+        `set_payload` y no `upsert`: el upsert exige el vector completo, así que
+        para cambiar un estado habría que recalcular el embedding o leer el
+        punto entero primero. Qdrant hace la fusión de claves de su lado.
+        """
+        await self._client.set_payload(
+            collection_name=self._COLLECTION_NAME,
+            payload=payload,
+            points=[str(tender_id)],
+        )
+
     async def delete(self, tender_id: UUID) -> None:
         """
         Elimina el punto correspondiente a la licitación en Qdrant.

@@ -32,6 +32,8 @@ from tests.unit.application.fakes import InMemorySupplierRepository
 
 class FakeTenderRepositoryForAnalysis(ITenderRepository):
     def __init__(self):
+        self.items_reemplazados: list = []
+        self.actualizadas: list = []
         self.tenders: dict[UUID, Tender] = {}
         self.analyses: dict[tuple[UUID, UUID], DeepAnalysis] = {}
 
@@ -50,6 +52,21 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
         offset: int = 0,
     ) -> tuple[list[Tender], int]:  # noqa: ARG002
         return ([], 0)
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
+        return []
+
+    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
+        self.items_reemplazados = list(items)
+
+    async def update_tender(self, tender) -> None:
+        self.actualizadas.append(tender)
+
+    async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
+        self.cerradas.extend(tender_ids)
 
     async def get_by_code(self, code: str) -> Any | None:
         return None
@@ -145,10 +162,20 @@ class FakeDeepAnalysisService(IDeepAnalysisService):
 
 
 # Helper para crear objetos de prueba
-def create_dummy_tender(tender_id: UUID) -> Tender:
+def create_dummy_tender(
+    tender_id: UUID, updated_at: datetime | None = None
+) -> Tender:
+    """Licitación de prueba. Por defecto, sin cambios recientes.
+
+    `updated_at` va deliberadamente en el pasado: desde que el análisis se
+    regenera también cuando cambia la licitación (6.4), una licitación con
+    `updated_at = now` haría que cualquier análisis anterior se considere
+    obsoleto. Los tests que quieren ese escenario lo piden explícitamente.
+    """
     now = datetime.now(UTC).replace(tzinfo=None)
     return Tender(
         id=tender_id,
+        updated_at=updated_at or (now - timedelta(days=7)),
         code=f"LIC-{tender_id}",
         name="Licitación de Prueba",
         description="Descripción",
