@@ -527,13 +527,18 @@ async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_f
 
     # 1. La consulta no debe fallar
     assert response_msg.role == "assistant"
-    # 2. Solo el documento sano debe haber sido enviado a la IA
-    assert len(mock_ai.called_documents[0]) == 1
-    assert mock_ai.called_documents[0][0].document_name == "especificaciones_buenas.pdf"
+    # 2. Ambos documentos se envían al DTO, pero el dañado tiene is_corrupted=True y bytes vacíos
+    assert len(mock_ai.called_documents[0]) == 2
+    doc_val = next(d for d in mock_ai.called_documents[0] if d.document_name == "especificaciones_buenas.pdf")
+    doc_cor = next(d for d in mock_ai.called_documents[0] if d.document_name == "plano_danado.pdf")
+    assert doc_val.is_corrupted is False
+    assert doc_val.file_bytes == b"%PDF valid content"
+    assert doc_cor.is_corrupted is True
+    assert doc_cor.file_bytes == b""
     # 3. El mensaje debe contener el warning del documento dañado
     assert len(response_msg.warnings) == 1
     assert "plano_danado.pdf" in response_msg.warnings[0]
-    assert "dañado o ilegible" in response_msg.warnings[0]
+    assert "dañado o su texto es ilegible" in response_msg.warnings[0]
 
 
 @pytest.mark.asyncio

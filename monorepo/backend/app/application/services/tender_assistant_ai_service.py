@@ -23,6 +23,7 @@ class DocumentContextDTO(BaseModel):
     document_name: str
     file_type: str  # "pdf" | "xlsx" | "png"
     file_bytes: bytes
+    is_corrupted: bool = False
 
 
 class ITenderAssistantAIService(ABC):

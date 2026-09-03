@@ -136,9 +136,18 @@ class AskTenderAssistantUseCase:
                 unprocessed_warnings.append(
                     f"Advertencia: El documento '{doc.file_name}' no pudo ser recuperado del almacenamiento."
                 )
+                document_contexts.append(
+                    DocumentContextDTO(
+                        document_name=doc.file_name,
+                        file_type=doc.file_type,
+                        file_bytes=b"",
+                        is_corrupted=True,
+                    )
+                )
                 continue
 
             # Validar integridad técnica del archivo para aislar corruptos (CA6)
+            is_corrupted = False
             if self.validator_service:
                 val_result = self.validator_service.validate_integrity(
                     file_bytes=raw_bytes,
@@ -146,16 +155,17 @@ class AskTenderAssistantUseCase:
                     declared_type=doc.file_type,
                 )
                 if not val_result.is_valid:
+                    is_corrupted = True
                     unprocessed_warnings.append(
-                        f"Advertencia: El documento '{doc.file_name}' está dañado o ilegible y no pudo ser procesado."
+                        f"Advertencia: El documento '{doc.file_name}' está dañado o su texto es ilegible y no fue posible procesarlo."
                     )
-                    continue
 
             document_contexts.append(
                 DocumentContextDTO(
                     document_name=doc.file_name,
                     file_type=doc.file_type,
-                    file_bytes=raw_bytes,
+                    file_bytes=b"" if is_corrupted else raw_bytes,
+                    is_corrupted=is_corrupted,
                 )
             )
 
