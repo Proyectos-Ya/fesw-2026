@@ -23,6 +23,7 @@ class DocumentContextDTO(BaseModel):
     document_name: str
     file_type: str  # "pdf" | "xlsx" | "png"
     file_bytes: bytes
+    is_corrupted: bool = False
 
 
 class ITenderAssistantAIService(ABC):
@@ -35,10 +36,13 @@ class ITenderAssistantAIService(ABC):
         history: List[TenderChatMessage],
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
+        tender_context: Optional[str] = None,
     ) -> AIResponseDTO:
         """
         Genera la respuesta a la pregunta del usuario utilizando el historial de chat,
-        los documentos adjuntos y el perfil de la empresa consultante, extrayendo citas textuales exactas.
+        los documentos adjuntos, el perfil de la empresa consultante y los metadatos e ítems de la licitación,
+        extrayendo citas textuales exactas.
         """
         pass
+
 

@@ -34,12 +34,17 @@ def test_validate_valid_pdf(validator):
 
 
 def test_validate_valid_xlsx(validator):
-    # Crear un archivo XLSX (ZIP) mínimo en memoria
+    import openpyxl
+
+    # Crear un archivo XLSX válido mínimo en memoria
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Presupuesto"
+    ws["A1"] = "Ítem"
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types></Types>')
-        zf.writestr("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook></workbook>')
+    wb.save(buf)
     xlsx_bytes = buf.getvalue()
+
 
     result = validator.validate_integrity(
         file_bytes=xlsx_bytes,
@@ -81,6 +86,25 @@ def test_validate_corrupted_pdf_without_header(validator):
     assert result.is_valid is False
     assert result.file_type == "pdf"
     assert "dañado" in result.error_message or "cabecera" in result.error_message or "inválida" in result.error_message
+
+
+def test_validate_truncated_pdf_with_header_and_obj(validator):
+    # PDF truncado a la mitad que tiene cabecera %PDF- y contiene 'obj' pero no tiene terminador ni estructura válida
+    corrupt_bytes = (
+        b"%PDF-1.5\r\n"
+        b"1 0 obj\r\n"
+        b"<</Type/Catalog/Pages 2 0 R>>\r\n"
+        b"stream\r\ndatos_truncados_sin_terminador_ni_paginas"
+    )
+    result = validator.validate_integrity(
+        file_bytes=corrupt_bytes,
+        file_name="anexo_truncado.pdf",
+        declared_type="pdf",
+    )
+    assert result.is_valid is False
+    assert result.file_type == "pdf"
+    assert "dañado" in result.error_message or "incompleto" in result.error_message
+
 
 
 def test_validate_corrupted_xlsx_invalid_zip(validator):

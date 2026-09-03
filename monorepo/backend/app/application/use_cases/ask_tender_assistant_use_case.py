@@ -3,6 +3,10 @@ from uuid import UUID
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
+from app.application.repositories.tender_repository import (
+    ITenderRepository,
+    TenderFilters,
+)
 from app.application.services.document_validator_service import IDocumentValidatorService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
@@ -49,12 +53,15 @@ class AskTenderAssistantUseCase:
         chat_repo: ITenderChatRepository,
         ai_service: ITenderAssistantAIService,
         supplier_repo: Optional[ISupplierRepository] = None,
+        tender_repo: Optional[ITenderRepository] = None,
         validator_service: Optional[IDocumentValidatorService] = None,
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.supplier_repo = supplier_repo
+        self.tender_repo = tender_repo
         self.validator_service = validator_service
+
 
     def _validate_guardrails(self, question: str) -> None:
         """Valida sintáctica y preventivamente intentos de manipulación del asistente (Prompt Injection)."""
@@ -129,9 +136,18 @@ class AskTenderAssistantUseCase:
                 unprocessed_warnings.append(
                     f"Advertencia: El documento '{doc.file_name}' no pudo ser recuperado del almacenamiento."
                 )
+                document_contexts.append(
+                    DocumentContextDTO(
+                        document_name=doc.file_name,
+                        file_type=doc.file_type,
+                        file_bytes=b"",
+                        is_corrupted=True,
+                    )
+                )
                 continue
 
             # Validar integridad técnica del archivo para aislar corruptos (CA6)
+            is_corrupted = False
             if self.validator_service:
                 val_result = self.validator_service.validate_integrity(
                     file_bytes=raw_bytes,
@@ -139,16 +155,17 @@ class AskTenderAssistantUseCase:
                     declared_type=doc.file_type,
                 )
                 if not val_result.is_valid:
+                    is_corrupted = True
                     unprocessed_warnings.append(
-                        f"Advertencia: El documento '{doc.file_name}' está dañado o ilegible y no pudo ser procesado."
+                        f"Advertencia: El documento '{doc.file_name}' está dañado o su texto es ilegible y no fue posible procesarlo."
                     )
-                    continue
 
             document_contexts.append(
                 DocumentContextDTO(
                     document_name=doc.file_name,
                     file_type=doc.file_type,
-                    file_bytes=raw_bytes,
+                    file_bytes=b"" if is_corrupted else raw_bytes,
+                    is_corrupted=is_corrupted,
                 )
             )
 
@@ -174,14 +191,71 @@ class AskTenderAssistantUseCase:
             except Exception:
                 supplier_context_str = None
 
-        # 9. Invocar servicio de IA con historial multi-turn y documentos cruzados
+        # 9. Obtener información general y metadatos de la licitación si existe
+        tender_context_str: Optional[str] = None
+        if self.tender_repo:
+            try:
+                tenders = await self.tender_repo.get_tenders(
+                    TenderFilters(ids=[tender_id])
+                )
+                if tenders:
+                    tender = tenders[0]
+                    items_lines = []
+                    for idx, it in enumerate(tender.items, 1):
+                        item_desc = f" - {it.description}" if it.description else ""
+                        items_lines.append(
+                            f"  * Ítem {idx}: [{it.product_code}] {it.name} | Cantidad: {it.quantity} {it.unit_of_measure}{item_desc}"
+                        )
+                    items_str = (
+                        "\n".join(items_lines)
+                        if items_lines
+                        else "  (No se detallan ítems específicos)"
+                    )
+
+                    amount_str = (
+                        f"${tender.available_amount_clp:,.0f} CLP"
+                        if tender.available_amount_clp is not None
+                        else "No especificado"
+                    )
+                    pub_date_str = (
+                        tender.published_at.strftime("%d/%m/%Y %H:%M")
+                        if tender.published_at
+                        else "N/A"
+                    )
+                    close_date_str = (
+                        tender.closing_at.strftime("%d/%m/%Y %H:%M")
+                        if tender.closing_at
+                        else "N/A"
+                    )
+
+                    tender_context_str = (
+                        "=== INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN ===\n"
+                        f"- Código de Licitación: {tender.code}\n"
+                        f"- Nombre / Título: {tender.name}\n"
+                        f"- Descripción / Detalle: {tender.description or 'Sin descripción adicional'}\n"
+                        f"- Estado: {tender.status_code or 'Publicada'}\n"
+                        f"- Organismo Comprador: {tender.buyer_name or 'N/A'} (RUT: {tender.buyer_rut})\n"
+                        f"- Unidad de Compra: {tender.buyer_unit}\n"
+                        f"- Región: {tender.region or 'N/A'}\n"
+                        f"- Comuna: {tender.commune or 'N/A'}\n"
+                        f"- Presupuesto Estimado / Monto Disponible: {amount_str}\n"
+                        f"- Fecha de Publicación: {pub_date_str}\n"
+                        f"- Fecha de Cierre de Ofertas: {close_date_str}\n"
+                        f"- Ítems y Productos Solicitados ({len(tender.items)}):\n{items_str}\n"
+                    )
+            except Exception:
+                tender_context_str = None
+
+        # 10. Invocar servicio de IA con historial multi-turn, documentos cruzados, perfil e información de licitación
         try:
             ai_response = await self.ai_service.generate_response(
                 question=cleaned_question,
                 history=history,
                 documents=document_contexts,
                 supplier_context=supplier_context_str,
+                tender_context=tender_context_str,
             )
+
 
         except TenderAssistantUnavailableError:
             raise
