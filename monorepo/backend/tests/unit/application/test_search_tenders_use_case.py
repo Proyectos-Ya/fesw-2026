@@ -144,21 +144,6 @@ class FakeTenderRepo(ITenderRepository):
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
         self.cerradas.extend(tender_ids)
 
-    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
-        return []
-
-    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
-        self.items_reemplazados = list(items)
-
-    async def update_tender(self, tender) -> None:
-        self.actualizadas.append(tender)
-
-    async def get_expired_published_ids(self) -> list[UUID]:
-        return []
-
-    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
-        self.cerradas.extend(tender_ids)
-
     async def get_by_code(self, code: str) -> TenderModel | None:
         return None
 
