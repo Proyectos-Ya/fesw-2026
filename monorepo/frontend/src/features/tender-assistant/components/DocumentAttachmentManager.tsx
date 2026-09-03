@@ -9,26 +9,31 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { TenderChatDocument, SupportedDocumentType } from "../types";
+import { MAX_ATTACHED_DOCUMENTS } from "../types";
 
 interface DocumentAttachmentManagerProps {
   documents: TenderChatDocument[];
   onUpload: (file: File) => Promise<unknown> | void;
   onDelete: (documentId: string) => Promise<unknown> | void;
   isUploading?: boolean;
+  externalError?: string | null;
 }
 
 const ALLOWED_EXTENSIONS = [".pdf", ".xlsx", ".png"];
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
-const MAX_DOCUMENTS = 5;
 
 export function DocumentAttachmentManager({
   documents,
   onUpload,
   onDelete,
   isUploading = false,
+  externalError = null,
 }: DocumentAttachmentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const displayError = localError || externalError;
+  const isLimitReached = documents.length >= MAX_ATTACHED_DOCUMENTS;
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -68,15 +73,17 @@ export function DocumentAttachmentManager({
       return;
     }
 
-    if (documents.length >= MAX_DOCUMENTS) {
-      setLocalError(`Se ha alcanzado el límite máximo de ${MAX_DOCUMENTS} documentos por licitación.`);
+    if (isLimitReached) {
+      setLocalError(
+        `Se ha alcanzado el límite máximo de ${MAX_ATTACHED_DOCUMENTS} documentos por licitación.`
+      );
       return;
     }
 
     try {
       await onUpload(file);
     } catch {
-      // Error handled by parent hook
+      // Error handled by parent hook / service
     }
   };
 
@@ -84,13 +91,18 @@ export function DocumentAttachmentManager({
     <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-700">
-          Documentos adjuntos ({documents.length}/{MAX_DOCUMENTS})
+          Documentos adjuntos ({documents.length}/{MAX_ATTACHED_DOCUMENTS})
         </span>
 
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading || documents.length >= MAX_DOCUMENTS}
+          disabled={isUploading || isLimitReached}
+          title={
+            isLimitReached
+              ? `Límite máximo de ${MAX_ATTACHED_DOCUMENTS} documentos alcanzado`
+              : "Adjuntar documento"
+          }
           className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-xs transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isUploading ? (
@@ -101,7 +113,11 @@ export function DocumentAttachmentManager({
           ) : (
             <>
               <Upload className="h-3.5 w-3.5 text-blue-600" />
-              <span>Adjuntar (.pdf, .xlsx, .png)</span>
+              <span>
+                {isLimitReached
+                  ? "Límite alcanzado"
+                  : "Adjuntar (.pdf, .xlsx, .png)"}
+              </span>
             </>
           )}
         </button>
@@ -116,10 +132,10 @@ export function DocumentAttachmentManager({
         />
       </div>
 
-      {localError && (
+      {displayError && (
         <div className="flex items-center gap-1.5 rounded-md bg-red-50 p-1.5 text-xs text-red-600">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          <span>{localError}</span>
+          <span>{displayError}</span>
         </div>
       )}
 
