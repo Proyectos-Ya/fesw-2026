@@ -4,8 +4,8 @@ import { AuthProvider } from "@/features/auth/AuthContext";
 import { RedirectIfAuthenticated } from "@/features/auth/components/RedirectIfAuthenticated";
 
 export const metadata: Metadata = {
-  title: "ProyectosYa - Autenticación",
-  description: "Inicia sesión o crea tu cuenta en ProyectosYa",
+  title: "Chiripa - Autenticación",
+  description: "Inicia sesión o crea tu cuenta en Chiripa",
 };
 
 export default function AuthLayout({

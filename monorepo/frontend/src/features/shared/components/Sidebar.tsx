@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "./Icon";
@@ -133,9 +134,13 @@ export function Sidebar() {
     <aside className="w-64 flex-none bg-white border-r border-border-subtle flex flex-col p-4 gap-1 sticky top-0 h-screen shadow-xs">
       <div className="px-2 py-4 mb-2">
         <Link href="/" className="inline-block">
-          <span className="font-display text-xl font-bold tracking-tight text-text-strong">
-            ProyectosYa
-          </span>
+          <Image
+            src="/logo-color-light.svg"
+            alt="Chiripa"
+            width={140}
+            height={36}
+            priority
+          />
         </Link>
       </div>
 

@@ -6,7 +6,7 @@ import { Sidebar } from "@/features/shared/components/Sidebar";
 import { CompanyProvider } from "@/features/company-profile/components/CompanyProvider";
 
 export const metadata: Metadata = {
-  title: "ProyectosYa",
+  title: "Chiripa",
   description: "Plataforma de matching para licitaciones públicas",
 };
 
