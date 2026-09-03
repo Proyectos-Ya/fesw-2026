@@ -31,6 +31,7 @@ import {
   saveTenderApi,
   unsaveTenderApi,
 } from "@/features/saved-tenders/services/savedTenders.service";
+import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 
 type LoadState =
   | { kind: "idle" }
@@ -159,11 +160,7 @@ export function MatchesDashboard() {
         return next;
       });
 
-      setActionError(
-        err instanceof ApiError
-          ? err.message
-          : "No pudimos guardar los cambios. Revise su conexión o intente nuevamente."
-      );
+      setActionError(getSaveErrorMessage(isCurrentlySaved));
     }
   };
 
@@ -266,7 +263,10 @@ export function MatchesDashboard() {
     <section className="mx-auto w-full max-w-3xl">
       <DashboardHeader countLine={countLine} />
       {actionError && (
-        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+        <div
+          role="alert"
+          className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger"
+        >
           <span>{actionError}</span>
           <button
             type="button"

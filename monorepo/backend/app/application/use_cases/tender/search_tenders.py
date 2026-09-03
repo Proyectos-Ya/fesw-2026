@@ -18,6 +18,7 @@ from app.application.schemas.tender_schema import (
 from app.application.services.embedding_service import IEmbeddingService
 from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import InvalidSearchCriteria
+from app.shared.search_sanitizer import sanitize_search_query
 
 # Tope de resultados por petición. Con la semántica no existe un corte natural:
 # toda licitación tiene algún grado de similitud con la consulta, así que "todos
@@ -87,9 +88,30 @@ class SearchTendersUseCase:
         effective_limit = min(
             limit if limit is not None else self.result_limit, self.max_result_limit
         )
-        query_text = (q or "").strip()
 
-        vector = await self._resolve_vector(user_id, query_text)
+        has_text_query = bool(q and q.strip())
+        if has_text_query:
+            sanitized_q = sanitize_search_query(q)
+            if not sanitized_q:
+                return TenderSearchResult(
+                    items=[],
+                    total=0,
+                    is_truncated=False,
+                )
+
+            items, total = await self.tender_repo.search_tenders(
+                criteria=criteria,
+                limit=effective_limit,
+                offset=offset,
+                q=sanitized_q,
+            )
+            return TenderSearchResult(
+                items=items,
+                total=total,
+                is_truncated=total > offset + len(items),
+            )
+
+        vector = await self._resolve_vector(user_id, "")
         if vector is None:
             return await self._search_without_ranking(criteria, effective_limit, offset)
 

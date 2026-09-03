@@ -21,6 +21,7 @@ import {
   saveTenderApi,
   unsaveTenderApi,
 } from "@/features/saved-tenders/services/savedTenders.service";
+import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
@@ -189,11 +190,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     } catch (err) {
       console.error("Error al actualizar guardado:", err);
       setIsSaved(previousState);
-      setActionError(
-        err instanceof ApiError
-          ? err.message
-          : "No pudimos guardar los cambios. Revisa tu conexión a internet."
-      );
+      setActionError(getSaveErrorMessage(previousState));
     }
   };
 
@@ -280,7 +277,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       )}
 
       {actionError && (
-        <div className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger">
+        <div
+          role="alert"
+          className="mb-4 flex items-center justify-between rounded-md border border-danger/20 bg-danger-soft/30 p-4 text-sm font-medium text-danger"
+        >
           <span>{actionError}</span>
           <button
             type="button"

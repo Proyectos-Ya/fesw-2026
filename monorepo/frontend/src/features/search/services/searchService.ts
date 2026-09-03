@@ -22,6 +22,14 @@ export function searchTenders(
     }
   }
 
+  if (params.province_id !== undefined && params.province_id !== null) {
+    searchParams.set("province_id", String(params.province_id));
+  }
+
+  if (params.commune_id !== undefined && params.commune_id !== null) {
+    searchParams.set("commune_id", String(params.commune_id));
+  }
+
   if (params.status_codes) {
     for (const status of params.status_codes) {
       if (status.trim()) {
