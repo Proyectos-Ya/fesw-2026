@@ -46,7 +46,7 @@ describe("searchTenders", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toBe("http://localhost:8000/tenders/search");
+    expect(url).toBe("/api/tenders/search");
     expect(result).toEqual(mockResult);
   });
 
@@ -71,9 +71,9 @@ describe("searchTenders", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url] = fetchMock.mock.calls[0] as [string];
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(url, "http://localhost");
 
-    expect(parsedUrl.pathname).toBe("/tenders/search");
+    expect(parsedUrl.pathname).toBe("/api/tenders/search");
     expect(parsedUrl.searchParams.get("q")).toBe("computadores portátiles");
     expect(parsedUrl.searchParams.get("min_amount")).toBe("100000");
     expect(parsedUrl.searchParams.get("max_amount")).toBe("5000000");
@@ -102,7 +102,7 @@ describe("searchTenders", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url] = fetchMock.mock.calls[0] as [string];
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(url, "http://localhost");
 
     expect(parsedUrl.searchParams.getAll("regions")).toEqual([
       "Región Metropolitana de Santiago",
@@ -128,9 +128,9 @@ describe("searchTenders", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url] = fetchMock.mock.calls[0] as [string];
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(url, "http://localhost");
 
-    expect(parsedUrl.pathname).toBe("/tenders/search");
+    expect(parsedUrl.pathname).toBe("/api/tenders/search");
     expect(parsedUrl.searchParams.get("province_id")).toBe("51");
     expect(parsedUrl.searchParams.get("commune_id")).toBe("295");
   });
