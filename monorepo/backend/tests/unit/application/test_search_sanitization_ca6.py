@@ -21,6 +21,7 @@ from tests.unit.application.fakes import (
     FakeEmbeddingService,
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
+    InMemoryTenderRepository,
 )
 
 
@@ -41,6 +42,9 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
     async def upsert(self, tender_id, embedding, p) -> None:
         pass
 
+    async def set_payload(self, tender_id, payload) -> None:
+        pass
+
     async def delete(self, tender_id) -> None:
         pass
 
@@ -52,10 +56,11 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
         return self.total
 
 
-class FakeTenderRepo(ITenderRepository):
+class FakeTenderRepo(InMemoryTenderRepository):
     def __init__(self) -> None:
-        self.tenders: dict = {}
+        super().__init__()
         self.search_calls: list[tuple] = []
+
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         return [self.tenders[i] for i in (filters.ids or []) if i in self.tenders]
