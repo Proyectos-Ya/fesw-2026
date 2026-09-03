@@ -2,10 +2,18 @@ export type TenderChatRole = "user" | "assistant";
 
 export type SupportedDocumentType = "pdf" | "xlsx" | "png";
 
+export const MAX_ATTACHED_DOCUMENTS = 10;
+
 export interface Citation {
   document_name: string;
   page_or_sheet: string | null;
   quote: string;
+}
+
+export interface DocumentDiscrepancy {
+  topic: string;
+  description: string;
+  conflicting_sources: Citation[];
 }
 
 export interface TenderChatSession {
@@ -26,6 +34,10 @@ export interface TenderChatMessage {
   role: TenderChatRole;
   content: string;
   citations: Citation[];
+  discrepancies?: DocumentDiscrepancy[];
+  warnings?: string[];
+  unbacked_aspects?: string[];
+  has_sufficient_info?: boolean;
   created_at: string;
 }
 
@@ -46,4 +58,3 @@ export interface AskQuestionRequest {
 export interface CreateChatSessionRequest {
   title?: string;
 }
-
