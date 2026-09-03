@@ -1,3 +1,4 @@
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import type { NextConfig } from "next";
 
 /**
@@ -7,7 +8,34 @@ import type { NextConfig } from "next";
  * nunca necesita conocer el dominio del backend, y de hecho el objetivo de este
  * rewrite es que no lo conozca.
  */
-const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN ?? "http://localhost:8000";
+function resolverBackendOrigin(fase: string): string {
+  const declarada = process.env.BACKEND_ORIGIN;
+  if (declarada) return declarada;
+
+  // Fuera de desarrollo el build revienta en vez de hornear un destino que no
+  // existe. La primera versión de este archivo caía a localhost en silencio y
+  // el despliegue salió "verde": Vercel construyó, publicó, y recién en el
+  // navegador del usuario aparecía un 404 con
+  // `x-vercel-error: DNS_HOSTNAME_RESOLVED_PRIVATE`, porque la plataforma se
+  // niega a reenviar a una dirección privada. Un default cómodo convirtió un
+  // fallo de configuración en una caída silenciosa de producción.
+  // La comprobación va por la fase y no por NODE_ENV: cuando Next evalúa este
+  // archivo, NODE_ENV todavía no vale "production" ni siquiera durante
+  // `next build`, así que una guarda basada en él no dispara nunca.
+  if (fase === PHASE_PRODUCTION_BUILD) {
+    throw new Error(
+      "BACKEND_ORIGIN no está definida. Es obligatoria fuera de desarrollo: " +
+        "sin ella el rewrite de /api apuntaría a http://localhost:8000, que " +
+        "desde Vercel no resuelve y devuelve 404 en cada llamada a la API.\n" +
+        "Declarala con la URL pública del backend (Railway) en las variables " +
+        "de entorno del proyecto, y volvé a desplegar: el destino se resuelve " +
+        "en `next build`, así que cambiarla sin reconstruir no surte efecto.",
+    );
+  }
+
+  return "http://localhost:8000";
+}
+
 
 // Aviso para el despliegue: Next resuelve los rewrites en `next build` y los
 // hornea en `routes-manifest.json`, no los lee en cada arranque. La variable
@@ -15,7 +43,7 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN ?? "http://localhost:8000";
 // surte efecto hasta el siguiente despliegue. Comprobado levantando `next start`
 // con otro valor: seguía reenviando al destino del build anterior.
 
-const nextConfig: NextConfig = {
+const construirConfig = (fase: string): NextConfig => ({
   /**
    * La API se sirve bajo `/api` del propio dominio del frontend y Next la
    * reenvía al backend por detrás.
@@ -41,10 +69,10 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: `${BACKEND_ORIGIN}/:path*`,
+        destination: `${resolverBackendOrigin(fase)}/:path*`,
       },
     ];
   },
-};
+});
 
-export default nextConfig;
+export default (fase: string) => construirConfig(fase);
