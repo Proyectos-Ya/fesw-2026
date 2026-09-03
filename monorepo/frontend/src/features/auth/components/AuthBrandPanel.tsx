@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 
@@ -9,9 +10,13 @@ export function AuthBrandPanel() {
       <div className="absolute right-16 -bottom-28 w-64 h-64 rounded-full bg-teal-700 opacity-50" />
 
       <Link href="/" className="relative z-10 w-fit">
-        <span className="font-display text-2xl font-bold tracking-tight text-white">
-          ProyectosYa
-        </span>
+        <Image
+          src="/logo-color-dark.svg"
+          alt="Chiripa"
+          width={160}
+          height={40}
+          priority
+        />
       </Link>
 
       <div className="relative z-10 mt-auto">
