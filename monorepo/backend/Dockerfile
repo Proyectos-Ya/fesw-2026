@@ -124,6 +124,22 @@ FROM base AS runtime
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app . .
 
+# Directorio de adjuntos del chat del asistente (SQLTenderChatRepository escribe
+# en `storage/chat_uploads`, relativo a este WORKDIR).
+#
+# Hay que crearlo explícitamente por dos motivos que se combinan: `storage/` está
+# en .gitignore, así que no llega a la imagen cuando el build sale de git —como
+# en Railway—, y `/app` pertenece a root porque lo creó WORKDIR (el `--chown` del
+# COPY de arriba cambia el dueño de lo copiado, no el del directorio en sí). Sin
+# esta línea el proceso, que corre como `app`, no puede crear el subdirectorio y
+# la subida falla con EACCES, que la API devuelve como un 500.
+#
+# OJO: esto arregla los permisos, no la persistencia. El filesystem del
+# contenedor es efímero y los adjuntos se pierden en cada despliegue. Para que
+# sobrevivan hace falta un volumen montado acá, y entonces los permisos vuelven
+# a decidirse en el arranque, porque el montaje pisa este chown.
+RUN mkdir -p /app/storage/chat_uploads && chown -R app:app /app/storage
+
 USER app
 
 # Forma shell y no exec, para que ${PORT} se expanda: las plataformas gestionadas
