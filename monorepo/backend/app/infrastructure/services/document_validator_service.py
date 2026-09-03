@@ -29,7 +29,7 @@ class DocumentValidatorService(IDocumentValidatorService):
                 error_message=f"El archivo PDF '{file_name}' es demasiado pequeño o está truncado.",
             )
 
-        # Verificar cabecera %PDF- en los primeros 1024 bytes
+        # 1. Verificar cabecera %PDF- en los primeros 1024 bytes
         header_sample = file_bytes[:1024]
         if b"%PDF-" not in header_sample:
             return DocumentValidationResult(
@@ -38,10 +38,29 @@ class DocumentValidatorService(IDocumentValidatorService):
                 error_message=f"El archivo '{file_name}' no posee una cabecera PDF válida o está dañado.",
             )
 
-        # Verificar que no sea un archivo severamente truncado
-        # Los archivos PDF deben tener marcadores de estructura como trailer, xref o %%EOF al final
-        tail_sample = file_bytes[-1024:] if len(file_bytes) > 1024 else file_bytes
-        if not (b"%%EOF" in tail_sample or b"xref" in tail_sample or b"startxref" in tail_sample or b"trailer" in file_bytes or b"obj" in file_bytes):
+        # 2. Validación estructural profunda con pypdf
+        try:
+            import pypdf
+
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes), strict=False)
+            if len(reader.pages) == 0:
+                return DocumentValidationResult(
+                    is_valid=False,
+                    file_type="pdf",
+                    error_message=f"El archivo PDF '{file_name}' no contiene páginas válidas o está vacío.",
+                )
+            # Acceder a la primera página para verificar que los diccionarios y objetos se puedan resolver
+            _ = reader.pages[0]
+        except Exception as e:
+            return DocumentValidationResult(
+                is_valid=False,
+                file_type="pdf",
+                error_message=f"El archivo PDF '{file_name}' está dañado o incompleto: {e}",
+            )
+
+        # 3. Verificar que tenga terminador de archivo o tabla de referencias al final
+        tail_sample = file_bytes[-2048:] if len(file_bytes) > 2048 else file_bytes
+        if not (b"%%EOF" in tail_sample or b"xref" in tail_sample or b"startxref" in tail_sample):
             return DocumentValidationResult(
                 is_valid=False,
                 file_type="pdf",
@@ -49,6 +68,7 @@ class DocumentValidatorService(IDocumentValidatorService):
             )
 
         return DocumentValidationResult(is_valid=True, file_type="pdf")
+
 
     def _validate_xlsx(self, file_bytes: bytes, file_name: str) -> DocumentValidationResult:
         if len(file_bytes) < 30 or not file_bytes.startswith(b"PK"):
@@ -83,7 +103,25 @@ class DocumentValidatorService(IDocumentValidatorService):
                 error_message=f"El archivo Excel '{file_name}' está dañado o corrupto: {e}",
             )
 
+        # Validación técnica de hojas con openpyxl
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
+            if not wb.sheetnames:
+                return DocumentValidationResult(
+                    is_valid=False,
+                    file_type="xlsx",
+                    error_message=f"El archivo Excel '{file_name}' no contiene hojas de cálculo válidas.",
+                )
+        except Exception as e:
+            return DocumentValidationResult(
+                is_valid=False,
+                file_type="xlsx",
+                error_message=f"El archivo Excel '{file_name}' contiene estructuras corruptas: {e}",
+            )
+
         return DocumentValidationResult(is_valid=True, file_type="xlsx")
+
 
     def _validate_png(self, file_bytes: bytes, file_name: str) -> DocumentValidationResult:
         # Magic bytes PNG: 89 50 4E 47 0D 0A 1A 0A

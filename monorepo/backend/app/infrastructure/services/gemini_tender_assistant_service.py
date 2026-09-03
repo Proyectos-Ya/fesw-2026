@@ -234,9 +234,14 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
             ) from e
 
         if resp.status_code != 200:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Gemini API error (HTTP {resp.status_code}): {resp.text}"
+            )
             raise TenderAssistantUnavailableError(
                 f"El asistente virtual se encuentra temporalmente fuera de servicio (HTTP {resp.status_code})"
             )
+
 
         try:
             resp_data = resp.json()
