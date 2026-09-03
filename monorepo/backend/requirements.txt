@@ -36,3 +36,5 @@ aiosmtplib>=3.0.0
 # Carga y lectura de documentos para el asistente de licitaciones.
 python-multipart>=0.0.9
 openpyxl>=3.1.2
+pypdf>=4.0.0
+

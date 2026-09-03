@@ -38,7 +38,7 @@ class DocumentValidatorService(IDocumentValidatorService):
                 error_message=f"El archivo '{file_name}' no posee una cabecera PDF válida o está dañado.",
             )
 
-        # 2. Validación estructural profunda con pypdf
+        # 2. Validación estructural profunda con pypdf (si está instalado en el entorno)
         try:
             import pypdf
 
@@ -51,12 +51,16 @@ class DocumentValidatorService(IDocumentValidatorService):
                 )
             # Acceder a la primera página para verificar que los diccionarios y objetos se puedan resolver
             _ = reader.pages[0]
+        except ImportError:
+            # pypdf no disponible en este entorno; continuar con la validación nativa de terminador %%EOF
+            pass
         except Exception as e:
             return DocumentValidationResult(
                 is_valid=False,
                 file_type="pdf",
                 error_message=f"El archivo PDF '{file_name}' está dañado o incompleto: {e}",
             )
+
 
         # 3. Verificar que tenga terminador de archivo o tabla de referencias al final
         tail_sample = file_bytes[-2048:] if len(file_bytes) > 2048 else file_bytes
@@ -103,9 +107,10 @@ class DocumentValidatorService(IDocumentValidatorService):
                 error_message=f"El archivo Excel '{file_name}' está dañado o corrupto: {e}",
             )
 
-        # Validación técnica de hojas con openpyxl
+        # Validación técnica de hojas con openpyxl (si está disponible)
         try:
             import openpyxl
+
             wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
             if not wb.sheetnames:
                 return DocumentValidationResult(
@@ -113,12 +118,15 @@ class DocumentValidatorService(IDocumentValidatorService):
                     file_type="xlsx",
                     error_message=f"El archivo Excel '{file_name}' no contiene hojas de cálculo válidas.",
                 )
+        except ImportError:
+            pass
         except Exception as e:
             return DocumentValidationResult(
                 is_valid=False,
                 file_type="xlsx",
                 error_message=f"El archivo Excel '{file_name}' contiene estructuras corruptas: {e}",
             )
+
 
         return DocumentValidationResult(is_valid=True, file_type="xlsx")
 
