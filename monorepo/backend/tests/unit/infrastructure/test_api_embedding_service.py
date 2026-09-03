@@ -10,6 +10,7 @@ import pytest
 import respx
 
 from app.infrastructure.services.api_embedding_service import (
+    MAX_INTENTOS,
     DeepInfraEmbeddingService,
 )
 
@@ -127,3 +128,62 @@ class TestCasosBorde:
 
         with pytest.raises(ValueError, match="2 textos"):
             await _servicio().embed(["uno", "dos"])
+
+
+class TestReintentos:
+    """El cold start del proveedor es esperable, no excepcional.
+
+    Cuando el modelo lleva rato dormido, la primera llamada puede tardar más
+    que el timeout o responder 503. Sin reintentos eso se propagaba hasta el
+    endpoint y el usuario veía un 500 al crear su empresa.
+    """
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reintenta_tras_un_timeout_y_devuelve_el_vector(self):
+        ruta = respx.post(URL).mock(
+            side_effect=[
+                httpx.ReadTimeout("timeout"),
+                _respuesta([[1.0, 0.0]]),
+            ]
+        )
+
+        vectores = await _servicio(retry_backoff_seconds=0).embed(["hola"])
+
+        assert len(vectores) == 1
+        assert ruta.call_count == 2
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reintenta_tras_un_503_de_cold_start(self):
+        ruta = respx.post(URL).mock(
+            side_effect=[
+                httpx.Response(503, json={"error": "Model is currently loading"}),
+                _respuesta([[1.0, 0.0]]),
+            ]
+        )
+
+        await _servicio(retry_backoff_seconds=0).embed(["hola"])
+
+        assert ruta.call_count == 2
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_desiste_tras_agotar_los_intentos(self):
+        ruta = respx.post(URL).mock(side_effect=httpx.ReadTimeout("timeout"))
+
+        with pytest.raises(httpx.ReadTimeout):
+            await _servicio(retry_backoff_seconds=0).embed(["hola"])
+
+        assert ruta.call_count == MAX_INTENTOS
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_no_reintenta_un_error_de_credenciales(self):
+        """Un 401 no se arregla insistiendo: falla rápido y se ve el problema."""
+        ruta = respx.post(URL).mock(return_value=httpx.Response(401))
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await _servicio(retry_backoff_seconds=0).embed(["hola"])
+
+        assert ruta.call_count == 1

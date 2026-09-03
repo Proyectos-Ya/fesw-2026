@@ -141,3 +141,63 @@ async def test_sending_same_values_is_a_noop(
 
     assert updated.updated_at == seeded.updated_at
     assert vector_repo.upserts == []
+
+
+# ---------------------------------------------------------------------------
+# El proveedor externo de embeddings se cae
+#
+# Mismo defecto que en la creación: el perfil se guardaba antes de recalcular
+# el vector, así que un timeout dejaba el texto nuevo en SQL apuntando a un
+# vector viejo. El matching seguía usando el perfil anterior sin que nada lo
+# indicara. Si el embedding falla, la edición completa no se aplica.
+# ---------------------------------------------------------------------------
+
+
+class BrokenEmbeddingService(FakeEmbeddingService):
+    """Simula el proveedor de embeddings caído o pasado de timeout."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise TimeoutError("El servicio de embeddings no respondió a tiempo")
+
+
+async def test_embedding_failure_does_not_persist_matching_change(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el embedding falla, el perfil no queda desincronizado del vector."""
+    owner_id = uuid4()
+    await _seed_supplier(supplier_repo, owner_id)
+    use_case = UpdateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+
+    with pytest.raises(TimeoutError):
+        await use_case.execute(
+            owner_id, UpdateSupplierSchema(description="Montaje industrial")
+        )
+
+    stored = await supplier_repo.get_by_user_id(owner_id)
+    assert stored is not None
+    assert stored.description == "Obras civiles"
+    assert len(vector_repo.upserts) == 0
+
+
+async def test_embedding_failure_does_not_block_non_matching_change(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Editar un campo que no alimenta el matching no llama al embedding.
+
+    `num_employees` no entra en el texto que se vectoriza, así que la edición
+    tiene que funcionar aunque el proveedor de embeddings esté caído.
+    """
+    owner_id = uuid4()
+    await _seed_supplier(supplier_repo, owner_id)
+    use_case = UpdateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+
+    updated = await use_case.execute(owner_id, UpdateSupplierSchema(num_employees=25))
+
+    assert updated.num_employees == 25
+    assert len(vector_repo.upserts) == 0

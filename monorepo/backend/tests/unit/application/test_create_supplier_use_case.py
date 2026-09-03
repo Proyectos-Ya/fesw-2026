@@ -276,3 +276,88 @@ async def test_embedding_text_includes_legal_name(
     await use_case.execute(data)
 
     assert any("Constructora Norte SpA" in text for text in embedding_service.calls[0])
+
+
+# ---------------------------------------------------------------------------
+# El proveedor externo de embeddings se cae
+#
+# Es el caso que se vio en producción: la API de embeddings tardó más que el
+# timeout y la petición murió con un ReadTimeout. Como la empresa ya estaba
+# commiteada en SQL pero el vector nunca llegó a Qdrant, quedó a medias: "Mi
+# empresa" la mostraba y matches respondía que no existía. La invariante que
+# se prueba acá es que un fallo del servicio externo no deja empresas
+# huérfanas: o se guardan los dos lados, o no se guarda ninguno.
+# ---------------------------------------------------------------------------
+
+
+class BrokenEmbeddingService(FakeEmbeddingService):
+    """Simula el proveedor de embeddings caído o pasado de timeout."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise TimeoutError("El servicio de embeddings no respondió a tiempo")
+
+
+async def test_embedding_failure_propagates(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el servicio de embeddings falla, el error llega al llamador."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+
+    with pytest.raises(TimeoutError):
+        await use_case.execute(SUPPLIER_DATA)
+
+
+async def test_embedding_failure_leaves_no_supplier_in_sql(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un fallo del embedding no puede dejar la empresa persistida en SQL."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+
+    with pytest.raises(TimeoutError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert len(supplier_repo.suppliers) == 0
+
+
+async def test_embedding_failure_leaves_no_vector(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un fallo del embedding tampoco deja rastro en el almacén vectorial."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+
+    with pytest.raises(TimeoutError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert len(vector_repo.upserts) == 0
+
+
+async def test_embedding_failure_allows_retry(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Tras el fallo, reintentar con el servicio sano crea la empresa completa.
+
+    Es lo que el usuario hace de verdad: le da a guardar otra vez. Si el primer
+    intento hubiera dejado la fila en SQL, este segundo intento reventaría con
+    SupplierAlreadyExists y la empresa quedaría inutilizable para siempre.
+    """
+    fallido = CreateSupplierUseCase(
+        supplier_repo, vector_repo, BrokenEmbeddingService()
+    )
+    with pytest.raises(TimeoutError):
+        await fallido.execute(SUPPLIER_DATA)
+
+    sano = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+    supplier = await sano.execute(SUPPLIER_DATA)
+
+    assert await supplier_repo.get_by_rut(VALID_RUT) is not None
+    assert supplier.id in vector_repo.upserts
