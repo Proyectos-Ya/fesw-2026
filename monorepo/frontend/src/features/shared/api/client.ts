@@ -1,21 +1,17 @@
-// El fallback a localhost solo vale en desarrollo. En un build de producción,
-// caer a localhost en silencio hace que el frontend desplegado llame al equipo
-// del propio visitante: no falla al construir, falla en la cara del usuario y
-// sin ninguna pista. Por eso acá revienta el build en vez de arrancar mal.
-function resolverApiUrl(): string {
-  const declarada = process.env.NEXT_PUBLIC_API_URL;
-  if (declarada) return declarada;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "NEXT_PUBLIC_API_URL no está definida. Es obligatoria fuera de desarrollo: " +
-        "sin ella el frontend apuntaría a http://localhost:8000, que en el " +
-        "navegador del usuario no es el backend.",
-    );
-  }
-  return "http://localhost:8000";
-}
+/**
+ * La API se consume por una ruta relativa del propio dominio, y `next.config.ts`
+ * la reenvía al backend con un rewrite.
+ *
+ * Antes esto era la variable pública con el dominio del backend en Railway. Eso
+ * convertía la cookie de sesión en una cookie de tercera parte: el navegador la
+ * guardaba pero no la devolvía, y en producción el login entraba en bucle
+ * —`POST /auth/login` 200 y `GET /auth/me` 401, una y otra vez—. Ya no hay
+ * variable que declarar ni, por lo tanto, forma de volver a apuntar el navegador
+ * a otro dominio por descuido: el destino real vive en `BACKEND_ORIGIN`, del
+ * lado del servidor.
+ */
+const API_BASE_PATH = "/api";
 
-const API_URL = resolverApiUrl();
 const REQUEST_TIMEOUT_MS = 60_000; 
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
@@ -42,6 +38,9 @@ export class TimeoutError extends Error {
  * Cliente fetch tipado contra la API de ProyectosYA.
  * Envía la cookie de sesión (credentials) y normaliza los errores de FastAPI,
  * que vienen como `{ detail: string }`.
+ *
+ * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
+ * agrega esta función.
  */
 export async function apiFetch<T>(
   path: string,
@@ -52,7 +51,7 @@ export async function apiFetch<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetch(`${API_BASE_PATH}${path}`, {
       ...options,
       signal: controller.signal,
       credentials: "include",
