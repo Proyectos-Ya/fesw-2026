@@ -35,7 +35,7 @@ async def _session(api: AsyncClient) -> None:
 
 async def test_crear_proveedor_retorna_201(api: AsyncClient) -> None:
     """Crear un proveedor con datos válidos retorna 201 y los datos persistidos."""
-    response = await api.post("/suppliers/", json=VALID_SUPPLIER)
+    response = await api.post("/suppliers", json=VALID_SUPPLIER)
 
     assert response.status_code == 201
     data = response.json()
@@ -63,7 +63,7 @@ async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
 
     app.dependency_overrides[get_supplier_vector_repo] = capture_vector_repo
 
-    response = await api.post("/suppliers/", json=VALID_SUPPLIER)
+    response = await api.post("/suppliers", json=VALID_SUPPLIER)
     supplier_id = response.json()["id"]
 
     assert response.status_code == 201
@@ -79,8 +79,8 @@ async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
 
 async def test_crear_proveedor_rut_duplicado_retorna_409(api: AsyncClient) -> None:
     """Registrar el mismo RUT dos veces retorna 409 Conflict."""
-    await api.post("/suppliers/", json=VALID_SUPPLIER)
-    response = await api.post("/suppliers/", json=VALID_SUPPLIER)
+    await api.post("/suppliers", json=VALID_SUPPLIER)
+    response = await api.post("/suppliers", json=VALID_SUPPLIER)
 
     assert response.status_code == 409
 
@@ -88,7 +88,7 @@ async def test_crear_proveedor_rut_duplicado_retorna_409(api: AsyncClient) -> No
 async def test_crear_proveedor_rut_invalido_retorna_400(api: AsyncClient) -> None:
     """Un RUT con dígito verificador incorrecto retorna 400 Bad Request."""
     payload = {**VALID_SUPPLIER, "rut": "76086428-0"}
-    response = await api.post("/suppliers/", json=payload)
+    response = await api.post("/suppliers", json=payload)
 
     assert response.status_code == 400
 
@@ -100,7 +100,7 @@ async def test_crear_proveedor_rut_invalido_retorna_400(api: AsyncClient) -> Non
 
 async def test_obtener_proveedor_existente_retorna_200(api: AsyncClient) -> None:
     """Consultar un proveedor recién creado por su ID retorna 200 con los datos."""
-    created = await api.post("/suppliers/", json=VALID_SUPPLIER)
+    created = await api.post("/suppliers", json=VALID_SUPPLIER)
     supplier_id = created.json()["id"]
 
     response = await api.get(f"/suppliers/{supplier_id}")
