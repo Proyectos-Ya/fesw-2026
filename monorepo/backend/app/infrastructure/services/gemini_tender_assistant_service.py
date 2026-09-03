@@ -48,21 +48,12 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         except Exception:
             return f"[Documento Excel adjunto: {file_name} (no se pudo parsear el contenido tabular)]"
 
-    def _build_system_instruction(
-        self, has_supplier: bool = False, has_tender: bool = False
-    ) -> str:
+    def _build_system_instruction(self, has_supplier: bool = False) -> str:
         base_instruction = (
             "Eres un asistente analítico experto en compras públicas y licitaciones de Mercado Público de Chile.\n"
             "Tu función principal es responder con precisión, objetividad y rigurosidad técnica a las preguntas del usuario "
             "basándote en los documentos y antecedentes adjuntos de la licitación.\n\n"
         )
-        if has_tender:
-            base_instruction += (
-                "Se te adjunta la INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN (título, descripción detallada, ítems/productos "
-                "solicitados con sus cantidades y unidades de medida, organismo comprador, región, comuna, presupuesto estimado y "
-                "fechas de publicación/cierre). Debes considerarla fuente oficial de información para responder consultas sobre qué se solicita, "
-                "cantidades, plazos, comprador y ubicación.\n\n"
-            )
         if has_supplier:
             base_instruction += (
                 "Se te adjuntan los ANTECEDENTES Y PERFIL DE LA EMPRESA CONSULTANTE. Debes utilizarlos activamente cuando el "
@@ -99,29 +90,17 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         history: List[TenderChatMessage],
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
-        tender_context: Optional[str] = None,
     ) -> AIResponseDTO:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
         # 1. Preparar las partes del turno actual
         current_parts: list[dict] = [
-            {
-                "text": self._build_system_instruction(
-                    has_supplier=bool(supplier_context),
-                    has_tender=bool(tender_context),
-                )
-            }
+            {"text": self._build_system_instruction(has_supplier=bool(supplier_context))}
         ]
-
-        # Si se proporcionó la información general y metadatos de la licitación, agregarla como contexto
-        if tender_context:
-            current_parts.append({"text": tender_context})
-
 
         # Si se proporcionó el perfil de la empresa proveedora, agregarlo como contexto
         if supplier_context:
             current_parts.append({"text": supplier_context})
-
 
         # 2. Agregar los documentos adjuntos (PDF / PNG / XLSX)
         for doc in documents:

@@ -36,7 +36,6 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_history: List[List[TenderChatMessage]] = []
         self.called_documents: List[List[DocumentContextDTO]] = []
         self.called_supplier_contexts: List[Optional[str]] = []
-        self.called_tender_contexts: List[Optional[str]] = []
 
     async def generate_response(
         self,
@@ -44,7 +43,6 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         history: List[TenderChatMessage],
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
-        tender_context: Optional[str] = None,
     ) -> AIResponseDTO:
         if self.should_fail:
             raise TenderAssistantUnavailableError("Error simulado de conexión con Gemini")
@@ -53,8 +51,6 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_history.append(history)
         self.called_documents.append(documents)
         self.called_supplier_contexts.append(supplier_context)
-        self.called_tender_contexts.append(tender_context)
-
 
         if self.custom_response is not None:
             return self.custom_response
@@ -534,167 +530,6 @@ async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_f
     assert len(response_msg.warnings) == 1
     assert "plano_danado.pdf" in response_msg.warnings[0]
     assert "dañado o ilegible" in response_msg.warnings[0]
-
-
-@pytest.mark.asyncio
-
-async def test_ask_tender_assistant_injects_tender_context_and_items(repo):
-    """Verifica que AskTenderAssistantUseCase extraiga y formatee los metadatos e ítems de la licitación y los pase a la IA."""
-    from datetime import datetime, timezone
-    from app.domain.entities.tender import Tender, TenderItem
-    from tests.unit.application.fakes import InMemoryTenderRepository
-
-    tender_id = uuid4()
-    user_id = uuid4()
-
-    tender_repo = InMemoryTenderRepository()
-    mock_ai = FakeTenderAssistantAIService()
-
-    # Crear licitación con ítems
-    tender = Tender(
-        id=tender_id,
-        code="1234-56-COT26",
-        name="Adquisición de Insumos Médicos y Equipamiento",
-        description="Compra de insumos quirúrgicos para hospital regional.",
-        status_id=1,
-        status_code="publicada",
-        published_at=datetime(2026, 8, 15, 10, 30, tzinfo=timezone.utc),
-        closing_at=datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc),
-        last_change_at=datetime(2026, 8, 15, 10, 30, tzinfo=timezone.utc),
-        buyer_rut="60.504.000-9",
-        buyer_name="Servicio de Salud Metropolitano",
-        buyer_unit="Depto. Adquisiciones",
-        region="Metropolitana de Santiago",
-        commune="Santiago",
-        available_amount_clp=5000000.0,
-        items=[
-            TenderItem(
-                tender_id=tender_id,
-                product_code="42142501",
-                name="Guantes Quirúrgicos Látex",
-                description="Caja de 100 unidades estériles",
-                quantity=50.0,
-                unit_of_measure="Caja"
-            ),
-            TenderItem(
-                tender_id=tender_id,
-                product_code="42142502",
-                name="Mascarillas N95",
-                description="Mascarillas de alta filtración",
-                quantity=100.0,
-                unit_of_measure="Unidad"
-            )
-        ]
-    )
-    tender_repo.tenders[tender_id] = tender
-
-    use_case = AskTenderAssistantUseCase(
-        chat_repo=repo,
-        ai_service=mock_ai,
-        tender_repo=tender_repo,
-    )
-
-    await use_case.execute(
-        tender_id=tender_id,
-        user_id=user_id,
-        question="¿Qué productos y cantidades se solicitan en esta licitación?"
-    )
-
-    # Validar que el contexto de la licitación fue inyectado correctamente
-    assert len(mock_ai.called_tender_contexts) == 1
-    t_context = mock_ai.called_tender_contexts[0]
-    assert t_context is not None
-    assert "=== INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN ===" in t_context
-    assert "Código de Licitación: 1234-56-COT26" in t_context
-    assert "Nombre / Título: Adquisición de Insumos Médicos y Equipamiento" in t_context
-    assert "Descripción / Detalle: Compra de insumos quirúrgicos para hospital regional." in t_context
-    assert "Estado: publicada" in t_context
-    assert "Organismo Comprador: Servicio de Salud Metropolitano (RUT: 60.504.000-9)" in t_context
-    assert "Unidad de Compra: Depto. Adquisiciones" in t_context
-    assert "Región: Metropolitana de Santiago" in t_context
-    assert "Comuna: Santiago" in t_context
-    assert "Presupuesto Estimado / Monto Disponible: $5,000,000 CLP" in t_context
-    assert "Fecha de Publicación: 15/08/2026 10:30" in t_context
-    assert "Fecha de Cierre de Ofertas: 30/08/2026 18:00" in t_context
-    assert "Ítems y Productos Solicitados (2):" in t_context
-    assert "Guantes Quirúrgicos Látex | Cantidad: 50.0 Caja - Caja de 100 unidades estériles" in t_context
-    assert "Mascarillas N95 | Cantidad: 100.0 Unidad - Mascarillas de alta filtración" in t_context
-
-
-@pytest.mark.asyncio
-async def test_ask_tender_assistant_handles_tender_without_items_and_null_fields(repo):
-    """Verifica que AskTenderAssistantUseCase formatee licitaciones con campos opcionales o sin ítems."""
-    from datetime import datetime, timezone
-    from app.domain.entities.tender import Tender
-    from tests.unit.application.fakes import InMemoryTenderRepository
-
-    tender_id = uuid4()
-    user_id = uuid4()
-
-    tender_repo = InMemoryTenderRepository()
-    mock_ai = FakeTenderAssistantAIService()
-
-    # Licitación mínima
-    tender = Tender(
-        id=tender_id,
-        code="9999-99-COT26",
-        name="Servicio de Consultoría General",
-        description=None,
-        status_id=1,
-        published_at=datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc),
-        closing_at=datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc),
-        last_change_at=datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc),
-        buyer_rut="70.000.000-1",
-        buyer_unit="Unidad Central",
-        items=[]
-    )
-    tender_repo.tenders[tender_id] = tender
-
-    use_case = AskTenderAssistantUseCase(
-        chat_repo=repo,
-        ai_service=mock_ai,
-        tender_repo=tender_repo,
-    )
-
-    await use_case.execute(
-        tender_id=tender_id,
-        user_id=user_id,
-        question="¿Cuál es el presupuesto?"
-    )
-
-    assert len(mock_ai.called_tender_contexts) == 1
-    t_context = mock_ai.called_tender_contexts[0]
-    assert t_context is not None
-    assert "Presupuesto Estimado / Monto Disponible: No especificado" in t_context
-    assert "(No se detallan ítems específicos)" in t_context
-
-
-@pytest.mark.asyncio
-async def test_ask_tender_assistant_resilient_to_tender_repo_exception(repo):
-    """Verifica que si tender_repo falla, la consulta al asistente continúe normalmente con tender_context=None."""
-    from unittest.mock import AsyncMock
-    from app.application.repositories.tender_repository import ITenderRepository
-
-    mock_ai = FakeTenderAssistantAIService()
-    mock_tender_repo = AsyncMock(spec=ITenderRepository)
-    mock_tender_repo.get_tenders.side_effect = Exception("DB Connection Timeout")
-
-    use_case = AskTenderAssistantUseCase(
-        chat_repo=repo,
-        ai_service=mock_ai,
-        tender_repo=mock_tender_repo,
-    )
-
-    response = await use_case.execute(
-        tender_id=uuid4(),
-        user_id=uuid4(),
-        question="¿Hay información disponible?"
-    )
-
-    assert response.role == "assistant"
-    assert len(mock_ai.called_tender_contexts) == 1
-    assert mock_ai.called_tender_contexts[0] is None
-
 
 
 

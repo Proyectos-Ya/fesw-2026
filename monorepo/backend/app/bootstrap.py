@@ -454,7 +454,6 @@ def get_ask_tender_assistant_use_case(
         ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
     ],
     supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
-    tender_repo: Annotated[ITenderRepository, Depends(get_tender_repo)],
     validator_service: Annotated[
         IDocumentValidatorService, Depends(get_document_validator_service)
     ],
@@ -463,10 +462,8 @@ def get_ask_tender_assistant_use_case(
         chat_repo=chat_repo,
         ai_service=ai_service,
         supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
         validator_service=validator_service,
     )
-
 
 
 
