@@ -372,64 +372,11 @@ async def test_generate_response_parses_unbacked_aspects_and_insufficient_info(s
 
 
 def test_system_instruction_contains_multidoc_and_contradiction_directives(service):
-    instruction = service._build_system_instruction(has_supplier=True, has_tender=True)
+    instruction = service._build_system_instruction(has_supplier=True)
     assert "Cruce de información y síntesis consolidada" in instruction
     assert "Detección de contradicciones y discrepancias" in instruction
     assert "discrepancies" in instruction
     assert "unbacked_aspects" in instruction
     assert "has_sufficient_info: false" in instruction
-    assert "INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN" in instruction
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_generate_response_includes_tender_context_in_payload(service):
-    mock_gemini_response = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "text": json.dumps({
-                                "answer": "El comprador es el Servicio de Salud y se solicitan 50 guantes.",
-                                "citations": [],
-                                "has_sufficient_info": True
-                            })
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-
-    route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
-    ).respond(status_code=200, json=mock_gemini_response)
-
-    tender_context_sample = (
-        "=== INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN ===\n"
-        "- Código: 1234-56-COT26\n"
-        "- Nombre: Compra de Insumos\n"
-        "- Ítems: Guantes Quirúrgicos (50 unidades)\n"
-    )
-
-    response = await service.generate_response(
-        question="¿Quién es el comprador y qué se compra?",
-        history=[],
-        documents=[],
-        tender_context=tender_context_sample
-    )
-
-    assert response.answer == "El comprador es el Servicio de Salud y se solicitan 50 guantes."
-    assert route.called
-    last_request = route.calls.last.request
-    request_data = json.loads(last_request.content.decode("utf-8"))
-
-    # Verificar que tender_context esté presente en las partes enviadas a Gemini
-    parts = request_data["contents"][0]["parts"]
-    parts_text = [p.get("text", "") for p in parts]
-    assert any("INFORMACIÓN GENERAL Y METADATOS DE LA LICITACIÓN" in t for t in parts_text)
-    assert any(tender_context_sample in t for t in parts_text)
-
 
 
