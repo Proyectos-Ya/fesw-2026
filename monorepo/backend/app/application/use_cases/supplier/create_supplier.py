@@ -56,10 +56,16 @@ class CreateSupplierUseCase:
         if user_id is not None and await self.repo.get_by_user_id(user_id):
             raise UserAlreadyHasSupplier(user_id)
 
-        saved_supplier = await self.repo.save(supplier)
-
+        # El embedding se calcula ANTES de persistir. Es una llamada de red a un
+        # proveedor externo y es, de lejos, el paso que más falla. Con el orden
+        # inverso un timeout dejaba la empresa commiteada en Postgres pero sin
+        # vector en Qdrant: aparecía en "Mi empresa" y al mismo tiempo matches y
+        # el escaneo de alertas respondían que no existía, sin forma de arreglarlo
+        # reintentando, porque el RUT ya estaba tomado.
         text = _build_supplier_text(data)
         vectors = await self.embedding_service.embed([text])
+
+        saved_supplier = await self.repo.save(supplier)
         self.vector_repo.upsert(saved_supplier.id, vectors[0])
 
         return saved_supplier
