@@ -61,11 +61,18 @@ class UpdateSupplierUseCase:
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
+        # Igual que al crear: el embedding va antes de persistir. Si se guardara
+        # primero, un fallo del proveedor externo dejaría el texto nuevo en SQL
+        # apuntando al vector viejo, y el matching seguiría respondiendo con el
+        # perfil anterior sin que nada lo delatara.
+        vectors = None
+        if matching_changed:
+            text = _build_supplier_text(updated)
+            vectors = await self.embedding_service.embed([text])
+
         saved = await self.repo.update(updated)
 
-        if matching_changed:
-            text = _build_supplier_text(saved)
-            vectors = await self.embedding_service.embed([text])
+        if vectors is not None:
             self.vector_repo.upsert(saved.id, vectors[0])
 
         return saved

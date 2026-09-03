@@ -32,6 +32,10 @@ pyjwt==2.13.0
 # Envío de correo de las alertas de licitaciones (HdU 08). SMTP asíncrono para
 # no bloquear el event loop mientras se habla con el servidor de correo.
 aiosmtplib>=3.0.0
+# Resolución DNS del dominio del destinatario, antes de enviar. Brevo y SendGrid
+# aceptan el mensaje y avisan del rebote por webhook (que no exponemos), así que
+# sin esta comprobación una dirección inexistente se daba por enviada.
+dnspython>=2.6.0
 
 # Carga y lectura de documentos para el asistente de licitaciones.
 python-multipart>=0.0.9

@@ -31,7 +31,7 @@ export function SearchBar({
       </div>
 
       <input
-        type="search"
+        type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
