@@ -48,8 +48,15 @@ def create_supplier_router(
         dependencies=[Depends(get_current_user)],
     )
 
+    # Ruta sin barra final a proposito: declarada como "/" su forma canonica era
+    # `/suppliers/`, y FastAPI respondia a `/suppliers` con un 307 cuya `Location`
+    # es absoluta —host y esquema los toma de la peticion que ve el backend—. Tras
+    # el proxy de Railway eso es `http://` y el dominio del backend, asi que el
+    # navegador bloqueaba el salto por contenido mixto. Next ademas quita la barra
+    # final antes de aplicar el rewrite, de modo que al backend siempre le llega
+    # `/suppliers`: esa es la forma que tiene que existir.
     @router.post(
-        "/",
+        "",
         response_model=Supplier,
         status_code=status.HTTP_201_CREATED,
         responses={
