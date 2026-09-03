@@ -34,6 +34,7 @@ export function TenderAssistantDrawer({
   const {
     documents,
     isUploading,
+    error: documentError,
     uploadDocument,
     removeDocument,
   } = useTenderDocuments(isOpen ? tenderId : "");
@@ -93,6 +94,7 @@ export function TenderAssistantDrawer({
           onUpload={uploadDocument}
           onDelete={removeDocument}
           isUploading={isUploading}
+          externalError={documentError}
         />
       </div>
 
@@ -143,4 +145,3 @@ export function TenderAssistantDrawer({
     </aside>
   );
 }
-

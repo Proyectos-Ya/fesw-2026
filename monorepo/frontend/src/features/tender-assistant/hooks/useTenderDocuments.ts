@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { TenderChatDocument } from "../types";
+import { MAX_ATTACHED_DOCUMENTS } from "../types";
 import {
   listTenderDocuments,
   uploadTenderDocument,
@@ -14,6 +15,8 @@ export function useTenderDocuments(tenderId: string) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const canUpload = documents.length < MAX_ATTACHED_DOCUMENTS;
 
   const loadDocuments = useCallback(async () => {
     if (!tenderId) {
@@ -35,6 +38,12 @@ export function useTenderDocuments(tenderId: string) {
   }, [tenderId]);
 
   const uploadDocument = async (file: File): Promise<TenderChatDocument> => {
+    if (documents.length >= MAX_ATTACHED_DOCUMENTS) {
+      const limitMsg = `Se ha alcanzado el límite máximo de ${MAX_ATTACHED_DOCUMENTS} documentos adjuntos por chat.`;
+      setError(limitMsg);
+      throw new Error(limitMsg);
+    }
+
     setIsUploading(true);
     setError(null);
     try {
@@ -62,6 +71,10 @@ export function useTenderDocuments(tenderId: string) {
     }
   };
 
+  const clearError = () => {
+    setError(null);
+  };
+
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
@@ -71,6 +84,9 @@ export function useTenderDocuments(tenderId: string) {
     isLoading,
     isUploading,
     error,
+    canUpload,
+    maxDocuments: MAX_ATTACHED_DOCUMENTS,
+    clearError,
     loadDocuments,
     uploadDocument,
     removeDocument,

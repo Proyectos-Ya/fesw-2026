@@ -1,6 +1,19 @@
 import React, { useEffect, useRef } from "react";
-import { Bot, User as UserIcon, Quote, FileText, Loader2, AlertTriangle } from "lucide-react";
+import {
+  Bot,
+  User as UserIcon,
+  Quote,
+  FileText,
+  FileSpreadsheet,
+  FileImage,
+  Loader2,
+  AlertTriangle,
+  AlertCircle,
+} from "lucide-react";
 import type { TenderChatMessage } from "../types";
+import { DiscrepancyCard } from "./DiscrepancyCard";
+import { UnbackedAspectsList } from "./UnbackedAspectsList";
+import { InsufficientInfoBanner } from "./InsufficientInfoBanner";
 
 interface ChatMessageListProps {
   messages: TenderChatMessage[];
@@ -21,12 +34,22 @@ export function ChatMessageList({
     }
   }, [messages, isAsking]);
 
+  const getDocumentIcon = (docName: string) => {
+    const ext = docName.split(".").pop()?.toLowerCase();
+    if (ext === "xlsx" || ext === "xls") {
+      return <FileSpreadsheet className="h-3 w-3 text-emerald-600" />;
+    }
+    if (ext === "png" || ext === "jpg" || ext === "jpeg") {
+      return <FileImage className="h-3 w-3 text-blue-500" />;
+    }
+    return <FileText className="h-3 w-3 text-red-500" />;
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
       {messages.length === 0 && !isAsking && (
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 mb-3">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
             <Bot className="h-6 w-6" />
           </div>
           <h4 className="text-sm font-semibold text-slate-800">
@@ -44,7 +67,9 @@ export function ChatMessageList({
         return (
           <div
             key={msg.id}
-            className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+            className={`flex items-start gap-2.5 ${
+              isUser ? "flex-row-reverse" : "flex-row"
+            }`}
           >
             <div
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${
@@ -57,17 +82,51 @@ export function ChatMessageList({
             </div>
 
             <div
-              className={`flex max-w-[85%] flex-col gap-1.5 rounded-2xl px-4 py-2.5 text-sm ${
+              className={`flex max-w-[85%] flex-col gap-2 rounded-2xl px-4 py-2.5 text-sm ${
                 isUser
-                  ? "bg-blue-600 text-white rounded-tr-none"
-                  : "border border-slate-200 bg-white text-slate-800 shadow-xs rounded-tl-none"
+                  ? "rounded-tr-none bg-blue-600 text-white"
+                  : "rounded-tl-none border border-slate-200 bg-white text-slate-800 shadow-xs"
               }`}
             >
+              {/* Warnings de archivos dañados o corruptos (CA6) */}
+              {msg.warnings && msg.warnings.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-lg border border-amber-200/80 bg-amber-50/90 p-2 text-xs text-amber-900 shadow-2xs">
+                  {msg.warnings.map((w, wi) => (
+                    <div key={wi} className="flex items-start gap-1.5">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                      <span className="leading-snug">{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
 
-              {/* Render de citas textuales exactas */}
+              {/* Tarjetas de discrepancias detectadas (CA2) */}
+              {msg.discrepancies && msg.discrepancies.length > 0 && (
+                <div className="flex flex-col gap-2 pt-1">
+                  {msg.discrepancies.map((discrepancy, di) => (
+                    <DiscrepancyCard
+                      key={`disc-${di}`}
+                      discrepancy={discrepancy}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Aspectos no especificados en los documentos (CA3) */}
+              {msg.unbacked_aspects && msg.unbacked_aspects.length > 0 && (
+                <UnbackedAspectsList aspects={msg.unbacked_aspects} />
+              )}
+
+              {/* Banner de información insuficiente / anti-alucinación (CA4) */}
+              <InsufficientInfoBanner
+                hasSufficientInfo={msg.has_sufficient_info}
+              />
+
+              {/* Citas textuales exactas por documento (CA1) */}
               {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-2 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
+                <div className="mt-1 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
                   <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                     <Quote className="h-3 w-3 text-blue-500" />
                     Citas textuales de respaldo:
@@ -79,15 +138,17 @@ export function ChatMessageList({
                       className="rounded-lg border border-slate-200/80 bg-slate-50/90 p-2 text-xs text-slate-700"
                     >
                       <div className="flex items-center gap-1 font-semibold text-slate-900 text-[11px]">
-                        <FileText className="h-3 w-3 text-red-500" />
-                        <span>{c.document_name}</span>
+                        {getDocumentIcon(c.document_name)}
+                        <span className="truncate" title={c.document_name}>
+                          {c.document_name}
+                        </span>
                         {c.page_or_sheet && (
-                          <span className="rounded bg-slate-200 px-1 py-0.2 text-[10px] text-slate-600 font-normal">
+                          <span className="shrink-0 rounded bg-slate-200 px-1 py-0.2 text-[10px] font-normal text-slate-600">
                             {c.page_or_sheet}
                           </span>
                         )}
                       </div>
-                      <blockquote className="mt-1 italic text-slate-600 border-l-2 border-blue-400 pl-2">
+                      <blockquote className="mt-1 border-l-2 border-blue-400 pl-2 italic text-slate-600">
                         &quot;{c.quote}&quot;
                       </blockquote>
                     </div>
@@ -100,7 +161,7 @@ export function ChatMessageList({
       })}
 
       {isAsking && (
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200 w-fit">
+        <div className="flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
           <span>Analizando documentos y generando respuesta con citas...</span>
         </div>
@@ -109,7 +170,7 @@ export function ChatMessageList({
       {error && (
         <div
           role="alert"
-          className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900"
+          className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
         >
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
           <span>{error}</span>
