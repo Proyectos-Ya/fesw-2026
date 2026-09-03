@@ -37,7 +37,10 @@ describe("createSupplier", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/suppliers/");
+    // Sin barra final: con ella, Next redirige (308) y despues FastAPI devuelve un
+    // 307 hacia el dominio del backend, que el navegador bloquea por contenido
+    // mixto. La URL exacta es parte del contrato, asi que se afirma completa.
+    expect(url).toBe("/api/suppliers");
     expect(options.method).toBe("POST");
     expect(options.credentials).toBe("include");
     expect(JSON.parse(options.body as string)).toMatchObject(validData);

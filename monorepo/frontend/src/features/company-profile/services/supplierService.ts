@@ -12,7 +12,7 @@ export interface Supplier extends Omit<ProfileData, "trade_name"> {
 
 /** Crea un proveedor a partir de los datos del wizard de perfil. */
 export function createSupplier(data: ProfileData): Promise<Supplier> {
-  return apiFetch<Supplier>("/suppliers/", {
+  return apiFetch<Supplier>("/suppliers", {
     method: "POST",
     body: JSON.stringify(data),
   });
