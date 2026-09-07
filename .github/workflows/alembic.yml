@@ -10,12 +10,11 @@
 name: Alembic
 
 on:
+  # Sin filtro `paths` a propósito: como este check es obligatorio en el ruleset,
+  # un PR que no dispare el job se quedaría bloqueado para siempre esperando un
+  # estado que nunca llega. El job es barato, así que corre en todos los PRs.
   pull_request:
     branches: [main, develop]
-    paths:
-      - 'monorepo/backend/alembic/**'
-      - 'monorepo/backend/requirements.txt'
-      - '.github/workflows/alembic.yml'
   # Red de seguridad: si algo se mergea saltándose el check, avisa igual.
   push:
     branches: [main, develop]
