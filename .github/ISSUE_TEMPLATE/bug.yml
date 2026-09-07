@@ -1,0 +1,60 @@
+name: Bug
+description: Algo no funciona como debería.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Si el bug incumple un criterio de aceptación de una historia de usuario,
+        enlázala con `Refs #NNN` en la descripción.
+
+        Para clasificarlo usa **etiquetas**: `frontend`, `backend`, y la severidad
+        que corresponda.
+
+  - type: dropdown
+    id: entorno
+    attributes:
+      label: Entorno
+      description: Dónde se reprodujo.
+      options:
+        - Local
+        - Producción
+        - Ambos
+    validations:
+      required: true
+
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Qué ocurre
+      description: El comportamiento observado. Una o dos frases.
+    validations:
+      required: true
+
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducir
+      description: Desde un estado conocido. Si no es reproducible de forma fiable, dilo e indica cada cuánto aparece.
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Qué debería ocurrir
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidencia
+    attributes:
+      label: Evidencia
+      description: Mensaje de error completo, traza, logs relevantes, capturas. Pega el texto en bloques de código.
+    validations:
+      required: false
