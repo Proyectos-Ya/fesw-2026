@@ -53,3 +53,19 @@ Por motivos de seguridad, auditoría y control de calidad, **los agentes de IA t
 > ```bash
 > git push origin mi-rama-de-trabajo
 > ```"
+
+---
+
+## 5. Trazabilidad con GitHub Issues
+
+La especificación de cada tarea vive en una issue del repositorio, no en el código.
+
+- **Antes de implementar**, leer la issue correspondiente con `gh issue view <n>`.
+  Los criterios de aceptación están en su cuerpo y definen qué significa "terminado".
+  No inferir el alcance leyendo el código.
+- Las ramas llevan el número de la issue al inicio (`155-spike-1-...`).
+- La descomposición de una historia usa **sub-issues nativas** de GitHub
+  (`gh issue create --parent <n>`), no campos de texto en el cuerpo.
+- Todo PR referencia su issue con `Closes #NNN`, o `Refs #NNN` si no la cierra
+  del todo. La plantilla de PR lo pide junto con la evidencia de cómo se probó
+  cada criterio.
