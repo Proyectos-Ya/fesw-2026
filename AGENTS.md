@@ -52,13 +52,23 @@ responsabilidades separadas y no intercambiables.
   En la práctica: agregar columnas nullable, y no renombrar ni borrar en el
   mismo despliegue que deja de usarlas.
 
-- **Cabezas múltiples: unir con `alembic merge`, nunca repuntar
-  `down_revision`.** Cuando dos ramas crean migraciones desde el mismo punto, el
-  grafo queda con dos finales y `alembic upgrade head` **aborta sin aplicar
-  nada** — el despliegue se cae y el código mergeado no llega nunca a
-  producción. Editar el `down_revision` de una migración ya mergeada para
-  "enderezar" el grafo rompe el historial de quien ya la aplicó. Ha ocurrido dos
-  veces (30-ago-2026 y 2-sep-2026).
+- **Cabezas múltiples.** Cuando dos ramas crean migraciones desde el mismo
+  punto, el grafo de Alembic queda con dos finales y `alembic upgrade head`
+  **aborta sin aplicar nada**: el despliegue se cae y el código mergeado no
+  llega a producción. Cómo se arregla depende de si tu migración ya se aplicó
+  en algún entorno:
+
+  - **Todavía no se aplicó en ninguna parte** (lo habitual: sigue solo en tu
+    rama): repuntar el `down_revision` de tu migración a la cabeza actual.
+    Es seguro porque nadie la ha aplicado, y deja el grafo lineal.
+  - **Ya se aplicó en algún entorno** (está en `main` y se desplegó, o alguien
+    la corrió contra una base compartida): `alembic merge heads`. Editar el
+    `down_revision` de una migración que otros ya aplicaron rompe su historial.
+
+  Antes de abrir el PR, comprobar con `alembic heads`: si devuelve más de una
+  línea, resolverlo antes de mergear. Ha ocurrido dos veces (30-ago-2026 y
+  2-sep-2026), las dos con la misma forma: dos ramas largas desde el mismo
+  ancestro, mergeadas en secuencia.
 
 ### Crear una migración
 
