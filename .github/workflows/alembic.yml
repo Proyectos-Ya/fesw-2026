@@ -15,6 +15,9 @@ on:
   # estado que nunca llega. El job es barato, así que corre en todos los PRs.
   pull_request:
     branches: [main, develop]
+  # Permite lanzarlo a mano desde la pestaña Actions, sin necesidad de un PR.
+  workflow_dispatch:
+
   # Red de seguridad: si algo se mergea saltándose el check, avisa igual.
   push:
     branches: [main, develop]
