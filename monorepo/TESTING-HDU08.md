@@ -44,14 +44,41 @@ Completa las obligatorias. Sin ellas la aplicación no arranca:
 | `DATABASE_URL` | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | `MERCADO_PUBLICO_API_KEY` | Cualquier valor si vas a usar el dump (no se consume cuota) |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Pídeselos al equipo |
-| `JWT_SECRET_KEY` | Genera la tuya, ver abajo |
+| `SUPABASE_URL` | `http://127.0.0.1:54321` |
 | `POSTGRES_PASSWORD` | `postgres` |
 
-`JWT_SECRET_KEY` es una credencial personal y debe tener al menos 32 bytes o la
-aplicación se niega a arrancar:
+Y en `monorepo/frontend/.env.local`:
+
+| Variable | De dónde sale |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `http://127.0.0.1:54321` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | La imprime `supabase start`; también `supabase status` |
+
+La sesión ya no la firma el backend, así que **`JWT_SECRET_KEY` no va más**: la emite
+Supabase Auth con una clave asimétrica y el backend solo verifica la firma con la clave
+pública que recoge del JWKS. Esa clave privada es de cada quien y no está en el
+repositorio; genera la tuya **antes** del primer `supabase start`:
 
 ```bash
-python -c "import secrets; print(f'JWT_SECRET_KEY={secrets.token_urlsafe(48)}')"
+echo '[]' > supabase/signing_keys.json
+supabase gen signing-key --algorithm ES256 --append
+```
+
+Son dos pasos y no una redirección: `supabase/config.toml` ya declara
+`signing_keys_path`, así que el CLI abre ese archivo para agregarle la clave y falla si no
+existe. La primera línea lo siembra vacío. (Más detalle en `backend/README.md`, paso 5.)
+
+El ingreso con Google viene **apagado** en `supabase/config.toml`, a propósito: con él
+encendido y sin credenciales, `supabase start` no levanta nada —ni la base ni el correo
+de prueba—. Para esta guía no hace falta; el registro por correo alcanza.
+
+Si igual lo quieres probar, pon `enabled = true` en `[auth.external.google]` y exporta
+las credenciales en la misma terminal desde la que levantas Supabase (el CLI lee el
+entorno de la shell, no el `.env`):
+
+```bash
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
 ```
 
 Deja además `RUN_AUTO_INGESTION=false`: vas a usar el corpus de prueba del repositorio en
@@ -89,11 +116,13 @@ Desde `monorepo/backend/`, con el venv activo:
 alembic upgrade head
 python tests/matching_evaluation/load_postgres_robust.py
 python tests/matching_evaluation/load_dataset.py
-python tests/matching_evaluation/crear_perfiles_demo.py
 ```
 
-El segundo comando genera los embeddings e indexa en Qdrant: tarda un par de minutos. El
-último crea tres cuentas de prueba de rubros distintos, todas con contraseña `demo1234`.
+El segundo comando genera los embeddings e indexa en Qdrant: tarda un par de minutos.
+
+**Ya no hay cuentas de prueba sembradas.** Las emitía un script que escribía contraseñas
+en la base, y con Supabase Auth esas cuentas no sirven para entrar. La cuenta se crea a
+mano una sola vez, en el paso 4.
 
 ---
 
@@ -152,8 +181,12 @@ al probar esto: cambias `SMTP_PORT`, no reinicias, y concluyes que no funciona.
 
 ## 4. Recorrido por criterio
 
-Entra en http://localhost:3000/login con **`salud@demo.invalid`** y contraseña
-**`demo1234`**.
+Regístrate en http://localhost:3000/register, abre el correo de confirmación en
+Mailpit (http://localhost:54324) y completa el onboarding de la empresa.
+
+El perfil de empresa es imprescindible: sin él no hay con qué comparar licitaciones y
+no se genera ni un aviso. Y ojo con la bandeja: ahora Mailpit recibe **dos clases de
+correo**, el de confirmación de la cuenta y las alertas de licitaciones.
 
 Las alertas viven en el menú lateral: la entrada **Alertas** (icono de campana) lleva el
 contador de no leídas, y el engranaje **Preferencias de alertas** abre la configuración.

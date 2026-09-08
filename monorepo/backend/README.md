@@ -84,6 +84,52 @@ pip install -r requirements-dev.txt
 
 Ese archivo ya incluye `requirements.txt`, así que un solo comando deja el entorno completo.
 
+### 5. Autenticación: clave de firma y Google
+
+Las sesiones las emite **Supabase Auth**, no esta API. Hacen falta dos cosas antes del
+primer `supabase start`.
+
+**a) La clave con que GoTrue firma los JWT.** Es asimétrica: Supabase guarda la privada y
+publica la pública en su JWKS, que es lo único que el backend necesita para validar una
+sesión. Genera la tuya —no se comparte ni se sube, está en `supabase/.gitignore`:
+
+```bash
+echo '[]' > supabase/signing_keys.json
+supabase gen signing-key --algorithm ES256 --append
+```
+
+Son dos pasos y no una redirección: como `supabase/config.toml` ya declara
+`signing_keys_path`, el CLI abre ese archivo para agregarle la clave y falla si todavía no
+existe. La primera línea lo siembra vacío.
+
+Sin ese archivo, GoTrue firma con el secreto HS256 heredado. Ese secreto es *simétrico*:
+quien lo tenga puede emitir sesiones de cualquier usuario, y además el backend rechazaría
+esos tokens porque solo acepta ES256/RS256.
+
+**b) Las credenciales de Google** — **opcionales**, solo si quieres probar el botón
+"Continuar con Google" en local. `[auth.external.google]` viene con `enabled = false` a
+propósito: el CLI valida que, con el proveedor encendido, `client_id` y `secret` no queden
+vacíos, y si faltan **`supabase start` aborta y no levanta nada**, ni la base ni el correo
+de prueba. Apagado, quien no tenga las credenciales igual trabaja con normalidad; lo único
+que no funciona es ese botón.
+
+Para encenderlo: pon `enabled = true` en `supabase/config.toml` y exporta las dos
+variables **en la misma shell** desde la que corres `supabase start`. El CLI lee el
+entorno de la shell, no el `.env`, que lo lee la API:
+
+```bash
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET="..."
+```
+
+Las credenciales se piden al equipo o se crean en Google Cloud Console (OAuth client de
+tipo *Web application*).
+
+> Al crear el OAuth client en Google, la *Authorized redirect URI* es la de **Supabase**,
+> `http://127.0.0.1:54321/auth/v1/callback`, no la del frontend. Google redirige a
+> Supabase, y recién ahí Supabase redirige a `/auth/callback` de la aplicación. Poner la
+> URL del frontend es el error más común y da `redirect_uri_mismatch`.
+
 ---
 
 ## Entornos de trabajo: venv y Docker
@@ -281,11 +327,11 @@ prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
 dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
 para probar la aplicación da lo mismo.
 
-**4.** Crea las tres cuentas de prueba (rubros distintos, contraseña `demo1234`):
-
-```bash
-python tests/matching_evaluation/crear_perfiles_demo.py
-```
+**4.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
+cuentas las emite Supabase Auth, así que hay que registrarse en `/register`,
+confirmar el correo desde Mailpit (http://localhost:54324) y completar el
+onboarding de la empresa. Ver el pendiente **5.3** para el script que lo
+automatizaría.
 
 **5.** Levanta la aplicación:
 

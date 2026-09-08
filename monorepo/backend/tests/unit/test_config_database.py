@@ -19,7 +19,9 @@ BASE = {
     "gemini_api_key": "x",
     "gemini_model": "x",
     "mercado_publico_api_key": "x",
-    "jwt_secret_key": "K" * 32,
+    # Supabase Auth es el emisor de las sesiones: sin esta variable la
+    # aplicación no arranca, así que tampoco se puede construir Settings.
+    "supabase_url": "http://127.0.0.1:54321",
 }
 
 URL_GESTIONADA = (

@@ -24,8 +24,7 @@ from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
-from app.application.services.password_hasher import IPasswordHasher
-from app.application.services.token_service import ITokenService
+from app.application.services.identity_directory import IIdentityDirectory
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.notification import (
     Notification,
@@ -36,7 +35,7 @@ from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
-from app.domain.errors.auth_errors import InvalidToken
+from app.domain.errors.auth_errors import UserAlreadyExists
 from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
@@ -57,7 +56,20 @@ class InMemoryUserRepository(IUserRepository):
     async def get_by_id(self, user_id: UUID) -> User | None:
         return self.users.get(user_id)
 
+    async def get_by_auth_provider_id(self, subject: str) -> User | None:
+        for user in self.users.values():
+            if user.auth_provider_id == subject:
+                return user
+        return None
+
     async def save(self, user: User) -> User:
+        # Imita el UNIQUE de auth_provider_id en la base: sin esto, el doble
+        # aceptaría en silencio dos perfiles para la misma identidad y los tests
+        # de la carrera de aprovisionamiento no probarían nada.
+        if user.auth_provider_id is not None:
+            existente = await self.get_by_auth_provider_id(user.auth_provider_id)
+            if existente is not None and existente.id != user.id:
+                raise UserAlreadyExists(user.email)
         self.users[user.id] = user
         return user
 
@@ -157,27 +169,22 @@ class FakeEmbeddingService(IEmbeddingService):
         return [self.vector] * len(texts)
 
 
-class FakePasswordHasher(IPasswordHasher):
-    """Hash reversible y trivial — solo para pruebas, jamás producción."""
+class FakeIdentityDirectory(IIdentityDirectory):
+    """Doble del padrón de GoTrue: quién tiene el correo confirmado.
 
-    def hash(self, plain_password: str) -> str:
-        return f"hashed::{plain_password}"
+    En producción esto es un SELECT sobre `auth.users`. Acá es un conjunto de
+    `sub`, para poder escribir el caso de la cuenta sin verificar sin levantar
+    Supabase.
+    """
 
-    def verify(self, plain_password: str, hashed_password: str) -> bool:
-        return hashed_password == f"hashed::{plain_password}"
+    def __init__(self, confirmados: set[str] | None = None) -> None:
+        self.confirmados = confirmados if confirmados is not None else set()
 
+    async def email_confirmado(self, subject: str) -> bool:
+        return subject in self.confirmados
 
-class FakeTokenService(ITokenService):
-    def create_access_token(self, user_id: UUID) -> str:
-        return f"token::{user_id}"
-
-    def decode_token(self, token: str) -> UUID:
-        if not token.startswith("token::"):
-            raise InvalidToken()
-        try:
-            return UUID(token.removeprefix("token::"))
-        except ValueError as exc:
-            raise InvalidToken() from exc
+    def confirmar(self, subject: str) -> None:
+        self.confirmados.add(subject)
 
 
 from app.domain.entities.tender_chat import TenderChatSession

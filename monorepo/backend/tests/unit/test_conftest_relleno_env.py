@@ -11,7 +11,7 @@ un test normal y con un mensaje que dice exactamente qué hacer.
 
 from pydantic import ValidationError
 
-from app.config import MIN_JWT_SECRET_BYTES, Settings
+from app.config import Settings
 from pytest_env_defaults import RELLENO_ENV
 
 
@@ -48,9 +48,3 @@ def test_cada_clave_del_relleno_hace_falta():
         f"RELLENO_ENV define claves que Settings ya no exige: {sorted(sobrantes)}. "
         "Quítalas de pytest_env_defaults.py."
     )
-
-
-def test_la_clave_de_pruebas_pasa_la_validacion_de_largo():
-    """De nada sirve rellenar JWT_SECRET_KEY con algo que el validador rechaza."""
-    clave = RELLENO_ENV["JWT_SECRET_KEY"]
-    assert len(clave.encode("utf-8")) >= MIN_JWT_SECRET_BYTES
