@@ -284,7 +284,7 @@ otp_expiry = 3600
 # Eso no produce el `token_hash` que necesita `verifyOtp` en /auth/confirm, así
 # que sin esta plantilla el enlace del correo no completa el flujo del frontend.
 [auth.email.template.confirmation]
-subject = "Confirma tu correo en ProyectosYA"
+subject = "Confirma tu correo en Chiripa"
 content_path = "./supabase/templates/confirm.html"
 
 # Uncomment to customize email template
@@ -378,7 +378,7 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
-# --- Google (ProyectosYA) -------------------------------------------------
+# --- Google (Chiripa) -------------------------------------------------
 # Las credenciales salen de un OAuth client "Web application" de Google Cloud
 # Console. En sus "Authorized redirect URIs" va la URL de SUPABASE, no la de la
 # aplicación: Google redirige acá, y recién después Supabase redirige a

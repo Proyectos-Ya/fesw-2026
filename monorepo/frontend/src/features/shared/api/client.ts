@@ -58,7 +58,7 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de ProyectosYA.
+ * Cliente fetch tipado contra la API de Chiripa.
  * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
  * que vienen como `{ detail: string }`.
  *
