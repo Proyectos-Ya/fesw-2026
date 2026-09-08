@@ -73,7 +73,16 @@ describe("guardia de borde", () => {
     expect(respuesta.headers.get("location")).toContain("next=%2Fmatches");
   });
 
-  it.each(["/login", "/register", "/verificar", "/auth/callback", "/auth/confirm"])(
+  it.each([
+    "/login",
+    "/register",
+    "/verificar",
+    "/auth/callback",
+    "/auth/confirm",
+    // Google comprueba que la política de privacidad responda, y lo hace sin
+    // sesión: si el guardia la mandara a /login, la app no se puede publicar.
+    "/privacidad",
+  ])(
     "deja pasar %s sin sesión",
     async (ruta) => {
       sinSesion();

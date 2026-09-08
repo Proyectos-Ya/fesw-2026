@@ -157,6 +157,17 @@ function LoginFormInner() {
               Crea tu perfil gratis
             </Link>
           </p>
+
+          <p className="text-center text-xs text-text-subtle mt-6">
+            Al continuar aceptas nuestra{" "}
+            <Link
+              href="/privacidad"
+              className="underline hover:text-text-muted"
+            >
+              política de privacidad
+            </Link>
+            .
+          </p>
         </div>
       </div>
     </div>

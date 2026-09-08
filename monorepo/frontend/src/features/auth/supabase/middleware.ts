@@ -5,7 +5,7 @@ import { loginUrlWithReturn } from "../returnUrl";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./env";
 
 /** Rutas que se sirven sin sesión. Todo lo demás exige una. */
-const PUBLICAS = ["/login", "/register", "/verificar", "/auth"];
+const PUBLICAS = ["/login", "/register", "/verificar", "/auth", "/privacidad"];
 
 function esPublica(pathname: string): boolean {
   return PUBLICAS.some(
