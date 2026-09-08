@@ -1,10 +1,12 @@
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.user_repository import IUserRepository
 from app.domain.entities.user import User
+from app.domain.errors.auth_errors import UserAlreadyExists
 from app.infrastructure.repositories.user_model import UserModel
 
 
@@ -37,8 +39,24 @@ class UserRepository(IUserRepository):
         return self._to_entity(model) if model else None
 
     async def save(self, user: User) -> User:
-        model = self._to_model(user)
-        self.session.add(model)
-        await self.session.commit()
+        """Inserta o actualiza, según exista ya la fila.
+
+        `merge` y no `add`: `_to_model` arma un `UserModel` nuevo, y si la fila
+        ya está en el identity map de la sesión —lo que garantiza cualquier
+        `get_*` previo— `add` lanza `InvalidRequestError` por tener dos
+        instancias con la misma clave. Mientras nada actualizaba usuarios el
+        problema no se veía; con la sincronización del perfil en cada petición
+        se dispararía siempre.
+        """
+        model = await self.session.merge(self._to_model(user))
+        try:
+            await self.session.commit()
+        except IntegrityError as e:
+            # Dos primeras peticiones simultáneas de la misma identidad
+            # insertan las dos; el índice único de `auth_provider_id` deja
+            # pasar una. Se traduce al error de dominio para que quien llama
+            # no tenga que conocer SQLAlchemy, y pueda releer la fila ganadora.
+            await self.session.rollback()
+            raise UserAlreadyExists(user.email) from e
         await self.session.refresh(model)
         return self._to_entity(model)

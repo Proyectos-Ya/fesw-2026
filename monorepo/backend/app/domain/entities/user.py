@@ -25,9 +25,14 @@ class User(BaseModel):
     # ya no existe. Es `str` porque el `sub` de OIDC es una cadena opaca; que
     # Supabase emita UUIDs es un detalle suyo.
     #
-    # Nullable mientras convivan el login propio y Supabase Auth.
+    # Nullable hasta la segunda migración, que lo exige. Hoy todas las filas
+    # nuevas lo traen: es el único camino de entrada que queda.
     auth_provider_id: str | None = None
-    hashed_password: str
+    # Resto del login propio, que ya no se usa: las contraseñas viven en GoTrue.
+    # La columna sigue existiendo —bajarla en el mismo despliegue que deja de
+    # escribirla rompería la versión anterior, que convive un momento con el
+    # esquema nuevo— y se elimina en la segunda migración.
+    hashed_password: str | None = None
     full_name: str
     phone: str | None = None
     active: bool = True

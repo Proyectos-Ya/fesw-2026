@@ -14,7 +14,9 @@ class UserModel(SQLModel, table=True):
     # que se manifiestan como un 500 al crear el perfil.
     email: str = Field(index=True)
     auth_provider_id: str | None = Field(default=None, unique=True, index=True)
-    hashed_password: str
+    # Nullable desde `b1c4a7e93f10`: quien entra por Supabase Auth no tiene
+    # contraseña que guardar. Se elimina en la segunda migración.
+    hashed_password: str | None = None
     full_name: str
     phone: str | None = None
     active: bool = True
