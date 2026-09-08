@@ -320,11 +320,11 @@ prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
 dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
 para probar la aplicación da lo mismo.
 
-**4.** Crea las tres cuentas de prueba (rubros distintos, contraseña `demo1234`):
-
-```bash
-python tests/matching_evaluation/crear_perfiles_demo.py
-```
+**4.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
+cuentas las emite Supabase Auth, así que hay que registrarse en `/register`,
+confirmar el correo desde Mailpit (http://localhost:54324) y completar el
+onboarding de la empresa. Ver el pendiente **5.3** para el script que lo
+automatizaría.
 
 **5.** Levanta la aplicación:
 
