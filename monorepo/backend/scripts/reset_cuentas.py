@@ -32,12 +32,22 @@ del lado del motor, así que no puede quedarse corto.
 licitaciones, regiones y comunas no dependen de una cuenta: no se tocan, y no
 hace falta recargar el corpus ni regenerar embeddings.
 
-Lo que este script NO limpia
-----------------------------
-Los vectores de los proveedores en Qdrant. Al borrar `supplier` quedan huérfanos
-(la misma clase de problema que arregló `fix/vector-huerfano-al-crear-empresa`).
-En local se resuelve recreando la colección; en un entorno compartido hay que
-mirarlo antes.
+Qdrant
+------
+Cada proveedor tiene además un punto en la colección `suppliers`. Se borran
+aquí mismo: dejarlos fuera convertía la limpieza en algo que había que acordarse
+de terminar a mano, y es justo la clase de huérfano que ya causó un problema
+antes (`fix/vector-huerfano-al-crear-empresa`).
+
+El orden es deliberado: primero la base, después los vectores. Al revés, si
+fallara el borrado en Postgres quedarían proveedores sin vector —y el matching
+deja de funcionar para ellos, en silencio—. En este orden, lo peor que puede
+pasar es quedarse con vectores sin dueño, que no rompe nada y se puede repetir.
+
+La colección **no** se borra entera: se eliminan solo los puntos de los
+proveedores que se están borrando. Aunque hoy se borren todos, tirar la
+colección obligaría a reiniciar la API para que la recree (`main.py`), y eso es
+un efecto que un script de limpieza de cuentas no debería tener.
 
 Uso
 ---
@@ -50,9 +60,16 @@ Con el entorno virtual activado, `python -m scripts.reset_cuentas`.
 import argparse
 import asyncio
 
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import PointIdsList
 from sqlalchemy import text
 
+from app.config import settings
 from app.infrastructure.db import async_session_maker
+
+# Mismo nombre que usa `QdrantSupplierRepository`. Se repite acá y no se importa
+# porque ese atributo es privado: la alternativa era exponerlo solo para esto.
+COLECCION_PROVEEDORES = "suppliers"
 
 # De dónde cuelga una cuenta. `supplier` va aparte de `users` y no como
 # dependiente suyo porque su `user_id` es nullable: un proveedor sin dueño
@@ -92,15 +109,55 @@ async def _contar(session, tablas: list[str]) -> dict[str, int]:
     return conteos
 
 
+async def _ids_de_proveedores(session) -> list[str]:
+    resultado = await session.execute(text("SELECT id FROM supplier"))
+    return [str(fila[0]) for fila in resultado]
+
+
+async def _borrar_vectores(ids: list[str]) -> None:
+    """Elimina de Qdrant los puntos de esos proveedores.
+
+    Un fallo acá no aborta el script: la base ya quedó limpia y lo que sobra son
+    vectores sin dueño, que no rompen nada. Se avisa para poder repetirlo, en
+    vez de dejar a quien lo corrió pensando que falló todo.
+    """
+    if not ids:
+        return
+
+    cliente = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    try:
+        await cliente.delete(
+            collection_name=COLECCION_PROVEEDORES,
+            points_selector=PointIdsList(points=list(ids)),
+        )
+        print(f"  Qdrant: {len(ids)} vectores eliminados de '{COLECCION_PROVEEDORES}'.")
+    except Exception as e:  # noqa: BLE001 - se informa, no se propaga
+        print(
+            f"\n  AVISO: la base quedó limpia, pero no se pudieron borrar los "
+            f"vectores de Qdrant ({settings.qdrant_url}): {e}"
+            f"\n  No rompe nada —quedan sin dueño y nadie los consulta—, pero "
+            f"conviene repetirlo cuando Qdrant responda."
+        )
+    finally:
+        await cliente.close()
+
+
 async def _ejecutar(ejecutar: bool) -> None:
     async with async_session_maker() as session:
         tablas = await _tablas_afectadas(session)
         conteos = await _contar(session, tablas)
+        ids_proveedores = await _ids_de_proveedores(session)
 
         print("\nFilas que se borrarían:\n")
         for tabla, cantidad in conteos.items():
             print(f"  {tabla:<28} {cantidad:>8}")
         print(f"\n  {'TOTAL':<28} {sum(conteos.values()):>8}")
+        print(
+            f"\nY en Qdrant: {len(ids_proveedores)} vectores de la colección "
+            f"'{COLECCION_PROVEEDORES}'."
+        )
 
         if not ejecutar:
             print(
@@ -118,6 +175,8 @@ async def _ejecutar(ejecutar: bool) -> None:
         nombres = ", ".join(f'"{t}"' for t in RAICES)
         await session.execute(text(f"TRUNCATE TABLE {nombres} CASCADE"))  # noqa: S608
         await session.commit()
+
+        await _borrar_vectores(ids_proveedores)
 
         print("\nListo. Las cuentas se crean de nuevo desde /register.\n")
 
