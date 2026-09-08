@@ -60,8 +60,13 @@ pública que recoge del JWKS. Esa clave privada es de cada quien y no está en e
 repositorio; genera la tuya **antes** del primer `supabase start`:
 
 ```bash
-supabase gen signing-key --algorithm ES256 > supabase/signing_keys.json
+echo '[]' > supabase/signing_keys.json
+supabase gen signing-key --algorithm ES256 --append
 ```
+
+Son dos pasos y no una redirección: `supabase/config.toml` ya declara
+`signing_keys_path`, así que el CLI abre ese archivo para agregarle la clave y falla si no
+existe. La primera línea lo siembra vacío. (Más detalle en `backend/README.md`, paso 5.)
 
 El ingreso con Google viene **apagado** en `supabase/config.toml`, a propósito: con él
 encendido y sin credenciales, `supabase start` no levanta nada —ni la base ni el correo
