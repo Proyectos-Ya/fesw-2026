@@ -35,8 +35,21 @@ class TestTokenValido:
         assert p.subject == "abc-123"
         assert p.email == "a@ejemplo.cl"  # normalizado, como la entidad User
         assert p.full_name == "Persona de Prueba"
-        assert p.email_verified is True
         assert p.provider == "google"
+
+    async def test_no_lee_email_verified_del_token(self, verificador, claves):
+        """`user_metadata` lo escribe el propio usuario.
+
+        Si la identidad afirmada llevara `email_verified`, bastaría un
+        `supabase.auth.updateUser({ data: { email_verified: true } })` para
+        auto-verificarse. El dato no viaja en el token: sale de
+        `auth.users.email_confirmed_at`.
+        """
+        p = await verificador.verify(
+            claves.token(user_metadata={"full_name": "Ana", "email_verified": True})
+        )
+
+        assert not hasattr(p, "email_verified")
 
 
 class TestNombreDelUsuario:

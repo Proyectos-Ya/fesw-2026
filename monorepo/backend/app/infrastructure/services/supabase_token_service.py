@@ -14,6 +14,7 @@ import httpx
 import jwt
 from jwt import PyJWK
 
+from app.application.services.token_verifier import IAuthTokenVerifier
 from app.domain.entities.auth_principal import AuthPrincipal
 from app.domain.errors.auth_errors import InvalidToken
 
@@ -34,7 +35,7 @@ CLAIMS_OBLIGATORIOS = ("sub", "exp", "aud", "iss")
 SEGUNDOS_MINIMOS_ENTRE_RECARGAS = 30
 
 
-class SupabaseJwtService:
+class SupabaseJwtService(IAuthTokenVerifier):
     """Comprueba firma, emisor, audiencia y vigencia; devuelve quién es.
 
     La fuente del JWKS se inyecta en vez de estar cableada al cliente HTTP: es
@@ -176,13 +177,16 @@ class SupabaseJwtService:
         metadata = claims.get("user_metadata") or {}
         app_metadata = claims.get("app_metadata") or {}
 
+        # `email_verified` no se lee del token a propósito. Supabase no lo emite
+        # como claim de primer nivel; solo aparece dentro de `user_metadata`, que
+        # el propio usuario escribe con `supabase.auth.updateUser({ data: ... })`.
+        # Tomarlo de ahí convertiría la verificación de correo en un interruptor
+        # que abre quien tiene que pasar por él. Se consulta a
+        # `auth.users.email_confirmed_at` (ver `IIdentityDirectory`).
         return AuthPrincipal(
             subject=str(claims["sub"]),
             email=email,
             full_name=_nombre(metadata, email),
-            email_verified=bool(
-                claims.get("email_verified", metadata.get("email_verified", False))
-            ),
             provider=app_metadata.get("provider"),
         )
 

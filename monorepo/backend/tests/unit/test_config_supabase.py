@@ -16,7 +16,6 @@ BASE = {
     "gemini_api_key": "x",
     "gemini_model": "x",
     "mercado_publico_api_key": "x",
-    "jwt_secret_key": "K" * 32,
 }
 
 URL_NUBE = "https://abcdefghijklm.supabase.co"
