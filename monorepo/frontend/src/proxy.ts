@@ -1,39 +1,33 @@
-import { NextResponse } from "next/server";
-
-/**
- * Este guardia dejó de comprobar la sesión a propósito.
- *
- * Comprobaba `request.cookies.has("access_token")`, y eso solo funciona cuando
- * el frontend y el backend comparten dominio. En desarrollo lo comparten —los
- * dos en `localhost`, y las cookies no distinguen puerto— pero en producción el
- * frontend vive en Vercel y el backend en Railway: la cookie la emite el
- * backend para *su* dominio, así que el borde de Vercel no la ve nunca.
- *
- * El efecto era un bucle: el usuario iniciaba sesión, el backend confirmaba con
- * `/auth/me` 200, y este guardia lo devolvía a /login por no encontrar una
- * cookie que jamás iba a estar ahí.
- *
- * Quitarlo no abre ningún hueco de seguridad. Nunca fue un control real —lo
- * decía su propio comentario— sino una conveniencia para evitar el parpadeo de
- * una página protegida. La autorización la aplica el backend en cada petición
- * verificando el JWT, y en el cliente `RequireAuth` cubre los layouts de
- * `(app)` y `(onboarding)`, mostrando un estado de carga mientras resuelve y
- * redirigiendo a /login conservando el destino.
- *
- * Lo que se pierde es cosmético: un instante de estructura de página antes de
- * que el cliente redirija.
- *
- * La solución de fondo es servir la API tras un rewrite de Next para que la
- * cookie vuelva a ser de primera parte (ver PENDIENTES 3.9); con eso este
- * guardia podría recuperarse tal como estaba.
- */
 import type { NextRequest } from "next/server";
 
-export default function proxy(_request?: NextRequest) {
-  return NextResponse.next();
+import { actualizarSesion } from "@/features/auth/supabase/middleware";
+
+/**
+ * Refresco de sesión y guardia de borde.
+ *
+ * El guardia estuvo desactivado a propósito durante un tiempo (PENDIENTES 3.9),
+ * y con razón: comprobaba `request.cookies.has("access_token")`, una cookie que
+ * emitía el backend en Railway para su propio dominio. En desarrollo funcionaba
+ * —frontend y backend compartían `localhost`, y las cookies no distinguen
+ * puerto— pero en producción el borde de Vercel no la veía nunca, así que
+ * devolvía al login a gente que acababa de iniciar sesión.
+ *
+ * Con Supabase Auth la cookie de sesión la escribe el cliente en el **origen
+ * del propio frontend**, en Vercel igual que en local, así que el guardia
+ * vuelve a tener algo que mirar. Además hay que pasar por acá sí o sí: es el
+ * único lugar que puede escribir la cookie con el token refrescado.
+ *
+ * `RequireAuth` sigue en el cliente y no sobra: el borde sabe si hay sesión de
+ * Supabase, pero no si el perfil local de `/auth/me` resolvió.
+ */
+export default async function proxy(request: NextRequest) {
+  return actualizarSesion(request);
 }
 
 export const config = {
-  // Excluye assets estáticos e internos de Next; el resto pasa por el guardia
-  matcher: ["/((?!_next|favicon\\.ico|.*\\..*).*)"],
+  // Se excluyen los internos de Next, los archivos con extensión y `/api`.
+  // Excluir `/api` importa: si no, cada llamada del cliente pagaría una
+  // revalidación contra Supabase antes de llegar al rewrite hacia el backend,
+  // que ya verifica el token por su cuenta.
+  matcher: ["/((?!_next|api|favicon\\.ico|.*\\..*).*)"],
 };

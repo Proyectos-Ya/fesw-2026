@@ -8,20 +8,48 @@ import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { loginSchema, type LoginData } from "../authSchema";
-import { login } from "../services/authService";
+import { iniciarSesionConCorreo } from "../services/authService";
 import { useAuth } from "../AuthContext";
 import { RETURN_URL_PARAM, sanitizeReturnUrl } from "../returnUrl";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
-import { ApiError } from "@/features/shared/api/client";
+import { GoogleButton } from "./GoogleButton";
 
-function RegisteredBanner() {
+/**
+ * Traduce los errores de Supabase Auth a algo accionable.
+ *
+ * El caso que importa es "Email not confirmed": con la confirmación de correo
+ * encendida, GoTrue rechaza el inicio de sesión hasta que se abra el enlace, y
+ * el mensaje en inglés no le dice a nadie qué hacer.
+ */
+function mensajeDeError(err: unknown): string {
+  const mensaje = err instanceof Error ? err.message : "";
+  if (/email not confirmed/i.test(mensaje)) {
+    return "Todavía no confirmas tu correo. Revisa tu bandeja de entrada y abre el enlace que te enviamos.";
+  }
+  if (/invalid login credentials/i.test(mensaje)) {
+    return "Correo o contraseña incorrectos.";
+  }
+  return mensaje || "Ocurrió un error inesperado. Inténtalo de nuevo.";
+}
+
+/**
+ * Errores que llegan por la URL, no del formulario.
+ *
+ * Los escriben `/auth/callback` y `/auth/confirm` cuando el canje falla: sin
+ * esto, alguien que cancela en la pantalla de Google vuelve al login sin la más
+ * mínima señal de que algo pasó.
+ */
+function BannerDeErrorEnLaUrl() {
   const params = useSearchParams();
-  if (params.get("registered") !== "true") return null;
+  const error = params.get("error");
+  if (!error) return null;
   return (
-    <div className="mb-6 rounded-md bg-success-soft/40 border border-success/20 p-3 text-sm font-medium text-success">
-      Tu cuenta fue creada. Inicia sesión para continuar.
+    <div className="mb-6 p-4 rounded-md bg-danger-soft/30 border border-danger/20 text-danger text-sm font-medium">
+      {error === "sin_codigo" || error === "enlace_invalido"
+        ? "El enlace no sirvió. Puede haber vencido o haberse usado ya."
+        : "No se pudo completar el ingreso. Inténtalo de nuevo."}
     </div>
   );
 }
@@ -45,18 +73,14 @@ function LoginFormInner() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await login(data);
+      await iniciarSesionConCorreo(data);
       await refresh();
       // Vuelve a donde el usuario quería ir —el enlace de una alerta, por
       // ejemplo— en vez de aterrizar siempre en el home. `sanitizeReturnUrl`
       // descarta destinos externos.
       router.push(sanitizeReturnUrl(params.get(RETURN_URL_PARAM)) ?? "/");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Ocurrió un error inesperado. Inténtalo de nuevo.");
-      }
+      setError(mensajeDeError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +100,7 @@ function LoginFormInner() {
             Entra para ver tus licitaciones compatibles de hoy.
           </p>
 
-          <RegisteredBanner />
+          <BannerDeErrorEnLaUrl />
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
             {error && (
@@ -119,12 +143,10 @@ function LoginFormInner() {
             <div className="h-px flex-1 bg-border-subtle" />
           </div>
 
-          <Button
-            variant="ghost"
-            className="w-full border border-border-default hover:bg-white hover:border-border-strong text-text-strong font-bold"
-          >
-            ClaveÚnica
-          </Button>
+          <GoogleButton
+            destino={sanitizeReturnUrl(params.get(RETURN_URL_PARAM))}
+            onError={setError}
+          />
 
           <p className="text-center text-sm text-text-muted mt-10">
             ¿No tienes cuenta?{" "}
