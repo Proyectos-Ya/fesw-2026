@@ -63,9 +63,13 @@ repositorio; genera la tuya **antes** del primer `supabase start`:
 supabase gen signing-key --algorithm ES256 > supabase/signing_keys.json
 ```
 
-Si quieres probar el ingreso con Google, exporta además sus credenciales en la misma
-terminal desde la que levantas Supabase (el CLI lee el entorno de la shell, no el
-`.env`):
+El ingreso con Google viene **apagado** en `supabase/config.toml`, a propósito: con él
+encendido y sin credenciales, `supabase start` no levanta nada —ni la base ni el correo
+de prueba—. Para esta guía no hace falta; el registro por correo alcanza.
+
+Si igual lo quieres probar, pon `enabled = true` en `[auth.external.google]` y exporta
+las credenciales en la misma terminal desde la que levantas Supabase (el CLI lee el
+entorno de la shell, no el `.env`):
 
 ```bash
 export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...

@@ -388,14 +388,32 @@ email_optional = false
 #
 # Las dos variables las toma el CLI del entorno al hacer `supabase start`;
 # expórtalas en tu shell antes de arrancar. Nunca el secreto literal acá.
+# Ingreso con Google. **Apagado por defecto, y no es un olvido.**
+#
+# El CLI valida que, con `enabled = true`, `client_id` y `secret` no queden
+# vacíos: si las variables no están en el entorno de la shell, `supabase start`
+# aborta con "Missing required field in config: auth.external.google.client_id"
+# y no arranca **nada** —ni Postgres, ni el correo de prueba—, no solo Google.
+# Dejarlo encendido convertiría unas credenciales que no todo el equipo tiene en
+# un requisito para levantar el proyecto.
+#
+# Para probarlo en local: exporta las dos variables en la misma terminal desde
+# la que corres `supabase start` (el CLI lee el entorno de la shell, no
+# `monorepo/.env`) y pon `enabled = true` acá:
+#
+#   export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
+#   export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
+#
+# En la nube esto no aplica: el proveedor se configura desde el panel de
+# Supabase, y este archivo solo describe el stack local.
 [auth.external.google]
-enabled = true
+enabled = false
 client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
 redirect_uri = ""
 url = ""
-# Requerido para el login con Google en local, según el comentario del propio
-# proveedor de ejemplo de más arriba.
+# Sin esto, el ingreso con Google contra el Supabase local falla la
+# comprobación del nonce. Es solo para local: en la nube **no** se activa.
 skip_nonce_check = true
 email_optional = false
 

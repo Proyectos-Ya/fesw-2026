@@ -106,17 +106,24 @@ Sin ese archivo, GoTrue firma con el secreto HS256 heredado. Ese secreto es *sim
 quien lo tenga puede emitir sesiones de cualquier usuario, y además el backend rechazaría
 esos tokens porque solo acepta ES256/RS256.
 
-**b) Las credenciales de Google**, para el botón "Continuar con Google". Se piden al
-equipo o se crean en Google Cloud Console (OAuth client de tipo *Web application*). El CLI
-de Supabase las lee del entorno al arrancar, así que van exportadas en tu shell —no en el
-`.env`, que lo lee la API y no el CLI:
+**b) Las credenciales de Google** — **opcionales**, solo si quieres probar el botón
+"Continuar con Google" en local. `[auth.external.google]` viene con `enabled = false` a
+propósito: el CLI valida que, con el proveedor encendido, `client_id` y `secret` no queden
+vacíos, y si faltan **`supabase start` aborta y no levanta nada**, ni la base ni el correo
+de prueba. Apagado, quien no tenga las credenciales igual trabaja con normalidad; lo único
+que no funciona es ese botón.
+
+Para encenderlo: pon `enabled = true` en `supabase/config.toml` y exporta las dos
+variables **en la misma shell** desde la que corres `supabase start`. El CLI lee el
+entorno de la shell, no el `.env`, que lo lee la API:
 
 ```bash
 export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET="..."
 ```
 
-Y el secreto en la misma forma, con `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`. Si las dejas
-sin definir, todo lo demás funciona: solo el login con Google falla.
+Las credenciales se piden al equipo o se crean en Google Cloud Console (OAuth client de
+tipo *Web application*).
 
 > Al crear el OAuth client en Google, la *Authorized redirect URI* es la de **Supabase**,
 > `http://127.0.0.1:54321/auth/v1/callback`, no la del frontend. Google redirige a
