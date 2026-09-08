@@ -14,11 +14,23 @@ despliegue y sin que nadie lo pida en ese momento. Un `DELETE FROM users` ahí
 sería un borrado de datos disparado por un `git push`. Esto se ejecuta a mano,
 una vez, mirando lo que va a pasar.
 
-Orden de borrado
-----------------
-Ninguna clave foránea a `users.id` declara `ON DELETE`, así que son `NO ACTION`:
-un `DELETE FROM users` a secas **falla** mientras algo apunte a esas filas. Hay
-que bajar por el árbol de dependencias, de las hojas a la raíz.
+Cómo decide qué borrar
+----------------------
+No hay lista escrita a mano. La primera versión la tenía y estaba incompleta:
+seguía solo las claves foráneas a `users.id` y se olvidaba de las que cuelgan de
+`supplier.id` (`matching_result`, `deep_analysis`, `tender_ai_analysis`), así que
+fallaba a mitad con una violación de clave foránea. Una lista escrita a mano
+envejece mal: cada tabla nueva que apunte a una cuenta la deja obsoleta y nadie
+se entera hasta que revienta.
+
+Ahora se le pregunta a Postgres. Se parte de `users` y `supplier` y se sigue el
+grafo de claves foráneas hacia abajo —quién referencia a quién— hasta cerrarlo.
+El borrado es un `TRUNCATE ... CASCADE`, que hace exactamente ese mismo recorrido
+del lado del motor, así que no puede quedarse corto.
+
+`CASCADE` solo alcanza a lo que *depende* de las tablas nombradas. Las
+licitaciones, regiones y comunas no dependen de una cuenta: no se tocan, y no
+hace falta recargar el corpus ni regenerar embeddings.
 
 Lo que este script NO limpia
 ----------------------------
@@ -42,36 +54,53 @@ from sqlalchemy import text
 
 from app.infrastructure.db import async_session_maker
 
-# De las hojas a la raíz. El orden no es decorativo: invertirlo hace fallar el
-# borrado con una violación de clave foránea a mitad de camino.
-TABLAS_EN_ORDEN = (
-    "notification_delivery",
-    "notification",
-    "notification_preference",
-    "tender_chat_documents",
-    "tender_chat_messages",
-    "tender_chat_sessions",
-    "saved_tender",
-    "supplier",
-    "users",
-)
+# De dónde cuelga una cuenta. `supplier` va aparte de `users` y no como
+# dependiente suyo porque su `user_id` es nullable: un proveedor sin dueño
+# igual es un perfil de empresa que hay que llevarse.
+RAICES = ("users", "supplier")
+
+# Cierre transitivo del grafo de claves foráneas: `users`, `supplier`, y todo lo
+# que las referencia directa o indirectamente. `regclass` devuelve el nombre ya
+# resuelto contra el search_path, así que no hay que armar el esquema a mano.
+_DEPENDIENTES = text("""
+    WITH RECURSIVE raices(tabla) AS (
+        SELECT unnest(CAST(:raices AS text[]))
+    ),
+    cerrada(tabla) AS (
+        SELECT tabla FROM raices
+        UNION
+        SELECT c.conrelid::regclass::text
+        FROM pg_constraint c
+        JOIN cerrada ON c.confrelid::regclass::text = cerrada.tabla
+        WHERE c.contype = 'f'
+          AND c.conrelid <> c.confrelid
+    )
+    SELECT tabla FROM cerrada ORDER BY tabla
+""")
 
 
-async def _contar(session) -> dict[str, int]:
+async def _tablas_afectadas(session) -> list[str]:
+    resultado = await session.execute(_DEPENDIENTES, {"raices": list(RAICES)})
+    return [fila[0] for fila in resultado]
+
+
+async def _contar(session, tablas: list[str]) -> dict[str, int]:
     conteos: dict[str, int] = {}
-    for tabla in TABLAS_EN_ORDEN:
-        resultado = await session.execute(text(f"SELECT count(*) FROM {tabla}"))  # noqa: S608
+    for tabla in tablas:
+        resultado = await session.execute(text(f'SELECT count(*) FROM "{tabla}"'))  # noqa: S608
         conteos[tabla] = resultado.scalar_one()
     return conteos
 
 
 async def _ejecutar(ejecutar: bool) -> None:
     async with async_session_maker() as session:
-        conteos = await _contar(session)
+        tablas = await _tablas_afectadas(session)
+        conteos = await _contar(session, tablas)
 
         print("\nFilas que se borrarían:\n")
         for tabla, cantidad in conteos.items():
-            print(f"  {tabla:<28} {cantidad:>6}")
+            print(f"  {tabla:<28} {cantidad:>8}")
+        print(f"\n  {'TOTAL':<28} {sum(conteos.values()):>8}")
 
         if not ejecutar:
             print(
@@ -80,14 +109,14 @@ async def _ejecutar(ejecutar: bool) -> None:
             )
             return
 
-        if conteos["users"] == 0:
-            print("\nNo hay cuentas que borrar.\n")
+        if conteos.get("users", 0) == 0 and conteos.get("supplier", 0) == 0:
+            print("\nNo hay cuentas ni perfiles que borrar.\n")
             return
 
-        # Todo en una transacción: si falla a mitad, no queda media base con
-        # proveedores sin dueño.
-        for tabla in TABLAS_EN_ORDEN:
-            await session.execute(text(f"DELETE FROM {tabla}"))  # noqa: S608
+        # Una sola sentencia y una sola transacción: si algo falla, no queda
+        # media base con proveedores sin dueño.
+        nombres = ", ".join(f'"{t}"' for t in RAICES)
+        await session.execute(text(f"TRUNCATE TABLE {nombres} CASCADE"))  # noqa: S608
         await session.commit()
 
         print("\nListo. Las cuentas se crean de nuevo desde /register.\n")
