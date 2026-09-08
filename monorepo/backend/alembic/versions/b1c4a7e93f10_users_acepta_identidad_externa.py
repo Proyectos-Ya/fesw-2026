@@ -2,11 +2,17 @@
 
 Primera de dos migraciones para mover la autenticación a Supabase Auth. Esta es
 compatible hacia atrás a propósito: agrega la columna como nullable y afloja
-`hashed_password`, así que el login propio sigue funcionando mientras se migra
-el resto. La segunda exige la identidad externa y elimina las contraseñas.
+`hashed_password`, así que el esquema nuevo convive con la versión anterior del
+código durante el despliegue (`preDeployCommand` de `railway.toml` aplica las
+migraciones *antes* de levantar la versión nueva).
+
+La segunda —`DROP COLUMN users.hashed_password` y `auth_provider_id NOT NULL`—
+va en un **despliegue posterior**, no en este: bajar la columna en el mismo
+despliegue que deja de escribirla rompería la versión que todavía está
+sirviendo.
 
 Revision ID: b1c4a7e93f10
-Revises: 2d2720796d82
+Revises: 5d0cd7e936db
 Create Date: 2026-08-24 19:40:00.000000
 
 """
@@ -20,7 +26,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b1c4a7e93f10"
-down_revision: str | Sequence[str] | None = "2d2720796d82"
+down_revision: str | Sequence[str] | None = "5d0cd7e936db"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
