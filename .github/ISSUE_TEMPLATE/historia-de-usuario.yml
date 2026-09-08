@@ -1,0 +1,80 @@
+name: Historia de Usuario
+description: Historia de usuario con criterios de aceptación verificables.
+title: "HU-NN: "
+labels: ["historia-de-usuario"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Para subtareas técnicas o de investigación usa la plantilla **Subtarea**.
+        Reemplaza `NN` en el título por el número de la historia (ej. `HU-07: Búsqueda manual de licitaciones`).
+
+  - type: dropdown
+    id: categoria
+    attributes:
+      label: Categoría
+      description: Prioridad de la historia dentro del backlog.
+      options:
+        - Esencial
+        - Importante
+        - Deseable
+        - Opcional
+    validations:
+      required: true
+
+  - type: input
+    id: estimacion
+    attributes:
+      label: Estimación
+      description: Story points.
+      placeholder: "8 pts"
+    validations:
+      required: true
+
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+      description: Sprint asignado. Déjalo vacío si aún está en backlog.
+      placeholder: "Sprint 1"
+    validations:
+      required: false
+
+  - type: input
+    id: depende-de
+    attributes:
+      label: Depende de
+      description: Issues que deben cerrarse antes. Usa `#` para enlazarlas.
+      placeholder: "#104, #147"
+    validations:
+      required: false
+
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: Descripción
+      description: Formato "Como / necesito / para".
+      placeholder: "Como representante de empresa, necesito ..., para ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de Aceptación
+      description: >-
+        Uno por línea, como checkbox y en formato Dado/Entonces.
+        Deben ser verificables: si no se puede escribir un test que falle, no es un criterio.
+      value: |
+        - [ ] Dado ..., entonces ...
+        - [ ] Dado ..., entonces ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: notas
+    attributes:
+      label: Notas
+      description: Contexto adicional, enlaces, decisiones de diseño.
+    validations:
+      required: false

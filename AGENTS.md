@@ -33,7 +33,57 @@ El proyecto está organizado en un monorepo bajo el directorio `monorepo/`:
 
 ---
 
-## 3. Pruebas y TDD (Test-Driven Development)
+## 3. Base de Datos y Migraciones
+
+El backend usa **SQLModel** para los modelos y **Alembic** para el esquema. Son
+responsabilidades separadas y no intercambiables.
+
+### Reglas
+
+- **El esquema se gestiona solo con Alembic.** Está prohibido usar
+  `SQLModel.metadata.create_all` para crear o actualizar tablas. `create_all`
+  agrega las tablas que faltan pero **no altera las existentes**, así que una
+  columna o restricción nueva queda fuera en silencio. Ver el comentario en
+  `app/main.py`, donde se explica por qué se quitó.
+
+- **Las migraciones deben ser compatibles hacia atrás.** Corren en el
+  `preDeployCommand` de `railway.toml`, o sea *antes* de levantar la versión
+  nueva: durante ese momento la versión vieja convive con el esquema nuevo.
+  En la práctica: agregar columnas nullable, y no renombrar ni borrar en el
+  mismo despliegue que deja de usarlas.
+
+- **Cabezas múltiples.** Cuando dos ramas crean migraciones desde el mismo
+  punto, el grafo de Alembic queda con dos finales y `alembic upgrade head`
+  **aborta sin aplicar nada**: el despliegue se cae y el código mergeado no
+  llega a producción. Cómo se arregla depende de si tu migración ya se aplicó
+  en algún entorno:
+
+  - **Todavía no se aplicó en ninguna parte** (lo habitual: sigue solo en tu
+    rama): repuntar el `down_revision` de tu migración a la cabeza actual.
+    Es seguro porque nadie la ha aplicado, y deja el grafo lineal.
+  - **Ya se aplicó en algún entorno** (está en `main` y se desplegó, o alguien
+    la corrió contra una base compartida): `alembic merge heads`. Editar el
+    `down_revision` de una migración que otros ya aplicaron rompe su historial.
+
+  Antes de abrir el PR, comprobar con `alembic heads`: si devuelve más de una
+  línea, resolverlo antes de mergear. Ha ocurrido dos veces (30-ago-2026 y
+  2-sep-2026), las dos con la misma forma: dos ramas largas desde el mismo
+  ancestro, mergeadas en secuencia.
+
+### Crear una migración
+
+```bash
+# desde monorepo/backend, con el entorno virtual activo
+alembic revision --autogenerate -m "descripcion corta"
+alembic upgrade head
+```
+
+Revisar siempre el archivo generado antes de commitear: el autogenerado no
+detecta renombres ni cambios de tipo con datos.
+
+---
+
+## 4. Pruebas y TDD (Test-Driven Development)
 
 Es obligatorio adoptar el flujo **TDD (Red-Green-Refactor)** al escribir código de producción.
 
@@ -53,6 +103,6 @@ Es obligatorio adoptar el flujo **TDD (Red-Green-Refactor)** al escribir código
 
 ---
 
-## 4. Flujo de Trabajo en Git y Commits
+## 5. Flujo de Trabajo en Git y Commits
 
 Verifica el archivo [SKILL.md](./SKILL.md) para conocer las reglas estrictas sobre el ciclo de vida de Git, convenciones de commits hechas por agentes de IA, y la prohibición de hacer Push directamente.
