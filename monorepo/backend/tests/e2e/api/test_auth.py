@@ -1,137 +1,133 @@
+"""El borde donde se decide en quién cree la API.
+
+Los casos negativos pesan más que el positivo: cada token que se acepte de más
+es una sesión válida de cualquier usuario. El verificador que corre acá es el
+real; lo único sustituido es de dónde salen las claves públicas.
+"""
+
+from datetime import timedelta
+
 import pytest
 from httpx import AsyncClient
 
-REGISTER = {
-    "email": "ana@example.com",
-    "password": "supersecret",
-    "full_name": "Ana Pérez",
-}
+from tests.support.api_auth import SUB_POR_DEFECTO, autenticar
+
+pytestmark = pytest.mark.asyncio
 
 
-@pytest.mark.asyncio
-async def test_register_returns_public_user(api: AsyncClient):
-    resp = await api.post("/auth/register", json=REGISTER)
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["email"] == "ana@example.com"
-    assert body["active"] is True
-    # Nunca se expone el hash de la contraseña
-    assert "hashed_password" not in body
-    assert "password" not in body
+def _autorizar(api: AsyncClient, token: str) -> None:
+    api.headers["Authorization"] = f"Bearer {token}"
 
 
-@pytest.mark.asyncio
-async def test_register_duplicate_returns_409(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post("/auth/register", json=REGISTER)
-    assert resp.status_code == 409
+class TestSinSesion:
+    async def test_sin_encabezado_devuelve_401(self, api: AsyncClient):
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_un_token_ilegible_devuelve_401(self, api: AsyncClient):
+        _autorizar(api, "no-es-un-jwt")
+        assert (await api.get("/auth/me")).status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_login_sets_cookie_and_returns_token(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["access_token"]
-    assert "access_token" in resp.cookies
+class TestTokenRechazado:
+    """Cada uno de estos aceptado de más es una suplantación."""
+
+    async def test_expirado(self, api: AsyncClient):
+        _autorizar(api, api.claves.token(expira_en=timedelta(hours=-1)))
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_de_otro_emisor(self, api: AsyncClient):
+        _autorizar(api, api.claves.token(emisor="https://otro-proyecto.supabase.co"))
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_para_otra_audiencia(self, api: AsyncClient):
+        _autorizar(api, api.claves.token(audiencia="otra-app"))
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_firmado_con_hs256_y_la_clave_publica(self, api: AsyncClient):
+        """Confusión de algoritmo: el JWKS publica esa clave a quien la pida."""
+        _autorizar(api, api.claves.token_hs256())
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_de_una_sesion_anonima(self, api: AsyncClient):
+        _autorizar(api, api.claves.token(is_anonymous=True))
+        assert (await api.get("/auth/me")).status_code == 401
+
+    async def test_con_rol_de_servicio(self, api: AsyncClient):
+        _autorizar(api, api.claves.token(rol="service_role"))
+        assert (await api.get("/auth/me")).status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_login_wrong_password_returns_401(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post(
-        "/auth/login", json={"email": REGISTER["email"], "password": "incorrecta"}
-    )
-    assert resp.status_code == 401
+class TestAprovisionamiento:
+    async def test_la_primera_peticion_crea_el_perfil_local(self, api: AsyncClient):
+        id_local = await autenticar(api, email="nueva@ejemplo.cl", full_name="Nueva")
+
+        assert (await api.usuarios.get_by_id(id_local)).email == "nueva@ejemplo.cl"
+
+    async def test_el_id_local_no_es_el_sub_de_supabase(self, api: AsyncClient):
+        """Las claves foráneas del esquema apuntan al nuestro, no al del proveedor."""
+        id_local = await autenticar(api)
+
+        assert str(id_local) != SUB_POR_DEFECTO
+
+    async def test_la_segunda_peticion_devuelve_el_mismo_perfil(self, api: AsyncClient):
+        primero = await autenticar(api)
+
+        segundo = (await api.get("/auth/me")).json()["id"]
+
+        assert str(primero) == segundo
+        assert len(api.usuarios.users) == 1
+
+    async def test_sin_nombre_en_el_token_usa_la_parte_local_del_correo(
+        self, api: AsyncClient
+    ):
+        api.directorio_de_identidad.confirmar(SUB_POR_DEFECTO)
+        _autorizar(api, api.claves.token(email="ana.diaz@ejemplo.cl", user_metadata={}))
+
+        assert (await api.get("/auth/me")).json()["full_name"] == "ana.diaz"
 
 
-@pytest.mark.asyncio
-async def test_protected_route_without_session_returns_401(api: AsyncClient):
-    # /auth/me es una ruta protegida sin parámetros de path
-    resp = await api.get("/auth/me")
-    assert resp.status_code == 401
+class TestVerificacionDelCorreo:
+    """Sale del padrón de GoTrue, nunca del token."""
 
+    async def test_una_cuenta_confirmada_queda_verificada(self, api: AsyncClient):
+        await autenticar(api, verificado=True)
 
-@pytest.mark.asyncio
-async def test_me_with_cookie_session(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    # El login deja la cookie en el cookie jar del cliente
-    await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    resp = await api.get("/auth/me")
-    assert resp.status_code == 200
-    assert resp.json()["email"] == REGISTER["email"]
+        assert (await api.get("/auth/me")).json()["email_verified"] is True
 
+    async def test_una_cuenta_sin_confirmar_igual_puede_entrar(self, api: AsyncClient):
+        """No bloquea el acceso: lo que se corta es el correo, y eso vendrá después."""
+        await autenticar(api, verificado=False)
 
-@pytest.mark.asyncio
-async def test_me_with_bearer_header(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    login = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    token = login.json()["access_token"]
-    # Cliente nuevo sin cookies: solo el header Authorization (caso Swagger)
-    api.cookies.clear()
-    resp = await api.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert resp.json()["email"] == REGISTER["email"]
+        respuesta = await api.get("/auth/me")
+        assert respuesta.status_code == 200
+        assert respuesta.json()["email_verified"] is False
 
-
-@pytest.mark.asyncio
-async def test_logout_clears_session(api: AsyncClient):
-    await api.post("/auth/register", json=REGISTER)
-    await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    await api.post("/auth/logout")
-    # Sin limpiar el cliente a mano: si el logout no borra la cookie de verdad,
-    # httpx la sigue enviando y /auth/me respondería 200.
-    resp = await api.get("/auth/me")
-    assert "access_token" not in api.cookies
-    assert resp.status_code == 401
-
-
-def _atributos_set_cookie(header: str) -> dict[str, str]:
-    """Atributos de un header Set-Cookie, en minúsculas y sin el par nombre=valor."""
-    partes = [p.strip() for p in header.split(";")[1:]]
-    atributos: dict[str, str] = {}
-    for parte in partes:
-        clave, _, valor = parte.partition("=")
-        atributos[clave.lower()] = valor.lower()
-    return atributos
-
-
-@pytest.mark.asyncio
-async def test_logout_borra_la_cookie_con_los_mismos_atributos_del_login(
-    api: AsyncClient,
-):
-    """El Set-Cookie de borrado debe repetir Path/Secure/SameSite/HttpOnly del login.
-
-    Si no coinciden, el navegador ignora el borrado y la sesión sobrevive al
-    logout. En producción el frontend (Vercel) y el backend (Railway) están en
-    dominios distintos, así que la cookie viaja como SameSite=None; Secure: un
-    borrado con los valores por defecto de Starlette (Lax, sin Secure) se
-    descarta en silencio y el backend igual responde 204.
-    """
-    await api.post("/auth/register", json=REGISTER)
-    login = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    logout = await api.post("/auth/logout")
-
-    set_cookie_login = _atributos_set_cookie(login.headers["set-cookie"])
-    set_cookie_logout = _atributos_set_cookie(logout.headers["set-cookie"])
-
-    for atributo in ("path", "samesite", "secure", "httponly"):
-        assert set_cookie_login.get(atributo) == set_cookie_logout.get(atributo), (
-            f"El atributo {atributo!r} difiere entre login y logout: "
-            f"{set_cookie_login.get(atributo)!r} vs {set_cookie_logout.get(atributo)!r}"
+    async def test_no_se_cree_el_email_verified_del_user_metadata(
+        self, api: AsyncClient
+    ):
+        """`user_metadata` lo escribe el propio usuario: no puede auto-verificarse."""
+        _autorizar(
+            api,
+            api.claves.token(user_metadata={"email_verified": True, "full_name": "A"}),
         )
+
+        assert (await api.get("/auth/me")).json()["email_verified"] is False
+
+    async def test_confirmar_despues_se_refleja_en_la_siguiente_peticion(
+        self, api: AsyncClient
+    ):
+        await autenticar(api, verificado=False)
+
+        api.directorio_de_identidad.confirmar(SUB_POR_DEFECTO)
+
+        assert (await api.get("/auth/me")).json()["email_verified"] is True
+
+
+class TestCuentaDesactivada:
+    async def test_una_cuenta_inactiva_no_entra(self, api: AsyncClient):
+        """`active` es decisión nuestra: el token de Supabase sigue siendo válido."""
+        id_local = await autenticar(api)
+        usuario = await api.usuarios.get_by_id(id_local)
+        await api.usuarios.save(usuario.model_copy(update={"active": False}))
+
+        assert (await api.get("/auth/me")).status_code == 401

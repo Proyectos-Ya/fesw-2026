@@ -2,8 +2,6 @@ from collections.abc import Callable
 
 from fastapi import APIRouter
 
-from app.application.services.password_hasher import IPasswordHasher
-from app.application.services.token_service import ITokenService
 from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.catalog import create_catalog_router
 from app.infrastructure.routers.health import create_health_router
@@ -23,11 +21,6 @@ def create_router(
     get_embedding_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
-    hasher: IPasswordHasher,
-    token_service: ITokenService,
-    cookie_name: str,
-    cookie_secure: bool,
-    cookie_max_age: int,
     get_get_or_create_deep_analysis_use_case: Callable,
     get_list_saved_tenders_use_case: Callable,
     get_save_tender_use_case: Callable,
@@ -50,23 +43,19 @@ def create_router(
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
-    Públicos: health (root + /health) y auth (register/login/logout).
-    Protegidos (requieren sesión): suppliers, tenders, questions, tender chat.
+    Público: health (root + /health). El registro y el inicio de sesión los
+    atiende Supabase Auth desde el navegador, así que ya no hay rutas públicas
+    de autenticación acá.
+
+    Protegidos (requieren sesión): /auth/me, suppliers, tenders, questions,
+    tender chat, notificaciones.
     """
     root = APIRouter()
 
-    # --- Rutas públicas ---
+    # --- Ruta pública ---
     root.include_router(create_health_router(), tags=["Health"])
     root.include_router(
-        create_auth_router(
-            get_user_repo=get_user_repo,
-            hasher=hasher,
-            token_service=token_service,
-            get_current_user=get_current_user,
-            cookie_name=cookie_name,
-            cookie_secure=cookie_secure,
-            cookie_max_age=cookie_max_age,
-        )
+        create_auth_router(get_current_user=get_current_user)
     )
 
     # --- Rutas protegidas (la auth se aplica dentro de cada fábrica) ---

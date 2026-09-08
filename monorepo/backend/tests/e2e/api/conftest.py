@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app import bootstrap
 from app.main import app
+from tests.support.api_auth import preparar_auth
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
     FakeSupplierVectorRepository,
@@ -18,8 +19,9 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     """Cliente HTTP con los repositorios sobreescritos por dobles en memoria.
 
     Evita depender de Postgres/Qdrant: ASGITransport no dispara el lifespan,
-    así que inyectamos repos en memoria vía dependency_overrides. El token JWT
-    sí se firma/verifica de verdad (servicio real), validando el flujo completo.
+    así que inyectamos repos en memoria vía dependency_overrides. El token de
+    Supabase sí se firma y se verifica de verdad (`preparar_auth` solo sustituye
+    de dónde salen las claves públicas), validando el flujo completo.
     """
     users = InMemoryUserRepository()
     suppliers = InMemorySupplierRepository()
@@ -34,6 +36,10 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        preparar_auth(app, ac)
+        # Se cuelga el repositorio del cliente para los tests que necesitan
+        # tocar el estado directamente (desactivar una cuenta, por ejemplo).
+        ac.usuarios = users
         yield ac
 
     app.dependency_overrides.clear()

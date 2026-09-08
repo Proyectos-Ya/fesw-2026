@@ -1,11 +1,9 @@
-# ============================================================
-# docker-compose.yml — Entorno local de ProyectosYA
+# =====================================================# docker-compose.yml — Entorno local de ProyectosYA
 # Servicios: API (FastAPI) + PostgreSQL (datos relacionales)
 #            + Qdrant (búsqueda vectorial)
 #
 # El frontend NO vive acá: corre nativo con `pnpm dev` en el host.
-# ============================================================
-
+# =====================================================
 services:
 
   # ------------------------------------------------------------
@@ -40,6 +38,14 @@ services:
       # "pinecone"; esa es la única diferencia real entre los dos entornos.
       EMBEDDING_PROVIDER: local
       RERANKER_PROVIDER: local
+      # Mismo motivo que DATABASE_URL: desde el contenedor, 127.0.0.1 es su
+      # propio loopback. Pero acá no basta con cambiar el host, porque son dos
+      # cosas distintas: por dónde se alcanza a Supabase para bajar las claves
+      # (SUPABASE_URL) y qué emisor dice el token (SUPABASE_JWT_ISSUER, que lo
+      # escribe GoTrue con la URL de fuera). Usar una sola variable rompe una de
+      # las dos, y el síntoma es un 401 en todo solo dentro de Docker.
+      SUPABASE_URL: ${SUPABASE_URL_DOCKER:-http://host.docker.internal:54321}
+      SUPABASE_JWT_ISSUER: ${SUPABASE_URL:-http://127.0.0.1:54321}/auth/v1
     ports:
       - "${API_PORT:-8000}:8000"
     # En desarrollo se migra antes de arrancar. En producción NO debe ir acá:

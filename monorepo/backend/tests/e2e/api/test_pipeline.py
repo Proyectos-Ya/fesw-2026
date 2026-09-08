@@ -8,6 +8,8 @@ from uuid import uuid4
 import pytest_asyncio
 from httpx import AsyncClient
 
+from tests.support.api_auth import autenticar
+
 VALID_SUPPLIER = {
     "rut": "76086428-5",
     "legal_name": "Constructora Demo SpA",
@@ -21,11 +23,8 @@ VALID_SUPPLIER = {
 
 @pytest_asyncio.fixture(autouse=True)
 async def _session(api: AsyncClient) -> None:
-    """Las rutas de /suppliers exigen sesión: registra e inicia sesión antes
-    de cada prueba; la cookie httpOnly queda guardada en el cliente."""
-    credentials = {"email": "pipeline@example.com", "password": "supersecret"}
-    await api.post("/auth/register", json={**credentials, "full_name": "Pipeline Test"})
-    await api.post("/auth/login", json=credentials)
+    """Las rutas de /suppliers exigen sesión: la deja puesta antes de cada prueba."""
+    await autenticar(api, email="pipeline@example.com", full_name="Pipeline Test")
 
 
 # ---------------------------------------------------------------------------

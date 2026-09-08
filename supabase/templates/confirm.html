@@ -1,0 +1,61 @@
+<!--
+  Correo de confirmación de cuenta.
+
+  El enlace apunta a /auth/confirm del frontend con `token_hash`, no al
+  `{{ .ConfirmationURL }}` por defecto: ese va a `/auth/v1/verify` y consume el
+  token en el servidor de Supabase antes de redirigir, así que el frontend nunca
+  recibe el `token_hash` que necesita `verifyOtp` para dejar la sesión puesta.
+
+  El destino sale de `{{ .RedirectTo }}` —el `emailRedirectTo` que manda
+  `registrarse()`, construido con el origen real del navegador— y no de
+  `{{ .SiteURL }}`, que es siempre el de producción. Con SiteURL fijo, quien se
+  registrara desde una preview de Vercel recibía un correo que lo mandaba a
+  producción: ahí esas rutas no existen todavía, el enlace daba 404 y la cuenta
+  se quedaba sin confirmar.
+
+  Supabase solo rellena `.RedirectTo` si esa URL está en la lista de Redirect
+  URLs del proyecto. Si no lo está, la variable queda vacía y cae al `else`, que
+  es el comportamiento anterior. Por eso las URLs de preview tienen que estar
+  declaradas, con comodín, en el panel.
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f6f7f9;padding:32px 0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="max-width:520px;background:#ffffff;border-radius:12px;padding:32px;">
+        <tr>
+          <td style="font-size:20px;font-weight:600;color:#111827;padding-bottom:12px;">
+            Confirma tu correo
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;line-height:1.6;color:#374151;padding-bottom:24px;">
+            Para terminar de crear tu cuenta en Chiripa, confirma que esta
+            dirección es tuya. El enlace vence en una hora.
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-bottom:24px;">
+            <a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/auth/confirm{{ end }}?token_hash={{ .TokenHash }}&type=email"
+               style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;
+                      font-size:15px;font-weight:600;padding:12px 20px;border-radius:8px;">
+              Confirmar mi correo
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;line-height:1.6;color:#6b7280;">
+            Si el botón no funciona, copia esta dirección en tu navegador:<br />
+            <span style="color:#374151;word-break:break-all;">{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/auth/confirm{{ end }}?token_hash={{ .TokenHash }}&type=email</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;line-height:1.6;color:#6b7280;padding-top:24px;">
+            Si no fuiste tú quien creó esta cuenta, puedes ignorar este correo.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

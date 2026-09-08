@@ -28,6 +28,8 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.identity_directory import IIdentityDirectory
+from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
@@ -143,9 +145,14 @@ from app.infrastructure.services.gemini_tender_assistant_service import (
 from app.infrastructure.services.notifications.smtp_email_service import (
     SmtpEmailService,
 )
-from app.infrastructure.services.password_hasher import BcryptPasswordHasher
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
-from app.infrastructure.services.token_service import JwtTokenService
+from app.infrastructure.services.supabase_identity_directory import (
+    SupabaseIdentityDirectory,
+)
+from app.infrastructure.services.supabase_token_service import (
+    SupabaseJwtService,
+    descargar_jwks,
+)
 
 
 def get_supplier_repo(
@@ -362,6 +369,22 @@ def get_user_repo(
     return UserRepository(session)
 
 
+def get_token_verifier(request: Request) -> IAuthTokenVerifier:
+    """El verificador de tokens, como dependencia y no como objeto capturado.
+
+    Que pase por el sistema de dependencias es lo que permite sustituirlo en los
+    tests con `app.dependency_overrides`, y así ejercitar la verificación real
+    contra un JWKS de prueba sin levantar Supabase.
+    """
+    return request.app.state.token_verifier
+
+
+def get_identity_directory(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IIdentityDirectory:
+    return SupabaseIdentityDirectory(session)
+
+
 def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
     return request.app.state.deep_analysis_service
 
@@ -454,6 +477,7 @@ def get_ask_tender_assistant_use_case(
         ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
     ],
     supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    tender_repo: Annotated[ITenderRepository, Depends(get_tender_repo)],
     validator_service: Annotated[
         IDocumentValidatorService, Depends(get_document_validator_service)
     ],
@@ -462,8 +486,10 @@ def get_ask_tender_assistant_use_case(
         chat_repo=chat_repo,
         ai_service=ai_service,
         supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
         validator_service=validator_service,
     )
+
 
 
 
@@ -700,12 +726,14 @@ def build_notification_runners(
 
 
 def bootstrap(app: FastAPI) -> None:
-    # Servicios sin estado: se construyen una vez
-    hasher = BcryptPasswordHasher()
-    token_service = JwtTokenService(
-        secret_key=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-        expire_minutes=settings.access_token_expire_minutes,
+    # El backend ya no emite sesiones: las verifica. La instancia vive en
+    # app.state porque cachea el JWKS de Supabase, y una por petición
+    # descargaría las claves en cada llamada.
+    app.state.token_verifier = SupabaseJwtService(
+        jwks_source=lambda: descargar_jwks(settings.jwks_url),
+        issuer=settings.jwt_issuer,
+        audience=settings.supabase_jwt_audience,
+        cache_seconds=settings.supabase_jwks_cache_seconds,
     )
 
     app.state.embedding_service = build_embedding_service()
@@ -748,8 +776,8 @@ def bootstrap(app: FastAPI) -> None:
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(
         get_user_repo=get_user_repo,
-        token_service=token_service,
-        cookie_name=settings.auth_cookie_name,
+        get_token_verifier=get_token_verifier,
+        get_identity_directory=get_identity_directory,
     )
 
     router = create_router(
@@ -761,13 +789,6 @@ def bootstrap(app: FastAPI) -> None:
         get_embedding_service=get_embedding_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
-        hasher=hasher,
-        token_service=token_service,
-        cookie_name=settings.auth_cookie_name,
-        # `_derivar_cookie_secure` ya le dio valor; el `bool()` solo cierra el
-        # `bool | None` que el tipo del campo deja abierto.
-        cookie_secure=bool(settings.auth_cookie_secure),
-        cookie_max_age=settings.access_token_expire_minutes * 60,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
         get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
         get_save_tender_use_case=get_save_tender_use_case,

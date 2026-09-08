@@ -1,16 +1,17 @@
 """
 Pruebas e2e del router /suppliers.
 
-Todas las rutas requieren sesión iniciada (cookie httpOnly de login).
+Todas las rutas requieren sesión (token de Supabase en `Authorization`).
 GET /suppliers/me devuelve la empresa del usuario autenticado o 404.
 """
 
 import pytest
 from httpx import AsyncClient
 
+from tests.support.api_auth import autenticar
+
 REGISTER = {
     "email": "dueno@example.com",
-    "password": "supersecret",
     "full_name": "Dueño Empresa",
 }
 
@@ -21,13 +22,8 @@ SUPPLIER = {
 
 
 async def _login(api: AsyncClient) -> None:
-    """Registra e inicia sesión; la cookie queda en el cliente."""
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    assert resp.status_code == 200
+    """Deja el cliente con una sesión de Supabase válida."""
+    await autenticar(api, email=REGISTER["email"], full_name=REGISTER["full_name"])
 
 
 @pytest.mark.asyncio

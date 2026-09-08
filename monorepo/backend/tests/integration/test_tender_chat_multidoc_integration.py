@@ -258,19 +258,18 @@ async def test_ca5_limit_of_10_documents(app_with_services):
 @pytest.mark.asyncio
 @respx.mock
 async def test_ca6_corrupted_document_rejection_and_graceful_isolation(app_with_services, current_user):
-    """CA6: Rechazo inmediato de documento corrupto al subir (400) y aislamiento con advertencia en consulta si ya existía."""
+    """CA6: Registro de documento corrupto al subir y aislamiento con advertencia en consulta cuando se requiere ese documento."""
     app, repo = app_with_services
     tender_id = uuid4()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # 1. Rechazo al subir archivo corrupto
+        # 1. Subir archivo corrupto (se registra para que la IA sepa que existe pero está dañado)
         corrupt_bytes = b"Esto no es un archivo PDF ni XLSX ni PNG valido."
         resp_bad_upload = await client.post(
             f"/tenders/{tender_id}/assistant/documents",
             files={"file": ("archivo_corrupto.pdf", corrupt_bytes, "application/pdf")}
         )
-        assert resp_bad_upload.status_code == status.HTTP_400_BAD_REQUEST
-        assert "no posee una cabecera PDF válida" in resp_bad_upload.json()["detail"] or "dañado" in resp_bad_upload.json()["detail"]
+        assert resp_bad_upload.status_code == status.HTTP_201_CREATED
 
         # 2. Subir un archivo sano
         pdf_sano = _create_minimal_pdf("Documento Sano")
@@ -280,19 +279,6 @@ async def test_ca6_corrupted_document_rejection_and_graceful_isolation(app_with_
         )
         assert resp_ok.status_code == status.HTTP_201_CREATED
 
-        # Simular que en el storage preexistía un documento dañado (inyectado directamente)
-        from app.domain.entities.tender_chat import TenderChatDocument
-        damaged_doc = TenderChatDocument(
-            tender_id=tender_id,
-            user_id=current_user.id,
-            file_name="anexo_danado.pdf",
-            file_type="pdf",
-            file_size_bytes=10,
-            storage_path="damaged.pdf"
-        )
-        # Guardar en repositorio en memoria con bytes rotos
-        await repo.save_document(damaged_doc, b"broken_bytes")
-
         # Configurar mock de Gemini para la consulta
         mock_gemini_response = {
             "candidates": [
@@ -301,7 +287,7 @@ async def test_ca6_corrupted_document_rejection_and_graceful_isolation(app_with_
                         "parts": [
                             {
                                 "text": json.dumps({
-                                    "answer": "Información obtenida de las bases sanas.",
+                                    "answer": "Información obtenida de las bases sanas. El archivo 'archivo_corrupto.pdf' se encuentra dañado y no fue posible procesarlo.",
                                     "citations": [
                                         {
                                             "document_name": "bases_sanas.pdf",
@@ -319,18 +305,17 @@ async def test_ca6_corrupted_document_rejection_and_graceful_isolation(app_with_
                 }
             ]
         }
-
         respx.post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=integration-test-key"
         ).respond(status_code=200, json=mock_gemini_response)
 
-        # Realizar la consulta: no debe fallar, debe procesar bases_sanas y generar warning para anexo_danado
-        ask_resp = await client.post(
+        # 3. Realizar consulta: debe responder con éxito y listar el warning del archivo corrupto
+        resp_query = await client.post(
             f"/tenders/{tender_id}/assistant/ask",
-            json={"question": "¿Cuáles son los requisitos?"}
+            json={"question": "¿Cuáles son los requisitos de las bases y del archivo corrupto?"}
         )
-        assert ask_resp.status_code == status.HTTP_200_OK
-        data = ask_resp.json()
-        assert len(data["citations"]) == 1
+        assert resp_query.status_code == status.HTTP_200_OK
+        data = resp_query.json()
         assert len(data["warnings"]) >= 1
-        assert any("anexo_danado.pdf" in w and "dañado o ilegible" in w for w in data["warnings"])
+        assert any("archivo_corrupto.pdf" in w for w in data["warnings"])
+        assert any("dañado o su texto es ilegible" in w for w in data["warnings"])
