@@ -72,6 +72,21 @@ body:
       required: true
 
   - type: textarea
+    id: subtareas-tecnicas
+    attributes:
+      label: Subtareas Técnicas
+      description: >-
+        Desglose técnico para implementar la historia, uno por línea como checkbox.
+        Marca cada casilla a medida que avanza el desarrollo, en vez de abrir un issue aparte.
+      placeholder: |
+        - [ ] Diseñar endpoint /api/...
+        - [ ] Implementar servicio de matching
+        - [ ] Escribir tests unitarios
+        - [ ] Actualizar documentación
+    validations:
+      required: false
+
+  - type: textarea
     id: notas
     attributes:
       label: Notas
