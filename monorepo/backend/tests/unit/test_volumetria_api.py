@@ -79,13 +79,13 @@ class TestSeriesQueSeMiden:
     @respx.mock
     @pytest.mark.asyncio
     async def test_una_peticion_por_muestra(self):
-        """1 día × 2 series por publicación + 2 ventanas ttl + las no publicadas."""
+        """1 día × 2 series + 2 ventanas ttl + los 6 estados = 10."""
         ruta = respx.get(URL).mock(return_value=_con_total(7))
 
         muestras = await medir(_args(), _cliente())
 
-        assert len(muestras) == 5
-        assert ruta.call_count == 5
+        assert len(muestras) == 10
+        assert ruta.call_count == 10
 
     @respx.mock
     @pytest.mark.asyncio
@@ -94,13 +94,25 @@ class TestSeriesQueSeMiden:
 
         muestras = await medir(_args(), _cliente())
 
-        assert [m.serie for m in muestras] == [
+        assert [m.serie for m in muestras][:4] == [
             "publicadas_dia",
             "publicadas_dia_vigentes",
             "cambios_ttl",
             "cambios_ttl",
-            "cambios_24h_no_publicadas",
         ]
+        assert {m.serie for m in muestras[4:]} == {"cambios_24h_estado"}
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_los_estados_particionan_el_universo(self):
+        """Sin esta partición, la ventana de 24 h satura y deja de ser un número."""
+        respx.get(URL).mock(return_value=_con_total(7))
+
+        muestras = await medir(_args(), _cliente())
+
+        estados = [m.estado for m in muestras if m.serie == "cambios_24h_estado"]
+        assert estados == list(volumetria_api.ESTADOS)
+        assert len(estados) == len(set(estados))
 
     @respx.mock
     @pytest.mark.asyncio
@@ -135,6 +147,57 @@ class TestSeriesQueSeMiden:
 
         vigentes = next(m for m in muestras if m.serie == "publicadas_dia_vigentes")
         assert vigentes.estado == "publicada"
+
+
+class TestTopeDeLaApi:
+    """10.000 es el techo de la respuesta, no un conteo.
+
+    Medido el 2026-09-10: las ventanas de cambios de 24 h y de 48 h devuelven
+    exactamente el mismo 10.000. Cargar ese número como si fuera el dato real
+    sería subestimar el volumen justo donde la decisión de arquitectura se juega.
+    """
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_la_muestra_en_el_tope_queda_marcada(self):
+        respx.get(URL).mock(return_value=_con_total(10000))
+
+        muestras = await medir(_args(sin_relativas=True), _cliente())
+
+        assert all(m.saturada for m in muestras)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_un_total_normal_no_queda_marcado(self):
+        respx.get(URL).mock(return_value=_con_total(4598))
+
+        muestras = await medir(_args(sin_relativas=True), _cliente())
+
+        assert not any(m.saturada for m in muestras)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_la_marca_viaja_en_la_linea_emitida(self, capsys):
+        respx.get(URL).mock(return_value=_con_total(10000))
+
+        await medir(_args(sin_relativas=True), _cliente())
+
+        lineas = [
+            json.loads(ln.removeprefix("VOLUMETRIA "))
+            for ln in capsys.readouterr().out.splitlines()
+            if ln.startswith("VOLUMETRIA ")
+        ]
+        assert lineas
+        assert all(ln["saturada"] is True for ln in lineas)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_sin_dato_no_cuenta_como_saturada(self):
+        respx.get(URL).mock(return_value=httpx.Response(504))
+
+        muestras = await medir(_args(sin_relativas=True), _cliente())
+
+        assert not any(m.saturada for m in muestras)
 
 
 class TestCuandoLaApiNoResponde:
