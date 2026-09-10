@@ -20,9 +20,19 @@ sea un cron y no una sola corrida:
   preguntar "cuántas cambiaron anteayer". Esta serie **solo** se construye
   midiendo a diario, y es justamente la que decide la arquitectura.
 
-La serie que el informe llama `cambios_24h` es la fila de `cambios_ttl` con
-`ventana_horas = 24`. No se emite dos veces para no gastar una petición en un
-dato que ya está.
+El tope de la API, que es lo primero que sorprende
+-------------------------------------------------
+`total_resultados` no pasa de 10.000. Medido el 2026-09-10: la ventana de
+cambios de 24 h y la de 48 h devuelven **exactamente** el mismo 10.000, que es
+la firma de un techo y no de una coincidencia. Un total igual a ese número es
+una cota inferior, y por eso cada muestra viaja con un campo `saturada`: leerlo
+como un conteo sería subestimar el volumen justo donde se juega la decisión.
+
+El rodeo es la serie `cambios_24h_estado`. La API filtra por el estado
+**actual**, así que los estados particionan el universo —ninguna licitación cae
+en dos— y cada parte cabe bajo el tope aunque el todo no quepa. La suma de las
+partes sí es el total de cambios del día, que es el número que decide si las
+actualizaciones entran en la cuota.
 
 Salida
 ------
@@ -57,6 +67,7 @@ from itertools import pairwise
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
 )
+from app.shared.constants import TENDER_STATUSES
 from app.shared.datetime_utils import CHILE_TZ
 
 MARCA = "VOLUMETRIA"
@@ -70,11 +81,31 @@ ESQUEMA = 1
 # siete días de medición. Es una estimación, no la serie: la API responde por
 # licitación cambiada, no por cambio, así que una licitación que cambió dos veces
 # en la semana aparece una sola vez en todas las ventanas que la contienen.
-TTL_HORAS_POR_DEFECTO = (24, 48, 72, 96, 120, 144, 168)
+# Medido el 2026-09-10: con 24 h el total ya llega al tope y deja de ser un
+# número. Las ventanas cortas son las que informan; las largas se conservan como
+# testigo de la saturación, porque un lector que solo viera "10.000" podría
+# tomarlo por el dato real.
+TTL_HORAS_POR_DEFECTO = (1, 3, 6, 12, 24, 48)
 
-# Los estados que sacan una licitación de circulación. Dimensionan el barrido de
-# retirada: son las que hay que sacar del índice vectorial cada día.
-ESTADOS_FUERA_DE_CIRCULACION = "cerrada,desierta,cancelada"
+# `total_resultados` no pasa de acá. Medido el 2026-09-10: la ventana de cambios
+# de 24 h y la de 48 h devuelven exactamente el mismo 10.000, que es la firma de
+# un tope y no de una coincidencia. Todo total igual a este número es una **cota
+# inferior**, y tratarlo como un conteo sería el peor error que puede cometer
+# este arnés.
+TOPE_API = 10000
+
+# La API filtra por el estado **actual**, así que los estados particionan el
+# universo: ninguna licitación cae en dos. Sumar las partes es la forma de
+# obtener el total de cambios cuando la consulta sin filtro satura — cada parte
+# es más chica que el tope aunque el todo no lo sea.
+ESTADOS = (
+    TENDER_STATUSES["PUBLISHED"],
+    TENDER_STATUSES["CLOSED"],
+    TENDER_STATUSES["DESERTED"],
+    TENDER_STATUSES["CANCELLED"],
+    TENDER_STATUSES["SUPPLIER_SELECTED"],
+    TENDER_STATUSES["PO_ISSUED"],
+)
 
 # Pausa entre muestras. La API aplica un balde de tokens que se recarga en
 # segundos y responde 429 cuando se la aprieta; el cliente reintenta, pero cada
@@ -97,6 +128,11 @@ class Muestra:
     estado: str | None = None
     ventana_horas: int | None = None
 
+    @property
+    def saturada(self) -> bool:
+        """El total tocó el tope de la API: es una cota inferior, no un conteo."""
+        return self.total is not None and self.total >= TOPE_API
+
 
 def _emitir(muestra: Muestra, medido_en: datetime) -> None:
     linea = {
@@ -107,6 +143,7 @@ def _emitir(muestra: Muestra, medido_en: datetime) -> None:
         "estado": muestra.estado,
         "ventana_horas": muestra.ventana_horas,
         "total": muestra.total,
+        "saturada": muestra.saturada,
     }
     print(f"{MARCA} {json.dumps(linea, ensure_ascii=False)}", flush=True)
 
@@ -212,18 +249,22 @@ async def medir(
             ventana_horas=horas,
         )
 
-    # Cuántas salieron de circulación en 24 h. Es lo que tendría que retirar del
-    # índice el barrido diario.
-    await _muestrear(
-        cliente,
-        medido_en,
-        muestras,
-        "cambios_24h_no_publicadas",
-        medido_en - timedelta(hours=24),
-        medido_en,
-        estado=ESTADOS_FUERA_DE_CIRCULACION,
-        ventana_horas=24,
-    )
+    # Partición del día por estado. Es el rodeo al tope de la API: sin filtro,
+    # las 24 h devuelven 10.000 y no se sabe cuántas son de verdad; por estado,
+    # cada parte cabe y la suma sí es el total. De paso separa lo que interesa a
+    # cada cadencia — las que salen de circulación son las que hay que retirar
+    # del índice vectorial.
+    for estado in ESTADOS:
+        await _muestrear(
+            cliente,
+            medido_en,
+            muestras,
+            "cambios_24h_estado",
+            medido_en - timedelta(hours=24),
+            medido_en,
+            estado=estado,
+            ventana_horas=24,
+        )
 
     return muestras
 
@@ -233,6 +274,30 @@ def _resumen(muestras: list[Muestra]) -> None:
     medidas = [m for m in muestras if m.total is not None]
     print(f"\n{len(medidas)}/{len(muestras)} muestras obtenidas.", file=sys.stderr)
 
+    # --- Cambios por estado: la vía que rodea el tope de la API ---
+    por_estado = {
+        m.estado: m.total
+        for m in muestras
+        if m.serie == "cambios_24h_estado" and m.total is not None and m.estado
+    }
+    if por_estado:
+        print("\nCambios en 24 h, por estado actual:", file=sys.stderr)
+        for estado, total in sorted(por_estado.items(), key=lambda kv: -kv[1]):
+            tope = "  (¡TOPE!)" if total >= TOPE_API else ""
+            print(f"  {estado:<24} {total:>6}{tope}", file=sys.stderr)
+
+        suma = sum(por_estado.values())
+        completa = all(t < TOPE_API for t in por_estado.values())
+        etiqueta = "" if completa else "  (alguna parte tocó el tope: cota inferior)"
+        print(f"  {'suma':<24} {suma:>6}{etiqueta}", file=sys.stderr)
+        print(
+            f"\nCon las actualizaciones habilitadas, esa suma es el número de\n"
+            f"peticiones de detalle por día: {suma} de las 10.000 del ticket\n"
+            f"({suma / 100:.0f}%), antes de contar las licitaciones nuevas.",
+            file=sys.stderr,
+        )
+
+    # --- Serie por ventana: sirve sobre todo para ver dónde satura ---
     ttl: dict[int, int] = {
         m.ventana_horas: m.total
         for m in muestras
@@ -240,28 +305,31 @@ def _resumen(muestras: list[Muestra]) -> None:
         and m.total is not None
         and m.ventana_horas is not None
     }
-    if 24 in ttl:
-        cambios = ttl[24]
+    if ttl:
+        print("\nCambios acumulados por ventana:", file=sys.stderr)
+        for horas in sorted(ttl):
+            tope = "  (¡TOPE! el dato real es mayor)" if ttl[horas] >= TOPE_API else ""
+            print(f"  últimas {horas:>3} h: {ttl[horas]:>6}{tope}", file=sys.stderr)
+
+    sin_saturar = {h: v for h, v in ttl.items() if v < TOPE_API}
+    if len(sin_saturar) > 1:
         print(
-            f"\ncambios_24h = {cambios}  →  {cambios} peticiones de detalle al día\n"
-            f"si se habilitan las actualizaciones ({cambios / 100:.0f}% de la cuota).",
+            "\nEstimación por tramo (solo ventanas que no tocaron el tope):",
             file=sys.stderr,
         )
-
-    if len(ttl) > 1:
-        print("\nEstimación por tramo (diferencia entre ventanas):", file=sys.stderr)
-        for anterior, actual in pairwise(sorted(ttl)):
+        for anterior, actual in pairwise(sorted(sin_saturar)):
             print(
                 f"  {anterior:>3}-{actual:>3} h atrás: "
-                f"{ttl[actual] - ttl[anterior]:>6}",
+                f"{sin_saturar[actual] - sin_saturar[anterior]:>6}",
                 file=sys.stderr,
             )
         print(
-            "  (es una cota inferior: una licitación que cambió dos veces se\n"
-            "   cuenta una sola vez en cada ventana que la contiene)",
+            "  (cota inferior: una licitación que cambió dos veces se cuenta una\n"
+            "   sola vez en cada ventana que la contiene)",
             file=sys.stderr,
         )
 
+    # --- Series por publicación ---
     for serie in ("publicadas_dia", "publicadas_dia_vigentes"):
         totales = [
             m.total for m in muestras if m.serie == serie and m.total is not None
@@ -274,10 +342,20 @@ def _resumen(muestras: list[Muestra]) -> None:
                 file=sys.stderr,
             )
 
+    if any(m.saturada for m in muestras):
+        print(
+            "\nAVISO: hay muestras en el tope de la API (10.000). Ese número **no es\n"
+            "un conteo**, es el techo de la respuesta: el valor real es mayor y no se\n"
+            "sabe cuánto. Para esos casos usa la partición por estado o una ventana\n"
+            "más corta; no cargues 10.000 como si fuera el dato.",
+            file=sys.stderr,
+        )
+
     if any(m.total is None for m in muestras):
         fallidas = [m.serie for m in muestras if m.total is None]
         print(
-            f"\nAVISO: {len(fallidas)} muestras sin dato ({', '.join(sorted(set(fallidas)))}).\n"
+            f"\nAVISO: {len(fallidas)} muestras sin dato "
+            f"({', '.join(sorted(set(fallidas)))}).\n"
             "No son ceros: la API no respondió. No las cargues como 0 en la serie.",
             file=sys.stderr,
         )
