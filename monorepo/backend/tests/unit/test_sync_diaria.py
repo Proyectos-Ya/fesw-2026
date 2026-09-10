@@ -34,6 +34,7 @@ class ServicioFalso(ITenderIngestionService):
         self.cierre: dict | None = None
         self.ventana_pedida: tuple | None = None
         self.limite_pedido: int | None = None
+        self.por_publicacion_pedido: bool | None = None
 
     async def fetch_tenders_metadata(
         self,
@@ -47,6 +48,7 @@ class ServicioFalso(ITenderIngestionService):
     ) -> ResultadoListado:
         self.ventana_pedida = (desde, hasta)
         self.limite_pedido = limite
+        self.por_publicacion_pedido = por_publicacion
         return self.listado
 
     async def process_unprocessed_tenders(
@@ -125,6 +127,21 @@ class TestCuandoLaCorridaEsBuena:
         assert servicio.cierre["listed"] == 300
         assert servicio.cierre["processed"] == 120
         assert servicio.cierre["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_descubre_por_fecha_de_publicacion(self):
+        """Y no por ventana de cambios.
+
+        `ttl_cambio_ms` **asume** que publicarse cuenta como un cambio. Si esa
+        suposición fuera falsa, el cron no descubriría ninguna licitación nueva y
+        nada fallaría: el catálogo simplemente dejaría de crecer. Preguntar por
+        fecha de publicación es correcto por construcción.
+        """
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        await _correr(servicio)
+
+        assert servicio.por_publicacion_pedido is True
 
     @pytest.mark.asyncio
     async def test_la_ventana_sale_del_cursor_y_no_de_ahora(self):
