@@ -48,6 +48,52 @@ def _iso_8601(momento: datetime) -> str:
     return momento.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# 50 es el máximo que acepta la API, pero medido tarda ~21 s por página y su
+# gateway corta cerca de los 30: el 504 aparece de forma intermitente. Con 20 la
+# respuesta baja a unos pocos segundos y es estable. Son más llamadas al endpoint
+# de listado, pero ese cuesta una petición por página frente a una por licitación
+# en el de detalle, así que el impacto en la cuota es marginal.
+TAMANO_PAGINA = 20
+
+# Ventana por defecto cuando el delta no es positivo.
+VENTANA_POR_DEFECTO_MS = 86400000
+
+
+def _params_ventana(
+    from_date: datetime,
+    to_date: datetime,
+    *,
+    por_publicacion: bool,
+    estado: str | None,
+    numero_pagina: int = 1,
+) -> dict[str, Any]:
+    """Parámetros del listado para una ventana de tiempo.
+
+    Vive fuera de `get_tenders` porque el conteo (`contar`) necesita exactamente
+    los mismos. Duplicarlos es la forma de que un día dejen de coincidir y la
+    volumetría termine midiendo una ventana distinta de la que se ingesta.
+
+    `ttl_cambio_ms` y `publicado_desde`/`publicado_hasta` son **mutuamente
+    excluyentes**: la guía de la API los pone en grupos distintos de parámetros y
+    advierte que no se combinan.
+    """
+    params: dict[str, Any] = {
+        "tamano_pagina": TAMANO_PAGINA,
+        "numero_pagina": numero_pagina,
+    }
+    if por_publicacion:
+        params["publicado_desde"] = _iso_8601(from_date)
+        params["publicado_hasta"] = _iso_8601(to_date)
+    else:
+        ventana_ms = int((to_date - from_date).total_seconds() * 1000)
+        if ventana_ms <= 0:
+            ventana_ms = VENTANA_POR_DEFECTO_MS
+        params["ttl_cambio_ms"] = ventana_ms
+    if estado:
+        params["estado"] = estado
+    return params
+
+
 class MercadoPublicoClient:
     def __init__(self, api_key: str, espera_base: float = 1.0):
         self.api_key = api_key
@@ -79,19 +125,6 @@ class MercadoPublicoClient:
         sin una ventana de tiempo acompañándolo, la API responde 504.
         """
         headers = {"ticket": self.api_key}
-        # Calculamos la ventana de tiempo en milisegundos
-        delta = to_date - from_date
-        time_window_ms = int(delta.total_seconds() * 1000)
-        if time_window_ms <= 0:
-            time_window_ms = 86400000  # Por defecto 24 horas si el delta no es positivo
-
-        # 50 es el máximo que acepta la API, pero medido tarda ~21 s por página y
-        # su gateway corta cerca de los 30: el 504 aparece de forma
-        # intermitente. Con 20 la respuesta baja a unos pocos segundos y es
-        # estable. Son más llamadas al endpoint de listado, pero ese cuesta una
-        # petición por página frente a una por licitación en el de detalle, así
-        # que el impacto en la cuota es marginal.
-        api_page_size = 20
         all_items: list[dict[str, Any]] = []
         current_page = 1
         # Optimista: solo se baja a False si la paginación se corta antes de
@@ -100,17 +133,13 @@ class MercadoPublicoClient:
 
         async with httpx.AsyncClient() as client:
             while len(all_items) < quantity:
-                params: dict[str, Any] = {
-                    "tamano_pagina": api_page_size,
-                    "numero_pagina": current_page,
-                }
-                if por_publicacion:
-                    params["publicado_desde"] = _iso_8601(from_date)
-                    params["publicado_hasta"] = _iso_8601(to_date)
-                else:
-                    params["ttl_cambio_ms"] = time_window_ms
-                if estado:
-                    params["estado"] = estado
+                params = _params_ventana(
+                    from_date,
+                    to_date,
+                    por_publicacion=por_publicacion,
+                    estado=estado,
+                    numero_pagina=current_page,
+                )
                 try:
                     print(
                         f"[API MP] Consultando página {current_page} (listado de cambios) a {self.base_url}..."
@@ -178,6 +207,52 @@ class MercadoPublicoClient:
             completo = False
 
         return ListadoLicitaciones(items=all_items[:quantity], completo=completo)
+
+    async def contar(
+        self,
+        from_date: datetime,
+        to_date: datetime,
+        *,
+        por_publicacion: bool = False,
+        estado: str | None = None,
+    ) -> int | None:
+        """Cuántas licitaciones hay en la ventana, **sin descargarlas**.
+
+        Una sola petición: `paginacion.total_resultados` viene ya en la primera
+        página y no depende de haberla recorrido. Es lo que vuelve viable medir
+        la volumetría — una serie de 30 días cuesta 30 peticiones de las 10.000
+        del ticket, frente a las ~30.000 que costaría listarlas.
+
+        Devuelve `None` cuando **no se pudo saber**: la API no respondió tras los
+        reintentos, o la respuesta vino sin ese campo. Es distinto de `0`, que
+        significa que la ventana está vacía. Confundirlos convertiría una caída
+        de la API en un día sin publicaciones, que es justo el error que una
+        serie temporal no perdona.
+
+        Aviso al interpretar el número: un `total_resultados` de exactamente
+        10.000 puede ser un tope de la API y no el total real. Ante eso, acotar
+        la ventana.
+        """
+        headers = {"ticket": self.api_key}
+        params = _params_ventana(
+            from_date, to_date, por_publicacion=por_publicacion, estado=estado
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await self._get_con_reintentos(client, headers, params)
+
+        if response is None or response.status_code != 200:
+            return None
+        try:
+            envelope = cast(dict[str, Any], response.json())
+        except Exception as e:
+            print(f"[Error MP] Respuesta ilegible al contar la ventana: {e}")
+            return None
+
+        payload = cast(dict[str, Any], envelope.get("payload", {})) or {}
+        paginacion = cast(dict[str, Any], payload.get("paginacion", {})) or {}
+        total = paginacion.get("total_resultados")
+        return total if isinstance(total, int) else None
 
     async def _get_con_reintentos(
         self,
