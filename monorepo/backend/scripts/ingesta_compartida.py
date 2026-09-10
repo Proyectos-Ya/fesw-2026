@@ -41,7 +41,7 @@ def construir_servicio() -> tuple[
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     servicio = TenderIngestionService(
         engine=engine,
-        client=MercadoPublicoClient(api_key=settings.mercado_publico_api_key),
+        client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
         embedding_service=build_embedding_service(),
         qdrant_client=qdrant,
     )

@@ -383,17 +383,27 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    api_key = os.environ.get("MERCADO_PUBLICO_API_KEY", "").strip()
-    if not api_key:
+    # `MERCADO_PUBLICO_API_KEYS` (plural, separados por coma) manda sobre el
+    # singular, igual que en `settings.mercado_publico_tickets`. Acá se lee del
+    # entorno a mano y no de `app.config` a propósito: ver el docstring del módulo.
+    tickets = [
+        t.strip()
+        for t in os.environ.get(
+            "MERCADO_PUBLICO_API_KEYS", os.environ.get("MERCADO_PUBLICO_API_KEY", "")
+        ).split(",")
+        if t.strip()
+    ]
+    if not tickets:
         sys.exit(
-            "Falta MERCADO_PUBLICO_API_KEY en el entorno.\n"
-            "Es lo único que este script necesita: no abre base de datos ni Qdrant."
+            "Falta MERCADO_PUBLICO_API_KEY (o MERCADO_PUBLICO_API_KEYS) en el "
+            "entorno.\nEs lo único que este script necesita: no abre base de datos "
+            "ni Qdrant."
         )
 
     if args.dias_atras < 0:
         sys.exit("--dias-atras no puede ser negativo.")
 
-    muestras = asyncio.run(medir(args, MercadoPublicoClient(api_key=api_key)))
+    muestras = asyncio.run(medir(args, MercadoPublicoClient(api_keys=tickets)))
     _resumen(muestras)
 
     if muestras and all(m.total is None for m in muestras):
