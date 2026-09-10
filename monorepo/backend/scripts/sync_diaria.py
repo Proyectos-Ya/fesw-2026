@@ -21,7 +21,7 @@ Qué hace, en orden
 1. **Marca las vencidas.** Cuota cero: `closing_at` ya está en Postgres. Va
    primero porque es lo que libera cupos del pre-filtrado, y porque conviene que
    ocurra aunque la API esté caída.
-2. **Lista la ventana que dice el cursor** y encola lo que falte.
+2. **Lista lo publicado en la ventana que dice el cursor** y encola lo que falte.
 3. **Vacía la cola**, bajando el detalle de cada licitación nueva.
 4. **Cierra la corrida** en `ingestion_run`. Solo `ok` mueve el cursor: una
    corrida que no alcanzó a listar su ventana entera queda `partial`, y la
@@ -113,8 +113,20 @@ async def sincronizar(
     run_id = await servicio.registrar_inicio(desde, hasta)
     limite = args.limite or settings.mercadopublico_fetching_limit
 
+    # `por_publicacion=True` y no la ventana de cambios: descubrir licitaciones
+    # nuevas preguntando "qué se publicó en este rango" es correcto por
+    # construcción. La alternativa —`ttl_cambio_ms`— **asume** que publicarse
+    # cuenta como un cambio, y si esa suposición fuera falsa el cron no
+    # descubriría nada nuevo sin que nada fallara. Medido el 2026-09-10 sobre el
+    # listado real, la suposición se sostiene (`fecha_publicacion` y
+    # `fecha_ultimo_cambio` de una licitación recién publicada están a un minuto
+    # una de otra), pero no hay razón para depender de ella.
     listado = await servicio.fetch_tenders_metadata(
-        desde=desde, hasta=hasta, estado=args.estado or None, limite=limite
+        desde=desde,
+        hasta=hasta,
+        por_publicacion=True,
+        estado=args.estado or None,
+        limite=limite,
     )
     print(
         f"{listado.listadas} licitaciones listadas, {listado.nuevas} nuevas encoladas."

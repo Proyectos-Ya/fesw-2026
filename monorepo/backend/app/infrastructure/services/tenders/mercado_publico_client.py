@@ -48,7 +48,8 @@ def _iso_8601(momento: datetime) -> str:
     return momento.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# 50 es el máximo que acepta la API, pero medido tarda ~21 s por página y su
+# La API acepta `tamano_pagina` entre **10 y 50** (medido el 2026-09-10: un 1
+# devuelve 400 con ese mensaje). 50 es el máximo, pero tarda ~21 s por página y su
 # gateway corta cerca de los 30: el 504 aparece de forma intermitente. Con 20 la
 # respuesta baja a unos pocos segundos y es estable. Son más llamadas al endpoint
 # de listado, pero ese cuesta una petición por página frente a una por licitación
