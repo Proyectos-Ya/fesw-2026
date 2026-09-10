@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
         vector_size=settings.embedding_vector_size,
     ).ensure_collection()
 
-    client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+    client = MercadoPublicoClient(api_keys=settings.mercado_publico_tickets)
     ingestion_service = TenderIngestionService(
         engine=engine,
         client=client,

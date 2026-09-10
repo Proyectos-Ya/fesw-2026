@@ -101,7 +101,7 @@ async def contar(args: argparse.Namespace) -> None:
     """
     from collections import Counter
 
-    cliente = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+    cliente = MercadoPublicoClient(api_keys=settings.mercado_publico_tickets)
     hasta = datetime.now(UTC)
     desde = hasta - timedelta(days=args.dias)
     ventana = {"por_publicacion": args.por_publicacion, "estado": args.estado or None}
