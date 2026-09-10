@@ -89,6 +89,23 @@ class TenderModel(SQLModel, table=True):
         back_populates="tender"
     )
 
+    # `code` ya viene indexado por ser único. Estos dos cubren las consultas que
+    # recorren la tabla entera, y que dejan de ser gratis en cuanto el corpus
+    # crece: medido el 2026-09-10, entran ~4.500 licitaciones por día hábil, o
+    # sea ~1,15M al año.
+    #
+    # - `(status_id, closing_at)`: el barrido de vencidas
+    #   (`get_expired_published_ids`) lo corre el cron **todos los días** con
+    #   exactamente esa forma —igualdad de estado, rango de cierre—, y es también
+    #   el par de filtros más común del buscador. El orden importa: la columna de
+    #   igualdad va primera, la de rango después.
+    # - `published_at`: la ventana de publicación, que es como el cron descubre
+    #   licitaciones nuevas, y el filtro de fecha de publicación del buscador.
+    __table_args__ = (
+        Index("ix_tender_estado_cierre", "status_id", "closing_at"),
+        Index("ix_tender_published_at", "published_at"),
+    )
+
 
 class TenderItemModel(SQLModel, table=True):
     __tablename__ = "tender_item"  # type: ignore
