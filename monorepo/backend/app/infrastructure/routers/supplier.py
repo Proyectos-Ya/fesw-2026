@@ -4,6 +4,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -37,6 +40,7 @@ def create_supplier_router(
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
     get_current_user: Callable,
+    get_supplier_member_repo: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
@@ -72,6 +76,9 @@ def create_supplier_router(
             ISupplierVectorRepository, Depends(get_supplier_vector_repo)
         ],
         embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
     ):
         # TEMPORAL solo para demo del CA de timeout (>1 min sin respuesta).
         # Descomentar para el primer intento: duerme 70s (el cliente aborta a los
@@ -83,7 +90,7 @@ def create_supplier_router(
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
             return await CreateSupplierUseCase(
-                repo, vector_repo, embedding_service
+                repo, vector_repo, embedding_service, member_repo=member_repo
             ).execute(data, user_id=current_user.id)
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(

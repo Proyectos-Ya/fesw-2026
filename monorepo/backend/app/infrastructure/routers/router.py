@@ -26,6 +26,7 @@ def create_router(
     get_current_user: Callable,
     get_supplier_member_repo: Callable,
     get_supplier_invitation_repo: Callable,
+    get_current_workspace_context: Callable,
     hasher: IPasswordHasher,
     token_service: ITokenService,
     cookie_name: str,
@@ -79,11 +80,13 @@ def create_router(
             get_supplier_vector_repo=get_supplier_vector_repo,
             get_embedding_service=get_embedding_service,
             get_current_user=get_current_user,
+            get_supplier_member_repo=get_supplier_member_repo,
         )
     )
     root.include_router(
         create_workspace_router(
             get_current_user=get_current_user,
+            get_current_workspace_context=get_current_workspace_context,
             get_supplier_member_repo=get_supplier_member_repo,
             get_supplier_invitation_repo=get_supplier_invitation_repo,
             get_supplier_repo=get_supplier_repo,
@@ -99,8 +102,10 @@ def create_router(
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
             get_tender_detail_use_case=get_tender_detail_use_case,
+            get_current_workspace_context=get_current_workspace_context,
         )
     )
+
 
     root.include_router(
         create_notification_router(

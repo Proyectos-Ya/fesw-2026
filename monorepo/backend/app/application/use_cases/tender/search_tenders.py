@@ -76,6 +76,7 @@ class SearchTendersUseCase:
     async def execute(
         self,
         user_id: UUID,
+        supplier_id: UUID | None = None,
         q: str | None = None,
         criteria: TenderFilterCriteria | None = None,
         limit: int | None = None,
@@ -111,7 +112,7 @@ class SearchTendersUseCase:
                 is_truncated=total > offset + len(items),
             )
 
-        vector = await self._resolve_vector(user_id, "")
+        vector = await self._resolve_vector(user_id, "", supplier_id=supplier_id)
         if vector is None:
             return await self._search_without_ranking(criteria, effective_limit, offset)
 
@@ -121,22 +122,35 @@ class SearchTendersUseCase:
             offset=offset,
             criteria=criteria,
         )
-        total = await self.tender_vector_repo.count(criteria)
-        items = await self._hydrate(hits)
+        if not hits:
+            return TenderSearchResult(
+                items=[],
+                total=0,
+                is_truncated=False,
+            )
 
+        total = await self.tender_vector_repo.count(criteria)
+        ids_en_orden = [tender_id for tender_id, _ in hits]
+        # Preserva el orden de similitud que dio Qdrant
+        id_a_posicion = {tender_id: i for i, tender_id in enumerate(ids_en_orden)}
+
+        tenders = await self.tender_repo.get_tenders(TenderFilters(ids=ids_en_orden))
+        tenders_ordenadas = sorted(
+            tenders, key=lambda t: id_a_posicion.get(t.id, len(ids_en_orden))
+        )
         return TenderSearchResult(
-            items=items,
+            items=tenders_ordenadas,
             total=total,
-            is_truncated=total > offset + len(hits),
+            is_truncated=total > offset + len(tenders_ordenadas),
         )
 
-    @staticmethod
     def _validate(
-        criteria: TenderFilterCriteria, limit: int | None, offset: int
+        self, criteria: TenderFilterCriteria, limit: int | None, offset: int
     ) -> None:
-        """Rechaza criterios que no pueden cumplirse.
+        """Falla rápido ante rangos invertidos o valores que no tienen sentido.
 
-        Un rango invertido devolvería una lista vacía, y el usuario la leería
+        Un rango donde desde > hasta devolvería 0 resultados por definición en
+        SQL/Qdrant, pero avisar con 422 es más útil que dejar que se interprete
         como "no hay licitaciones" en vez de "escribiste el filtro al revés".
         Los extremos iguales sí son válidos: los límites son inclusivos.
         """
@@ -174,14 +188,19 @@ class SearchTendersUseCase:
             )
 
     async def _resolve_vector(
-        self, user_id: UUID, query_text: str
+        self, user_id: UUID, query_text: str, supplier_id: UUID | None = None
     ) -> list[float] | None:
         """El texto manda; sin texto, el perfil del proveedor."""
         if query_text:
             vectors = await self.embedding_service.embed([query_text])
             return vectors[0]
 
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        supplier = None
+        if supplier_id is not None:
+            supplier = await self.supplier_repo.get_by_id(supplier_id)
+        if supplier is None:
+            supplier = await self.supplier_repo.get_by_user_id(user_id)
+
         if supplier is None:
             return None
         return self.supplier_vector_repo.get_vector(supplier.id)

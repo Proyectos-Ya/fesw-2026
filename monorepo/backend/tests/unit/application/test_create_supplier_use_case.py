@@ -16,7 +16,6 @@ from app.application.use_cases.supplier.create_supplier import CreateSupplierUse
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
-    UserAlreadyHasSupplier,
 )
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
@@ -187,35 +186,60 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 
 
 async def test_supplier_saved_with_owner_user_id(
-    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
 ) -> None:
-    """El user_id del creador queda persistido en el proveedor."""
+    """El user_id del creador queda persistido en el proveedor y se crea membresía ADMIN."""
+    from tests.unit.application.fakes import InMemorySupplierMemberRepository
+    from app.domain.entities.supplier_member import MemberRole, MemberStatus
+
+    member_repo = InMemorySupplierMemberRepository(supplier_repo=supplier_repo)
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, embedding_service, member_repo=member_repo
+    )
     owner_id = uuid4()
 
     supplier = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
 
-    stored = await supplier_repo.get_by_user_id(owner_id)
+    stored = await supplier_repo.get_by_id(supplier.id)
     assert stored is not None
     assert stored.id == supplier.id
     assert stored.user_id == owner_id
 
+    # Membresía admin creada automáticamente
+    memberships = await member_repo.list_by_user_id(owner_id)
+    assert len(memberships) == 1
+    assert memberships[0].supplier_id == supplier.id
+    assert memberships[0].role == MemberRole.ADMIN
+    assert memberships[0].status == MemberStatus.ACTIVE
 
-async def test_user_with_supplier_cannot_create_another(
-    use_case: CreateSupplierUseCase,
+
+async def test_user_can_create_multiple_companies(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
 ) -> None:
-    """Un usuario que ya tiene empresa no puede crear otra (regla de negocio)."""
+    """Un usuario existente puede crear múltiples empresas desde su sesión (CA-5)."""
+    from tests.unit.application.fakes import InMemorySupplierMemberRepository
+    from app.domain.entities.supplier_member import MemberRole
+
+    member_repo = InMemorySupplierMemberRepository(supplier_repo=supplier_repo)
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, embedding_service, member_repo=member_repo
+    )
     owner_id = uuid4()
-    await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
 
-    second = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
-    with pytest.raises(UserAlreadyHasSupplier):
-        await use_case.execute(second, user_id=owner_id)
+    supplier1 = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+    second_data = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
+    supplier2 = await use_case.execute(second_data, user_id=owner_id)
 
-    # El intento fallido no contamina SQL ni Qdrant
-    assert len(supplier_repo.suppliers) == 1
-    assert len(vector_repo.upserts) == 1
+    assert len(supplier_repo.suppliers) == 2
+    assert len(vector_repo.upserts) == 2
+
+    memberships = await member_repo.list_by_user_id(owner_id)
+    assert len(memberships) == 2
+    assert all(m.role == MemberRole.ADMIN for m in memberships)
 
 
 # ---------------------------------------------------------------------------

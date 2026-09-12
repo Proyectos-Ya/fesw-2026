@@ -100,8 +100,12 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
 from app.config import settings
-from app.infrastructure.auth.dependencies import build_get_current_user
+from app.infrastructure.auth.dependencies import (
+    build_get_current_user,
+    build_get_current_workspace_context,
+)
 from app.infrastructure.db import async_session_maker, get_session
+
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -778,6 +782,12 @@ def bootstrap(app: FastAPI) -> None:
         cookie_name=settings.auth_cookie_name,
     )
 
+    get_current_workspace_context = build_get_current_workspace_context(
+        get_current_user=get_current_user,
+        get_member_repo=get_supplier_member_repo,
+        get_supplier_repo=get_supplier_repo,
+    )
+
     router = create_router(
         get_rank_tenders_use_case=get_rank_tenders_use_case,
         get_smart_question_use_case=get_smart_question_use_case,
@@ -789,9 +799,11 @@ def bootstrap(app: FastAPI) -> None:
         get_current_user=get_current_user,
         get_supplier_member_repo=get_supplier_member_repo,
         get_supplier_invitation_repo=get_supplier_invitation_repo,
+        get_current_workspace_context=get_current_workspace_context,
         hasher=hasher,
         token_service=token_service,
         cookie_name=settings.auth_cookie_name,
+
 
         # `_derivar_cookie_secure` ya le dio valor; el `bool()` solo cierra el
         # `bool | None` que el tipo del campo deja abierto.

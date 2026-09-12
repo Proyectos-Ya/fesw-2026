@@ -2,6 +2,9 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -9,10 +12,14 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.services.embedding_service import IEmbeddingService
 from app.domain.entities.supplier import Supplier
+from app.domain.entities.supplier_member import (
+    MemberRole,
+    MemberStatus,
+    SupplierMember,
+)
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
-    UserAlreadyHasSupplier,
 )
 
 
@@ -35,10 +42,12 @@ class CreateSupplierUseCase:
         repo: ISupplierRepository,
         vector_repo: ISupplierVectorRepository,
         embedding_service: IEmbeddingService,
+        member_repo: ISupplierMemberRepository | None = None,
     ):
         self.repo = repo
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
+        self.member_repo = member_repo
 
     async def execute(
         self, data: CreateSupplierSchema, user_id: UUID | None = None
@@ -52,20 +61,20 @@ class CreateSupplierUseCase:
         if existing:
             raise SupplierAlreadyExists(data.rut)
 
-        # Regla de negocio: un usuario solo puede ser dueño de una empresa
-        if user_id is not None and await self.repo.get_by_user_id(user_id):
-            raise UserAlreadyHasSupplier(user_id)
-
-        # El embedding se calcula ANTES de persistir. Es una llamada de red a un
-        # proveedor externo y es, de lejos, el paso que más falla. Con el orden
-        # inverso un timeout dejaba la empresa commiteada en Postgres pero sin
-        # vector en Qdrant: aparecía en "Mi empresa" y al mismo tiempo matches y
-        # el escaneo de alertas respondían que no existía, sin forma de arreglarlo
-        # reintentando, porque el RUT ya estaba tomado.
         text = _build_supplier_text(data)
         vectors = await self.embedding_service.embed([text])
 
         saved_supplier = await self.repo.save(supplier)
         self.vector_repo.upsert(saved_supplier.id, vectors[0])
+
+        if user_id is not None and self.member_repo is not None:
+            await self.member_repo.save(
+                SupplierMember(
+                    user_id=user_id,
+                    supplier_id=saved_supplier.id,
+                    role=MemberRole.ADMIN,
+                    status=MemberStatus.ACTIVE,
+                )
+            )
 
         return saved_supplier

@@ -77,6 +77,7 @@ class RankTendersUseCase:
     async def execute(
         self,
         user_id: UUID,
+        supplier_id: UUID | None = None,
         force_refresh: bool = False,
         request: ClientConnection | None = None,
     ) -> list[MatchingResult]:
@@ -86,10 +87,16 @@ class RankTendersUseCase:
         if request is not None and await request.is_disconnected():
             raise asyncio.CancelledError()
 
-        # 1. Obtener perfil de proveedor asociado al usuario
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        # 1. Obtener perfil de proveedor asociado al espacio de trabajo activo o al usuario
+        supplier = None
+        if supplier_id is not None:
+            supplier = await self.supplier_repo.get_by_id(supplier_id)
+        if supplier is None:
+            supplier = await self.supplier_repo.get_by_user_id(user_id)
+
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
+
 
         now = utc_now_naive()
 

@@ -1,8 +1,4 @@
-from collections.abc import Callable
-from typing import Annotated
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.application.repositories.supplier_invitation_repository import (
     ISupplierInvitationRepository,
@@ -15,6 +11,7 @@ from app.application.schemas.workspace_schema import (
     AcceptInvitationSchema,
     CreateInvitationSchema,
     InvitationDetailsSchema,
+    SwitchWorkspaceSchema,
     WorkspaceMemberSummarySchema,
 )
 from app.application.use_cases.workspace.accept_supplier_invitation import (
@@ -26,11 +23,18 @@ from app.application.use_cases.workspace.create_supplier_invitation import (
 from app.application.use_cases.workspace.get_invitation_details import (
     GetInvitationDetailsUseCase,
 )
+from app.application.use_cases.workspace.switch_workspace import (
+    SwitchWorkspaceUseCase,
+)
+from app.config import settings
 from app.domain.entities.supplier_invitation import (
     InvitationStatus,
     SupplierInvitation,
 )
-from app.domain.entities.supplier_member import UserWorkspaceSummary
+from app.domain.entities.supplier_member import (
+    UserWorkspaceSummary,
+    WorkspaceContext,
+)
 from app.domain.entities.user import User
 from app.domain.errors.membership_errors import (
     InvitationAlreadyProcessed,
@@ -43,8 +47,15 @@ from app.domain.errors.membership_errors import (
 from app.domain.errors.supplier_errors import SupplierNotFound
 
 
+
+from collections.abc import Callable
+from typing import Annotated
+from uuid import UUID
+
+
 def create_workspace_router(
     get_current_user: Callable,
+    get_current_workspace_context: Callable,
     get_supplier_member_repo: Callable,
     get_supplier_invitation_repo: Callable,
     get_supplier_repo: Callable,
@@ -53,6 +64,7 @@ def create_workspace_router(
         prefix="/workspaces",
         tags=["Workspaces & Invitations"],
     )
+
 
     # 1. Listar los espacios de trabajo del usuario autenticado (CA-2)
     @router.get(
@@ -213,4 +225,57 @@ def create_workspace_router(
             current_user.email, status=InvitationStatus.PENDING
         )
 
+    # 6. Conmutar espacio de trabajo activo (CA-3, CA-4)
+    @router.post(
+        "/switch",
+        response_model=WorkspaceContext,
+        summary="Conmutar espacio de trabajo activo y recalcular permisos dinámicos",
+    )
+    async def switch_workspace(
+        data: SwitchWorkspaceSchema,
+        response: Response,
+        current_user: Annotated[User, Depends(get_current_user)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
+        supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    ):
+        try:
+            context = await SwitchWorkspaceUseCase(
+                member_repo=member_repo,
+                supplier_repo=supplier_repo,
+            ).execute(current_user=current_user, data=data)
+
+            # Establecer cookie active_workspace_id
+            response.set_cookie(
+                key="active_workspace_id",
+                value=str(context.active_supplier_id),
+                path="/",
+                httponly=True,
+                secure=bool(settings.auth_cookie_secure),
+                samesite=settings.auth_cookie_samesite,
+                max_age=settings.access_token_expire_minutes * 60,
+            )
+            return context
+        except SupplierNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except UnauthorizedWorkspaceAction as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
+
+    # 7. Obtener contexto activo actual
+    @router.get(
+        "/current",
+        response_model=WorkspaceContext,
+        summary="Obtener el contexto activo de espacio de trabajo y permisos del usuario",
+    )
+    async def get_current_workspace(
+        context: Annotated[WorkspaceContext, Depends(get_current_workspace_context)],
+    ):
+        return context
+
     return router
+
