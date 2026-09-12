@@ -27,7 +27,18 @@ VALID_RUT = "76086428-5"
 OTHER_VALID_RUT = "77777777-7"
 # Mismo cuerpo que VALID_RUT pero con dígito verificador incorrecto
 INVALID_RUT = "76086428-0"
-SUPPLIER_DATA = CreateSupplierSchema(rut=VALID_RUT, legal_name="Empresa SpA")
+DEFAULT_PROFILE = {
+    "description": "Empresa especializada en construcción y obras civiles con amplia trayectoria.",
+    "regions": ["Metropolitana"],
+    "sectors": ["Construcción"],
+    "years_experience": 5,
+    "num_employees": 20,
+}
+SUPPLIER_DATA = CreateSupplierSchema(
+    rut=VALID_RUT,
+    legal_name="Empresa SpA",
+    **DEFAULT_PROFILE,
+)
 
 
 @pytest.fixture
@@ -159,7 +170,7 @@ async def test_invalid_rut_raises_validation_error(
     use_case: CreateSupplierUseCase,
 ) -> None:
     """Un RUT con dígito verificador incorrecto lanza SupplierValidationError."""
-    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
+    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA", **DEFAULT_PROFILE)
 
     with pytest.raises(SupplierValidationError):
         await use_case.execute(data)
@@ -171,7 +182,7 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 ) -> None:
     """Un RUT inválido falla en la validación: ni SQL ni Qdrant reciben datos."""
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
-    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
+    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA", **DEFAULT_PROFILE)
 
     with pytest.raises(SupplierValidationError):
         await use_case.execute(data)
@@ -231,7 +242,9 @@ async def test_user_can_create_multiple_companies(
     owner_id = uuid4()
 
     supplier1 = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
-    second_data = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
+    second_data = CreateSupplierSchema(
+        rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA", **DEFAULT_PROFILE
+    )
     supplier2 = await use_case.execute(second_data, user_id=owner_id)
 
     assert len(supplier_repo.suppliers) == 2
@@ -279,7 +292,10 @@ async def test_embedding_text_includes_trade_name_when_present(
     """El nombre de fantasía, si existe, forma parte del texto del embedding."""
     embedding_service = FakeEmbeddingService()
     data = CreateSupplierSchema(
-        rut=VALID_RUT, legal_name="Empresa SpA", trade_name="La Constructora"
+        rut=VALID_RUT,
+        legal_name="Empresa SpA",
+        trade_name="La Constructora",
+        **DEFAULT_PROFILE,
     )
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
 
@@ -294,7 +310,11 @@ async def test_embedding_text_includes_legal_name(
 ) -> None:
     """El texto enviado al EmbeddingService contiene el nombre legal del proveedor."""
     embedding_service = FakeEmbeddingService()
-    data = CreateSupplierSchema(rut=VALID_RUT, legal_name="Constructora Norte SpA")
+    data = CreateSupplierSchema(
+        rut=VALID_RUT,
+        legal_name="Constructora Norte SpA",
+        **DEFAULT_PROFILE,
+    )
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
 
     await use_case.execute(data)

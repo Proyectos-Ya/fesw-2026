@@ -19,7 +19,15 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
 
     sup_1 = await api.post(
         "/suppliers",
-        json={"rut": "76.123.456-0", "legal_name": "Empresa Uno SpA"},
+        json={
+            "rut": "76.123.456-0",
+            "legal_name": "Empresa Uno SpA",
+            "description": "Empresa especializada en soluciones tecnológicas y consultoría TI.",
+            "regions": ["Metropolitana"],
+            "sectors": ["Tecnología"],
+            "years_experience": 4,
+            "num_employees": 15,
+        },
         headers=headers_a,
     )
     assert sup_1.status_code == 201
@@ -40,7 +48,15 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
 
     sup_2 = await api.post(
         "/suppliers",
-        json={"rut": "77.654.321-7", "legal_name": "Empresa Dos Ltda"},
+        json={
+            "rut": "77.654.321-7",
+            "legal_name": "Empresa Dos Ltda",
+            "description": "Empresa con servicios integrales de logística y abastecimiento.",
+            "regions": ["Valparaíso"],
+            "sectors": ["Logística"],
+            "years_experience": 8,
+            "num_employees": 30,
+        },
         headers=headers_b,
     )
     assert sup_2.status_code == 201

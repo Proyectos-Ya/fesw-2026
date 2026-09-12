@@ -26,6 +26,11 @@ async def test_full_workspace_invitation_and_acceptance_flow(api: AsyncClient):
         "rut": "76.123.456-0",
         "legal_name": "Empresa Principal SpA",
         "trade_name": "Principal",
+        "description": "Empresa constructora con amplia experiencia en licitaciones del sector público.",
+        "regions": ["Metropolitana"],
+        "sectors": ["Construcción"],
+        "years_experience": 5,
+        "num_employees": 25,
     }
     resp_sup = await api.post("/suppliers", json=supplier_payload, headers=headers_a)
     assert resp_sup.status_code == 201
@@ -127,7 +132,15 @@ async def test_accept_invitation_email_mismatch_fails_e2e(api: AsyncClient):
     # Crear empresa
     sup_resp = await api.post(
         "/suppliers",
-        json={"rut": "77.654.321-7", "legal_name": "Corp SpA"},
+        json={
+            "rut": "77.654.321-7",
+            "legal_name": "Corp SpA",
+            "description": "Corporación especializada en servicios de consultoría y asesoría empresarial.",
+            "regions": ["Valparaíso"],
+            "sectors": ["Consultoría"],
+            "years_experience": 10,
+            "num_employees": 40,
+        },
         headers=headers_a,
     )
     assert sup_resp.status_code == 201

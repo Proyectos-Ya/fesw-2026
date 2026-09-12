@@ -17,6 +17,7 @@ import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
 import { answerSmartQuestion } from "../services/questionService";
+import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
 
 const GREEN_THRESHOLD = 70;
 
@@ -116,6 +117,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="flex flex-col gap-4">
           <TenderCardSkeleton />
           <TenderCardSkeleton />
@@ -129,6 +131,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
             <Icon name="sparkles" size={22} color="var(--primary)" />
@@ -156,6 +159,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button variant="primary" className="mt-4" onClick={() => setRetryNonce((n) => n + 1)}>
@@ -171,6 +175,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
   return (
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
+      <RecentWorkspacesBar />
       <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
       {showCard && pendingQuestions[0] && (
         <div className="mb-6">
