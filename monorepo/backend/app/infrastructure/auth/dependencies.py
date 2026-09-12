@@ -94,12 +94,27 @@ def build_get_current_workspace_context(
             try:
                 target_supplier_id = UUID(target_id_raw)
             except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Identificador de espacio de trabajo inválido",
-                )
+                if header_val:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Identificador de espacio de trabajo inválido",
+                    )
+                target_supplier_id = None
 
-        # 2. Si no se especificó un target_supplier_id, obtener la primera membresía activa
+        # Si el ID vino únicamente de una cookie, verificar si la empresa existe y pertenece al usuario.
+        # Si la cookie está obsoleta (ej: empresa eliminada o id antiguo), descartar para hacer fallback.
+        if target_supplier_id and not header_val:
+            candidate_supplier = await supplier_repo.get_by_id(target_supplier_id)
+            if not candidate_supplier:
+                target_supplier_id = None
+            else:
+                candidate_member = await member_repo.get_by_user_and_supplier(
+                    current_user.id, target_supplier_id
+                )
+                if not candidate_member and candidate_supplier.user_id != current_user.id:
+                    target_supplier_id = None
+
+        # 2. Si no se especificó un target_supplier_id o la cookie era obsoleta, obtener la primera membresía activa
         if not target_supplier_id:
             memberships = await member_repo.list_by_user_id(
                 current_user.id, status=MemberStatus.ACTIVE

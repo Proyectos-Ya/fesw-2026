@@ -229,6 +229,7 @@ def get_rank_tenders_use_case(
     ],
     reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
     weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
@@ -239,6 +240,7 @@ def get_rank_tenders_use_case(
         weighting_service=weighting_service,
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
+        embedding_service=embedding_service,
     )
 
 
