@@ -12,6 +12,7 @@ from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
+from app.infrastructure.routers.workspace import create_workspace_router
 
 
 def create_router(
@@ -23,6 +24,8 @@ def create_router(
     get_embedding_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
+    get_supplier_member_repo: Callable,
+    get_supplier_invitation_repo: Callable,
     hasher: IPasswordHasher,
     token_service: ITokenService,
     cookie_name: str,
@@ -51,7 +54,7 @@ def create_router(
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
     Públicos: health (root + /health) y auth (register/login/logout).
-    Protegidos (requieren sesión): suppliers, tenders, questions, tender chat.
+    Protegidos (requieren sesión): suppliers, workspaces, tenders, questions, tender chat.
     """
     root = APIRouter()
 
@@ -76,6 +79,14 @@ def create_router(
             get_supplier_vector_repo=get_supplier_vector_repo,
             get_embedding_service=get_embedding_service,
             get_current_user=get_current_user,
+        )
+    )
+    root.include_router(
+        create_workspace_router(
+            get_current_user=get_current_user,
+            get_supplier_member_repo=get_supplier_member_repo,
+            get_supplier_invitation_repo=get_supplier_invitation_repo,
+            get_supplier_repo=get_supplier_repo,
         )
     )
     root.include_router(
@@ -130,3 +141,4 @@ def create_router(
     )
 
     return root
+

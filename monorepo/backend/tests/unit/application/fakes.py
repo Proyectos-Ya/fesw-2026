@@ -93,6 +93,133 @@ class InMemorySupplierRepository(ISupplierRepository):
         return supplier
 
 
+from app.application.repositories.supplier_invitation_repository import (
+    ISupplierInvitationRepository,
+)
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
+from app.domain.entities.supplier_invitation import (
+    InvitationStatus,
+    SupplierInvitation,
+)
+from app.domain.entities.supplier_member import (
+    MemberRole,
+    MemberStatus,
+    SupplierMember,
+    UserWorkspaceSummary,
+)
+
+
+class InMemorySupplierMemberRepository(ISupplierMemberRepository):
+    def __init__(self, supplier_repo: ISupplierRepository | None = None) -> None:
+        self.members: dict[UUID, SupplierMember] = {}
+        self.supplier_repo = supplier_repo
+
+    async def get_by_id(self, member_id: UUID) -> SupplierMember | None:
+        return self.members.get(member_id)
+
+    async def get_by_user_and_supplier(
+        self, user_id: UUID, supplier_id: UUID
+    ) -> SupplierMember | None:
+        for m in self.members.values():
+            if m.user_id == user_id and m.supplier_id == supplier_id:
+                return m
+        return None
+
+    async def list_by_user_id(
+        self, user_id: UUID, status: MemberStatus | None = None
+    ) -> list[SupplierMember]:
+        res = [m for m in self.members.values() if m.user_id == user_id]
+        if status is not None:
+            res = [m for m in res if m.status == status]
+        return res
+
+    async def list_by_supplier_id(
+        self, supplier_id: UUID, status: MemberStatus | None = None
+    ) -> list[SupplierMember]:
+        res = [m for m in self.members.values() if m.supplier_id == supplier_id]
+        if status is not None:
+            res = [m for m in res if m.status == status]
+        return res
+
+    async def save(self, member: SupplierMember) -> SupplierMember:
+        self.members[member.id] = member
+        return member
+
+    async def update(self, member: SupplierMember) -> SupplierMember:
+        self.members[member.id] = member
+        return member
+
+    async def delete(self, member_id: UUID) -> bool:
+        return self.members.pop(member_id, None) is not None
+
+    async def list_user_workspaces(
+        self, user_id: UUID
+    ) -> list[UserWorkspaceSummary]:
+        summaries: list[UserWorkspaceSummary] = []
+        for m in self.members.values():
+            if m.user_id == user_id and m.status == MemberStatus.ACTIVE:
+                sup = None
+                if self.supplier_repo:
+                    sup = await self.supplier_repo.get_by_id(m.supplier_id)
+                legal_name = sup.legal_name if sup else "Empresa"
+                trade_name = sup.trade_name if sup else None
+                rut = sup.rut if sup else "11.111.111-1"
+                summaries.append(
+                    UserWorkspaceSummary(
+                        supplier_id=m.supplier_id,
+                        legal_name=legal_name,
+                        trade_name=trade_name,
+                        rut=rut,
+                        role=m.role,
+                        status=m.status,
+                        is_active_context=False,
+                    )
+                )
+        return summaries
+
+
+class InMemorySupplierInvitationRepository(ISupplierInvitationRepository):
+    def __init__(self) -> None:
+        self.invitations: dict[UUID, SupplierInvitation] = {}
+
+    async def get_by_id(self, invitation_id: UUID) -> SupplierInvitation | None:
+        return self.invitations.get(invitation_id)
+
+    async def get_by_token(self, token: str) -> SupplierInvitation | None:
+        for inv in self.invitations.values():
+            if inv.token == token:
+                return inv
+        return None
+
+    async def list_by_supplier_id(
+        self, supplier_id: UUID, status: InvitationStatus | None = None
+    ) -> list[SupplierInvitation]:
+        res = [inv for inv in self.invitations.values() if inv.supplier_id == supplier_id]
+        if status is not None:
+            res = [inv for inv in res if inv.status == status]
+        return res
+
+    async def list_by_email(
+        self, email: str, status: InvitationStatus | None = None
+    ) -> list[SupplierInvitation]:
+        norm = email.strip().lower()
+        res = [inv for inv in self.invitations.values() if inv.email == norm]
+        if status is not None:
+            res = [inv for inv in res if inv.status == status]
+        return res
+
+    async def save(self, invitation: SupplierInvitation) -> SupplierInvitation:
+        self.invitations[invitation.id] = invitation
+        return invitation
+
+    async def update(self, invitation: SupplierInvitation) -> SupplierInvitation:
+        self.invitations[invitation.id] = invitation
+        return invitation
+
+
+
 class FakeSupplierVectorRepository(ISupplierVectorRepository):
     def __init__(self) -> None:
         self.upserts: list[UUID] = []

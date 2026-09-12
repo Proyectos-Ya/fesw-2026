@@ -120,13 +120,23 @@ from app.infrastructure.repositories.question_repository import QuestionReposito
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
-from app.infrastructure.repositories.sql_tender_chat_repository import (
-    SQLTenderChatRepository,
+from app.application.repositories.supplier_invitation_repository import (
+    ISupplierInvitationRepository,
+)
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
+from app.infrastructure.repositories.sql_supplier_invitation_repository import (
+    SqlSupplierInvitationRepository,
+)
+from app.infrastructure.repositories.sql_supplier_member_repository import (
+    SqlSupplierMemberRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.routers.router import create_router
+
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
@@ -153,6 +163,19 @@ def get_supplier_repo(
 ) -> ISupplierRepository:
     # Crea el repositorio concreto con la sesión de BD por petición
     return SupplierRepository(session)
+
+
+def get_supplier_member_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ISupplierMemberRepository:
+    return SqlSupplierMemberRepository(session)
+
+
+def get_supplier_invitation_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ISupplierInvitationRepository:
+    return SqlSupplierInvitationRepository(session)
+
 
 
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
@@ -764,9 +787,12 @@ def bootstrap(app: FastAPI) -> None:
         get_embedding_service=get_embedding_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
+        get_supplier_member_repo=get_supplier_member_repo,
+        get_supplier_invitation_repo=get_supplier_invitation_repo,
         hasher=hasher,
         token_service=token_service,
         cookie_name=settings.auth_cookie_name,
+
         # `_derivar_cookie_secure` ya le dio valor; el `bool()` solo cierra el
         # `bool | None` que el tipo del campo deja abierto.
         cookie_secure=bool(settings.auth_cookie_secure),
