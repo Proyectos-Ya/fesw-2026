@@ -1,7 +1,23 @@
 import { test, expect } from "@playwright/test";
+import { execSync } from "child_process";
+import path from "path";
 
 test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 Pestañas / Contextos E2E)", () => {
   const password = "Password123!";
+
+  test.beforeEach(async () => {
+    // Resetear y sembrar automáticamente los 5 usuarios demo y empresas antes de cada ejecución del test
+    const backendDir = path.resolve(__dirname, "../../backend");
+    const pythonBin = process.platform === "win32" 
+      ? path.join(backendDir, ".venv", "Scripts", "python.exe")
+      : path.join(backendDir, ".venv", "bin", "python");
+
+    execSync(`"${pythonBin}" scripts/seed_demo_users.py`, {
+      cwd: backendDir,
+      env: { ...process.env, PYTHONPATH: "." },
+      stdio: "pipe",
+    });
+  });
 
   test("Valida los 5 Criterios de Aceptación (CA-1 al CA-5) en simultáneo con 3 pestañas", async ({
     browser,
@@ -55,9 +71,11 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
     // Pestaña 2 (Invitado): Va a /alertas y ve la invitación pendiente
     await pageInvited.goto("/alertas");
     await expect(
-      pageInvited.getByText(/Invitación para unirte como/i),
+      pageInvited.getByRole("main").getByText(/Invitación para unirte como/i),
     ).toBeVisible();
-    await expect(pageInvited.getByText(/Miembro/i)).toBeVisible();
+    await expect(
+      pageInvited.getByRole("main").getByText(/Miembro/i),
+    ).toBeVisible();
 
     // Aceptar la invitación
     await pageInvited.click('button:has-text("Aceptar invitación")');
