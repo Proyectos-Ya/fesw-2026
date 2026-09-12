@@ -72,6 +72,7 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
             statement = statement.where(
                 SupplierMemberModel.status == (status.value if isinstance(status, MemberStatus) else str(status))
             )
+        statement = statement.order_by(SupplierMemberModel.created_at.asc())
         result = await self.session.exec(statement)
         return [_to_entity(m) for m in result.all()]
 
@@ -91,7 +92,8 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
     async def save(self, member: SupplierMember) -> SupplierMember:
         model = _to_model(member)
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(model)
         return _to_entity(model)
 
     async def update(self, member: SupplierMember) -> SupplierMember:
@@ -105,7 +107,8 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         model.status = member.status.value if isinstance(member.status, MemberStatus) else str(member.status)
         model.updated_at = member.updated_at
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(model)
         return _to_entity(model)
 
     async def delete(self, member_id: UUID) -> bool:
@@ -115,7 +118,7 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         if not model:
             return False
         await self.session.delete(model)
-        await self.session.flush()
+        await self.session.commit()
         return True
 
     async def list_user_workspaces(
@@ -128,6 +131,7 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
                 SupplierMemberModel.user_id == user_id,
                 SupplierMemberModel.status == MemberStatus.ACTIVE.value,
             )
+            .order_by(SupplierMemberModel.created_at.asc())
         )
         result = await self.session.exec(statement)
         workspaces: list[UserWorkspaceSummary] = []

@@ -6,9 +6,13 @@ import { useWorkspace } from "../WorkspaceContext";
 import type { SupplierInvitation } from "../types";
 
 export function PendingInvitationsList() {
-  const { invitations, acceptPendingInvitation } = useWorkspace();
+  const { invitations, acceptPendingInvitation, refreshInvitations } = useWorkspace();
   const [acceptingToken, setAcceptingToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    void refreshInvitations();
+  }, [refreshInvitations]);
 
   if (!invitations || invitations.length === 0) return null;
 

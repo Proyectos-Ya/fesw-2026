@@ -94,7 +94,8 @@ class SqlSupplierInvitationRepository(ISupplierInvitationRepository):
     async def save(self, invitation: SupplierInvitation) -> SupplierInvitation:
         model = _to_model(invitation)
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(model)
         return _to_entity(model)
 
     async def update(self, invitation: SupplierInvitation) -> SupplierInvitation:
@@ -110,5 +111,6 @@ class SqlSupplierInvitationRepository(ISupplierInvitationRepository):
         model.status = invitation.status.value if isinstance(invitation.status, InvitationStatus) else str(invitation.status)
         model.accepted_at = invitation.accepted_at
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(model)
         return _to_entity(model)

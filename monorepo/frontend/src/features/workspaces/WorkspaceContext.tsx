@@ -103,7 +103,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             is_active_context: w.supplier_id === supplierId,
           })),
         );
-        window.location.reload();
+        if (typeof window !== "undefined" && window.location.pathname === "/workspaces") {
+          window.location.href = "/";
+        } else if (typeof window !== "undefined") {
+          window.location.reload();
+        }
       } catch (err) {
         if (err instanceof ApiError) {
           throw err;

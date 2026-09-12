@@ -68,6 +68,7 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
     assert acc_resp.status_code == 200
 
     # 5. Usuario A consulta contexto inicial (Empresa 1 - ADMIN)
+    api.cookies.delete("active_workspace_id")
     curr_resp = await api.get("/workspaces/current", headers=headers_a)
     assert curr_resp.status_code == 200
     curr_context = curr_resp.json()

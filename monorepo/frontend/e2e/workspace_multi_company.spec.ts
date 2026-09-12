@@ -6,6 +6,8 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
   test("Valida los 5 Criterios de Aceptación (CA-1 al CA-5) en simultáneo con 3 pestañas", async ({
     browser,
   }) => {
+    test.setTimeout(90000);
+
     // ══════════════════════════════════════════════════════════════════
     // SETUP: 3 Pestañas / Contextos independientes de navegador
     // ══════════════════════════════════════════════════════════════════
@@ -63,7 +65,11 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
 
     // Verificar en Pestaña 2 que el usuario ahora tiene acceso a Empresa Alfa
     await pageInvited.click('button[aria-label="Seleccionar espacio de trabajo"]');
-    await expect(pageInvited.getByText("Alfa")).toBeVisible();
+    await expect(
+      pageInvited
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Alfa"),
+    ).toBeVisible();
 
     // ──────────────────────────────────────────────────────────────────
     // CA-2: Selección de espacio de trabajo al ingresar con múltiples empresas
@@ -75,28 +81,36 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
         name: "Selecciona tu espacio de trabajo",
       }),
     ).toBeVisible();
-    await expect(pageMulti.getByText("Gamma")).toBeVisible();
-    await expect(pageMulti.getByText("Alfa")).toBeVisible();
+    await expect(pageMulti.getByRole("button", { name: /Gamma/i })).toBeVisible();
+    await expect(pageMulti.getByRole("button", { name: /Alfa/i })).toBeVisible();
 
     // ──────────────────────────────────────────────────────────────────
     // CA-3: Conmutación de espacio de trabajo y recálculo de roles y permisos
     // ──────────────────────────────────────────────────────────────────
     // En Pestaña 3: Selecciona Alfa (donde tiene rol Miembro)
-    await pageMulti.click('div:has-text("Alfa"):has-text("Miembro")');
-    await pageMulti.waitForURL("/");
+    await pageMulti.getByRole("button", { name: /Alfa.*Miembro/i }).click();
+    await expect(pageMulti).toHaveURL("/", { timeout: 10000 });
 
     // Verificar que en Alfa el rol visible es "Miembro"
-    await expect(pageMulti.getByText("Miembro")).toBeVisible();
+    await expect(
+      pageMulti
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Miembro"),
+    ).toBeVisible();
     await pageMulti.click('button[aria-label="Seleccionar espacio de trabajo"]');
     // Como Miembro, NO debe tener la opción de "Invitar miembro"
     await expect(pageMulti.getByText("Invitar miembro")).not.toBeVisible();
 
     // Conmutar a Gamma (donde es Admin)
-    await pageMulti.click('button:has-text("Gamma")');
+    await pageMulti.locator('button').filter({ hasText: /Gamma/i }).first().click();
     await pageMulti.waitForTimeout(1000);
 
     // Verificar que al conmutar a Gamma, ahora es "Admin" y SI puede invitar
-    await expect(pageMulti.getByText("Admin")).toBeVisible();
+    await expect(
+      pageMulti
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Admin"),
+    ).toBeVisible();
     await pageMulti.click('button[aria-label="Seleccionar espacio de trabajo"]');
     await expect(pageMulti.getByText("Invitar miembro")).toBeVisible();
 
@@ -104,33 +118,57 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
     // CA-4: Aislamiento de contexto y datos según la empresa activa
     // ──────────────────────────────────────────────────────────────────
     // En Pestaña 3 con Gamma activa: La barra lateral muestra Gamma
-    await expect(pageMulti.getByText("Gamma").first()).toBeVisible();
+    await expect(
+      pageMulti
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Gamma"),
+    ).toBeVisible();
 
     // ──────────────────────────────────────────────────────────────────
     // CA-5: Registrar nueva empresa desde sesión existente (Rol Admin automático)
     // ──────────────────────────────────────────────────────────────────
-    // En Pestaña 2 (Invitado): Va a crear una nueva empresa
-    await pageInvited.click('button[aria-label="Seleccionar espacio de trabajo"]');
-    await pageInvited.click('a:has-text("Registrar nueva empresa")');
-    await pageInvited.waitForURL("/empresa/crear");
+    // En Pestaña 2 (Invitado): Va a crear una nueva empresa mediante el ProfileWizard
+    await pageInvited.goto("/empresa/crear");
 
-    await pageInvited.fill('input[name="rut"], input#rut', "79.444.444-4");
-    await pageInvited.fill(
-      'input[name="legal_name"], input#legal_name',
-      "Empresa Delta SpA",
-    );
-    await pageInvited.fill(
-      'input[name="trade_name"], input#trade_name',
-      "Delta",
-    );
-    await pageInvited.click('button[type="submit"]');
+    // Paso 1: Identidad
+    await pageInvited.fill('input[name="legal_name"]', "Empresa Delta SpA");
+    await pageInvited.fill('input[name="trade_name"]', "Delta");
+    await pageInvited.fill('input[name="rut"]', "79.444.444-7");
+    await pageInvited.click('button:has-text("Siguiente")');
 
-    // Al crearse, queda como Admin de Delta
-    await pageInvited.waitForURL((url) => url.pathname !== "/empresa/crear", {
-      timeout: 10000,
+    // Paso 2: Operación
+    await pageInvited.locator('button').filter({ hasText: /Metropolitana/i }).first().click();
+    await pageInvited.fill('input[name="years_experience"]', "5");
+    await pageInvited.fill('input[name="num_employees"]', "10");
+    await pageInvited.click('button:has-text("Siguiente")');
+
+    // Paso 3: Especialización
+    await pageInvited.locator('button').filter({ hasText: /Tecnología|Construcción|Servicios/i }).first().click();
+    await pageInvited.fill(
+      'textarea[name="description"]',
+      "Empresa dedicada a la prestación de servicios integrales para licitaciones públicas y privadas.",
+    );
+    await pageInvited.click('button:has-text("Siguiente")');
+
+    // Paso 4: Resumen y confirmación
+    await pageInvited.click('button:has-text("Guardar perfil y comenzar")');
+
+    // Confirmación y redirección
+    await expect(pageInvited.getByText("¡Perfil creado con éxito!")).toBeVisible({
+      timeout: 15000,
     });
-    await expect(pageInvited.getByText("Delta")).toBeVisible();
-    await expect(pageInvited.getByText("Admin")).toBeVisible();
+    await pageInvited.click('button:has-text("Ir a mi dashboard")');
+    await expect(pageInvited).toHaveURL("/", { timeout: 15000 });
+    await expect(
+      pageInvited
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Delta"),
+    ).toBeVisible();
+    await expect(
+      pageInvited
+        .locator('button[aria-label="Seleccionar espacio de trabajo"]')
+        .getByText("Admin"),
+    ).toBeVisible();
 
     // Cleanup de contextos
     await contextAdmin.close();

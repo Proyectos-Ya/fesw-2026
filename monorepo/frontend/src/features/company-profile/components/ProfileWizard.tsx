@@ -14,6 +14,7 @@ import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, getMySupplierOrNull } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
+import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 import { SuccessView } from "./SuccessView";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
@@ -21,6 +22,7 @@ export function ProfileWizard() {
   const router = useRouter();
   const { user } = useAuth();
   const { setSupplier } = useCompany();
+  const { switchActiveWorkspace, refreshWorkspaces } = useWorkspace();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,7 +69,7 @@ export function ProfileWizard() {
     return (
       <div className="mx-auto w-full max-w-2xl">
         <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
-          <SuccessView onRedirect={() => router.push("/")} />
+          <SuccessView onRedirect={() => { window.location.href = "/"; }} />
         </div>
       </div>
     );

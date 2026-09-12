@@ -70,10 +70,7 @@ def upgrade() -> None:
     """)
 
     # 4. Quitar restricción única en supplier.user_id si existía para permitir multi-empresa
-    try:
-        op.drop_constraint('supplier_user_id_key', 'supplier', type_='unique')
-    except Exception:
-        pass
+    op.execute("ALTER TABLE supplier DROP CONSTRAINT IF EXISTS supplier_user_id_key;")
 
 
 def downgrade() -> None:

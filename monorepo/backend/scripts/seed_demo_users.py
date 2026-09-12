@@ -13,10 +13,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.domain.entities.supplier_member import MemberRole, MemberStatus
 from app.infrastructure.db import async_session_maker
+from app.infrastructure.repositories.supplier_invitation_model import SupplierInvitationModel
 from app.infrastructure.repositories.supplier_member_model import SupplierMemberModel
 from app.infrastructure.repositories.supplier_model import SupplierModel
 from app.infrastructure.repositories.user_model import UserModel
 from app.infrastructure.services.password_hasher import BcryptPasswordHasher
+
+from app.shared.datetime_utils import utc_now_naive
 
 PASSWORD_TEST = "Password123!"
 
@@ -26,7 +29,7 @@ USERS_DATA = [
         "full_name": "Carlos Admin Alfa",
         "companies": [
             {
-                "rut": "76.111.111-1",
+                "rut": "76.111.111-6",
                 "legal_name": "Empresa Alfa SpA",
                 "trade_name": "Alfa",
                 "role": MemberRole.ADMIN,
@@ -38,7 +41,7 @@ USERS_DATA = [
         "full_name": "Beatriz Admin Beta",
         "companies": [
             {
-                "rut": "77.222.222-2",
+                "rut": "77.222.222-K",
                 "legal_name": "Empresa Beta Ltda",
                 "trade_name": "Beta",
                 "role": MemberRole.ADMIN,
@@ -57,7 +60,7 @@ USERS_DATA = [
             }
         ],
         "extra_memberships": [
-            {"rut": "76.111.111-1", "role": MemberRole.MEMBER}
+            {"rut": "76.111.111-6", "role": MemberRole.MEMBER}
         ],
     },
     {
@@ -70,7 +73,7 @@ USERS_DATA = [
         "full_name": "Laura Lectora",
         "companies": [],
         "extra_memberships": [
-            {"rut": "77.222.222-2", "role": MemberRole.VIEWER}
+            {"rut": "77.222.222-K", "role": MemberRole.VIEWER}
         ],
     },
 ]
@@ -79,9 +82,32 @@ USERS_DATA = [
 async def seed_users():
     hasher = BcryptPasswordHasher()
     hashed_pwd = hasher.hash(PASSWORD_TEST)
+    now = utc_now_naive()
 
     async with async_session_maker() as session:
-        print("🌱 Sembrando 5 usuarios de demostración...")
+        print("[SEED] Sembrando 5 usuarios de demostracion...")
+        # Limpiar invitaciones previas para idempotencia de pruebas
+        invs = (await session.exec(select(SupplierInvitationModel))).all()
+        for inv in invs:
+            await session.delete(inv)
+
+        # Eliminar empresa Delta si fue creada en pruebas previas
+        deltas = (await session.exec(select(SupplierModel).where(SupplierModel.rut == "79.444.444-7"))).all()
+        for d in deltas:
+            d_mems = (await session.exec(select(SupplierMemberModel).where(SupplierMemberModel.supplier_id == d.id))).all()
+            for dm in d_mems:
+                await session.delete(dm)
+            await session.delete(d)
+
+        # Limpiar membresias de invitado@chiripa.cl si quedaron de pruebas previas
+        inv_u = (await session.exec(select(UserModel).where(UserModel.email == "invitado@chiripa.cl"))).first()
+        if inv_u:
+            inv_mems = (await session.exec(select(SupplierMemberModel).where(SupplierMemberModel.user_id == inv_u.id))).all()
+            for im in inv_mems:
+                await session.delete(im)
+
+        await session.commit()
+
         created_users = {}
         created_suppliers = {}
 
@@ -97,12 +123,16 @@ async def seed_users():
                     email=email,
                     hashed_password=hashed_pwd,
                     full_name=udata["full_name"],
+                    active=True,
+                    email_verified=True,
+                    created_at=now,
+                    updated_at=now,
                 )
                 session.add(user)
                 await session.flush()
-                print(f"  ✓ Usuario creado: {email}")
+                print(f"  [OK] Usuario creado: {email}")
             else:
-                print(f"  · Usuario ya existe: {email}")
+                print(f"  [INFO] Usuario ya existe: {email}")
 
             created_users[email] = user
 
@@ -119,15 +149,17 @@ async def seed_users():
                         rut=rut,
                         legal_name=cdata["legal_name"],
                         trade_name=cdata["trade_name"],
-                        description=f"Empresa de demostración {cdata['trade_name']}",
-                        sectors=["Tecnología", "Construcción"],
-                        keywords=["servicios", "consultoría", "obras"],
+                        description=f"Empresa de demostracion {cdata['trade_name']}",
+                        sectors=["Tecnologia", "Construccion"],
+                        keywords=["servicios", "consultoria", "obras"],
+                        created_at=now,
+                        updated_at=now,
                     )
                     session.add(supplier)
                     await session.flush()
-                    print(f"    ✓ Empresa creada: {cdata['legal_name']} ({rut})")
+                    print(f"    [OK] Empresa creada: {cdata['legal_name']} ({rut})")
                 else:
-                    print(f"    · Empresa ya existe: {cdata['legal_name']}")
+                    print(f"    [INFO] Empresa ya existe: {cdata['legal_name']}")
 
                 created_suppliers[rut] = supplier
 
@@ -145,9 +177,11 @@ async def seed_users():
                             supplier_id=supplier.id,
                             role=cdata["role"],
                             status=MemberStatus.ACTIVE,
+                            created_at=now,
+                            updated_at=now,
                         )
                     )
-                    print(f"    ✓ Membresía {cdata['role']} asignada para {email}")
+                    print(f"    [OK] Membresia {cdata['role']} asignada para {email}")
 
         for udata in USERS_DATA:
             user = created_users[udata["email"]]
@@ -171,12 +205,14 @@ async def seed_users():
                                 supplier_id=supplier.id,
                                 role=extra["role"],
                                 status=MemberStatus.ACTIVE,
+                                created_at=now,
+                                updated_at=now,
                             )
                         )
-                        print(f"  ✓ Membresía extra {extra['role']} asignada para {user.email} en {supplier.legal_name}")
+                        print(f"  [OK] Membresia extra {extra['role']} asignada para {user.email} en {supplier.legal_name}")
 
         await session.commit()
-        print("✨ Seeding de usuarios y empresas completado con éxito.")
+        print("[SEED] Seeding de usuarios y empresas completado con exito.")
 
 
 if __name__ == "__main__":

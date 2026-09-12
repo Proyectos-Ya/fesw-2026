@@ -20,7 +20,7 @@ export function WorkspaceSelectionScreen() {
     setIsSwitching(true);
     try {
       await switchActiveWorkspace(supplierId);
-      router.push("/");
+      window.location.href = "/";
     } finally {
       setIsSwitching(false);
     }
@@ -62,6 +62,8 @@ export function WorkspaceSelectionScreen() {
           return (
             <div
               key={w.supplier_id}
+              role="button"
+              tabIndex={0}
               onClick={() => !isSwitching && void handleSelect(w.supplier_id)}
               className={`group flex items-center justify-between rounded-xl border p-4 transition-all duration-200 cursor-pointer ${
                 isCurrent
