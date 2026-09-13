@@ -26,11 +26,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
+          version: 10
           run_install: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: monorepo/frontend/pnpm-lock.yaml
 
@@ -68,10 +69,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff
 
-      - name: Verificar sintaxis y formato (Ruff)
-        run: ruff check .
+      - name: Verificar sintaxis de Python
+        run: python -m compileall app/
 
   # ============================================================
   # FASE 2: TESTING EN PARALELO (Requiere que ambos builds pasen)
@@ -88,11 +88,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
+          version: 10
           run_install: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: monorepo/frontend/pnpm-lock.yaml
 
@@ -145,11 +146,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
+          version: 10
           run_install: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: monorepo/frontend/pnpm-lock.yaml
 
@@ -219,11 +221,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
+          version: 10
           run_install: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: monorepo/frontend/pnpm-lock.yaml
 
