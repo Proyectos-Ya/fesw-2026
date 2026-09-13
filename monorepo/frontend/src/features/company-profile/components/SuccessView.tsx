@@ -1,6 +1,5 @@
 "use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const REDIRECT_DELAY_MS = 2500;
 
@@ -10,16 +9,19 @@ interface SuccessViewProps {
 
 export function SuccessView({ onRedirect }: SuccessViewProps) {
   const [started, setStarted] = useState(false);
+  const onRedirectRef = useRef(onRedirect);
+  onRedirectRef.current = onRedirect;
 
   useEffect(() => {
-    // Trigger the progress bar drain on the next frame so the CSS transition fires
     const raf = requestAnimationFrame(() => setStarted(true));
-    const timer = setTimeout(onRedirect, REDIRECT_DELAY_MS);
+    const timer = setTimeout(() => {
+      onRedirectRef.current();
+    }, REDIRECT_DELAY_MS);
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(timer);
     };
-  }, [onRedirect]);
+  }, []);
 
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-12 text-center">
@@ -69,6 +71,14 @@ export function SuccessView({ onRedirect }: SuccessViewProps) {
           }}
         />
       </div>
+
+      <button
+        type="button"
+        onClick={onRedirect}
+        className="mt-2 text-sm font-bold text-primary hover:underline cursor-pointer"
+      >
+        Ir a mi dashboard →
+      </button>
     </div>
   );
 }

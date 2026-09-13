@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/features/auth/AuthContext";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
@@ -17,6 +18,8 @@ import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
 import { answerSmartQuestion } from "../services/questionService";
+import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
+import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 
 const GREEN_THRESHOLD = 70;
 
@@ -30,6 +33,7 @@ type LoadState =
 export function HomeDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { workspaces, activeWorkspace, isLoading: workspaceLoading } = useWorkspace();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -95,7 +99,17 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
         setState({ kind: "ready", matches: green });
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          window.location.replace(
+            loginUrlWithReturn(window.location.pathname, window.location.search),
+          );
+          return;
+        }
         if (err instanceof ApiError && err.status === 404) {
+          if (workspaces.length > 0 || activeWorkspace !== null) {
+            setState({ kind: "ready", matches: [] });
+            return;
+          }
           setState({ kind: "no-supplier" });
           return;
         }
@@ -110,12 +124,13 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce]);
+  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="flex flex-col gap-4">
           <TenderCardSkeleton />
           <TenderCardSkeleton />
@@ -126,9 +141,19 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
   }
 
   if (state.kind === "no-supplier") {
+    if (workspaces.length > 0 || activeWorkspace !== null) {
+      return (
+        <section className="mx-auto w-full max-w-3xl">
+          <PageHeader />
+          <RecentWorkspacesBar />
+          <EmptyGreen />
+        </section>
+      );
+    }
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
             <Icon name="sparkles" size={22} color="var(--primary)" />
@@ -156,6 +181,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
+        <RecentWorkspacesBar />
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button variant="primary" className="mt-4" onClick={() => setRetryNonce((n) => n + 1)}>
@@ -171,6 +197,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
   return (
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
+      <RecentWorkspacesBar />
       <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
       {showCard && pendingQuestions[0] && (
         <div className="mb-6">

@@ -14,6 +14,7 @@ VALID_SUPPLIER = {
     "rut": "76086428-5",
     "legal_name": "Constructora Demo SpA",
     "description": "Empresa con experiencia en obras civiles.",
+    "regions": ["Metropolitana"],
     "sectors": ["Construcción"],
     "keywords": ["obras", "edificación"],
     "years_experience": 5,

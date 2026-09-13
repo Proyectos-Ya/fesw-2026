@@ -10,6 +10,7 @@ from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
+from app.infrastructure.routers.workspace import create_workspace_router
 
 
 def create_router(
@@ -21,6 +22,9 @@ def create_router(
     get_embedding_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
+    get_supplier_member_repo: Callable,
+    get_supplier_invitation_repo: Callable,
+    get_current_workspace_context: Callable,
     get_get_or_create_deep_analysis_use_case: Callable,
     get_list_saved_tenders_use_case: Callable,
     get_save_tender_use_case: Callable,
@@ -43,11 +47,8 @@ def create_router(
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
-    Público: health (root + /health). El registro y el inicio de sesión los
-    atiende Supabase Auth desde el navegador, así que ya no hay rutas públicas
-    de autenticación acá.
-
-    Protegidos (requieren sesión): /auth/me, suppliers, tenders, questions,
+    Público: health (root + /health).
+    Protegidos (requieren sesión): /auth/me, suppliers, workspaces, tenders, questions,
     tender chat, notificaciones.
     """
     root = APIRouter()
@@ -65,6 +66,16 @@ def create_router(
             get_supplier_vector_repo=get_supplier_vector_repo,
             get_embedding_service=get_embedding_service,
             get_current_user=get_current_user,
+            get_supplier_member_repo=get_supplier_member_repo,
+        )
+    )
+    root.include_router(
+        create_workspace_router(
+            get_current_user=get_current_user,
+            get_current_workspace_context=get_current_workspace_context,
+            get_supplier_member_repo=get_supplier_member_repo,
+            get_supplier_invitation_repo=get_supplier_invitation_repo,
+            get_supplier_repo=get_supplier_repo,
         )
     )
     root.include_router(
@@ -77,8 +88,10 @@ def create_router(
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
             get_tender_detail_use_case=get_tender_detail_use_case,
+            get_current_workspace_context=get_current_workspace_context,
         )
     )
+
 
     root.include_router(
         create_notification_router(
@@ -119,3 +132,4 @@ def create_router(
     )
 
     return root
+

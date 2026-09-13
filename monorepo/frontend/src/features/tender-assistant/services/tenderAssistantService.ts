@@ -83,3 +83,9 @@ export function getTenderChatHistory(
   );
 }
 
+/**
+ * Normaliza y traduce errores de red y HTTP a mensajes comprensibles para el usuario,
+ * evitando exponer errores técnicos crudos ("Internal Server Error", trazas, etc.).
+ */
+export { formatTenderAssistantError } from "./tenderErrorUtils";
+

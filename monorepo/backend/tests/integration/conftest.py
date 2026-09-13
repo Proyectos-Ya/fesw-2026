@@ -94,9 +94,12 @@ async def setup_db_tables(
     al terminar. Es seguro porque la base es exclusiva de la suite.
     """
     async with integration_engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(SQLModel.metadata.create_all)
     yield
+
+
 
 
 @pytest_asyncio.fixture

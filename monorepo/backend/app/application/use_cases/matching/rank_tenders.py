@@ -18,9 +18,11 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.text_builder import TextBuilder
 from app.application.services.weighting_service import IWeightingService
+from app.application.use_cases.supplier.create_supplier import _build_supplier_text
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -61,6 +63,7 @@ class RankTendersUseCase:
         model_version: str = "bge-m3-v1",
         vector_search_limit: int = 50,
         reranker_limit: int = 12,
+        embedding_service: IEmbeddingService | None = None,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -72,11 +75,13 @@ class RankTendersUseCase:
         self.model_version = model_version
         self.vector_search_limit = vector_search_limit
         self.reranker_limit = reranker_limit
+        self.embedding_service = embedding_service
         self.text_builder = TextBuilder()
 
     async def execute(
         self,
         user_id: UUID,
+        supplier_id: UUID | None = None,
         force_refresh: bool = False,
         request: ClientConnection | None = None,
     ) -> list[MatchingResult]:
@@ -86,10 +91,16 @@ class RankTendersUseCase:
         if request is not None and await request.is_disconnected():
             raise asyncio.CancelledError()
 
-        # 1. Obtener perfil de proveedor asociado al usuario
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        # 1. Obtener perfil de proveedor asociado al espacio de trabajo activo o al usuario
+        supplier = None
+        if supplier_id is not None:
+            supplier = await self.supplier_repo.get_by_id(supplier_id)
+        if supplier is None:
+            supplier = await self.supplier_repo.get_by_user_id(user_id)
+
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
+
 
         now = utc_now_naive()
 
@@ -163,6 +174,13 @@ class RankTendersUseCase:
         # 3. Cache vacío, inválido o force_refresh=True: ejecutar el pipeline de recomendación completo
         # 3.1 Obtener vector del proveedor desde Qdrant
         supplier_vector = self.supplier_vector_repo.get_vector(supplier.id)
+        if supplier_vector is None and self.embedding_service is not None:
+            text = _build_supplier_text(supplier)
+            vectors = await self.embedding_service.embed([text])
+            if vectors:
+                supplier_vector = vectors[0]
+                self.supplier_vector_repo.upsert(supplier.id, supplier_vector)
+
         if supplier_vector is None:
             raise SupplierVectorNotFound(supplier.id)
 

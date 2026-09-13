@@ -32,6 +32,7 @@ export function SearchBar({
 
       <input
         type="text"
+        role="searchbox"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

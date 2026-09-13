@@ -18,6 +18,11 @@ REGISTER = {
 SUPPLIER = {
     "rut": "76086428-5",
     "legal_name": "Constructora Norte SpA",
+    "description": "Empresa especializada en construcción y obras civiles con amplia trayectoria.",
+    "regions": ["Metropolitana"],
+    "sectors": ["Construcción"],
+    "years_experience": 10,
+    "num_employees": 50,
 }
 
 
@@ -50,16 +55,24 @@ async def test_create_supplier_associates_logged_user(api: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_second_supplier_for_same_user_returns_409(api: AsyncClient):
+async def test_create_supplier_with_incomplete_profile_returns_422(api: AsyncClient):
+    """No se puede registrar un workspace sin completar el perfil de empresa."""
     await _login(api)
-    first = await api.post("/suppliers", json=SUPPLIER)
-    assert first.status_code == 201
 
-    resp = await api.post(
-        "/suppliers", json={"rut": "77777777-7", "legal_name": "Otra Empresa SpA"}
-    )
-    assert resp.status_code == 409
-    assert "empresa" in resp.json()["detail"].lower()
+    # Falta description, regions, sectors, years_experience, num_employees
+    incomplete_payload = {
+        "rut": "77777777-7",
+        "legal_name": "Incompleta SpA",
+    }
+    resp = await api.post("/suppliers", json=incomplete_payload)
+    assert resp.status_code == 422
+    errors = resp.json()["detail"]
+    missing_fields = {e["loc"][-1] for e in errors}
+    assert "description" in missing_fields
+    assert "regions" in missing_fields
+    assert "sectors" in missing_fields
+    assert "years_experience" in missing_fields
+    assert "num_employees" in missing_fields
 
 
 @pytest.mark.asyncio

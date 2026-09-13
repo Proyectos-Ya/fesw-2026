@@ -2,8 +2,12 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from app.config import settings
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -37,6 +41,7 @@ def create_supplier_router(
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
     get_current_user: Callable,
+    get_supplier_member_repo: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
@@ -66,12 +71,16 @@ def create_supplier_router(
     )
     async def create_supplier(
         data: CreateSupplierSchema,
+        response: Response,
         current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
         vector_repo: Annotated[
             ISupplierVectorRepository, Depends(get_supplier_vector_repo)
         ],
         embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
     ):
         # TEMPORAL solo para demo del CA de timeout (>1 min sin respuesta).
         # Descomentar para el primer intento: duerme 70s (el cliente aborta a los
@@ -82,9 +91,21 @@ def create_supplier_router(
         # Crea la empresa asociada al usuario autenticado:
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
-            return await CreateSupplierUseCase(
-                repo, vector_repo, embedding_service
+            created = await CreateSupplierUseCase(
+                repo, vector_repo, embedding_service, member_repo=member_repo
             ).execute(data, user_id=current_user.id)
+
+            # Establecer cookie active_workspace_id para activar de inmediato este espacio
+            response.set_cookie(
+                key="active_workspace_id",
+                value=str(created.id),
+                path="/",
+                httponly=True,
+                secure=bool(settings.auth_cookie_secure),
+                samesite=settings.auth_cookie_samesite,
+                max_age=settings.access_token_expire_minutes * 60,
+            )
+            return created
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(e)

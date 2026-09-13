@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/features/auth/AuthContext";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
+import { ApiError } from "@/features/shared/api/client";
 import { Icon } from "@/features/shared/components/Icon";
 import { Button } from "@/features/shared/components/Button";
 import { TenderCard } from "@/features/matches/components/TenderCard";
@@ -28,6 +30,12 @@ export function SavedTendersList() {
       const data = await fetchSavedTenders();
       setMatches(data);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.replace(
+          loginUrlWithReturn(window.location.pathname, window.location.search),
+        );
+        return;
+      }
       console.error(err);
       setError("No pudimos cargar tus licitaciones guardadas.");
     } finally {
