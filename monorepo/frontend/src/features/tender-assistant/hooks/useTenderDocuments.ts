@@ -9,6 +9,7 @@ import {
   uploadTenderDocument,
   deleteTenderDocument,
 } from "../services/tenderAssistantService";
+import { formatTenderAssistantError } from "../services/tenderErrorUtils";
 
 export function useTenderDocuments(tenderId: string) {
   const [documents, setDocuments] = useState<TenderChatDocument[]>([]);
@@ -30,7 +31,10 @@ export function useTenderDocuments(tenderId: string) {
       const data = await listTenderDocuments(tenderId);
       setDocuments(data);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al cargar documentos";
+      const msg = formatTenderAssistantError(
+        err,
+        "No se pudieron cargar los documentos adjuntos de la licitación.",
+      );
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -51,9 +55,12 @@ export function useTenderDocuments(tenderId: string) {
       setDocuments((prev) => [...prev, newDoc]);
       return newDoc;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al subir documento";
+      const msg = formatTenderAssistantError(
+        err,
+        "Error al subir documento. Verifica el formato y tamaño.",
+      );
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setIsUploading(false);
     }
@@ -65,9 +72,9 @@ export function useTenderDocuments(tenderId: string) {
       await deleteTenderDocument(tenderId, documentId);
       setDocuments((prev) => prev.filter((d) => d.id !== documentId));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al eliminar documento";
+      const msg = formatTenderAssistantError(err, "Error al eliminar documento.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     }
   };
 

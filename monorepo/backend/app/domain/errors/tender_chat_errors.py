@@ -67,4 +67,37 @@ class UnreadableDocumentError(TenderChatError):
         super().__init__(message)
 
 
+class TenderAssistantAIProviderError(TenderAssistantUnavailableError):
+    """Excepción lanzada cuando falla la conexión o comunicación con el proveedor de IA (Gemini)."""
+    def __init__(
+        self,
+        message: str = "El asistente virtual se encuentra temporalmente fuera de servicio: No se pudo conectar al proveedor de IA.",
+    ):
+        super().__init__(message)
+
+
+class TenderAssistantResponseError(TenderChatError):
+    """Excepción lanzada cuando la respuesta del modelo de IA no es válida o no puede ser procesada."""
+    def __init__(
+        self,
+        message: str = "El asistente no pudo procesar la respuesta del modelo de IA.",
+    ):
+        super().__init__(message)
+
+
+class TenderChatQueryInvalidError(TenderChatError):
+    """Excepción lanzada cuando la consulta es nula, vacía o inválida."""
+    def __init__(self, message: str = "Consulta inválida."):
+        super().__init__(message)
+
+
+class TenderChatStorageError(TenderChatError):
+    """Excepción lanzada cuando falla el acceso a la base de datos o almacenamiento del asistente."""
+    def __init__(
+        self,
+        message: str = "No se pudo acceder al almacenamiento del asistente de licitación.",
+    ):
+        super().__init__(message)
+
+
 

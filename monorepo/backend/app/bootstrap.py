@@ -136,6 +136,9 @@ from app.infrastructure.repositories.sql_supplier_invitation_repository import (
 from app.infrastructure.repositories.sql_supplier_member_repository import (
     SqlSupplierMemberRepository,
 )
+from app.infrastructure.repositories.sql_tender_chat_repository import (
+    SQLTenderChatRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
