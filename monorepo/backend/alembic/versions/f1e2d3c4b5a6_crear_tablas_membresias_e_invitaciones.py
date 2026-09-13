@@ -1,7 +1,7 @@
 """crear tablas membresias e invitaciones y migrar relaciones existentes
 
 Revision ID: f1e2d3c4b5a6
-Revises: 5d0cd7e936db
+Revises: b1c4a7e93f10
 Create Date: 2026-09-12 04:35:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'f1e2d3c4b5a6'
-down_revision: str | Sequence[str] | None = '5d0cd7e936db'
+down_revision: str | Sequence[str] | None = 'b1c4a7e93f10'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
