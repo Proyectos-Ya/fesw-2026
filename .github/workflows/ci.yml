@@ -193,29 +193,10 @@ jobs:
   # ============================================================
   # FASE 3: DEPLOY (Solo en push a develop o main si todo pasa)
   # ============================================================
-  deploy-railway:
-    name: Deploy Backend (Railway)
-    needs: [test-unit-frontend, test-unit-backend, test-e2e]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # RAILWAY_TOKEN es un Project Token atado a un entorno de Railway: el de
-      # `production` vive en el GitHub Environment `production` y el de `dev test`
-      # en `staging`, así que no hace falta pasar --environment.
-      # Se sube desde la raíz del repo: el servicio ya tiene configurado
-      # `monorepo/backend` como root directory en Railway.
-      - name: Desplegar en Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: npx -y @railway/cli@5.54.1 up --service fesw-2026 --ci
-
+  # El backend NO se despliega desde aquí: Railway tiene el auto-deploy por rama
+  # (`main` -> production, `develop` -> dev test) con "Wait for CI", así que
+  # despliega solo cuando este workflow termina en verde para ese commit.
+  # Agregar aquí un job que despliegue a Railway provocaría un doble deploy.
   deploy-vercel:
     name: Deploy Frontend (Vercel)
     needs: [test-unit-frontend, test-unit-backend, test-e2e]
@@ -257,7 +238,7 @@ jobs:
   # ============================================================
   metrics-summary:
     name: Informe de Impacto
-    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, deploy-railway, deploy-vercel]
+    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, deploy-vercel]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -284,7 +265,7 @@ jobs:
           echo "| Tests Unitarios Backend | Pytest (Dominio, Casos de Uso y Routers) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Exitoso' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Integridad Base de Datos | Alembic (1 sola cabeza garantizada) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Lineal' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests E2E de Humo | Playwright con Chromium Headless | ${{ needs.test-e2e.result == 'success' && '[OK] Pasaron' || (needs.test-e2e.result == 'skipped' && '[OMITIDO]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Despliegue Backend | Railway (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-railway.result == 'success' && '[OK] Desplegado' || (needs.deploy-railway.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Despliegue Backend | Railway (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | Auto-deploy de Railway con Wait for CI (ver panel de Railway) |" >> $GITHUB_STEP_SUMMARY
           echo "| Despliegue Frontend | Vercel (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-vercel.result == 'success' && '[OK] Desplegado' || (needs.deploy-vercel.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Impacto en el desarrollo: La integracion continua garantiza que ningun despliegue se realice si alguna prueba unitaria, E2E o migracion no supera el 100% de aprobacion." >> $GITHUB_STEP_SUMMARY
