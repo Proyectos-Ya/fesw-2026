@@ -246,3 +246,32 @@ jobs:
             pnpm exec vercel build --token=$VERCEL_TOKEN
             pnpm exec vercel deploy --prebuilt --token=$VERCEL_TOKEN
           fi
+
+  # ============================================================
+  # FASE 4: INFORME DE IMPACTO Y METRICAS DE CALIDAD
+  # ============================================================
+  metrics-summary:
+    name: Informe de Impacto
+    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, deploy-railway, deploy-vercel]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generar Reporte de Impacto en GitHub Step Summary
+        run: |
+          echo "## Informe de Metricas e Impacto del Pipeline de CI/CD" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Consolidado de calidad, cobertura y despliegue para la rama: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Indicador de Calidad | Ambito evaluado | Resultado |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Frontend | Next.js 16 + TypeScript estricto (no any) | ${{ needs.build-frontend.result == 'success' && '[OK] Compilado' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Backend | Sintaxis Python 3.12 (compileall app/) | ${{ needs.build-backend.result == 'success' && '[OK] Compilado' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests Unitarios Frontend | Vitest (Hooks, Componentes y Servicios) | ${{ needs.test-unit-frontend.result == 'success' && '[OK] Exitoso' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests Unitarios Backend | Pytest (Dominio, Casos de Uso y Routers) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Exitoso' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integridad Base de Datos | Alembic (1 sola cabeza garantizada) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Lineal' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests E2E de Humo | Playwright con Chromium Headless | ${{ needs.test-e2e.result == 'success' && '[OK] Pasaron' || (needs.test-e2e.result == 'skipped' && '[OMITIDO]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Despliegue Backend | Railway (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-railway.result == 'success' && '[OK] Desplegado' || (needs.deploy-railway.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Despliegue Frontend | Vercel (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-vercel.result == 'success' && '[OK] Desplegado' || (needs.deploy-vercel.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Impacto en el desarrollo: La integracion continua garantiza que ningun despliegue se realice si alguna prueba unitaria, E2E o migracion no supera el 100% de aprobacion." >> $GITHUB_STEP_SUMMARY
+
