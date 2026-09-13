@@ -48,6 +48,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: clave-de-build
+          BACKEND_ORIGIN: http://127.0.0.1:8000
         run: pnpm run build
 
   build-backend:
@@ -199,13 +200,21 @@ jobs:
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Disparar Deploy Webhook de Railway
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            curl -X POST "${{ secrets.RAILWAY_PROD_DEPLOY_WEBHOOK }}"
-          else
-            curl -X POST "${{ secrets.RAILWAY_STAGING_DEPLOY_WEBHOOK }}"
-          fi
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # RAILWAY_TOKEN es un Project Token atado a un entorno de Railway: el de
+      # `production` vive en el GitHub Environment `production` y el de `dev test`
+      # en `staging`, así que no hace falta pasar --environment.
+      # Se sube desde la raíz del repo: el servicio ya tiene configurado
+      # `monorepo/backend` como root directory en Railway.
+      - name: Desplegar en Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: npx -y @railway/cli@5.54.1 up --service fesw-2026 --ci
 
   deploy-vercel:
     name: Deploy Frontend (Vercel)
@@ -213,9 +222,6 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: monorepo/frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -227,24 +233,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          cache-dependency-path: monorepo/frontend/pnpm-lock.yaml
 
-      - name: Instalar dependencias
-        run: pnpm install --frozen-lockfile
-
+      # Se corre desde la raíz del repo: el proyecto de Vercel tiene
+      # `monorepo/frontend` como root directory y `vercel build` entra solo.
       - name: Desplegar en Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            pnpm exec vercel pull --yes --environment=production --token=$VERCEL_TOKEN
-            pnpm exec vercel build --prod --token=$VERCEL_TOKEN
-            pnpm exec vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 pull --yes --environment=production --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 build --prod --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 deploy --prebuilt --prod --token=$VERCEL_TOKEN
           else
-            pnpm exec vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
-            pnpm exec vercel build --token=$VERCEL_TOKEN
-            pnpm exec vercel deploy --prebuilt --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 pull --yes --environment=preview --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 build --token=$VERCEL_TOKEN
+            npx -y vercel@59.16.0 deploy --prebuilt --token=$VERCEL_TOKEN
           fi
 
   # ============================================================
