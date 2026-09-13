@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/features/auth/AuthContext";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
@@ -98,6 +99,12 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
         setState({ kind: "ready", matches: green });
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          window.location.replace(
+            loginUrlWithReturn(window.location.pathname, window.location.search),
+          );
+          return;
+        }
         if (err instanceof ApiError && err.status === 404) {
           if (workspaces.length > 0 || activeWorkspace !== null) {
             setState({ kind: "ready", matches: [] });
