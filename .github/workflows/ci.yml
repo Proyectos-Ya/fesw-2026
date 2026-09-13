@@ -255,7 +255,16 @@ jobs:
     needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, deploy-railway, deploy-vercel]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Generar Reporte de Impacto en GitHub Step Summary
         run: |
           echo "## Informe de Metricas e Impacto del Pipeline de CI/CD" >> $GITHUB_STEP_SUMMARY
@@ -274,4 +283,11 @@ jobs:
           echo "| Despliegue Frontend | Vercel (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-vercel.result == 'success' && '[OK] Desplegado' || (needs.deploy-vercel.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Impacto en el desarrollo: La integracion continua garantiza que ningun despliegue se realice si alguna prueba unitaria, E2E o migracion no supera el 100% de aprobacion." >> $GITHUB_STEP_SUMMARY
+
+      - name: Calcular Metricas DORA, Disponibilidad y Resiliencia
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python .github/scripts/calculate_metrics.py
 
