@@ -43,10 +43,10 @@ async def lifespan(app: FastAPI):
     # api_key va en None contra el Qdrant del compose local, que no autentica.
     try:
         app.state.qdrant_client = QdrantClient(
-            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=3.0
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
         )
         app.state.qdrant_async_client = AsyncQdrantClient(
-            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=3.0
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
         )
         existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
     except Exception as e:
