@@ -15,6 +15,7 @@ from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.main import app
 from app.shared.regions import CHILE_REGIONS
+from tests.support.api_auth import autenticar
 
 
 @pytest.fixture(autouse=True)
@@ -24,15 +25,7 @@ def clear_overrides():
 
 
 async def _login(api: AsyncClient) -> None:
-    datos = {
-        "email": "buscadora@example.com",
-        "password": "supersecretpassword",
-        "full_name": "Ana Buscadora",
-    }
-    await api.post("/auth/register", json=datos)
-    await api.post(
-        "/auth/login", json={"email": datos["email"], "password": datos["password"]}
-    )
+    await autenticar(api, email="buscadora@example.com", full_name="Ana Buscadora")
 
 
 def _tender(nombre: str = "Construcción de techumbre") -> Tender:

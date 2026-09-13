@@ -164,17 +164,33 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+# `localhost` y no `127.0.0.1`: el frontend se sirve en http://localhost:3000
+# (ver CORS_ORIGINS en monorepo/.env.example) y para el navegador son orígenes
+# distintos. Con el host equivocado acá, Supabase descarta el `redirectTo` y
+# manda de vuelta a este site_url sin decir por qué.
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# Van las dos formas del host porque cualquiera de las dos puede quedar en la
+# barra de direcciones, y el frontend arma el redirectTo con el origin real.
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://127.0.0.1:3000/auth/callback",
+  "http://localhost:3000/auth/confirm",
+  "http://127.0.0.1:3000/auth/confirm",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
-# signing_keys_path = "./signing_keys.json"
+# Sin esto GoTrue firma con el secreto HS256 heredado, que es simétrico: quien
+# lo tenga puede emitir sesiones de cualquier usuario. Con una clave asimétrica
+# el backend solo necesita la pública, que recoge del JWKS. Genera la tuya con:
+#   supabase gen signing-key --algorithm ES256 > supabase/signing_keys.json
+# (está en .gitignore; cada quien tiene la suya y no hay nada que compartir)
+signing_keys_path = "./signing_keys.json"
 # If disabled, the refresh token will never expire.
 enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
@@ -204,7 +220,11 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Subido del 2 que trae la plantilla: con dos por hora, el tercer registro o
+# reenvío de la sesión de pruebas falla con "email rate limit exceeded" y el
+# síntoma —no llega el correo de confirmación— es idéntico al de una
+# implementación rota. En la nube el límite es otro y se configura aparte.
+email_sent = 30
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -231,11 +251,18 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Encendido: es la verificación de correo. Con esto, `signUp` no devuelve sesión
+# y GoTrue manda el correo de confirmación; hasta que se abra el enlace, quien se
+# registró por correo no puede entrar. Quien entra por Google llega confirmado
+# desde el proveedor y no ve este paso.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# Un minuto, que es lo que espera el botón de reenviar de la pantalla de
+# verificación. Con "1s" el botón podría dispararse en ráfaga y agotar el
+# límite por hora de más arriba.
+max_frequency = "60s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
@@ -250,6 +277,15 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# El correo de confirmación lleva plantilla propia, y no es cosmético: la
+# plantilla por defecto usa `{{ .ConfirmationURL }}`, que apunta a
+# `/auth/v1/verify` y consume el token del lado del servidor antes de redirigir.
+# Eso no produce el `token_hash` que necesita `verifyOtp` en /auth/confirm, así
+# que sin esta plantilla el enlace del correo no completa el flujo del frontend.
+[auth.email.template.confirmation]
+subject = "Confirma tu correo en Chiripa"
+content_path = "./supabase/templates/confirm.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -340,6 +376,45 @@ url = ""
 # If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
+email_optional = false
+
+# --- Google (Chiripa) -------------------------------------------------
+# Las credenciales salen de un OAuth client "Web application" de Google Cloud
+# Console. En sus "Authorized redirect URIs" va la URL de SUPABASE, no la de la
+# aplicación: Google redirige acá, y recién después Supabase redirige a
+# `/auth/callback` del frontend (autorizado en additional_redirect_urls).
+#   local:      http://127.0.0.1:54321/auth/v1/callback
+#   producción: https://<project-ref>.supabase.co/auth/v1/callback
+#
+# Las dos variables las toma el CLI del entorno al hacer `supabase start`;
+# expórtalas en tu shell antes de arrancar. Nunca el secreto literal acá.
+# Ingreso con Google. **Apagado por defecto, y no es un olvido.**
+#
+# El CLI valida que, con `enabled = true`, `client_id` y `secret` no queden
+# vacíos: si las variables no están en el entorno de la shell, `supabase start`
+# aborta con "Missing required field in config: auth.external.google.client_id"
+# y no arranca **nada** —ni Postgres, ni el correo de prueba—, no solo Google.
+# Dejarlo encendido convertiría unas credenciales que no todo el equipo tiene en
+# un requisito para levantar el proyecto.
+#
+# Para probarlo en local: exporta las dos variables en la misma terminal desde
+# la que corres `supabase start` (el CLI lee el entorno de la shell, no
+# `monorepo/.env`) y pon `enabled = true` acá:
+#
+#   export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
+#   export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
+#
+# En la nube esto no aplica: el proveedor se configura desde el panel de
+# Supabase, y este archivo solo describe el stack local.
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+# Sin esto, el ingreso con Google contra el Supabase local falla la
+# comprobación del nonce. Es solo para local: en la nube **no** se activa.
+skip_nonce_check = true
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.

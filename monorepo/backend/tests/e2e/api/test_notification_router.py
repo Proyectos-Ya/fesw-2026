@@ -16,6 +16,7 @@ from app.domain.entities.notification import Notification, NotificationDelivery
 from app.domain.entities.tender import Tender
 from app.main import app
 from app.shared.datetime_utils import utc_now_naive
+from tests.support.api_auth import autenticar, preparar_auth
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
     FakeSupplierVectorRepository,
@@ -29,7 +30,6 @@ from tests.unit.application.fakes import (
 
 REGISTER = {
     "email": "alertas@example.com",
-    "password": "supersecret",
     "full_name": "Empresa Alertas",
 }
 
@@ -114,21 +114,17 @@ async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        preparar_auth(app, ac)
         yield ac
 
     app.dependency_overrides.clear()
 
 
 async def login(api: AsyncClient) -> str:
-    """Registra e inicia sesión; deja la cookie en el cliente y devuelve el id."""
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
+    """Deja la sesión puesta en el cliente y devuelve el id local del perfil."""
+    return str(
+        await autenticar(api, email=REGISTER["email"], full_name=REGISTER["full_name"])
     )
-    assert resp.status_code == 200
-    me = await api.get("/auth/me")
-    return me.json()["id"]
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,7 @@ from app.domain.errors.supplier_errors import (
 )
 from app.domain.errors.tender_errors import TenderNotFound
 from app.main import app
+from tests.support.api_auth import autenticar
 
 
 @pytest.fixture(autouse=True)
@@ -56,14 +57,12 @@ async def test_get_recommended_tenders_success(api: AsyncClient) -> None:
     # Registrar e iniciar sesión para estar autenticado en la API
     register_data = {
         "email": "juan@example.com",
-        "password": "supersecretpassword",
         "full_name": "Juan Pérez",
     }
-    registro = await api.post("/auth/register", json=register_data)
-    id_del_usuario = UUID(registro.json()["id"])
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    id_del_usuario = await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # `profile_id` va a propósito, y con el id de OTRA empresa: el endpoint lo
@@ -98,13 +97,12 @@ async def test_get_recommended_tenders_supplier_not_found(api: AsyncClient) -> N
     # Iniciar sesión
     register_data = {
         "email": "maria@example.com",
-        "password": "password123",
         "full_name": "María Gómez",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
@@ -125,13 +123,12 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
     # Iniciar sesión
     register_data = {
         "email": "pedro@example.com",
-        "password": "securepwd123",
         "full_name": "Pedro Díaz",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
@@ -184,13 +181,12 @@ async def test_analyze_tender_compatibility_success(api: AsyncClient) -> None:
     # Registrar e iniciar sesión para estar autenticado
     register_data = {
         "email": "ana@example.com",
-        "password": "mypassword123",
         "full_name": "Ana Gómez",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Ejecutar la llamada al endpoint
@@ -223,13 +219,12 @@ async def test_analyze_tender_compatibility_invalid_prompt(api: AsyncClient) -> 
     # Registrar e iniciar sesión
     register_data = {
         "email": "lucas@example.com",
-        "password": "mypassword123",
         "full_name": "Lucas Silva",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Enviar prompt sospechoso
@@ -262,13 +257,12 @@ async def test_analyze_tender_compatibility_not_found(api: AsyncClient) -> None:
     # Registrar e iniciar sesión
     register_data = {
         "email": "carlos@example.com",
-        "password": "mypassword123",
         "full_name": "Carlos González",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(f"/tenders/{tender_id}/analysis", json={})
@@ -292,13 +286,12 @@ async def test_analyze_tender_compatibility_validation_error(api: AsyncClient) -
     # Registrar e iniciar sesión
     register_data = {
         "email": "elena@example.com",
-        "password": "mypassword123",
         "full_name": "Elena Torres",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Crear una cadena de instrucciones de prompt que supera los 1000 caracteres
@@ -345,13 +338,12 @@ async def test_analyze_tender_compatibility_only_if_exists_not_found(
     # Registrar e iniciar sesión
     register_data = {
         "email": "only_not_found@example.com",
-        "password": "mypassword123",
         "full_name": "Only Not Found",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(
@@ -394,13 +386,12 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     # Registrar e iniciar sesión
     register_data = {
         "email": "only_success@example.com",
-        "password": "mypassword123",
         "full_name": "Only Success",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(
@@ -442,12 +433,7 @@ def _build_tender(tender_id: UUID) -> Tender:
 
 async def _login(api: AsyncClient, email: str, full_name: str) -> None:
     """Registra e inicia sesión: deja la cookie httpOnly en el cliente."""
-    password = "supersecretpassword"
-    await api.post(
-        "/auth/register",
-        json={"email": email, "password": password, "full_name": full_name},
-    )
-    await api.post("/auth/login", json={"email": email, "password": password})
+    await autenticar(api, email=email, full_name=full_name)
 
 
 @pytest.mark.asyncio
@@ -479,7 +465,6 @@ async def test_get_saved_tenders_success(api: AsyncClient) -> None:
     assert data[0]["tender"]["buyer_name"] == "Municipalidad de Santiago"
     assert data[0]["tender"]["region"] == "Metropolitana"
     mock_uc.execute.assert_called_once()
-
 
 
 @pytest.mark.asyncio

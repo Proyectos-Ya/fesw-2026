@@ -28,7 +28,11 @@ qdrant-client==1.18.0
 
 # Autenticación
 bcrypt==5.0.0
-pyjwt==2.13.0
+# El extra [crypto] arrastra `cryptography`, sin la cual PyJWT no puede validar
+# firmas asimétricas. Las sesiones las emite Supabase Auth firmando con ES256, y
+# sin el extra el fallo aparece recién al verificar el primer token, con un
+# mensaje que no menciona que falta una dependencia.
+pyjwt[crypto]==2.13.0
 # Envío de correo de las alertas de licitaciones (HdU 08). SMTP asíncrono para
 # no bloquear el event loop mientras se habla con el servidor de correo.
 aiosmtplib>=3.0.0
