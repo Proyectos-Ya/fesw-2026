@@ -101,6 +101,18 @@ Es obligatorio adoptar el flujo **TDD (Red-Green-Refactor)** al escribir código
   pnpm run test:e2e
   ```
 
+### Excepción: los spikes no llevan tests
+
+TDD aplica al código de producción (`monorepo/`). **Todo lo relacionado con un
+spike queda fuera de esa regla y no se le crean tests**: ni en `spikes/`, ni en
+`monorepo/backend/tests/`, ni en `monorepo/frontend/`.
+
+- Un spike es una investigación desechable (pruebas de concepto, arneses de
+  medición, benchmarks, notebooks). Su resultado es el informe, no el código.
+- Un test de un spike no protege nada del producto y agrega peso y fallas al CI.
+- Si algo de un spike pasa a producción, se reescribe dentro de `monorepo/`
+  siguiendo TDD, y recién ahí lleva tests.
+
 ---
 
 ## 5. Flujo de Trabajo en Git y Commits
