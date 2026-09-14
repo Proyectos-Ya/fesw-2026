@@ -14,6 +14,7 @@ contra la API y no son obvias.
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -29,6 +30,39 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     TenderIngestionService,
 )
+
+# Hosts que se consideran "esta máquina". Todo lo demás es una base compartida
+# —producción o `dev test`— y escribir ahí tiene que pedirse explícitamente.
+HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "db"}
+
+
+def es_local(url: str) -> bool:
+    """Si la URL apunta a una base de esta máquina."""
+    return (urlsplit(url).hostname or "") in HOSTS_LOCALES
+
+
+async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> None:
+    """Deja la base y el índice listos para recibir datos.
+
+    Normalmente lo hace el arranque de la API (`main.py`), pero ni la carga inicial
+    ni el cron pueden depender de que la API haya corrido alguna vez contra esta
+    base: la tabla `region` estaría vacía y los FK de `tender` fallarían, y la
+    colección `tenders` no existiría. Ambas operaciones son idempotentes, así que
+    repetirlas en cada corrida no cuesta nada.
+    """
+    from app.infrastructure.repositories.qdrant_tender_repository import (
+        QdrantTenderRepository,
+    )
+    from app.infrastructure.seeder import seed_database_metadata
+
+    async with AsyncSession(engine) as s:
+        await seed_database_metadata(s)
+    print("Regiones y estados sembrados.")
+
+    await QdrantTenderRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tenders' lista (con sus índices de payload).\n")
 
 
 def construir_servicio() -> tuple[
