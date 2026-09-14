@@ -116,6 +116,9 @@ class FakeTenderRepositoryForAnalysis(ITenderRepository):
             default=None,
         )
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return None
+
 
 class FakeMatchingResultRepositoryForAnalysis(IMatchingResultRepository):
     def __init__(self):
