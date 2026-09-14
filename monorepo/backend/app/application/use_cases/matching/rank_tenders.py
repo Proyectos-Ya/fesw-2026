@@ -97,24 +97,41 @@ class RankTendersUseCase:
                 latest_cache_time = max(
                     (m.calculated_at for m in cached_matches), default=None
                 )
-                latest_tender_time = (
-                    await self.tender_repo.get_latest_tender_created_at()
-                )
                 supplier_changed_time = (
                     supplier.profile_changed_at or supplier.updated_at
                 )
 
                 cache_is_stale = False
                 if latest_cache_time is not None:
-                    cache_age = now - latest_cache_time
-                    # Para no saturar el servidor con re-rankings en cada ingesta continua de 2s,
-                    # solo invalidamos por nuevas licitaciones si la caché tiene más de 30 segundos de antigüedad.
-                    if (
-                        latest_tender_time
-                        and latest_tender_time > latest_cache_time
-                        and cache_age > timedelta(seconds=30)
-                    ):
-                        cache_is_stale = True
+                    # Se invalida una vez por corrida de ingesta, no por licitación:
+                    # el cron diario inserta ~4.500 licitaciones durante ~50 min y el
+                    # escaneo de alertas pasa cada 5 min, así que comparar contra la
+                    # última licitación recalculaba ~10 veces por empresa por noche,
+                    # y cada recálculo gasta cupo de Pinecone.
+                    last_ingestion_time = (
+                        await self.tender_repo.get_latest_ingestion_finished_at()
+                    )
+                    if last_ingestion_time is not None:
+                        # Límite conocido: con corridas del cron ya registradas, una
+                        # carga manual (bootstrap_corpus) no refresca la caché hasta
+                        # la corrida siguiente, un cambio de perfil o force_refresh.
+                        if last_ingestion_time > latest_cache_time:
+                            cache_is_stale = True
+                    else:
+                        # Respaldo sin corridas registradas: el scheduler en proceso y
+                        # bootstrap_corpus no escriben en `ingestion_run`. Se invalida
+                        # por licitación nueva, con 30 s de gracia para no recalcular
+                        # en cada inserción.
+                        latest_tender_time = (
+                            await self.tender_repo.get_latest_tender_created_at()
+                        )
+                        cache_age = now - latest_cache_time
+                        if (
+                            latest_tender_time
+                            and latest_tender_time > latest_cache_time
+                            and cache_age > timedelta(seconds=30)
+                        ):
+                            cache_is_stale = True
                     # Si el proveedor actualizó su perfil, invalidamos de inmediato
                     if (
                         supplier_changed_time
