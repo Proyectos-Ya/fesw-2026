@@ -222,6 +222,10 @@ jobs:
 
       # Se corre desde la raíz del repo: el proyecto de Vercel tiene
       # `monorepo/frontend` como root directory y `vercel build` entra solo.
+      #
+      # develop: con la integración de Git, Vercel movía sola la URL de la rama
+      # (fesw-2026-git-develop-...) al último deploy. Un deploy por CLI solo crea
+      # una URL única, así que el alias se reasigna explícitamente.
       - name: Desplegar en Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -235,7 +239,9 @@ jobs:
           else
             npx -y vercel@59.16.0 pull --yes --environment=preview --token=$VERCEL_TOKEN
             npx -y vercel@59.16.0 build --token=$VERCEL_TOKEN
-            npx -y vercel@59.16.0 deploy --prebuilt --token=$VERCEL_TOKEN
+            url=$(npx -y vercel@59.16.0 deploy --prebuilt --token=$VERCEL_TOKEN)
+            echo "Deploy de preview: $url"
+            npx -y vercel@59.16.0 alias set "$url" fesw-2026-git-develop-benjaminulloaf-5015s-projects.vercel.app --token=$VERCEL_TOKEN
           fi
 
   # ============================================================
