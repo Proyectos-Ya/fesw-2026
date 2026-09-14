@@ -9,10 +9,22 @@ Con este test, agregar un campo obligatorio sin agregarlo al relleno falla como
 un test normal y con un mensaje que dice exactamente qué hacer.
 """
 
+import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
 from pytest_env_defaults import RELLENO_ENV
+
+
+@pytest.fixture(autouse=True)
+def _sin_variables_de_entorno(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quitar una clave del dict no sirve si sigue en `os.environ`.
+
+    En CI el `conftest.py` raíz la puso ahí (no hay `.env`), y Settings la leería
+    igual: la clave parecería sobrante aunque sí haga falta.
+    """
+    for clave in [*RELLENO_ENV, "DATABASE_URL"]:
+        monkeypatch.delenv(clave, raising=False)
 
 
 def _construir(entorno: dict[str, str]) -> Settings:

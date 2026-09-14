@@ -7,7 +7,8 @@ describe("SearchBar", () => {
   it("renderiza el input con el valor y placeholder", () => {
     render(<SearchBar value="equipamiento" onChange={vi.fn()} />);
 
-    const input = screen.getByRole("searchbox");
+    // type="text" y no "search": la X nativa del navegador duplicaba el botón de limpiar (#209).
+    const input = screen.getByRole("textbox", { name: /buscar licitaciones/i });
     expect(input).toHaveValue("equipamiento");
   });
 
@@ -15,7 +16,8 @@ describe("SearchBar", () => {
     const handleChange = vi.fn();
     render(<SearchBar value="" onChange={handleChange} />);
 
-    const input = screen.getByRole("searchbox");
+    // type="text" y no "search": la X nativa del navegador duplicaba el botón de limpiar (#209).
+    const input = screen.getByRole("textbox", { name: /buscar licitaciones/i });
     fireEvent.change(input, { target: { value: "computadores" } });
 
     expect(handleChange).toHaveBeenCalledWith("computadores");
