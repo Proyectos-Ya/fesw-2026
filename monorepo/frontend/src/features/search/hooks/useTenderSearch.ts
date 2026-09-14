@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch pattern */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
