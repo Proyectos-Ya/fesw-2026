@@ -14,6 +14,7 @@ deja de crecer.
 """
 
 import argparse
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -24,7 +25,7 @@ from app.infrastructure.services.tenders.tender_ingestion_service import (
     ResultadoListado,
     ResultadoProceso,
 )
-from scripts.sync_diaria import sincronizar
+from scripts.sync_diaria import con_timeout, sincronizar, verificar_destino
 
 
 class ServicioFalso(ITenderIngestionService):
@@ -241,3 +242,102 @@ class TestElBarridoDeVencidas:
         await _correr(servicio, _args(sin_marcar=True), marcadas=37)
 
         assert "Vencidas marcadas" not in capsys.readouterr().out
+
+
+class TestGuardaContraProduccion:
+    """El cron corre contra producción a propósito; una prueba local, no.
+
+    Hasta ahora el script solo imprimía a qué base apuntaba. Con un `.env` que
+    quedó apuntando a producción, una "prueba local" escribía ahí sin avisar. Es
+    el mismo criterio que ya tiene `bootstrap_corpus.py`: lo que toca producción
+    tiene que pedirse explícitamente, no pasar por olvidar una variable.
+    """
+
+    def test_se_niega_contra_una_base_no_local_sin_confirmar(self):
+        mensaje = verificar_destino(
+            "postgresql://u:p@db.abcd.supabase.co:5432/postgres",
+            confirmar_produccion=False,
+        )
+
+        assert mensaje is not None
+        assert "db.abcd.supabase.co" in mensaje
+        assert "--confirmar-produccion" in mensaje
+
+    def test_corre_contra_una_base_local(self):
+        assert (
+            verificar_destino(
+                "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+                confirmar_produccion=False,
+            )
+            is None
+        )
+
+    def test_corre_contra_produccion_si_se_confirma(self):
+        """Es lo que lleva el `startCommand` del servicio de Railway."""
+        assert (
+            verificar_destino(
+                "postgresql://u:p@db.abcd.supabase.co:5432/postgres",
+                confirmar_produccion=True,
+            )
+            is None
+        )
+
+
+class TestPrepararDestino:
+    """Contra una base recién creada, el primer `tender` falla por FK de región.
+
+    Sembrar regiones y crear la colección hoy solo lo hace el arranque de la API.
+    El cron no puede depender de que la API haya corrido alguna vez.
+    """
+
+    @pytest.mark.asyncio
+    async def test_se_prepara_antes_de_pedir_la_ventana(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+        orden: list[str] = []
+
+        async def preparar() -> None:
+            orden.append("preparar")
+            print("PREPARADO")
+
+        async def contar() -> int:
+            return servicio.pendientes
+
+        async def marcar() -> int:
+            return 0
+
+        await sincronizar(
+            _args(),
+            servicio,
+            contar=contar,
+            marcar_vencidas=marcar,
+            preparar_destino=preparar,
+        )
+
+        salida = capsys.readouterr().out
+        assert orden == ["preparar"]
+        assert salida.index("PREPARADO") < salida.index("Ventana:")
+
+
+class TestTimeout:
+    """Railway no termina una corrida colgada y **omite todas las siguientes**.
+
+    Un cron que se queda esperando una respuesta que no llega deja de correr para
+    siempre sin avisar. El timeout lo convierte en un fallo visible (código 1) y
+    libera la ejecución del día siguiente. Dejar la fila en `running` es seguro:
+    ese estado nunca mueve el cursor.
+    """
+
+    @pytest.mark.asyncio
+    async def test_una_corrida_colgada_termina_con_codigo_1(self):
+        async def colgada() -> int:
+            await asyncio.sleep(10)
+            return 0
+
+        assert await con_timeout(colgada(), segundos=0.01) == 1
+
+    @pytest.mark.asyncio
+    async def test_una_corrida_a_tiempo_conserva_su_codigo(self):
+        async def rapida() -> int:
+            return 0
+
+        assert await con_timeout(rapida(), segundos=5) == 0

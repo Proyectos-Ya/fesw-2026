@@ -44,8 +44,6 @@ import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
-from sqlmodel.ext.asyncio.session import AsyncSession
-
 from app.config import settings
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -54,14 +52,10 @@ from app.shared.constants import TENDER_STATUSES
 from scripts.ingesta_compartida import (
     construir_servicio,
     contar_pendientes,
+    es_local,
+    preparar_destino,
     vaciar_cola,
 )
-
-HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "db"}
-
-
-def _es_local(url: str) -> bool:
-    return (urlsplit(url).hostname or "") in HOSTS_LOCALES
 
 
 def _falta_limite_explicito(limite: int | None, es_local: bool) -> bool:
@@ -152,33 +146,10 @@ async def contar(args: argparse.Namespace) -> None:
         )
 
 
-async def _preparar_destino(engine, qdrant) -> None:
-    """Deja la base y el índice listos para recibir datos.
-
-    Normalmente lo hace el arranque de la aplicación (`main.py`), pero contra un
-    entorno recién creado la aplicación todavía no se ha ejecutado nunca: la
-    tabla `region` estaría vacía y los FK de `tender` fallarían, y la colección
-    `tenders` no existiría. Ambas operaciones son idempotentes.
-    """
-    from app.infrastructure.repositories.qdrant_tender_repository import (
-        QdrantTenderRepository,
-    )
-    from app.infrastructure.seeder import seed_database_metadata
-
-    async with AsyncSession(engine) as s:
-        await seed_database_metadata(s)
-    print("Regiones y estados sembrados.")
-
-    await QdrantTenderRepository(
-        client=qdrant, vector_size=settings.embedding_vector_size
-    ).ensure_collection()
-    print("Colección 'tenders' lista (con sus índices de payload).\n")
-
-
 async def cargar(args: argparse.Namespace) -> None:
     servicio, engine, qdrant = construir_servicio()
     try:
-        await _preparar_destino(engine, qdrant)
+        await preparar_destino(engine, qdrant)
 
         if not args.reanudar:
             print(f"--- Fase 1: listado ({args.dias} días) ---")
@@ -262,7 +233,7 @@ def main() -> None:
     print(f"Qdrant        : {urlsplit(settings.qdrant_url).hostname}")
     print(f"Embeddings    : {settings.embedding_provider}\n")
 
-    if not args.solo_contar and not _es_local(settings.database_url):
+    if not args.solo_contar and not es_local(settings.database_url):
         if not args.confirmar_produccion:
             sys.exit(
                 f"La base ({destino}) no es local y falta --confirmar-produccion.\n"

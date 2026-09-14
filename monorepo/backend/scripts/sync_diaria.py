@@ -38,19 +38,32 @@ volumen real, con margen.
 
 Uso
 ---
-    python -m scripts.sync_diaria                 # lo que ejecuta el cron
-    python -m scripts.sync_diaria --limite 9000   # forzando el tope de la corrida
-    python -m scripts.sync_diaria --sin-marcar    # solo la sincronización
+    python -m scripts.sync_diaria --limite 100                  # prueba local
+    python -m scripts.sync_diaria --confirmar-produccion        # lo que ejecuta el cron
+    python -m scripts.sync_diaria --sin-marcar                  # solo la sincronización
 
-Sale con código 0 si la ventana se listó entera, y 1 si no: en un cron de Railway
-ese código es la única señal visible de que algo quedó a medias.
+Dos protecciones para correr sin supervisión:
+
+- **Se niega contra una base que no sea local** salvo `--confirmar-produccion`.
+  Una prueba local con un `.env` que quedó apuntando a producción escribía ahí sin
+  avisar; el servicio de Railway lleva el flag en su `startCommand`.
+- **Timeout duro** (`--timeout-minutos`, 120 por defecto). Railway no termina una
+  corrida colgada y **omite todas las siguientes**, así que un cron que se queda
+  esperando deja de correr para siempre. Al vencer sale con código 1; la fila de
+  `ingestion_run` queda en `running`, que nunca mueve el cursor.
+
+Códigos de salida: 0 si la ventana se listó entera; 1 si quedó a medias o venció
+el timeout; 2 si se negó a correr contra una base no local. En un cron de Railway
+ese código es la única señal visible de que algo salió mal.
 """
 
 import argparse
 import asyncio
 import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any
+from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -67,8 +80,50 @@ from app.shared.constants import TENDER_STATUSES
 from scripts.ingesta_compartida import (
     construir_servicio,
     contar_pendientes,
+    es_local,
+    preparar_destino,
     vaciar_cola,
 )
+
+# Una corrida de un día hábil tarda ~50 minutos (4.500 detalles a ~3,3 s con
+# concurrencia 5). El doble deja margen para una API lenta sin dejar que una
+# corrida colgada bloquee la del día siguiente.
+DEFAULT_TIMEOUT_MINUTOS = 120
+
+
+def verificar_destino(database_url: str, *, confirmar_produccion: bool) -> str | None:
+    """El motivo para negarse a correr, o `None` si se puede.
+
+    Mismo criterio que `bootstrap_corpus.py`: lo que escribe en una base
+    compartida tiene que pedirse explícitamente, no pasar por olvidar una
+    variable de entorno.
+    """
+    if confirmar_produccion or es_local(database_url):
+        return None
+    host = urlsplit(database_url).hostname or "desconocido"
+    return (
+        f"La base ({host}) no es local y falta --confirmar-produccion.\n"
+        "Correr la sincronización contra una base compartida es deliberado: si\n"
+        "esto era una prueba local, revisa DATABASE_URL en tu .env."
+    )
+
+
+async def con_timeout(corutina: Coroutine[Any, Any, int], segundos: float) -> int:
+    """Corre la sincronización con un tope de tiempo, y la da por fallida al vencer.
+
+    `asyncio.wait_for` cancela la corrida, y el `finally` de `_correr` alcanza a
+    cerrar el engine y el cliente de Qdrant: el proceso termina de verdad, que es
+    lo que Railway necesita para lanzar la ejecución siguiente.
+    """
+    try:
+        return await asyncio.wait_for(corutina, timeout=segundos)
+    except TimeoutError:
+        print(
+            f"\nERROR: la corrida superó el tope de {segundos / 60:.0f} min y se "
+            "canceló.\nLa fila de ingestion_run queda en 'running', que no mueve "
+            "el cursor: la corrida siguiente vuelve a pedir la misma ventana."
+        )
+        return 1
 
 
 async def _marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int:
@@ -95,6 +150,7 @@ async def sincronizar(
     *,
     contar: Callable[[], Awaitable[int]],
     marcar_vencidas: Callable[[], Awaitable[int]],
+    preparar_destino: Callable[[], Awaitable[None]] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
@@ -103,6 +159,9 @@ async def sincronizar(
     poder probar sin levantar Postgres ni Qdrant.
     """
     inicio = time.perf_counter()
+
+    if preparar_destino is not None:
+        await preparar_destino()
 
     if not args.sin_marcar:
         print(f"--- Vencidas marcadas como cerradas: {await marcar_vencidas()} ---")
@@ -197,6 +256,7 @@ async def _correr(args: argparse.Namespace) -> int:
             servicio,
             contar=lambda: contar_pendientes(engine),
             marcar_vencidas=lambda: _marcar_vencidas(engine, qdrant),
+            preparar_destino=lambda: preparar_destino(engine, qdrant),
         )
     finally:
         await engine.dispose()
@@ -221,12 +281,32 @@ def main() -> None:
         action="store_true",
         help="omitir el barrido de vencidas",
     )
+    p.add_argument(
+        "--confirmar-produccion",
+        action="store_true",
+        help="requerido si la base no es local",
+    )
+    p.add_argument(
+        "--timeout-minutos",
+        type=float,
+        default=DEFAULT_TIMEOUT_MINUTOS,
+        help=f"tope de la corrida ({DEFAULT_TIMEOUT_MINUTOS})",
+    )
     args = p.parse_args()
 
     print(f"Base de datos : {settings.database_url.split('@')[-1]}")
     print(f"Embeddings    : {settings.embedding_provider}\n")
 
-    sys.exit(asyncio.run(_correr(args)))
+    mensaje = verificar_destino(
+        settings.database_url, confirmar_produccion=args.confirmar_produccion
+    )
+    if mensaje:
+        print(mensaje, file=sys.stderr)
+        sys.exit(2)
+
+    sys.exit(
+        asyncio.run(con_timeout(_correr(args), segundos=args.timeout_minutos * 60))
+    )
 
 
 if __name__ == "__main__":
