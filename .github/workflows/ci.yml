@@ -121,7 +121,7 @@ jobs:
           cache-dependency-path: monorepo/backend/requirements.txt
 
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-test.txt
 
       - name: Chequeo de una sola cabeza de Alembic
         run: |
@@ -133,7 +133,7 @@ jobs:
           fi
 
       - name: Pruebas unitarias de dominio y aplicacion (pytest)
-        run: pytest tests/unit/ -v
+        run: pytest tests/unit/ -v -m "not integration and not network"
 
   test-e2e:
     name: Tests E2E Criticos (Playwright)

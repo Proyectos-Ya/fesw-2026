@@ -1,0 +1,16 @@
+# Lo mínimo para correr la suite de tests: runtime + herramientas de pruebas.
+# Es lo que instala el CI. No incluye los modelos locales de requirements-dev.txt
+# (sentence-transformers arrastra torch y pesa varios GB): los tests que los tocan
+# los mockean.
+#
+#   pip install -r requirements-test.txt
+
+-r requirements.txt
+
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+respx>=0.22.0
+
+# tests/unit/test_dataset_date_shift.py y tests/matching_evaluation
+pandas>=2.2.0

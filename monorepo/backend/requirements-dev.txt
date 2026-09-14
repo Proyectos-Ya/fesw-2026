@@ -3,7 +3,8 @@
 #
 #   uv pip install -r requirements-dev.txt     (o: pip install -r requirements-dev.txt)
 
--r requirements.txt
+# Runtime + herramientas de pruebas (pytest, pandas, etc.)
+-r requirements-test.txt
 
 # Linter y formateador (configurados en pyproject.toml)
 ruff>=0.3.0
