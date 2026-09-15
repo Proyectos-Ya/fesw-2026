@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -9,7 +10,7 @@ from app.application.repositories.supplier_vector_repository import (
 )
 from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.services.embedding_service import IEmbeddingService
-from app.domain.entities.supplier import Supplier
+from app.domain.entities.supplier import Supplier, format_rut
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
@@ -32,6 +33,13 @@ def _build_supplier_text(data: CreateSupplierSchema | Supplier) -> str:
     return ". ".join(parts)
 
 
+@dataclass(frozen=True)
+class CreateSupplierResult:
+    supplier: Supplier
+    # False cuando el usuario ya tenía esta misma empresa: fue un reintento.
+    created: bool
+
+
 class CreateSupplierUseCase:
     def __init__(
         self,
@@ -46,19 +54,30 @@ class CreateSupplierUseCase:
     async def execute(
         self, data: CreateSupplierSchema, user_id: UUID | None = None
     ) -> Supplier:
+        """Atajo para quien solo necesita la empresa, no si ya existía."""
+        return (await self.create(data, user_id=user_id)).supplier
+
+    async def create(
+        self, data: CreateSupplierSchema, user_id: UUID | None = None
+    ) -> CreateSupplierResult:
         try:
             supplier = Supplier(**data.model_dump(), user_id=user_id)
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
-        # Se busca con el RUT ya normalizado por la entidad, no con el recibido
-        existing = await self.repo.get_by_rut(supplier.rut)
-        if existing:
-            raise SupplierAlreadyExists(supplier.rut)
+        # Regla de negocio: un usuario solo puede ser dueño de una empresa. Si ya
+        # tiene *esta misma* no es un conflicto sino un reintento —el cliente se
+        # cansó de esperar y volvió a enviar—, y se devuelve la que ya existe.
+        if user_id is not None:
+            own = await self.repo.get_by_user_id(user_id)
+            if own is not None:
+                if _same_rut(own.rut, supplier.rut):
+                    return CreateSupplierResult(own, created=False)
+                raise UserAlreadyHasSupplier(user_id)
 
-        # Regla de negocio: un usuario solo puede ser dueño de una empresa
-        if user_id is not None and await self.repo.get_by_user_id(user_id):
-            raise UserAlreadyHasSupplier(user_id)
+        # Se busca con el RUT ya normalizado por la entidad, no con el recibido
+        if await self.repo.get_by_rut(supplier.rut):
+            raise SupplierAlreadyExists(supplier.rut)
 
         # El embedding se calcula ANTES de persistir. Es una llamada de red a un
         # proveedor externo y es, de lejos, el paso que más falla. Con el orden
@@ -69,11 +88,22 @@ class CreateSupplierUseCase:
         text = _build_supplier_text(data)
         vectors = await self.embedding_service.embed([text])
 
+        # Entre las validaciones de arriba y este INSERT pasan los segundos del
+        # embedding: otra petición pudo haber creado la empresa. La base lo
+        # detecta con sus índices únicos; si la que ganó es del mismo usuario y
+        # con el mismo RUT, este envío también termina bien.
+        try:
+            saved_supplier = await self.repo.add(supplier)
+        except (SupplierAlreadyExists, UserAlreadyHasSupplier):
+            own = await self._own_supplier_with_rut(user_id, supplier.rut)
+            if own is not None:
+                return CreateSupplierResult(own, created=False)
+            raise
+
         # Postgres y Qdrant se escriben como una sola operación: la fila queda
         # pendiente, se indexa el vector y recién entonces se confirma. Con el
         # commit antes del upsert, una caída de Qdrant dejaba la empresa sin
         # vector: visible en "Mi empresa" e inexistente para matches y alertas.
-        saved_supplier = await self.repo.add(supplier)
         try:
             await self.vector_repo.upsert(saved_supplier.id, vectors[0])
         except Exception:
@@ -89,7 +119,23 @@ class CreateSupplierUseCase:
             await self.repo.rollback()
             raise
 
-        return saved_supplier
+        return CreateSupplierResult(saved_supplier, created=True)
+
+    async def _own_supplier_with_rut(
+        self, user_id: UUID | None, rut: str
+    ) -> Supplier | None:
+        if user_id is None:
+            return None
+        own = await self.repo.get_by_user_id(user_id)
+        if own is not None and _same_rut(own.rut, rut):
+            return own
+        return None
+
+
+def _same_rut(stored: str, candidate: str) -> bool:
+    # Las filas anteriores a la normalización pueden estar sin puntos: se
+    # comparan en formato canónico para no confundir un reintento con otra empresa.
+    return format_rut(stored) == format_rut(candidate)
 
 
 async def _discard_vector(

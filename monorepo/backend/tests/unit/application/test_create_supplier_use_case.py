@@ -509,3 +509,106 @@ async def test_race_on_same_rut_raises_supplier_already_exists(
 
     assert len(supplier_repo.suppliers) == 1
     assert vector_repo.vectors == {}
+
+
+# ---------------------------------------------------------------------------
+# Reintento del mismo usuario: idempotente
+#
+# El 3-sep el usuario vio un timeout, reintentó y recibió 409 "ya existe", aunque
+# la empresa era suya y se había creado bien. Si quien reintenta es el dueño y
+# el RUT es el mismo, no hay conflicto: se devuelve la empresa que ya tiene.
+# ---------------------------------------------------------------------------
+
+
+async def test_same_user_same_rut_returns_existing_supplier(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
+) -> None:
+    """El reintento devuelve la misma empresa, sin otra fila ni otro embedding."""
+    owner_id = uuid4()
+
+    first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+    second = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert first.created is True
+    assert second.created is False
+    assert second.supplier.id == first.supplier.id
+    assert len(supplier_repo.suppliers) == 1
+    assert len(vector_repo.upserts) == 1
+    assert len(embedding_service.calls) == 1
+
+
+@pytest.mark.parametrize("other_format", ["76086428-5", "760864285"])
+async def test_same_user_retry_with_rut_in_other_format_is_idempotent(
+    use_case: CreateSupplierUseCase, other_format: str
+) -> None:
+    """El RUT se compara normalizado: otro formato sigue siendo el mismo reintento."""
+    owner_id = uuid4()
+    first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    retry = await use_case.create(
+        CreateSupplierSchema(rut=other_format, legal_name="Empresa SpA"),
+        user_id=owner_id,
+    )
+
+    assert retry.created is False
+    assert retry.supplier.id == first.supplier.id
+
+
+async def test_same_rut_from_another_user_is_still_a_conflict(
+    use_case: CreateSupplierUseCase,
+) -> None:
+    """La idempotencia es solo para el dueño: otro usuario recibe el conflicto."""
+    await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+
+class StaleValidationRepository(InMemorySupplierRepository):
+    """Las primeras lecturas llegan antes de que la otra petición confirme.
+
+    Las siguientes ya ven la fila, como pasa en la base de verdad cuando el
+    commit de la otra petición cae entre la validación y el INSERT.
+    """
+
+    def __init__(self, stale_reads: int) -> None:
+        super().__init__()
+        self._stale_reads = stale_reads
+
+    def _is_stale(self) -> bool:
+        if self._stale_reads > 0:
+            self._stale_reads -= 1
+            return True
+        return False
+
+    async def get_by_rut(self, rut: str) -> Supplier | None:
+        return None if self._is_stale() else await super().get_by_rut(rut)
+
+    async def get_by_user_id(self, user_id) -> Supplier | None:
+        return None if self._is_stale() else await super().get_by_user_id(user_id)
+
+
+async def test_race_with_own_retry_returns_existing_supplier(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Dos envíos del mismo usuario a la vez terminan los dos en la misma empresa.
+
+    Es el caso de las 06:05 del 3-sep: la segunda petición pasó la validación y
+    chocó al insertar. En vez de un 500, tiene que devolver la empresa del dueño.
+    """
+    owner_id = uuid4()
+    supplier_repo = StaleValidationRepository(stale_reads=2)
+    existing = await InMemorySupplierRepository.save(
+        supplier_repo, Supplier(rut=VALID_RUT, legal_name="Empresa SpA", user_id=owner_id)
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    result = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert result.created is False
+    assert result.supplier.id == existing.id
+    assert len(supplier_repo.suppliers) == 1
+    assert vector_repo.vectors == {}
