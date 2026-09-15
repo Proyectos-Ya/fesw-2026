@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkRutExists,
   createSupplier,
   getMySupplier,
   getMySupplierOrNull,
   updateSupplier,
+  waitForMySupplier,
 } from "../supplierService";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import type { ProfileData } from "../../profileSchema";
@@ -147,6 +148,72 @@ describe("getMySupplierOrNull", () => {
     );
 
     await expect(getMySupplierOrNull()).resolves.toBeNull();
+  });
+});
+
+describe("waitForMySupplier", () => {
+  // El 3-sep el wizard consultó /suppliers/me una sola vez, justo al cortar por
+  // timeout, y recibió 404: el backend confirmó la empresa dos segundos después.
+  // Una consulta única pierde esa carrera; hay que insistir con espera.
+  const notFound = () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+    json: async () => ({ detail: "Sin empresa asociada" }),
+  });
+  const found = () => ({
+    ok: true,
+    json: async () => ({ id: "abc-123", ...validData }),
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("devuelve la empresa en cuanto aparece, reintentando con espera", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(found());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = waitForMySupplier({ delaysMs: [1000, 2000, 4000] });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(promise).resolves.toMatchObject({ id: "abc-123" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("devuelve null si la empresa no aparece tras agotar las esperas", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => notFound());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = waitForMySupplier({ delaysMs: [1000, 2000] });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(promise).resolves.toBeNull();
+    // Una consulta inmediata y una después de cada espera
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("no vuelve a consultar antes de que termine la espera", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => notFound());
+    vi.stubGlobal("fetch", fetchMock);
+
+    void waitForMySupplier({ delaysMs: [1000] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

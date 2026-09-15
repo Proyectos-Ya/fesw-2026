@@ -12,10 +12,37 @@ import { Step4Summary } from "./steps/Step4Summary";
 import { z } from "zod";
 import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
-import { createSupplier, getMySupplierOrNull } from "../services/supplierService";
+import { createSupplier, waitForMySupplier } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
 import { SuccessView } from "./SuccessView";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
+
+/**
+ * Respuestas tras las que la empresa pudo haber quedado creada de todas formas.
+ *
+ * - 409: la empresa puede ser del propio usuario, creada por un envío anterior
+ *   que el navegador dio por perdido.
+ * - 502, 503, 504: el proxy o el backend respondieron con error, pero el
+ *   trabajo pudo terminar del otro lado.
+ */
+const MAY_HAVE_BEEN_CREATED_STATUSES = new Set([409, 502, 503, 504]);
+
+function mayHaveBeenCreated(err: unknown): boolean {
+  if (err instanceof ApiError) return MAY_HAVE_BEEN_CREATED_STATUSES.has(err.status);
+  // Datos inválidos: la petición ni siquiera salió.
+  if (err instanceof z.ZodError) return false;
+  // Timeout o corte de red: no hubo respuesta, así que no se sabe qué pasó.
+  return true;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof z.ZodError) {
+    return "Hay campos incompletos o inválidos. Revisa los pasos anteriores.";
+  }
+  if (err instanceof TimeoutError) return err.message;
+  return "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.";
+}
 
 export function ProfileWizard() {
   const router = useRouter();
@@ -39,25 +66,19 @@ export function ProfileWizard() {
       setShowSuccess(true);
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else if (err instanceof z.ZodError) {
-        setError("Hay campos incompletos o inválidos. Revisa los pasos anteriores.");
-      } else {
-        // Timeout o corte de red: no hubo respuesta, pero el backend pudo
-        // haber alcanzado a crear la empresa. Se verifica antes de mostrar error.
-        const existing = await getMySupplierOrNull();
+      if (mayHaveBeenCreated(err)) {
+        // El backend sigue trabajando aunque el navegador corte. Se confirma con
+        // reintentos antes de mostrar un error: el 3-sep una única consulta llegó
+        // dos segundos antes del commit, recibió 404 y el usuario vio un error
+        // por una empresa que sí se había creado.
+        const existing = await waitForMySupplier();
         if (existing) {
           setSupplier(existing);
           setShowSuccess(true);
           return;
         }
-        setError(
-          err instanceof TimeoutError
-            ? err.message
-            : "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.",
-        );
       }
+      setError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
