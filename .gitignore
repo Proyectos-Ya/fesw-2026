@@ -41,8 +41,10 @@ playwright-report/
 test-results/
 
 # Claude Code / Agents / Graphify
-CLAUDE.md
-.claude
+# CLAUDE.md y .claude/ (skills, settings.json, launch.json) se versionan para que
+# todo el equipo comparta el mismo contexto. Lo personal de cada máquina queda fuera.
+CLAUDE.local.md
+.claude/settings.local.json
 .agents/
 graphify-out/
 
