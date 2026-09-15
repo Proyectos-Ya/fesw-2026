@@ -22,9 +22,11 @@ from app.application.repositories.tender_vector_repository import (
 )
 from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
+from app.domain.entities.company_profile import CompanyRecord
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.notification import (
     Notification,
@@ -167,6 +169,26 @@ class FakeEmbeddingService(IEmbeddingService):
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(texts)
         return [self.vector] * len(texts)
+
+
+class FakeCompanyLookupService(ICompanyLookupService):
+    """Fuente de datos de empresas: devuelve un registro fijo o lanza un error."""
+
+    def __init__(
+        self,
+        record: CompanyRecord | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.record = record
+        self.error = error
+        self.calls: list[str] = []
+
+    async def lookup(self, rut: str) -> CompanyRecord:
+        self.calls.append(rut)
+        if self.error is not None:
+            raise self.error
+        assert self.record is not None, "FakeCompanyLookupService sin registro"
+        return self.record
 
 
 class FakeIdentityDirectory(IIdentityDirectory):
