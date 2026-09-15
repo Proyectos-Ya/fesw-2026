@@ -21,8 +21,16 @@ export function ProfileWizard() {
   const router = useRouter();
   const { user } = useAuth();
   const { setSupplier } = useCompany();
-  const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
-    useProfileWizard();
+  const {
+    currentStep,
+    formData,
+    importedProfile,
+    nextStep,
+    prevStep,
+    goToStep,
+    applyImport,
+    totalSteps,
+  } = useProfileWizard();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +100,9 @@ export function ProfileWizard() {
               years_experience: formData.years_experience,
               num_employees: formData.num_employees,
             }}
+            rut={formData.rut}
+            importedProfile={importedProfile}
+            onImported={applyImport}
             onNext={(data: Step2Data) => nextStep(data)}
             onBack={prevStep}
           />
@@ -104,6 +115,7 @@ export function ProfileWizard() {
               certifications: formData.certifications,
               description: formData.description,
             }}
+            suggestedKeywords={importedProfile?.keywords}
             onNext={(data: Step3Data) => nextStep(data)}
             onBack={prevStep}
           />

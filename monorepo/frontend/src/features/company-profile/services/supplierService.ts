@@ -44,6 +44,31 @@ export async function checkRutExists(rut: string): Promise<boolean> {
   return exists;
 }
 
+/**
+ * Borrador de perfil sugerido a partir del RUT, con las actividades económicas
+ * del SII (vía SRE o Web Empresario, según la configuración del backend). No se
+ * guarda nada: el usuario lo revisa en el wizard antes de crear la empresa.
+ */
+export interface CompanyProfileImport {
+  source: string;
+  rut: string;
+  legal_name: string;
+  is_active: boolean | null;
+  /** Nombres de región del wizard; vacío si la fuente no entrega domicilio. */
+  regions: string[];
+  sectors: string[];
+  keywords: string[];
+  /** Avisos sobre lo que no se pudo deducir. */
+  notices: string[];
+}
+
+/** Importa los datos de la empresa desde su RUT. */
+export function importCompanyProfile(rut: string): Promise<CompanyProfileImport> {
+  return apiFetch<CompanyProfileImport>(
+    `/suppliers/profile-import?rut=${encodeURIComponent(rut)}`,
+  );
+}
+
 /** Campos editables de la empresa; el RUT no se puede modificar. */
 export type UpdateSupplierData = Partial<Omit<ProfileData, "rut" | "trade_name">> & {
   trade_name?: string | null;
