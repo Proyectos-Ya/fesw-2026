@@ -85,10 +85,11 @@ from scripts.ingesta_compartida import (
     vaciar_cola,
 )
 
-# Una corrida de un día hábil tarda ~50 minutos (4.500 detalles a ~3,3 s con
-# concurrencia 5). El doble deja margen para una API lenta sin dejar que una
-# corrida colgada bloquee la del día siguiente.
-DEFAULT_TIMEOUT_MINUTOS = 120
+# Medido en local (2026-09-15): el detalle tarda 1,7-17 s por llamada y listar
+# ~12 s por página de 20, así que un día hábil (~4.500) proyecta ~45 min listando
+# y ~2,5 h de detalle con concurrencia 10: unas 3-3,5 h. Seis horas dejan margen
+# para una API lenta y siguen lejos de pisar la corrida del día siguiente.
+DEFAULT_TIMEOUT_MINUTOS = 360
 
 
 def verificar_destino(database_url: str, *, confirmar_produccion: bool) -> str | None:
