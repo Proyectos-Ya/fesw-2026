@@ -13,6 +13,7 @@ from app.application.schemas.supplier_schema import (
     RutExistsResponse,
     UpdateSupplierSchema,
 )
+from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.check_rut_exists import CheckRutExistsUseCase
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
@@ -20,9 +21,19 @@ from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.application.use_cases.supplier.get_supplier_by_user import (
     GetSupplierByUserUseCase,
 )
+from app.application.use_cases.supplier.import_company_profile import (
+    ImportCompanyProfileUseCase,
+)
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
+from app.domain.entities.company_profile import CompanyProfileDraft
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.user import User
+from app.domain.errors.company_lookup_errors import (
+    CompanyLookupNotConfigured,
+    CompanyLookupUnavailable,
+    CompanyNotFoundInSource,
+    InvalidRutForLookup,
+)
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierNotFound,
@@ -36,6 +47,7 @@ def create_supplier_router(
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
+    get_company_lookup_service: Callable,
     get_current_user: Callable,
 ) -> APIRouter:
     """
@@ -152,6 +164,43 @@ def create_supplier_router(
         # Verificación temprana de RUT duplicado para el wizard de creación.
         # Declarada antes de /{supplier_id} para que no se capture como id.
         return RutExistsResponse(exists=await CheckRutExistsUseCase(repo).execute(rut))
+
+    @router.get(
+        "/profile-import",
+        response_model=CompanyProfileDraft,
+        responses={
+            400: {"description": "RUT inválido"},
+            404: {"description": "La fuente no tiene datos para ese RUT"},
+            502: {"description": "La fuente de datos no respondió"},
+            503: {"description": "No hay fuente de datos de empresas configurada"},
+        },
+    )
+    async def import_company_profile(
+        rut: str,
+        lookup_service: Annotated[
+            ICompanyLookupService | None, Depends(get_company_lookup_service)
+        ],
+    ):
+        # Borrador de regiones, rubros y palabras clave para el wizard (HdU 16).
+        # No guarda nada: el usuario lo revisa antes de crear la empresa.
+        try:
+            return await ImportCompanyProfileUseCase(lookup_service).execute(rut)
+        except InvalidRutForLookup as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        except CompanyNotFoundInSource as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except CompanyLookupUnavailable as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
+        except CompanyLookupNotConfigured as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
 
     @router.get(
         "/{supplier_id}",
