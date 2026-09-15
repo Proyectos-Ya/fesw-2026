@@ -389,3 +389,86 @@ async def test_embedding_failure_allows_retry(
 
     assert await supplier_repo.get_by_rut(VALID_RUT) is not None
     assert supplier.id in vector_repo.upserts
+
+
+# ---------------------------------------------------------------------------
+# Todo o nada entre Postgres y Qdrant
+#
+# Antes la fila se confirmaba y recién después se escribía el vector. Si Qdrant
+# fallaba —o el proceso moría— entre los dos pasos, la empresa quedaba visible
+# en "Mi empresa" e inexistente para matches y alertas (SupplierVectorNotFound).
+# Ahora la fila queda pendiente, se indexa, y solo entonces se confirma.
+# ---------------------------------------------------------------------------
+
+
+class CommitSpyRepository(InMemorySupplierRepository):
+    """Registra qué vectores había en Qdrant en el momento de cada commit."""
+
+    def __init__(self, vector_repo: FakeSupplierVectorRepository) -> None:
+        super().__init__()
+        self._vector_repo = vector_repo
+        self.vectors_at_commit: list[dict] = []
+
+    async def commit(self) -> None:
+        self.vectors_at_commit.append(dict(self._vector_repo.vectors))
+        await super().commit()
+
+
+async def test_vector_is_indexed_before_sql_commit(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Cuando se confirma la fila, su vector ya está en Qdrant."""
+    supplier_repo = CommitSpyRepository(vector_repo)
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    supplier = await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier.id in supplier_repo.vectors_at_commit[-1]
+
+
+async def test_qdrant_failure_leaves_no_supplier_in_sql(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si Qdrant no acepta el vector, la empresa no queda en SQL."""
+    vector_repo.fail_on_upsert = ConnectionError("Qdrant no responde")
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(ConnectionError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier_repo.suppliers == {}
+    assert await supplier_repo.get_by_rut(VALID_RUT) is None
+
+
+async def test_commit_failure_removes_indexed_vector(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el commit falla después de indexar, el vector se borra de Qdrant."""
+    supplier_repo.fail_on_commit = RuntimeError("se cayó la conexión a Postgres")
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(RuntimeError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier_repo.suppliers == {}
+    assert await supplier_repo.get_by_rut(VALID_RUT) is None
+    assert vector_repo.vectors == {}
+
+
+async def test_retry_after_qdrant_failure_creates_complete_supplier(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Tras la caída de Qdrant, reintentar crea la empresa con su vector."""
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+    vector_repo.fail_on_upsert = ConnectionError("Qdrant no responde")
+    with pytest.raises(ConnectionError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    vector_repo.fail_on_upsert = None
+    supplier = await use_case.execute(SUPPLIER_DATA)
+
+    assert await supplier_repo.get_by_rut(VALID_RUT) is not None
+    assert supplier.id in vector_repo.vectors

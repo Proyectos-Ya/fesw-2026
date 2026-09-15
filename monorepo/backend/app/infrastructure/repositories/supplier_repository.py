@@ -50,16 +50,34 @@ class SupplierRepository(ISupplierRepository):
         return [user_id for user_id in result.all() if user_id is not None]
 
     async def save(self, supplier: Supplier) -> Supplier:
-        # Persiste el proveedor en la base de datos
-        model = self._to_model(supplier)
-        self.session.add(model)
-        await self.session.commit()
-        await self.session.refresh(model)
-        return self._to_entity(model)
+        # Persiste el proveedor y confirma en el mismo paso
+        saved = await self.add(supplier)
+        await self.commit()
+        return saved
 
     async def update(self, supplier: Supplier) -> Supplier:
-        # Actualiza un proveedor existente (merge por primary key)
-        model = await self.session.merge(self._to_model(supplier))
-        await self.session.commit()
-        await self.session.refresh(model)
+        # Actualiza un proveedor existente y confirma en el mismo paso
+        updated = await self.stage_update(supplier)
+        await self.commit()
+        return updated
+
+    async def add(self, supplier: Supplier) -> Supplier:
+        # El flush manda el INSERT dentro de la transacción abierta: Postgres
+        # evalúa ahí las restricciones de unicidad, pero nada queda confirmado
+        # hasta `commit`.
+        model = self._to_model(supplier)
+        self.session.add(model)
+        await self.session.flush()
         return self._to_entity(model)
+
+    async def stage_update(self, supplier: Supplier) -> Supplier:
+        # Merge por primary key, pendiente hasta `commit`
+        model = await self.session.merge(self._to_model(supplier))
+        await self.session.flush()
+        return self._to_entity(model)
+
+    async def commit(self) -> None:
+        await self.session.commit()
+
+    async def rollback(self) -> None:
+        await self.session.rollback()
