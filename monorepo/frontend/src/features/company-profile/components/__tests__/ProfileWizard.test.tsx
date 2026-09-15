@@ -1,6 +1,6 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileWizard } from "../ProfileWizard";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import type { Supplier } from "../../services/supplierService";
@@ -165,5 +165,72 @@ describe("ProfileWizard: envío", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("RUT format is invalid");
     expect(waitForMySupplierMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProfileWizard: pantalla de creación", () => {
+  // El loader era un spinner de 16 px dentro del botón; lo único visible era la
+  // barra de éxito, que aparece cuando todo ya terminó. La espera tiene que
+  // verse desde el clic, porque puede durar casi un minuto.
+  const pending = () => new Promise<never>(() => {});
+
+  const beforeUnloadIsBlocked = () => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  beforeEach(() => {
+    createSupplierMock.mockReset();
+    waitForMySupplierMock.mockReset();
+    setSupplierMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("aparece apenas se aprieta el botón, sin esperar al backend", async () => {
+    createSupplierMock.mockReturnValue(pending());
+    renderAtSummary();
+
+    await submit();
+
+    expect(screen.getByRole("status")).toHaveTextContent("Creando tu empresa…");
+    expect(
+      screen.queryByRole("button", { name: /Guardar perfil y comenzar/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("pasa a la fase de verificación mientras confirma tras un timeout", async () => {
+    createSupplierMock.mockRejectedValue(new TimeoutError());
+    waitForMySupplierMock.mockReturnValue(pending());
+    renderAtSummary();
+
+    await submit();
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Confirmando que tu empresa quedó registrada…",
+    );
+  });
+
+  it("advierte antes de cerrar o recargar la página mientras se crea", async () => {
+    // Recargar a mitad de la petición fue lo que llevó al reintento del 3-sep.
+    createSupplierMock.mockReturnValue(pending());
+    renderAtSummary();
+
+    await submit();
+
+    expect(beforeUnloadIsBlocked()).toBe(true);
+  });
+
+  it("deja de advertir al volver al resumen tras un error", async () => {
+    createSupplierMock.mockRejectedValue(new ApiError(400, "RUT format is invalid"));
+    renderAtSummary();
+
+    await submit();
+    await screen.findByRole("alert");
+
+    expect(beforeUnloadIsBlocked()).toBe(false);
   });
 });

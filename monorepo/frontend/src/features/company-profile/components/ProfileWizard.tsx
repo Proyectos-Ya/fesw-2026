@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { useProfileWizard } from "../hooks/useProfileWizard";
@@ -14,6 +14,7 @@ import { profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, waitForMySupplier } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
+import { CreatingCompanyView } from "./CreatingCompanyView";
 import { SuccessView } from "./SuccessView";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
@@ -29,8 +30,6 @@ const MAY_HAVE_BEEN_CREATED_STATUSES = new Set([409, 502, 503, 504]);
 
 function mayHaveBeenCreated(err: unknown): boolean {
   if (err instanceof ApiError) return MAY_HAVE_BEEN_CREATED_STATUSES.has(err.status);
-  // Datos inválidos: la petición ni siquiera salió.
-  if (err instanceof z.ZodError) return false;
   // Timeout o corte de red: no hubo respuesta, así que no se sabe qué pasó.
   return true;
 }
@@ -44,26 +43,54 @@ function errorMessage(err: unknown): string {
   return "No se pudo guardar el perfil. Verifica tu conexión e inténtalo nuevamente.";
 }
 
+/**
+ * `creating` y `verifying` muestran la pantalla de espera; `idle` el resumen,
+ * con el error si lo hubo. Un solo estado evita combinaciones sin sentido, como
+ * "enviando" y "éxito" a la vez.
+ */
+type SubmitState = "idle" | "creating" | "verifying" | "success";
+
 export function ProfileWizard() {
   const router = useRouter();
   const { user } = useAuth();
   const { setSupplier } = useCompany();
   const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
     useProfileWizard();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const adminName = user?.full_name ?? "Usuario";
+  const isBusy = submitState === "creating" || submitState === "verifying";
+
+  // Recargar o cerrar a mitad de la creación deja la petición corriendo en el
+  // backend sin nadie esperándola, y el reintento que sigue es justo lo que
+  // terminó en el 409 del 3-sep. Mientras se crea, el navegador pide confirmación.
+  useEffect(() => {
+    if (!isBusy) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isBusy]);
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
     setError(null);
+
+    // Se valida antes de mostrar la espera: con datos inválidos la petición ni
+    // siquiera sale, y la pantalla de carga solo parpadearía.
+    const parsed = profileSchema.safeParse(formData);
+    if (!parsed.success) {
+      setError(errorMessage(parsed.error));
+      return;
+    }
+
+    // Antes de cualquier await: la pantalla de espera aparece en el mismo clic.
+    setSubmitState("creating");
     try {
-      const payload = profileSchema.parse(formData);
-      const created = await createSupplier(payload);
+      const created = await createSupplier(parsed.data);
       setSupplier(created); // Actualiza el estado compartido (sidebar, home)
-      setShowSuccess(true);
+      setSubmitState("success");
     } catch (err) {
       console.error("[ProfileWizard] Error al guardar perfil:", err);
       if (mayHaveBeenCreated(err)) {
@@ -71,24 +98,34 @@ export function ProfileWizard() {
         // reintentos antes de mostrar un error: el 3-sep una única consulta llegó
         // dos segundos antes del commit, recibió 404 y el usuario vio un error
         // por una empresa que sí se había creado.
+        setSubmitState("verifying");
         const existing = await waitForMySupplier();
         if (existing) {
           setSupplier(existing);
-          setShowSuccess(true);
+          setSubmitState("success");
           return;
         }
       }
       setError(errorMessage(err));
-    } finally {
-      setIsSubmitting(false);
+      setSubmitState("idle");
     }
   };
 
-  if (showSuccess) {
+  if (submitState === "success") {
     return (
       <div className="mx-auto w-full max-w-2xl">
         <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
           <SuccessView onRedirect={() => router.push("/")} />
+        </div>
+      </div>
+    );
+  }
+
+  if (submitState === "creating" || submitState === "verifying") {
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+          <CreatingCompanyView phase={submitState} />
         </div>
       </div>
     );
@@ -144,7 +181,7 @@ export function ProfileWizard() {
               onBack={prevStep}
               onSubmit={handleSubmit}
               onGoToStep={goToStep}
-              isLoading={isSubmitting}
+              isLoading={isBusy}
             />
           </>
         )}
