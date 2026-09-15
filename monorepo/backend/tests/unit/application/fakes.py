@@ -110,14 +110,14 @@ class FakeSupplierVectorRepository(ISupplierVectorRepository):
         self.upserts: list[UUID] = []
         self.vectors: dict[UUID, list[float]] = {}
 
-    def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+    async def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
         self.upserts.append(supplier_id)
         self.vectors[supplier_id] = embedding
 
-    def delete(self, supplier_id: UUID) -> None:
+    async def delete(self, supplier_id: UUID) -> None:
         self.vectors.pop(supplier_id, None)
 
-    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+    async def get_vector(self, supplier_id: UUID) -> list[float] | None:
         return self.vectors.get(supplier_id)
 
 

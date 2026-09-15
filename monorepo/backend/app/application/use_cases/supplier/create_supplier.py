@@ -67,6 +67,6 @@ class CreateSupplierUseCase:
         vectors = await self.embedding_service.embed([text])
 
         saved_supplier = await self.repo.save(supplier)
-        self.vector_repo.upsert(saved_supplier.id, vectors[0])
+        await self.vector_repo.upsert(saved_supplier.id, vectors[0])
 
         return saved_supplier

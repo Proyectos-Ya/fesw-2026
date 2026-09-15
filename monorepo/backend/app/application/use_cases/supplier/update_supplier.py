@@ -73,6 +73,6 @@ class UpdateSupplierUseCase:
         saved = await self.repo.update(updated)
 
         if vectors is not None:
-            self.vector_repo.upsert(saved.id, vectors[0])
+            await self.vector_repo.upsert(saved.id, vectors[0])
 
         return saved

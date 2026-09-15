@@ -164,7 +164,7 @@ def get_supplier_repo(
 
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
     # Reutiliza el cliente Qdrant inicializado en el lifespan
-    return QdrantSupplierRepository(request.app.state.qdrant_client)
+    return QdrantSupplierRepository(request.app.state.qdrant_async_client)
 
 
 def get_tender_repo(
@@ -663,7 +663,7 @@ def build_notification_runners(
     def _rank_tenders(session: AsyncSession) -> RankTendersUseCase:
         return RankTendersUseCase(
             supplier_repo=SupplierRepository(session),
-            supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_client),
+            supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_async_client),
             tender_vector_repo=QdrantTenderRepository(
                 client=app.state.qdrant_async_client,
                 vector_size=settings.embedding_vector_size,

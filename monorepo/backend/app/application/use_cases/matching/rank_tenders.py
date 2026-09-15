@@ -162,7 +162,7 @@ class RankTendersUseCase:
 
         # 3. Cache vacío, inválido o force_refresh=True: ejecutar el pipeline de recomendación completo
         # 3.1 Obtener vector del proveedor desde Qdrant
-        supplier_vector = self.supplier_vector_repo.get_vector(supplier.id)
+        supplier_vector = await self.supplier_vector_repo.get_vector(supplier.id)
         if supplier_vector is None:
             raise SupplierVectorNotFound(supplier.id)
 
