@@ -147,3 +147,22 @@ class TestRegistroDeCorridas:
 
         # La ventana siguiente arranca donde terminó esta, salvo por el piso.
         assert nueva_desde >= desde
+
+    async def test_tras_un_dia_sin_correr_retoma_justo_donde_quedo(
+        self, servicio, integration_engine
+    ):
+        """La ventana llega en UTC naive y se guarda tal cual.
+
+        `registrar_inicio` la pasaba por `to_utc_naive`, que supone hora de Chile
+        —es el conversor de las fechas de Mercado Público— y le sumaba 3-4 h. Con
+        corridas diarias no se notaba, porque el piso de 24 h tapa el desfase;
+        tras un día sin correr, la corrida siguiente arrancaba 3-4 h después de
+        donde quedó la anterior, y ese tramo no se volvía a listar nunca.
+        """
+        hasta = utc_now_naive() - timedelta(days=2)
+        run_id = await servicio.registrar_inicio(hasta - PISO_VENTANA, hasta)
+        await servicio.registrar_fin(run_id, status="ok", listed=1)
+
+        nueva_desde, _ = await servicio.ventana_a_sincronizar()
+
+        assert nueva_desde == hasta
