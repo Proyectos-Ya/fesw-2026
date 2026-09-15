@@ -31,7 +31,8 @@ reglas de git y commits están en [SKILL.md](./SKILL.md).
     seguridad y consistencia del árbol de dependencias.
   - **Prohibido el tipo `any`**. Usar tipos específicos, interfaces, genéricos o
     `unknown`.
-  - Todo lo visual sigue la skill `chiripa-frontend` (`.claude/skills/chiripa-frontend/`).
+  - Antes de crear un componente, revisa `src/features/shared/components/`. La
+    documentación de diseño y marca del frontend está pendiente.
 - **Backend (`monorepo/backend`)**: FastAPI, Python 3.12+, SQLModel y Alembic.
 
 ### Pruebas y TDD

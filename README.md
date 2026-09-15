@@ -34,7 +34,6 @@ docs/               planes técnicos, decisiones, changelogs y guías
 | Planes técnicos, decisiones (ADR), changelogs y guías | [docs/](./docs/README.md) |
 | Cómo se documenta, paso a paso | [skill `documentacion`](./.claude/skills/documentacion/SKILL.md) |
 | Referencia de la API | `/docs` (Swagger) con la API corriendo en local |
-| Diseño y marca | [skill `chiripa-frontend`](./.claude/skills/chiripa-frontend/SKILL.md) |
 | Historias de usuario originales (histórico) | [user-story/](./user-story/user-stories-mvp.md) |
 
 ## Asistentes de IA

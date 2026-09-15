@@ -16,7 +16,6 @@ Viven en `.claude/skills/` y están versionadas.
 | Skill | Cuándo |
 |---|---|
 | `documentacion` | Plan técnico de una HdU, ADR, changelog de sprint, documentar un endpoint o editar AGENTS/CLAUDE/GEMINI. |
-| `chiripa-frontend` | Cualquier cosa que se vea en pantalla: componentes, estilos, marca. |
 | `fastapi` | Rutas, dependencias y modelos del backend. Ver "qué manda cuando choca" abajo. |
 
 ---
