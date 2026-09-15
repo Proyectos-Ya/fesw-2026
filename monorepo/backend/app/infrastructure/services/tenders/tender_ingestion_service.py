@@ -83,6 +83,19 @@ class ResultadoProceso:
     cuota_agotada: bool = False
 
 
+def _en_utc_naive(momento: datetime) -> datetime:
+    """Un instante del sistema, listo para persistir.
+
+    No es `to_utc_naive`: ese conversor es para las fechas de Mercado Público y
+    supone que un naive viene en hora de Chile. La ventana la calcula
+    `utc_now_naive()`, así que un naive acá **ya está en UTC** y convertirlo lo
+    corría 3-4 h hacia el futuro.
+    """
+    if momento.tzinfo is None:
+        return momento
+    return momento.astimezone(UTC).replace(tzinfo=None)
+
+
 def _lotes(elementos: list, tamano: int):
     """Trocea una lista en sublistas de a lo más `tamano`."""
     for inicio in range(0, len(elementos), tamano):
@@ -307,8 +320,8 @@ class TenderIngestionService(ITenderIngestionService):
             session.add(
                 IngestionRunModel(
                     id=run_id,
-                    window_from=to_utc_naive(desde) or utc_now_naive(),
-                    window_to=to_utc_naive(hasta) or utc_now_naive(),
+                    window_from=_en_utc_naive(desde),
+                    window_to=_en_utc_naive(hasta),
                     status="running",
                 )
             )
