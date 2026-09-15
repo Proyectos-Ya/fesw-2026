@@ -1,6 +1,6 @@
-# ProyectosYA - Reglas de Operación y Git para Agentes de IA
+# Chiripa - Reglas de Operación y Git para Agentes de IA
 
-Este documento describe las instrucciones que todos los agentes de IA deben seguir estrictamente cuando interactúan con el repositorio de **ProyectosYA**, especialmente en lo relativo al ciclo de vida de desarrollo, commits y control de versiones.
+Este documento describe las instrucciones que todos los agentes de IA deben seguir estrictamente cuando interactúan con el repositorio de **Chiripa**, especialmente en lo relativo al ciclo de vida de desarrollo, commits y control de versiones.
 
 ---
 

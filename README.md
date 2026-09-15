@@ -1,63 +1,51 @@
-# ProyectosYA - Monorepo
+# Chiripa — Monorepo
 
-Bienvenido al repositorio principal de **ProyectosYA**, una plataforma de matching y gestión de licitaciones de Mercado Público potenciada por Inteligencia Artificial.
+**Chiripa** ayuda a MiPymes chilenas a ganar licitaciones de ChileCompra y Compra Ágil:
+indexa las licitaciones de Mercado Público y las cruza con el perfil de cada empresa
+mediante matching semántico.
 
-El repositorio está organizado como un monorepo bajo el directorio `monorepo/`:
-* [Frontend (Next.js)](./monorepo/frontend)
-* [Backend (FastAPI)](./monorepo/backend)
+> El repositorio y algunos identificadores técnicos conservan el nombre anterior del
+> producto, **ProyectosYA**.
 
----
-
-## 📚 Documentación del Proyecto
-
-Para obtener información detallada sobre la instalación, configuración y la arquitectura de cada módulo, puedes revisar los siguientes documentos:
-
-* 💻 **Frontend**: Consulta el [README de Frontend](./monorepo/frontend/README.md) para conocer las dependencias, la Screaming Architecture y cómo iniciar el servidor de desarrollo de Next.js.
-* 🐍 **Backend**: Consulta el [README de Backend](./monorepo/backend/README.md) para configurar el entorno virtual de Python, iniciar la base de datos PostgreSQL mediante Docker, y levantar la API con FastAPI.
-* 📋 **Historias de Usuario (User Stories)**:
-  - Para conocer el alcance y criterios de aceptación del producto mínimo viable, lee [Historias de Usuario - MVP](./user-story/user-stories-mvp.md).
-  - Para ver el roadmap y las historias planificadas para el resto del año, revisa [Historias de Usuario - Anual](./user-story/user-stories-anual.md).
+```
+monorepo/frontend   Next.js 16 · React 19 · TypeScript · Tailwind v4   (Vercel)
+monorepo/backend    FastAPI · Python 3.12 · SQLModel · Alembic         (Railway)
+supabase/           configuración de Supabase (Postgres y Auth)
+spikes/             investigaciones desechables
+docs/               planes técnicos, decisiones, changelogs y guías
+```
 
 ---
 
-## Configuración de Asistentes y Agentes de IA
+## Cómo empezar
 
-Si utilizas asistentes de código basados en IA (**Antigravity, Claude Code, Cursor, OpenCode, Copilot**, etc.), es **fundamental** configurarlos para que respeten las reglas y estándares de este repositorio. Esto evitará conflictos de arquitectura, commits mal estructurados o pushes no autorizados.
+- **Backend**: [monorepo/backend/README.md](./monorepo/backend/README.md): entorno
+  virtual, Supabase local, Docker y cómo levantar la API.
+- **Frontend**: [monorepo/frontend/README.md](./monorepo/frontend/README.md): `pnpm`
+  y servidor de desarrollo.
 
-### ¿Cómo configurarlos con `AGENTS.md` y `SKILL.md`?
+## Mapa de la documentación
 
-En la raíz del repositorio cuentas con dos guías críticas:
-* [AGENTS.md](./ProyectosYA/AGENTS.md): Reglas de arquitectura, tecnologías y dependencias obligatorias del proyecto.
-* [SKILL.md](./SKILL.md): Instrucciones operativas para agentes en Git (formato de commits de IA y prohibición estricta de push).
+| Qué buscas | Dónde |
+|---|---|
+| Qué hay que construir y sus criterios de aceptación | GitHub Issues (fuente vigente) |
+| Reglas de arquitectura, pruebas y documentación | [AGENTS.md](./AGENTS.md) |
+| Reglas de git, commits y PRs | [SKILL.md](./SKILL.md) |
+| Planes técnicos, decisiones (ADR), changelogs y guías | [docs/](./docs/README.md) |
+| Cómo se documenta, paso a paso | [skill `documentacion`](./.claude/skills/documentacion/SKILL.md) |
+| Referencia de la API | `/docs` (Swagger) con la API corriendo en local |
+| Diseño y marca | [skill `chiripa-frontend`](./.claude/skills/chiripa-frontend/SKILL.md) |
+| Historias de usuario originales (histórico) | [user-story/](./user-story/user-stories-mvp.md) |
 
-#### 1. Configuración en Cursor / VS Code (Cursor Rules)
-Para que Cursor use estas reglas automáticamente en todos tus chats y ediciones:
-* El repositorio lee las reglas de forma nativa al incluir referencias de contexto.
-* Puedes configurar el asistente añadiendo las reglas a la configuración de tu área de trabajo o creando un enlace en tus instrucciones de Cursor:
-  > *"Siempre lee, respeta y sigue estrictamente las directrices del archivo [AGENTS.md](./AGENTS.md) y [SKILL.md](./SKILL.md) antes de escribir código, hacer pruebas o realizar cualquier commit."*
+## Asistentes de IA
 
-#### 2. Configuración en Antigravity / Claude Code
-Cuando inicies una conversación o un agente autónomo de Antigravity/Claude Code:
-* Puedes referenciar directamente los archivos en tu prompt inicial:
-  `@AGENTS.md @SKILL.md`
-* También puedes configurar las instrucciones del sistema del agente en tu configuración local del espacio de trabajo para cargar siempre el contexto de estos archivos.
+Todas las reglas están en [AGENTS.md](./AGENTS.md). Cada herramienta lo carga así:
 
-#### 3. Configuración en OpenCode / Copilot (Instrucciones Personalizadas de Workspace)
-Puedes definir reglas en tu editor de código para que el asistente de IA las consuma por defecto.
-* Crea o edita el archivo `.vscode/settings.json` en la raíz de tu workspace y añade las directrices en la sección de configuraciones personalizadas del agente de IA:
-  ```json
-  {
-    "github.copilot.chat.codeGeneration.instructions": [
-      "Lee y adhiérete estrictamente a las reglas de desarrollo de AGENTS.md y SKILL.md en la raíz del proyecto."
-    ]
-  }
-  ```
+- **Claude Code**: automático, vía [CLAUDE.md](./CLAUDE.md), que también trae las skills
+  de `.claude/skills/`.
+- **Gemini CLI**: automático, vía [monorepo/GEMINI.md](./monorepo/GEMINI.md), que importa
+  `AGENTS.md` y `SKILL.md`.
+- **Cursor, Copilot, Codex y otros**: leen `AGENTS.md` de la raíz. Si tu herramienta no
+  lo hace, agrégalo a sus instrucciones de workspace.
 
----
-
-## Reglas de Oro para Todos los Desarrolladores y Agentes
-
-1. **Gestor de Dependencias**: Usa únicamente **`pnpm`** en la carpeta `monorepo/frontend` por motivos de seguridad y velocidad.
-2. **Ciclo TDD**: Nunca confirmes código sin haber corrido la suite de pruebas (`pytest` en backend y `pnpm run test` en frontend).
-3. **Tipado Estricto (TypeScript)**: Está estrictamente prohibido utilizar el tipo `any`. Todo código debe hacer uso de tipado fuerte (definiendo interfaces, tipos concretos o genéricos).
-4. **Commits y Push**: Sigue el estándar de Conventional Commits. Si dejas que una IA haga el commit por ti, asegúrate de que incluya la etiqueta `[AI Generated]`. **Las IAs tienen prohibido hacer push directo al origen.**
+Los agentes **no hacen `git push`**: dejan los commits locales y te piden subirlos.
