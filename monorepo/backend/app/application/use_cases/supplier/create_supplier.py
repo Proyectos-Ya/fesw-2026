@@ -48,9 +48,10 @@ class CreateSupplierUseCase:
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
-        existing = await self.repo.get_by_rut(data.rut)
+        # Se busca con el RUT ya normalizado por la entidad, no con el recibido
+        existing = await self.repo.get_by_rut(supplier.rut)
         if existing:
-            raise SupplierAlreadyExists(data.rut)
+            raise SupplierAlreadyExists(supplier.rut)
 
         # Regla de negocio: un usuario solo puede ser dueño de una empresa
         if user_id is not None and await self.repo.get_by_user_id(user_id):

@@ -16,7 +16,7 @@ REGISTER = {
 }
 
 SUPPLIER = {
-    "rut": "76086428-5",
+    "rut": "76.086.428-5",
     "legal_name": "Constructora Norte SpA",
 }
 
