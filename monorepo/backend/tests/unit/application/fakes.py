@@ -40,6 +40,10 @@ from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
 )
+from app.domain.errors.supplier_errors import (
+    SupplierAlreadyExists,
+    UserAlreadyHasSupplier,
+)
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
@@ -72,6 +76,11 @@ class InMemoryUserRepository(IUserRepository):
                 raise UserAlreadyExists(user.email)
         self.users[user.id] = user
         return user
+
+
+def _rut_key(rut: str) -> str:
+    """Misma expresión que el índice `ix_supplier_rut_normalizado`."""
+    return rut.replace(".", "").replace("-", "").upper()
 
 
 class InMemorySupplierRepository(ISupplierRepository):
@@ -120,6 +129,15 @@ class InMemorySupplierRepository(ISupplierRepository):
         return updated
 
     async def add(self, supplier: Supplier) -> Supplier:
+        # Imita los índices únicos de `supplier` (RUT normalizado y user_id):
+        # sin esto, las carreras entre dos peticiones no se podrían probar.
+        for existente in self._visibles().values():
+            if existente.id == supplier.id:
+                continue
+            if _rut_key(existente.rut) == _rut_key(supplier.rut):
+                raise SupplierAlreadyExists(supplier.rut)
+            if supplier.user_id is not None and existente.user_id == supplier.user_id:
+                raise UserAlreadyHasSupplier(supplier.user_id)
         self._pending[supplier.rut] = supplier
         return supplier
 

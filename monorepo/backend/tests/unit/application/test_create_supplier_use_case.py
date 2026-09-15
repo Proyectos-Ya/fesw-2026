@@ -13,6 +13,7 @@ import pytest
 
 from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
+from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierValidationError,
@@ -472,3 +473,39 @@ async def test_retry_after_qdrant_failure_creates_complete_supplier(
 
     assert await supplier_repo.get_by_rut(VALID_RUT) is not None
     assert supplier.id in vector_repo.vectors
+
+
+# ---------------------------------------------------------------------------
+# Carrera: la validación previa pasa, pero otra petición escribió en medio
+#
+# Es el caso de las 06:05 del 3-sep: entre el SELECT de validación y el INSERT
+# pasan los segundos del embedding. La unicidad la tiene que hacer cumplir la
+# base, y el caso de uso tiene que devolver el error de dominio, no un 500.
+# ---------------------------------------------------------------------------
+
+
+class StaleCheckRepository(InMemorySupplierRepository):
+    """Las lecturas de validación no ven la fila que otra petición ya escribió."""
+
+    async def get_by_rut(self, rut: str) -> None:
+        return None
+
+    async def get_by_user_id(self, user_id) -> None:
+        return None
+
+
+async def test_race_on_same_rut_raises_supplier_already_exists(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el RUT se tomó entre la validación y el INSERT, es un conflicto."""
+    supplier_repo = StaleCheckRepository()
+    await InMemorySupplierRepository.save(
+        supplier_repo, Supplier(rut=VALID_RUT, legal_name="Otra SpA", user_id=uuid4())
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.execute(SUPPLIER_DATA, user_id=uuid4())
+
+    assert len(supplier_repo.suppliers) == 1
+    assert vector_repo.vectors == {}
