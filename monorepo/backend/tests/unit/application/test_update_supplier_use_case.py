@@ -20,7 +20,7 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
 )
 
-VALID_RUT = "76086428-5"
+VALID_RUT = "76.086.428-5"
 
 
 @pytest.fixture

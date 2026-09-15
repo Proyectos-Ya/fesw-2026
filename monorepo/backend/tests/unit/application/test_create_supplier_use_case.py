@@ -24,10 +24,10 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
 )
 
-VALID_RUT = "76086428-5"
-OTHER_VALID_RUT = "77777777-7"
+VALID_RUT = "76.086.428-5"
+OTHER_VALID_RUT = "77.777.777-7"
 # Mismo cuerpo que VALID_RUT pero con dígito verificador incorrecto
-INVALID_RUT = "76086428-0"
+INVALID_RUT = "76.086.428-0"
 SUPPLIER_DATA = CreateSupplierSchema(rut=VALID_RUT, legal_name="Empresa SpA")
 
 
@@ -149,6 +149,34 @@ async def test_duplicate_rut_does_not_add_extra_sql_row(
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(supplier_repo.suppliers) == 1
+
+
+@pytest.mark.parametrize("other_format", ["76086428-5", "760864285"])
+async def test_duplicate_rut_detected_with_other_format(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    other_format: str,
+) -> None:
+    """El mismo RUT escrito sin puntos o sin guion cuenta como duplicado."""
+    await use_case.execute(SUPPLIER_DATA)
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.execute(
+            CreateSupplierSchema(rut=other_format, legal_name="Otra Empresa SpA")
+        )
+
+    assert len(supplier_repo.suppliers) == 1
+
+
+async def test_supplier_rut_stored_in_canonical_format(
+    use_case: CreateSupplierUseCase,
+) -> None:
+    """El RUT se guarda como XX.XXX.XXX-X aunque llegue sin puntos."""
+    data = CreateSupplierSchema(rut="760864285", legal_name="Empresa SpA")
+
+    supplier = await use_case.execute(data)
+
+    assert supplier.rut == "76.086.428-5"
 
 
 # ---------------------------------------------------------------------------
