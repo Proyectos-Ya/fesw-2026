@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from uuid import UUID
@@ -13,11 +14,17 @@ from app.application.services.embedding_service import IEmbeddingService
 from app.domain.entities.supplier import Supplier, format_rut
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
+    SupplierProfileIndexingUnavailable,
     SupplierValidationError,
     UserAlreadyHasSupplier,
 )
 
 logger = logging.getLogger(__name__)
+
+# Tope por defecto para el embedding. Tiene que quedar por debajo del corte del
+# cliente (60 s): si no, el backend sigue trabajando cuando el usuario ya vio el
+# error, y termina creando la empresa a sus espaldas.
+DEFAULT_EMBEDDING_DEADLINE_SECONDS = 45.0
 
 
 def _build_supplier_text(data: CreateSupplierSchema | Supplier) -> str:
@@ -46,10 +53,12 @@ class CreateSupplierUseCase:
         repo: ISupplierRepository,
         vector_repo: ISupplierVectorRepository,
         embedding_service: IEmbeddingService,
+        embedding_deadline_seconds: float = DEFAULT_EMBEDDING_DEADLINE_SECONDS,
     ):
         self.repo = repo
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
+        self.embedding_deadline_seconds = embedding_deadline_seconds
 
     async def execute(
         self, data: CreateSupplierSchema, user_id: UUID | None = None
@@ -86,7 +95,7 @@ class CreateSupplierUseCase:
         # el escaneo de alertas respondían que no existía, sin forma de arreglarlo
         # reintentando, porque el RUT ya estaba tomado.
         text = _build_supplier_text(data)
-        vectors = await self.embedding_service.embed([text])
+        vectors = await self._embed_within_deadline(text)
 
         # Entre las validaciones de arriba y este INSERT pasan los segundos del
         # embedding: otra petición pudo haber creado la empresa. La base lo
@@ -120,6 +129,20 @@ class CreateSupplierUseCase:
             raise
 
         return CreateSupplierResult(saved_supplier, created=True)
+
+    async def _embed_within_deadline(self, text: str) -> list[list[float]]:
+        """Calcula el embedding o corta en el tope, sin haber guardado nada.
+
+        Cualquier fallo del proveedor —tope vencido, red, 5xx tras sus propios
+        reintentos— significa lo mismo para quien crea la empresa: ahora no se
+        pudo, y reintentar es seguro porque todavía no se escribió nada.
+        """
+        try:
+            async with asyncio.timeout(self.embedding_deadline_seconds):
+                return await self.embedding_service.embed([text])
+        except Exception as exc:
+            logger.warning("No se pudo calcular el embedding del proveedor: %r", exc)
+            raise SupplierProfileIndexingUnavailable() from exc
 
     async def _own_supplier_with_rut(
         self, user_id: UUID | None, rut: str

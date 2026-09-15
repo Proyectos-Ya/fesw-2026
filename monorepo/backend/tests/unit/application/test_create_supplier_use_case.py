@@ -7,6 +7,8 @@ Qdrant (FakeSupplierVectorRepository), y que los errores de negocio dejan
 ambos stores intactos.
 """
 
+import asyncio
+import time
 from uuid import uuid4
 
 import pytest
@@ -16,6 +18,7 @@ from app.application.use_cases.supplier.create_supplier import CreateSupplierUse
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
+    SupplierProfileIndexingUnavailable,
     SupplierValidationError,
     UserAlreadyHasSupplier,
 )
@@ -330,12 +333,12 @@ async def test_embedding_failure_propagates(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,
 ) -> None:
-    """Si el servicio de embeddings falla, el error llega al llamador."""
+    """Si el servicio de embeddings falla, llega al llamador como error de dominio."""
     use_case = CreateSupplierUseCase(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
 
@@ -348,7 +351,7 @@ async def test_embedding_failure_leaves_no_supplier_in_sql(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(supplier_repo.suppliers) == 0
@@ -363,7 +366,7 @@ async def test_embedding_failure_leaves_no_vector(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(vector_repo.upserts) == 0
@@ -382,7 +385,7 @@ async def test_embedding_failure_allows_retry(
     fallido = CreateSupplierUseCase(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await fallido.execute(SUPPLIER_DATA)
 
     sano = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
@@ -612,3 +615,88 @@ async def test_race_with_own_retry_returns_existing_supplier(
     assert result.supplier.id == existing.id
     assert len(supplier_repo.suppliers) == 1
     assert vector_repo.vectors == {}
+
+
+# ---------------------------------------------------------------------------
+# Tope de tiempo del embedding
+#
+# El cliente corta a los 60 s y el proxy de Vercel a los 120 s, pero el servicio
+# de embeddings podía tardar hasta ~186 s entre sus reintentos. El backend
+# seguía trabajando después de que el usuario ya había visto el error y creaba
+# la empresa igual. Ahora el embedding tiene un tope por debajo del cliente, y
+# si no alcanza no se guarda nada y la respuesta dice que se puede reintentar.
+# ---------------------------------------------------------------------------
+
+
+class SlowEmbeddingService(FakeEmbeddingService):
+    """Simula el cold start del proveedor: responde, pero tarde."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        await asyncio.sleep(1)
+        return await super().embed(texts)
+
+
+class ProviderDownEmbeddingService(FakeEmbeddingService):
+    """Simula el proveedor caído tras agotar sus propios reintentos."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise ConnectionError("el proveedor de embeddings no responde")
+
+
+async def test_slow_embedding_is_cut_at_the_deadline(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Pasado el tope se corta, sin esperar al proveedor y sin guardar nada."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo,
+        vector_repo,
+        SlowEmbeddingService(),
+        embedding_deadline_seconds=0.05,
+    )
+
+    inicio = time.monotonic()
+    with pytest.raises(SupplierProfileIndexingUnavailable):
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    assert time.monotonic() - inicio < 0.5
+    assert supplier_repo.suppliers == {}
+    assert vector_repo.vectors == {}
+
+
+async def test_provider_failure_is_reported_as_indexing_unavailable(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un fallo del proveedor se traduce al error de dominio, conservando la causa."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, ProviderDownEmbeddingService()
+    )
+
+    with pytest.raises(SupplierProfileIndexingUnavailable) as exc_info:
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    assert isinstance(exc_info.value.__cause__, ConnectionError)
+    assert supplier_repo.suppliers == {}
+
+
+async def test_retry_after_deadline_creates_supplier(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Tras el corte, un reintento con el proveedor ya despierto crea la empresa."""
+    owner_id = uuid4()
+    lento = CreateSupplierUseCase(
+        supplier_repo,
+        vector_repo,
+        SlowEmbeddingService(),
+        embedding_deadline_seconds=0.05,
+    )
+    with pytest.raises(SupplierProfileIndexingUnavailable):
+        await lento.create(SUPPLIER_DATA, user_id=owner_id)
+
+    sano = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+    result = await sano.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert result.created is True
+    assert result.supplier.id in vector_repo.vectors
