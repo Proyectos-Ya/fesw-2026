@@ -84,6 +84,9 @@ class SupplierRepository(ISupplierRepository):
     async def commit(self) -> None:
         await self.session.commit()
 
+    async def rollback(self) -> None:
+        await self.session.rollback()
+
     async def _flush_or_translate(self, supplier: Supplier) -> None:
         """Hace flush y convierte una violación de unicidad en error de dominio.
 
@@ -124,6 +127,3 @@ def _constraint_name(exc: IntegrityError) -> str | None:
         if candidato in mensaje:
             return candidato
     return None
-
-    async def rollback(self) -> None:
-        await self.session.rollback()

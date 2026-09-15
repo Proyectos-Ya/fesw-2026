@@ -43,8 +43,11 @@ async def rut_index(
 
 async def _create_user(session: AsyncSession) -> UUID:
     now = utc_now_naive()
+    # El id se toma antes del commit: después la sesión expira el objeto, y leer
+    # un atributo dispara una recarga síncrona que falla con MissingGreenlet.
+    user_id = uuid4()
     user = UserModel(
-        id=uuid4(),
+        id=user_id,
         email=f"{uuid4()}@example.com",
         full_name="Dueño Empresa",
         created_at=now,
@@ -52,7 +55,7 @@ async def _create_user(session: AsyncSession) -> UUID:
     )
     session.add(user)
     await session.commit()
-    return user.id
+    return user_id
 
 
 async def test_legacy_rut_in_other_format_raises_supplier_already_exists(
