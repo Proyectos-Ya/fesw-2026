@@ -310,7 +310,7 @@ async def test_cache_hit_returns_immediately_without_pipeline() -> None:
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.1] * 1024)
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
 
     # Licitaciones a hidratar
     tender_id_1 = uuid4()
@@ -375,7 +375,7 @@ async def test_cache_miss_runs_full_pipeline_and_persists() -> None:
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.5] * 1024)
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
 
     tender_id_1 = uuid4()
     tender_id_2 = uuid4()
@@ -428,7 +428,7 @@ async def test_closed_tenders_are_filtered_out() -> None:
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.1] * 1024)
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
 
     tender_id_active = uuid4()
     tender_id_expired = uuid4()
@@ -488,7 +488,7 @@ async def test_orphan_vectors_are_deleted_from_vector_store() -> None:
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.1] * 1024)
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
 
     tender_id_valid = uuid4()
     tender_id_orphan = uuid4()  # Existe en Qdrant pero no en SQL
@@ -535,7 +535,7 @@ async def test_el_pipeline_sigue_filtrando_por_estado_publicada() -> None:
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.5] * 1024)
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
 
     tender_vector_repo = FakeTenderVectorRepository()
     tender_vector_repo.search_results = []
@@ -574,7 +574,7 @@ async def test_el_pipeline_busca_con_el_vector_del_proveedor() -> None:
 
     vector_del_proveedor = [0.42] * 1024
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, vector_del_proveedor)
+    await vector_repo.upsert(supplier.id, vector_del_proveedor)
 
     tender_vector_repo = FakeTenderVectorRepository()
     tender_vector_repo.search_results = []

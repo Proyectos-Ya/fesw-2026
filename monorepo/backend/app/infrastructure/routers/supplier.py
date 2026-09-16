@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
@@ -26,6 +26,7 @@ from app.application.use_cases.supplier.import_company_profile import (
 )
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
 from app.domain.entities.company_profile import CompanyProfileDraft
+from app.config import settings
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.user import User
 from app.domain.errors.company_lookup_errors import (
@@ -38,6 +39,7 @@ from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierNotFound,
     SupplierNotFoundForUser,
+    SupplierProfileIndexingUnavailable,
     SupplierValidationError,
     UserAlreadyHasSupplier,
 )
@@ -72,12 +74,21 @@ def create_supplier_router(
         response_model=Supplier,
         status_code=status.HTTP_201_CREATED,
         responses={
+            200: {
+                "description": "El usuario ya tenía esta misma empresa: el reintento "
+                "devuelve la existente sin crear otra"
+            },
             400: {"description": "Bad Request - Invalid supplier data"},
             409: {"description": "Conflict - Supplier already exists"},
+            503: {
+                "description": "El perfil no se pudo indexar a tiempo; no se guardó "
+                "nada y se puede reintentar"
+            },
         },
     )
     async def create_supplier(
         data: CreateSupplierSchema,
+        response: Response,
         current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
         vector_repo: Annotated[
@@ -94,9 +105,12 @@ def create_supplier_router(
         # Crea la empresa asociada al usuario autenticado:
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
-            return await CreateSupplierUseCase(
-                repo, vector_repo, embedding_service
-            ).execute(data, user_id=current_user.id)
+            result = await CreateSupplierUseCase(
+                repo,
+                vector_repo,
+                embedding_service,
+                embedding_deadline_seconds=settings.supplier_embedding_deadline_seconds,
+            ).create(data, user_id=current_user.id)
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(e)
@@ -106,6 +120,18 @@ def create_supplier_router(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
             ) from e
+        except SupplierProfileIndexingUnavailable as e:
+            # No se guardó nada: 503 le dice al cliente que puede reintentar.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+
+        if not result.created:
+            # Reintento del dueño con el mismo RUT: la empresa ya existía. Se
+            # responde 200 y no 201 para que quien llama pueda distinguirlo,
+            # pero es un éxito: el wizard tiene que terminar igual.
+            response.status_code = status.HTTP_200_OK
+        return result.supplier
 
     @router.get(
         "/me",

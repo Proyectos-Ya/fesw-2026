@@ -120,6 +120,12 @@ class Settings(BaseSettings):
     # oficial del proveedor elegido.
     embedding_api_base_url: str | None = None
 
+    # Tope para el embedding al crear una empresa. Tiene que quedar por debajo de
+    # los 60 s en que el frontend corta la petición: con los reintentos del
+    # servicio de embeddings el backend podía seguir hasta ~186 s y crear la
+    # empresa cuando el usuario ya había visto el error y reintentado.
+    supplier_embedding_deadline_seconds: float = 45.0
+
     # Mismo esquema para el reranker, que en local es ONNX (~1,3 GB de RAM).
     reranker_provider: Literal["local", "pinecone"] = "local"
     pinecone_api_key: str | None = None

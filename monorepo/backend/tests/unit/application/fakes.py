@@ -42,6 +42,10 @@ from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
 )
+from app.domain.errors.supplier_errors import (
+    SupplierAlreadyExists,
+    UserAlreadyHasSupplier,
+)
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
 
@@ -76,21 +80,39 @@ class InMemoryUserRepository(IUserRepository):
         return user
 
 
+def _rut_key(rut: str) -> str:
+    """Misma expresión que el índice `ix_supplier_rut_normalizado`."""
+    return rut.replace(".", "").replace("-", "").upper()
+
+
 class InMemorySupplierRepository(ISupplierRepository):
+    """Imita una sesión de base de datos con transacción.
+
+    `suppliers` son las filas confirmadas. Lo que entra con `add` o
+    `stage_update` queda pendiente —visible para las lecturas de la misma
+    sesión, como en Postgres— hasta `commit`, y `rollback` lo descarta.
+    """
+
     def __init__(self) -> None:
         self.suppliers: dict[str, Supplier] = {}
+        self._pending: dict[str, Supplier] = {}
+        # Si se asigna, `commit` lanza esta excepción sin confirmar nada.
+        self.fail_on_commit: Exception | None = None
+
+    def _visibles(self) -> dict[str, Supplier]:
+        return {**self.suppliers, **self._pending}
 
     async def get_by_rut(self, rut: str) -> Supplier | None:
-        return self.suppliers.get(rut)
+        return self._visibles().get(rut)
 
     async def get_by_id(self, supplier_id: UUID) -> Supplier | None:
-        for supplier in self.suppliers.values():
+        for supplier in self._visibles().values():
             if supplier.id == supplier_id:
                 return supplier
         return None
 
     async def get_by_user_id(self, user_id: UUID) -> Supplier | None:
-        for supplier in self.suppliers.values():
+        for supplier in self._visibles().values():
             if supplier.user_id == user_id:
                 return supplier
         return None
@@ -99,27 +121,59 @@ class InMemorySupplierRepository(ISupplierRepository):
         return [s.user_id for s in self.suppliers.values() if s.user_id is not None]
 
     async def save(self, supplier: Supplier) -> Supplier:
-        self.suppliers[supplier.rut] = supplier
-        return supplier
+        saved = await self.add(supplier)
+        await self.commit()
+        return saved
 
     async def update(self, supplier: Supplier) -> Supplier:
-        self.suppliers[supplier.rut] = supplier
+        updated = await self.stage_update(supplier)
+        await self.commit()
+        return updated
+
+    async def add(self, supplier: Supplier) -> Supplier:
+        # Imita los índices únicos de `supplier` (RUT normalizado y user_id):
+        # sin esto, las carreras entre dos peticiones no se podrían probar.
+        for existente in self._visibles().values():
+            if existente.id == supplier.id:
+                continue
+            if _rut_key(existente.rut) == _rut_key(supplier.rut):
+                raise SupplierAlreadyExists(supplier.rut)
+            if supplier.user_id is not None and existente.user_id == supplier.user_id:
+                raise UserAlreadyHasSupplier(supplier.user_id)
+        self._pending[supplier.rut] = supplier
         return supplier
+
+    async def stage_update(self, supplier: Supplier) -> Supplier:
+        self._pending[supplier.rut] = supplier
+        return supplier
+
+    async def commit(self) -> None:
+        if self.fail_on_commit is not None:
+            raise self.fail_on_commit
+        self.suppliers.update(self._pending)
+        self._pending.clear()
+
+    async def rollback(self) -> None:
+        self._pending.clear()
 
 
 class FakeSupplierVectorRepository(ISupplierVectorRepository):
     def __init__(self) -> None:
         self.upserts: list[UUID] = []
         self.vectors: dict[UUID, list[float]] = {}
+        # Si se asigna, `upsert` lanza esta excepción sin escribir nada.
+        self.fail_on_upsert: Exception | None = None
 
-    def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+    async def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+        if self.fail_on_upsert is not None:
+            raise self.fail_on_upsert
         self.upserts.append(supplier_id)
         self.vectors[supplier_id] = embedding
 
-    def delete(self, supplier_id: UUID) -> None:
+    async def delete(self, supplier_id: UUID) -> None:
         self.vectors.pop(supplier_id, None)
 
-    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+    async def get_vector(self, supplier_id: UUID) -> list[float] | None:
         return self.vectors.get(supplier_id)
 
 

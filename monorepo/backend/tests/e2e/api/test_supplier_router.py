@@ -24,7 +24,7 @@ REGISTER = {
 }
 
 SUPPLIER = {
-    "rut": "76086428-5",
+    "rut": "76.086.428-5",
     "legal_name": "Constructora Norte SpA",
 }
 
@@ -260,3 +260,52 @@ async def test_crear_empresa_sin_barra_final_no_redirige(api: AsyncClient):
         f"Location: {resp.headers.get('location')!r}"
     )
     assert "location" not in resp.headers
+
+
+@pytest.mark.asyncio
+async def test_reintento_del_mismo_usuario_devuelve_la_empresa_existente(
+    api: AsyncClient,
+):
+    """Repetir el POST con el mismo RUT responde 200 con la misma empresa.
+
+    El 3-sep un usuario vio un timeout, reintentó y recibió 409 aunque la empresa
+    era suya y se había creado. El reintento del dueño no es un conflicto: el
+    201 queda para la creación real y el 200 dice "ya la tenías".
+    """
+    await _login(api)
+
+    first = await api.post("/suppliers", json=SUPPLIER)
+    retry = await api.post("/suppliers", json=SUPPLIER)
+
+    assert first.status_code == 201
+    assert retry.status_code == 200
+    assert retry.json()["id"] == first.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
+    api: AsyncClient,
+):
+    """Si el perfil no se puede indexar a tiempo, 503 y la empresa no existe.
+
+    El 503 le dice al cliente que puede reintentar; lo importante es que no
+    quede nada guardado, para que ese reintento funcione.
+    """
+    from app import bootstrap
+    from app.main import app
+    from tests.unit.application.fakes import FakeEmbeddingService
+
+    class ProveedorCaido(FakeEmbeddingService):
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            raise ConnectionError("el proveedor de embeddings no responde")
+
+    await _login(api)
+    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
+        ProveedorCaido()
+    )
+
+    resp = await api.post("/suppliers", json=SUPPLIER)
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]
+    assert (await api.get("/suppliers/me")).status_code == 404

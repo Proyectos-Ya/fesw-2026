@@ -7,14 +7,18 @@ Qdrant (FakeSupplierVectorRepository), y que los errores de negocio dejan
 ambos stores intactos.
 """
 
+import asyncio
+import time
 from uuid import uuid4
 
 import pytest
 
 from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
+from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
+    SupplierProfileIndexingUnavailable,
     SupplierValidationError,
     UserAlreadyHasSupplier,
 )
@@ -24,10 +28,10 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
 )
 
-VALID_RUT = "76086428-5"
-OTHER_VALID_RUT = "77777777-7"
+VALID_RUT = "76.086.428-5"
+OTHER_VALID_RUT = "77.777.777-7"
 # Mismo cuerpo que VALID_RUT pero con dígito verificador incorrecto
-INVALID_RUT = "76086428-0"
+INVALID_RUT = "76.086.428-0"
 SUPPLIER_DATA = CreateSupplierSchema(rut=VALID_RUT, legal_name="Empresa SpA")
 
 
@@ -149,6 +153,34 @@ async def test_duplicate_rut_does_not_add_extra_sql_row(
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(supplier_repo.suppliers) == 1
+
+
+@pytest.mark.parametrize("other_format", ["76086428-5", "760864285"])
+async def test_duplicate_rut_detected_with_other_format(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    other_format: str,
+) -> None:
+    """El mismo RUT escrito sin puntos o sin guion cuenta como duplicado."""
+    await use_case.execute(SUPPLIER_DATA)
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.execute(
+            CreateSupplierSchema(rut=other_format, legal_name="Otra Empresa SpA")
+        )
+
+    assert len(supplier_repo.suppliers) == 1
+
+
+async def test_supplier_rut_stored_in_canonical_format(
+    use_case: CreateSupplierUseCase,
+) -> None:
+    """El RUT se guarda como XX.XXX.XXX-X aunque llegue sin puntos."""
+    data = CreateSupplierSchema(rut="760864285", legal_name="Empresa SpA")
+
+    supplier = await use_case.execute(data)
+
+    assert supplier.rut == "76.086.428-5"
 
 
 # ---------------------------------------------------------------------------
@@ -301,12 +333,12 @@ async def test_embedding_failure_propagates(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,
 ) -> None:
-    """Si el servicio de embeddings falla, el error llega al llamador."""
+    """Si el servicio de embeddings falla, llega al llamador como error de dominio."""
     use_case = CreateSupplierUseCase(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
 
@@ -319,7 +351,7 @@ async def test_embedding_failure_leaves_no_supplier_in_sql(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(supplier_repo.suppliers) == 0
@@ -334,7 +366,7 @@ async def test_embedding_failure_leaves_no_vector(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await use_case.execute(SUPPLIER_DATA)
 
     assert len(vector_repo.upserts) == 0
@@ -353,7 +385,7 @@ async def test_embedding_failure_allows_retry(
     fallido = CreateSupplierUseCase(
         supplier_repo, vector_repo, BrokenEmbeddingService()
     )
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SupplierProfileIndexingUnavailable):
         await fallido.execute(SUPPLIER_DATA)
 
     sano = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
@@ -361,3 +393,310 @@ async def test_embedding_failure_allows_retry(
 
     assert await supplier_repo.get_by_rut(VALID_RUT) is not None
     assert supplier.id in vector_repo.upserts
+
+
+# ---------------------------------------------------------------------------
+# Todo o nada entre Postgres y Qdrant
+#
+# Antes la fila se confirmaba y recién después se escribía el vector. Si Qdrant
+# fallaba —o el proceso moría— entre los dos pasos, la empresa quedaba visible
+# en "Mi empresa" e inexistente para matches y alertas (SupplierVectorNotFound).
+# Ahora la fila queda pendiente, se indexa, y solo entonces se confirma.
+# ---------------------------------------------------------------------------
+
+
+class CommitSpyRepository(InMemorySupplierRepository):
+    """Registra qué vectores había en Qdrant en el momento de cada commit."""
+
+    def __init__(self, vector_repo: FakeSupplierVectorRepository) -> None:
+        super().__init__()
+        self._vector_repo = vector_repo
+        self.vectors_at_commit: list[dict] = []
+
+    async def commit(self) -> None:
+        self.vectors_at_commit.append(dict(self._vector_repo.vectors))
+        await super().commit()
+
+
+async def test_vector_is_indexed_before_sql_commit(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Cuando se confirma la fila, su vector ya está en Qdrant."""
+    supplier_repo = CommitSpyRepository(vector_repo)
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    supplier = await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier.id in supplier_repo.vectors_at_commit[-1]
+
+
+async def test_qdrant_failure_leaves_no_supplier_in_sql(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si Qdrant no acepta el vector, la empresa no queda en SQL."""
+    vector_repo.fail_on_upsert = ConnectionError("Qdrant no responde")
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(ConnectionError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier_repo.suppliers == {}
+    assert await supplier_repo.get_by_rut(VALID_RUT) is None
+
+
+async def test_commit_failure_removes_indexed_vector(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el commit falla después de indexar, el vector se borra de Qdrant."""
+    supplier_repo.fail_on_commit = RuntimeError("se cayó la conexión a Postgres")
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(RuntimeError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    assert supplier_repo.suppliers == {}
+    assert await supplier_repo.get_by_rut(VALID_RUT) is None
+    assert vector_repo.vectors == {}
+
+
+async def test_retry_after_qdrant_failure_creates_complete_supplier(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Tras la caída de Qdrant, reintentar crea la empresa con su vector."""
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+    vector_repo.fail_on_upsert = ConnectionError("Qdrant no responde")
+    with pytest.raises(ConnectionError):
+        await use_case.execute(SUPPLIER_DATA)
+
+    vector_repo.fail_on_upsert = None
+    supplier = await use_case.execute(SUPPLIER_DATA)
+
+    assert await supplier_repo.get_by_rut(VALID_RUT) is not None
+    assert supplier.id in vector_repo.vectors
+
+
+# ---------------------------------------------------------------------------
+# Carrera: la validación previa pasa, pero otra petición escribió en medio
+#
+# Es el caso de las 06:05 del 3-sep: entre el SELECT de validación y el INSERT
+# pasan los segundos del embedding. La unicidad la tiene que hacer cumplir la
+# base, y el caso de uso tiene que devolver el error de dominio, no un 500.
+# ---------------------------------------------------------------------------
+
+
+class StaleCheckRepository(InMemorySupplierRepository):
+    """Las lecturas de validación no ven la fila que otra petición ya escribió."""
+
+    async def get_by_rut(self, rut: str) -> None:
+        return None
+
+    async def get_by_user_id(self, user_id) -> None:
+        return None
+
+
+async def test_race_on_same_rut_raises_supplier_already_exists(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el RUT se tomó entre la validación y el INSERT, es un conflicto."""
+    supplier_repo = StaleCheckRepository()
+    await InMemorySupplierRepository.save(
+        supplier_repo, Supplier(rut=VALID_RUT, legal_name="Otra SpA", user_id=uuid4())
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.execute(SUPPLIER_DATA, user_id=uuid4())
+
+    assert len(supplier_repo.suppliers) == 1
+    assert vector_repo.vectors == {}
+
+
+# ---------------------------------------------------------------------------
+# Reintento del mismo usuario: idempotente
+#
+# El 3-sep el usuario vio un timeout, reintentó y recibió 409 "ya existe", aunque
+# la empresa era suya y se había creado bien. Si quien reintenta es el dueño y
+# el RUT es el mismo, no hay conflicto: se devuelve la empresa que ya tiene.
+# ---------------------------------------------------------------------------
+
+
+async def test_same_user_same_rut_returns_existing_supplier(
+    use_case: CreateSupplierUseCase,
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
+) -> None:
+    """El reintento devuelve la misma empresa, sin otra fila ni otro embedding."""
+    owner_id = uuid4()
+
+    first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+    second = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert first.created is True
+    assert second.created is False
+    assert second.supplier.id == first.supplier.id
+    assert len(supplier_repo.suppliers) == 1
+    assert len(vector_repo.upserts) == 1
+    assert len(embedding_service.calls) == 1
+
+
+@pytest.mark.parametrize("other_format", ["76086428-5", "760864285"])
+async def test_same_user_retry_with_rut_in_other_format_is_idempotent(
+    use_case: CreateSupplierUseCase, other_format: str
+) -> None:
+    """El RUT se compara normalizado: otro formato sigue siendo el mismo reintento."""
+    owner_id = uuid4()
+    first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    retry = await use_case.create(
+        CreateSupplierSchema(rut=other_format, legal_name="Empresa SpA"),
+        user_id=owner_id,
+    )
+
+    assert retry.created is False
+    assert retry.supplier.id == first.supplier.id
+
+
+async def test_same_rut_from_another_user_is_still_a_conflict(
+    use_case: CreateSupplierUseCase,
+) -> None:
+    """La idempotencia es solo para el dueño: otro usuario recibe el conflicto."""
+    await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    with pytest.raises(SupplierAlreadyExists):
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+
+class StaleValidationRepository(InMemorySupplierRepository):
+    """Las primeras lecturas llegan antes de que la otra petición confirme.
+
+    Las siguientes ya ven la fila, como pasa en la base de verdad cuando el
+    commit de la otra petición cae entre la validación y el INSERT.
+    """
+
+    def __init__(self, stale_reads: int) -> None:
+        super().__init__()
+        self._stale_reads = stale_reads
+
+    def _is_stale(self) -> bool:
+        if self._stale_reads > 0:
+            self._stale_reads -= 1
+            return True
+        return False
+
+    async def get_by_rut(self, rut: str) -> Supplier | None:
+        return None if self._is_stale() else await super().get_by_rut(rut)
+
+    async def get_by_user_id(self, user_id) -> Supplier | None:
+        return None if self._is_stale() else await super().get_by_user_id(user_id)
+
+
+async def test_race_with_own_retry_returns_existing_supplier(
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Dos envíos del mismo usuario a la vez terminan los dos en la misma empresa.
+
+    Es el caso de las 06:05 del 3-sep: la segunda petición pasó la validación y
+    chocó al insertar. En vez de un 500, tiene que devolver la empresa del dueño.
+    """
+    owner_id = uuid4()
+    supplier_repo = StaleValidationRepository(stale_reads=2)
+    existing = await InMemorySupplierRepository.save(
+        supplier_repo, Supplier(rut=VALID_RUT, legal_name="Empresa SpA", user_id=owner_id)
+    )
+    use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+
+    result = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert result.created is False
+    assert result.supplier.id == existing.id
+    assert len(supplier_repo.suppliers) == 1
+    assert vector_repo.vectors == {}
+
+
+# ---------------------------------------------------------------------------
+# Tope de tiempo del embedding
+#
+# El cliente corta a los 60 s y el proxy de Vercel a los 120 s, pero el servicio
+# de embeddings podía tardar hasta ~186 s entre sus reintentos. El backend
+# seguía trabajando después de que el usuario ya había visto el error y creaba
+# la empresa igual. Ahora el embedding tiene un tope por debajo del cliente, y
+# si no alcanza no se guarda nada y la respuesta dice que se puede reintentar.
+# ---------------------------------------------------------------------------
+
+
+class SlowEmbeddingService(FakeEmbeddingService):
+    """Simula el cold start del proveedor: responde, pero tarde."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        await asyncio.sleep(1)
+        return await super().embed(texts)
+
+
+class ProviderDownEmbeddingService(FakeEmbeddingService):
+    """Simula el proveedor caído tras agotar sus propios reintentos."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise ConnectionError("el proveedor de embeddings no responde")
+
+
+async def test_slow_embedding_is_cut_at_the_deadline(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Pasado el tope se corta, sin esperar al proveedor y sin guardar nada."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo,
+        vector_repo,
+        SlowEmbeddingService(),
+        embedding_deadline_seconds=0.05,
+    )
+
+    inicio = time.monotonic()
+    with pytest.raises(SupplierProfileIndexingUnavailable):
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    assert time.monotonic() - inicio < 0.5
+    assert supplier_repo.suppliers == {}
+    assert vector_repo.vectors == {}
+
+
+async def test_provider_failure_is_reported_as_indexing_unavailable(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Un fallo del proveedor se traduce al error de dominio, conservando la causa."""
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, ProviderDownEmbeddingService()
+    )
+
+    with pytest.raises(SupplierProfileIndexingUnavailable) as exc_info:
+        await use_case.create(SUPPLIER_DATA, user_id=uuid4())
+
+    assert isinstance(exc_info.value.__cause__, ConnectionError)
+    assert supplier_repo.suppliers == {}
+
+
+async def test_retry_after_deadline_creates_supplier(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Tras el corte, un reintento con el proveedor ya despierto crea la empresa."""
+    owner_id = uuid4()
+    lento = CreateSupplierUseCase(
+        supplier_repo,
+        vector_repo,
+        SlowEmbeddingService(),
+        embedding_deadline_seconds=0.05,
+    )
+    with pytest.raises(SupplierProfileIndexingUnavailable):
+        await lento.create(SUPPLIER_DATA, user_id=owner_id)
+
+    sano = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
+    result = await sano.create(SUPPLIER_DATA, user_id=owner_id)
+
+    assert result.created is True
+    assert result.supplier.id in vector_repo.vectors
