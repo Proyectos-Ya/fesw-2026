@@ -524,15 +524,56 @@ async def test_al_generar_guarda_contra_que_version_se_escribio():
     assert resultado.analysis.supplier_updated_at == esc.supplier.updated_at
 
 
+async def guardar_analisis_sin_marcas(
+    esc: Escenario, generado_hace: timedelta
+) -> DeepAnalysis:
+    """Un análisis como los que quedaron antes de existir las marcas."""
+    analisis = await guardar_analisis(esc, generado_hace=generado_hace)
+    analisis.tender_updated_at = None
+    analisis.supplier_updated_at = None
+    return await esc.tender_repo.save_deep_analysis(analisis)
+
+
 @pytest.mark.asyncio
-async def test_un_analisis_sin_marcas_se_considera_vigente():
-    """Los generados antes de la columna: no hay contra qué compararlos."""
-    esc = await armar()
+async def test_un_analisis_sin_marcas_sigue_avisando_si_cambio_el_perfil():
+    """Los generados antes de la columna no pueden quedarse mudos.
+
+    Del proveedor sí se puede comparar el orden: su `updated_at` lo escribe
+    esta misma aplicación, con el mismo reloj que el análisis.
+    """
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    esc = await armar(supplier_updated_at=ahora)
     await guardar_match(esc)
-    analisis_viejo = await guardar_analisis(esc, generado_hace=timedelta(days=3))
-    analisis_viejo.tender_updated_at = None
-    analisis_viejo.supplier_updated_at = None
-    await esc.tender_repo.save_deep_analysis(analisis_viejo)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is True
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_no_avisa_si_no_cambio_nada():
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    esc = await armar(supplier_updated_at=ahora - timedelta(days=2))
+    await guardar_match(esc)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_ignora_la_fecha_de_la_licitacion():
+    """Es la fecha que no es confiable: puede venir de datos cargados a mano."""
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    futura = create_dummy_tender(uuid4(), updated_at=ahora + timedelta(days=9))
+    esc = await armar(supplier_updated_at=ahora - timedelta(days=2), tender=futura)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
 
     resultado = await esc.use_case.execute(
         tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True

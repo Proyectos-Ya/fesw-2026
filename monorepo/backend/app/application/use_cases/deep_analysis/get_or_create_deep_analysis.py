@@ -196,10 +196,20 @@ class GetOrCreateDeepAnalysisUseCase:
                 supplier.updated_at, existing_analysis.supplier_updated_at
             )
 
-        # Análisis anteriores a esas marcas: no hay contra qué comparar, y el
-        # orden no es confiable. Se los deja como vigentes; la primera
-        # regeneración que pida el usuario ya guarda las marcas.
-        return False
+        # Análisis anteriores a las marcas. Del proveedor todavía se puede
+        # decir algo: su `updated_at` lo escribe esta misma aplicación, con el
+        # mismo reloj que el análisis, así que ordenarlos es legítimo. De la
+        # licitación no, y por eso no se compara: su fecha puede venir de otra
+        # corrida o de datos cargados a mano.
+        #
+        # Es transitorio: la primera regeneración deja las marcas puestas y a
+        # partir de ahí se compara por igualdad.
+        if existing_analysis.updated_at is None or supplier.updated_at is None:
+            return False
+        return (
+            supplier.updated_at.replace(tzinfo=None)
+            > existing_analysis.updated_at.replace(tzinfo=None)
+        )
 
     @staticmethod
     def _cambio(actual: datetime | None, observado: datetime | None) -> bool:
