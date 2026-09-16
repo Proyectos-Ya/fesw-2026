@@ -97,6 +97,7 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     });
 
     const saveButton = screen.getByRole("button", { name: "Guardar licitación" });
+    expect(screen.getByRole("button", { name: "Generar cotización" })).toBeInTheDocument();
     await user.click(saveButton);
 
     const alert = await screen.findByText(SAVED_TENDERS_ERRORS.SAVE_FAILED);
