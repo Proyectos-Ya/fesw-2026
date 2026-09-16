@@ -77,8 +77,20 @@ async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
 
 
 async def test_crear_proveedor_rut_duplicado_retorna_409(api: AsyncClient) -> None:
-    """Registrar el mismo RUT dos veces retorna 409 Conflict."""
+    """Otro usuario que registra un RUT ya tomado recibe 409 Conflict.
+
+    Si quien repite el RUT es el mismo dueño se trata de un reintento y responde
+    200 con su empresa (ver test_supplier_router); el conflicto es entre usuarios.
+    """
     await api.post("/suppliers", json=VALID_SUPPLIER)
+    # La identidad sale del `sub` del token, no del correo: sin un `sub` distinto
+    # seguiría siendo el mismo dueño y el reintento respondería 200.
+    await autenticar(
+        api,
+        sub="22222222-2222-4222-8222-222222222222",
+        email="otro@example.com",
+        full_name="Otro Usuario",
+    )
     response = await api.post("/suppliers", json=VALID_SUPPLIER)
 
     assert response.status_code == 409

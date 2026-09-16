@@ -29,7 +29,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-1">
         {label}
       </div>
-      <div className="text-sm text-text-strong">{children}</div>
+      {/* break-words: el mismo texto libre del perfil se muestra acá, y sin esto
+          una palabra larga sin espacios desborda la tarjeta. */}
+      <div className="text-sm text-text-strong break-words">{children}</div>
     </div>
   );
 }
