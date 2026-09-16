@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from tests.support.api_auth import autenticar
 
 VALID_SUPPLIER = {
-    "rut": "76086428-5",
+    "rut": "76.086.428-5",
     "legal_name": "Constructora Demo SpA",
     "description": "Empresa con experiencia en obras civiles.",
     "sectors": ["Construcción"],
