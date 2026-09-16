@@ -32,5 +32,9 @@ class MatchingResultModel(SQLModel, table=True):
     # Nullable en la base: la versión anterior al cálculo a pedido inserta sin
     # esta columna, y esas filas son del ranking. Por eso NULL se lee como
     # "ranking" en vez de tratarse como un valor desconocido.
-    source: str | None = Field(default="ranking")
+    # El `server_default` tiene que estar declarado acá y no solo en la
+    # migración: si falta, `alembic revision --autogenerate` propone quitarlo.
+    source: str | None = Field(
+        default="ranking", sa_column_kwargs={"server_default": "ranking"}
+    )
     calculated_at: datetime  # Fecha en que se calculó la recomendación
