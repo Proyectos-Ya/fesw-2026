@@ -16,17 +16,22 @@ from uuid import uuid4
 
 import pytest
 
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 
-from .fakes import InMemorySupplierRepository
+from .fakes import (
+    FakeRerankerService,
+    FakeWeightingService,
+    InMemoryMatchingResultRepository,
+    InMemorySupplierRepository,
+    InMemoryTenderRepository,
+)
 from .test_get_or_create_deep_analysis import (
     FakeDeepAnalysisService,
-    FakeMatchingResultRepositoryForAnalysis,
-    FakeTenderRepositoryForAnalysis,
     create_dummy_supplier,
     create_dummy_tender,
 )
@@ -47,12 +52,12 @@ async def _correr(
         create_dummy_supplier(supplier_id, user_id, supplier_updated)
     )
 
-    tender_repo = FakeTenderRepositoryForAnalysis()
+    tender_repo = InMemoryTenderRepository()
     tender = create_dummy_tender(tender_id)
     tender.updated_at = tender_updated
     tender_repo.tenders[tender_id] = tender
 
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
+    matching_result_repo = InMemoryMatchingResultRepository()
     await matching_result_repo.save_bulk(
         [
             MatchingResult(
@@ -84,6 +89,11 @@ async def _correr(
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
         deep_analysis_service=servicio,
+        scorer=CompatibilityScorer(
+            reranker_service=FakeRerankerService(),
+            weighting_service=FakeWeightingService(),
+            matching_result_repo=matching_result_repo,
+        ),
     )
     await use_case.execute(tender_id=tender_id, user_id=user_id)
     return servicio

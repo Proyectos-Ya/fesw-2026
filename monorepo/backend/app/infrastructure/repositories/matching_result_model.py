@@ -21,10 +21,16 @@ class MatchingResultModel(SQLModel, table=True):
         foreign_key="supplier.id", index=True
     )  # Referencia al proveedor
     tender_id: UUID = Field(foreign_key="tender.id")  # Referencia a la licitación
-    similarity_score: float  # Score vectorial inicial
+    similarity_score: float | None = Field(
+        default=None
+    )  # Score vectorial inicial (nulo si no pasó por Qdrant)
     reranker_score: float | None = Field(
         default=None
     )  # Score del re-ranker ONNX (opcional)
     final_score: float  # Score ponderado final
     model_version: str  # Versión del modelo de embeddings
+    # Nullable en la base: la versión anterior al cálculo a pedido inserta sin
+    # esta columna, y esas filas son del ranking. Por eso NULL se lee como
+    # "ranking" en vez de tratarse como un valor desconocido.
+    source: str | None = Field(default="ranking")
     calculated_at: datetime  # Fecha en que se calculó la recomendación
