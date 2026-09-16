@@ -85,7 +85,8 @@ async def lifespan(app: FastAPI):
         processing_task = asyncio.create_task(scheduler.start_processing_loop())
     else:
         print(
-            "[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local."
+            "[Main] Ingesta en la API desactivada (RUN_AUTO_INGESTION=false). "
+            "La ingesta la hace el cron (scripts/sync_diaria.py) o se usa el dump local."
         )
 
     # Alertas de licitaciones (HdU 08). Van aparte de la ingesta: el corpus

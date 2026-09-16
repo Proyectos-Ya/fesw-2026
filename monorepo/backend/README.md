@@ -280,6 +280,10 @@ RUN_AUTO_INGESTION=false   # Modo A: usas el dump del repositorio. No consume cu
 RUN_AUTO_INGESTION=true    # Modo B: la aplicación ingesta desde Mercado Público.
 ```
 
+Si la variable no está definida, vale `false`. En Railway la API la deja apagada:
+ahí la ingesta la hace el cron `scripts/sync_diaria.py`, y encenderla en la API
+haría que ambos ingesten a la vez sobre la misma cola.
+
 |  | Modo A (dump) | Modo B (ingesta) |
 |---|---|---|
 | De dónde salen los datos | `project-data/chiripa_tenders.xlsx` | API de Mercado Público |

@@ -147,8 +147,11 @@ class Settings(BaseSettings):
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
-    # Ingesta automática al arrancar y región a la que acotarla (None = todas).
-    run_auto_ingestion: bool = True
+    # Ingesta dentro del proceso de la API y región a la que acotarla (None =
+    # todas). Apagada por defecto: la ingesta la hace el cron de Railway
+    # (`scripts/sync_diaria.py`), y una API que arrancara sin la variable
+    # ingestaría en paralelo con él, sobre la misma cola y gastando cuota doble.
+    run_auto_ingestion: bool = False
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
     # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
