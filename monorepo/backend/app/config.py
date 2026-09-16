@@ -20,6 +20,13 @@ _URL_POR_PROVEEDOR = {
     "huggingface": "https://router.huggingface.co",
 }
 
+# Host oficial de cada fuente de datos de empresas por RUT.
+_URL_POR_FUENTE_DE_EMPRESAS = {
+    "none": "",
+    "sre": "https://sre.cl",
+    "web-empresario": "https://api-sii-chile.webempresario.com",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -144,6 +151,17 @@ class Settings(BaseSettings):
     # positivo -- apagada por defecto hasta decidir si vale la pena el riesgo.
     enable_comuna_generic_heuristic: bool = True
 
+    # --- Importación del perfil por RUT (HdU 16) ---
+    # Fuente de terceros con las actividades económicas del SII, para sugerir
+    # rubros y palabras clave en el wizard. Una sola a la vez; las dos devuelven
+    # el mismo borrador (SRE no entrega regiones). "none" apaga la importación y
+    # el wizard sigue funcionando a mano. Ver spikes/spike-1/1.1-onboarding.md.
+    company_lookup_provider: Literal["none", "sre", "web-empresario"] = "none"
+    # Web Empresario la manda como `X-Api-Key`; SRE, como `token` en el cuerpo.
+    company_lookup_api_key: str | None = None
+    # Solo para apuntar a otro host. Vacío usa el oficial de la fuente elegida.
+    company_lookup_base_url: str | None = None
+
     # --- Matching ---
     # Escape para entornos sin RAM suficiente para el reranker ONNX.
     disable_reranker: bool = False
@@ -258,7 +276,13 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    @field_validator("embedding_api_key", "pinecone_api_key", "postgres_password", mode="after")
+    @field_validator(
+        "embedding_api_key",
+        "pinecone_api_key",
+        "postgres_password",
+        "company_lookup_api_key",
+        mode="after",
+    )
     @classmethod
     def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
         if valor is None:
@@ -300,6 +324,11 @@ class Settings(BaseSettings):
             faltantes.append(
                 f"PINECONE_API_KEY (RERANKER_PROVIDER={self.reranker_provider})"
             )
+        if self.company_lookup_provider != "none" and not self.company_lookup_api_key:
+            faltantes.append(
+                "COMPANY_LOOKUP_API_KEY "
+                f"(COMPANY_LOOKUP_PROVIDER={self.company_lookup_provider})"
+            )
         if faltantes:
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
@@ -324,6 +353,13 @@ class Settings(BaseSettings):
         if self.embedding_api_base_url:
             return self.embedding_api_base_url.rstrip("/")
         return _URL_POR_PROVEEDOR[self.embedding_provider]
+
+    @property
+    def company_lookup_url(self) -> str:
+        """Host de la fuente de datos de empresas, con el override por delante."""
+        if self.company_lookup_base_url:
+            return self.company_lookup_base_url.rstrip("/")
+        return _URL_POR_FUENTE_DE_EMPRESAS[self.company_lookup_provider]
 
     @property
     def qdrant_url(self) -> str:

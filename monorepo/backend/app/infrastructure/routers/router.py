@@ -19,6 +19,7 @@ def create_router(
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
+    get_company_lookup_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
     get_get_or_create_deep_analysis_use_case: Callable,
@@ -64,6 +65,7 @@ def create_router(
             get_supplier_repo=get_supplier_repo,
             get_supplier_vector_repo=get_supplier_vector_repo,
             get_embedding_service=get_embedding_service,
+            get_company_lookup_service=get_company_lookup_service,
             get_current_user=get_current_user,
         )
     )

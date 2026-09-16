@@ -8,7 +8,15 @@ GET /suppliers/me devuelve la empresa del usuario autenticado o 404.
 import pytest
 from httpx import AsyncClient
 
+from app import bootstrap
+from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
+from app.domain.errors.company_lookup_errors import (
+    CompanyLookupUnavailable,
+    CompanyNotFoundInSource,
+)
+from app.main import app
 from tests.support.api_auth import autenticar
+from tests.unit.application.fakes import FakeCompanyLookupService
 
 REGISTER = {
     "email": "dueno@example.com",
@@ -124,6 +132,89 @@ async def test_rut_exists_returns_true_when_registered(api: AsyncClient):
     resp = await api.get("/suppliers/rut-exists", params={"rut": SUPPLIER["rut"]})
     assert resp.status_code == 200
     assert resp.json() == {"exists": True}
+
+
+def _fuente(servicio: FakeCompanyLookupService | None) -> None:
+    app.dependency_overrides[bootstrap.get_company_lookup_service] = lambda: servicio
+
+
+IMPORT_RUT = "76.668.304-5"
+REGISTRO_WEB_EMPRESARIO = CompanyRecord(
+    source="web-empresario",
+    rut="76668304-5",
+    legal_name="PLANETA LIBRE SOLUCIONES SUSTENTABLES LIMITADA",
+    activities=[EconomicActivity(code=433000), EconomicActivity(code=952200)],
+    raw_regions=["XIII REGION METROPOLITANA"],
+    is_active=True,
+)
+
+
+@pytest.mark.asyncio
+async def test_profile_import_without_session_returns_401(api: AsyncClient):
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_profile_import_returns_draft(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source"] == "web-empresario"
+    assert body["regions"] == ["Metropolitana"]
+    assert body["sectors"] == [
+        "Obras de Construcción e Infraestructura",
+        "Mantención y Reparación",
+    ]
+    assert "pintura" in body["keywords"]
+    assert isinstance(body["notices"], list)
+
+
+@pytest.mark.asyncio
+async def test_profile_import_invalid_rut_returns_400(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": "76.668.304-0"})
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_profile_import_not_found_returns_404(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(error=CompanyNotFoundInSource("76668304-5")))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_profile_import_source_down_returns_502(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(error=CompanyLookupUnavailable("HTTP 500")))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 502
+    # El detalle técnico queda en los logs, no en la respuesta.
+    assert "HTTP 500" not in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_profile_import_without_provider_returns_503(api: AsyncClient):
+    await _login(api)
+    _fuente(None)
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 503
 
 
 @pytest.mark.asyncio

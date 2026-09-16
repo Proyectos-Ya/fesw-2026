@@ -30,6 +30,7 @@ from app.application.repositories.tender_vector_repository import (
 from app.application.repositories.user_repository import IUserRepository
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.token_verifier import IAuthTokenVerifier
+from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
@@ -135,6 +136,11 @@ from app.infrastructure.services.api_embedding_service import (
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    HttpCompanyLookupService,
+    SreLookupService,
+    WebEmpresarioLookupService,
+)
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
@@ -176,6 +182,11 @@ def get_tender_repo(
 
 def get_embedding_service(request: Request) -> IEmbeddingService:
     return request.app.state.embedding_service
+
+
+def get_company_lookup_service(request: Request) -> ICompanyLookupService | None:
+    # `None` cuando COMPANY_LOOKUP_PROVIDER=none: el caso de uso responde 503.
+    return request.app.state.company_lookup_service
 
 
 def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
@@ -645,6 +656,30 @@ def build_reranker_service() -> IRerankerService:
         return MockRerankerService()
 
 
+_FUENTE_DE_EMPRESAS_POR_PROVEEDOR: dict[str, type[HttpCompanyLookupService]] = {
+    "sre": SreLookupService,
+    "web-empresario": WebEmpresarioLookupService,
+}
+
+
+def build_company_lookup_service() -> ICompanyLookupService | None:
+    """Fuente de datos de empresas para importar el perfil por RUT (HdU 16).
+
+    Sin fuente configurada devuelve `None` y la importación queda apagada: es una
+    ayuda del wizard, no algo de lo que dependa crear la empresa. La credencial ya
+    la exigió `config.py` y construir el cliente no toca la red.
+    """
+    if settings.company_lookup_provider == "none":
+        logger.info("Importación de perfil por RUT desactivada (COMPANY_LOOKUP_PROVIDER=none).")
+        return None
+
+    logger.info("Importación de perfil por RUT servida por %s.", settings.company_lookup_provider)
+    return _FUENTE_DE_EMPRESAS_POR_PROVEEDOR[settings.company_lookup_provider](
+        api_key=settings.company_lookup_api_key or "",
+        base_url=settings.company_lookup_url,
+    )
+
+
 def build_notification_runners(
     app: FastAPI,
 ) -> tuple[
@@ -749,6 +784,8 @@ def bootstrap(app: FastAPI) -> None:
 
     app.state.reranker_service = build_reranker_service()
 
+    app.state.company_lookup_service = build_company_lookup_service()
+
     # El envío de correo es stateless y barato de construir, pero vive en
     # app.state igual que el resto: así el scheduler y los endpoints usan
     # exactamente la misma instancia configurada.
@@ -787,6 +824,7 @@ def bootstrap(app: FastAPI) -> None:
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_embedding_service=get_embedding_service,
+        get_company_lookup_service=get_company_lookup_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
