@@ -211,6 +211,12 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     try {
       const resultado = await calculateTenderScore(tenderId);
       setScore(resultado.score_pct);
+      // Si el número se movió, la justificación guardada quedó explicando otro
+      // puntaje. Se marca desactualizada en vez de dejar dos cifras distintas
+      // en la misma pantalla.
+      if (analysis && Math.round(analysis.compatibility_score) !== resultado.score_pct) {
+        setAnalysis({ ...analysis, is_outdated: true });
+      }
     } catch (err) {
       console.error("Error al calcular la compatibilidad:", err);
       setActionError(

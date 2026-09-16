@@ -258,6 +258,30 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
     });
   });
 
+  it("marca el análisis como desactualizado si el puntaje recalculado cambió", async () => {
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(analisisGuardado);
+    // Ya tenía 64% calculado, que es el puntaje que justifica el análisis.
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
+      tender: tenderFueraDelTop,
+      score_pct: 64,
+      is_closed: false,
+    });
+    vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({
+      score_pct: 73,
+      calculated_at: "2026-09-16T10:00:00Z",
+    });
+
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    await user.click(await screen.findByRole("button", { name: /recalcular/i }));
+
+    // 64% en la justificación y 73% en el medidor no pueden convivir como si
+    // ambos estuvieran vigentes.
+    expect(
+      await screen.findByText("Este análisis está desactualizado")
+    ).toBeInTheDocument();
+  });
+
   it("no ofrece calcular ni generar en una licitación cerrada", async () => {
     vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
       tender: tenderFueraDelTop,
