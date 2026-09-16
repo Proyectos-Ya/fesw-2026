@@ -234,3 +234,49 @@ describe("ProfileWizard: pantalla de creación", () => {
     expect(beforeUnloadIsBlocked()).toBe(false);
   });
 });
+
+describe("ProfileWizard: la empresa encontrada tiene que ser la enviada", () => {
+  // `waitForMySupplier` devuelve la empresa del usuario, sea cual sea. Un 409
+  // puede significar "ya tienes OTRA empresa", y ahí dar por bueno el envío
+  // descartaría en silencio el perfil que la persona acaba de escribir.
+  beforeEach(() => {
+    createSupplierMock.mockReset();
+    waitForMySupplierMock.mockReset();
+    setSupplierMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("un 409 por otra empresa distinta no se presenta como éxito", async () => {
+    createSupplierMock.mockRejectedValue(
+      new ApiError(409, "Ya tienes una empresa registrada"),
+    );
+    waitForMySupplierMock.mockResolvedValue({
+      ...SUPPLIER,
+      id: "sup-2",
+      rut: "77.777.777-7",
+    });
+    renderAtSummary();
+
+    await submit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Ya tienes una empresa registrada",
+    );
+    expect(screen.queryByText(SUCCESS_TITLE)).not.toBeInTheDocument();
+    expect(setSupplierMock).not.toHaveBeenCalled();
+  });
+
+  it("acepta el éxito aunque el RUT vuelva en otro formato", async () => {
+    createSupplierMock.mockRejectedValue(new TimeoutError());
+    waitForMySupplierMock.mockResolvedValue({ ...SUPPLIER, rut: "76086428-5" });
+    renderAtSummary();
+
+    await submit();
+
+    expect(await screen.findByText(SUCCESS_TITLE)).toBeInTheDocument();
+    expect(setSupplierMock).toHaveBeenCalled();
+  });
+});

@@ -10,7 +10,7 @@ import { Step2Operations } from "./steps/Step2Operations";
 import { Step3Specialization } from "./steps/Step3Specialization";
 import { Step4Summary } from "./steps/Step4Summary";
 import { z } from "zod";
-import { profileSchema } from "../profileSchema";
+import { formatRut, profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, waitForMySupplier } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
@@ -32,6 +32,18 @@ function mayHaveBeenCreated(err: unknown): boolean {
   if (err instanceof ApiError) return MAY_HAVE_BEEN_CREATED_STATUSES.has(err.status);
   // Timeout o corte de red: no hubo respuesta, así que no se sabe qué pasó.
   return true;
+}
+
+/**
+ * `waitForMySupplier` devuelve la empresa del usuario, sea cual sea. Un 409
+ * puede significar "ya tenías otra empresa", no "la tuya se creó igual", y ahí
+ * dar el envío por bueno descartaría en silencio el perfil recién escrito.
+ *
+ * Se compara en formato canónico, con el mismo criterio que el backend: el RUT
+ * guardado puede venir con puntos y el escrito sin ellos, y es el mismo.
+ */
+function esLaEmpresaEnviada(rutEncontrado: string, rutEnviado: string): boolean {
+  return formatRut(rutEncontrado) === formatRut(rutEnviado);
 }
 
 function errorMessage(err: unknown): string {
@@ -100,7 +112,7 @@ export function ProfileWizard() {
         // por una empresa que sí se había creado.
         setSubmitState("verifying");
         const existing = await waitForMySupplier();
-        if (existing) {
+        if (existing && esLaEmpresaEnviada(existing.rut, parsed.data.rut)) {
           setSupplier(existing);
           setSubmitState("success");
           return;
