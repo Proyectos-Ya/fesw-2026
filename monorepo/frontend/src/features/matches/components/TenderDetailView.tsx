@@ -3,11 +3,11 @@
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
+import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
@@ -269,7 +269,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center text-sm text-text-muted">
           Cargando detalle…
         </div>
@@ -280,7 +280,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (state.kind === "not-found") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <h2 className="font-display text-xl font-semibold text-text-strong">
             No encontramos esta licitación
@@ -297,7 +297,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (state.kind === "error") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button
@@ -323,7 +323,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
   return (
     <section className="mx-auto w-full max-w-4xl">
-      <BackLink />
+      <BackLink fallbackHref="/matches">Volver</BackLink>
 
       {/* Criterio de la HdU 08: al abrir la alerta de una licitación cuyo plazo
           ya pasó, hay que decirlo en vez de mostrar la ficha como si siguiera
@@ -749,18 +749,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     </section>
   );
 
-}
-
-function BackLink() {
-  return (
-    <Link
-      href="/matches"
-      className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-primary transition-colors"
-    >
-      <Icon name="arrow-left" size={14} />
-      Volver a mis matches
-    </Link>
-  );
 }
 
 function Section({

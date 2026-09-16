@@ -9,6 +9,10 @@ alcance cambió seguiría mostrando una justificación escrita sobre el contenid
 anterior. Eso no es un dato viejo, es **contenido incorrecto presentado como
 vigente**, y el usuario lo lee y le cree. Por eso 6.4 era prerrequisito
 obligatorio de 6.3 y va en el mismo cambio.
+
+"Cambió" se decide comparando la marca que el análisis guardó al generarse con
+la que tiene ahora la licitación. Antes se comparaba el orden de dos fechas de
+relojes distintos, y eso rompía con cualquier desfase.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -42,9 +46,18 @@ AHORA = datetime.now(UTC).replace(tzinfo=None)
 
 
 async def _correr(
-    *, tender_updated: datetime, supplier_updated: datetime, analysis_updated: datetime
+    *,
+    tender_updated: datetime,
+    supplier_updated: datetime,
+    analysis_updated: datetime,
+    marca_tender: datetime | None = None,
+    marca_supplier: datetime | None = None,
 ) -> FakeDeepAnalysisService:
-    """Monta el caso de uso con esas tres marcas de tiempo y lo ejecuta."""
+    """Monta el caso de uso y lo ejecuta.
+
+    `marca_*` es lo que el análisis vio al generarse. Por omisión coincide con
+    el valor actual, o sea: no cambió nada.
+    """
     supplier_id, user_id, tender_id = uuid4(), uuid4(), uuid4()
 
     supplier_repo = InMemorySupplierRepository()
@@ -78,6 +91,8 @@ async def _correr(
             recommendation="Evaluar con cautela",
             justification="Escrita sobre el contenido anterior",
             prompt_instruction="Instruccion previa",
+            tender_updated_at=marca_tender or tender_updated,
+            supplier_updated_at=marca_supplier or supplier_updated,
             created_at=analysis_updated,
             updated_at=analysis_updated,
         )
@@ -100,21 +115,38 @@ async def _correr(
 
 
 class TestRegeneracionPorLicitacion:
-    async def test_una_licitacion_mas_nueva_que_el_analisis_lo_regenera(self):
+    async def test_una_licitacion_que_cambio_regenera_el_analisis(self):
         servicio = await _correr(
             tender_updated=AHORA,
             supplier_updated=AHORA - timedelta(days=2),
             analysis_updated=AHORA - timedelta(days=1),
+            marca_tender=AHORA - timedelta(days=3),
         )
 
         assert len(servicio.calls) == 1
 
-    async def test_una_licitacion_mas_vieja_no_regenera_nada(self):
+    async def test_una_licitacion_que_no_cambio_no_regenera_nada(self):
         """Sin esto, la corrida diaria regeneraría todo con Gemini sin motivo."""
         servicio = await _correr(
             tender_updated=AHORA - timedelta(days=2),
             supplier_updated=AHORA - timedelta(days=2),
             analysis_updated=AHORA - timedelta(days=1),
+        )
+
+        assert servicio.calls == []
+
+    async def test_una_licitacion_con_fecha_futura_no_regenera_nada(self):
+        """El caso que rompía: una fila con la hora adelantada.
+
+        Comparando el orden, esa licitación queda para siempre "más nueva" que
+        cualquier análisis, incluso recién regenerado. Comparando la marca, lo
+        único que importa es si el valor cambió.
+        """
+        futuro = AHORA + timedelta(days=9)
+        servicio = await _correr(
+            tender_updated=futuro,
+            supplier_updated=AHORA - timedelta(days=2),
+            analysis_updated=AHORA,
         )
 
         assert servicio.calls == []
@@ -125,6 +157,7 @@ class TestRegeneracionPorLicitacion:
             tender_updated=AHORA - timedelta(days=2),
             supplier_updated=AHORA,
             analysis_updated=AHORA - timedelta(days=1),
+            marca_supplier=AHORA - timedelta(days=3),
         )
 
         assert len(servicio.calls) == 1
@@ -135,6 +168,7 @@ class TestRegeneracionPorLicitacion:
             tender_updated=AHORA,
             supplier_updated=AHORA - timedelta(days=2),
             analysis_updated=AHORA - timedelta(days=1),
+            marca_tender=AHORA - timedelta(days=3),
         )
 
         assert servicio.calls[0][3] == "Instruccion previa"

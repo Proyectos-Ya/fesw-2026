@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from app.application.repositories.matching_result_repository import (
@@ -129,6 +130,9 @@ class GetOrCreateDeepAnalysisUseCase:
             matching_score=matching_score,
             prompt_instruction=active_prompt,
         )
+        # Se deja constancia de contra qué versión de los datos se escribió.
+        new_analysis.tender_updated_at = tender.updated_at
+        new_analysis.supplier_updated_at = supplier.updated_at
         saved_analysis = await self.tender_repo.save_deep_analysis(new_analysis)
         return DeepAnalysisResult(analysis=saved_analysis)
 
@@ -157,9 +161,12 @@ class GetOrCreateDeepAnalysisUseCase:
 
         return await self.scorer.score_pct_and_persist(supplier, tender)
 
-    @staticmethod
+    @classmethod
     def _quedo_desactualizado(
-        existing_analysis: DeepAnalysis | None, supplier: Supplier, tender: Tender
+        cls,
+        existing_analysis: DeepAnalysis | None,
+        supplier: Supplier,
+        tender: Tender,
     ) -> bool:
         """Si el perfil o la licitación cambiaron después de escribir el análisis.
 
@@ -169,25 +176,34 @@ class GetOrCreateDeepAnalysisUseCase:
         escrita sobre el contenido anterior: eso no es un dato viejo, es
         contenido incorrecto presentado como vigente, y el usuario lo lee y le
         cree.
+
+        Se compara por **igualdad** contra las marcas que el análisis guardó al
+        generarse, no por orden contra su propia fecha. Ordenar exige que las
+        dos fechas vengan del mismo reloj, y no vienen: basta un volcado
+        restaurado o una corrida con la hora corrida para que la licitación
+        quede "en el futuro" y el aviso ya no se pueda quitar nunca —regenerar
+        escribe una fecha que sigue siendo anterior, así que vuelve a salir
+        desactualizado, y antes de que el aviso existiera eso significaba
+        regenerar con Gemini en cada visita.
         """
         if existing_analysis is None:
             return False
 
-        ana_updated = (
-            existing_analysis.updated_at.replace(tzinfo=None)
-            if existing_analysis.updated_at
-            else None
-        )
-        if ana_updated is None:
+        if existing_analysis.tender_updated_at is not None:
+            return cls._cambio(
+                tender.updated_at, existing_analysis.tender_updated_at
+            ) or cls._cambio(
+                supplier.updated_at, existing_analysis.supplier_updated_at
+            )
+
+        # Análisis anteriores a esas marcas: no hay contra qué comparar, y el
+        # orden no es confiable. Se los deja como vigentes; la primera
+        # regeneración que pida el usuario ya guarda las marcas.
+        return False
+
+    @staticmethod
+    def _cambio(actual: datetime | None, observado: datetime | None) -> bool:
+        """Compara una marca con la que se observó al generar el análisis."""
+        if actual is None or observado is None:
             return False
-
-        sup_updated = (
-            supplier.updated_at.replace(tzinfo=None) if supplier.updated_at else None
-        )
-        lic_updated = (
-            tender.updated_at.replace(tzinfo=None) if tender.updated_at else None
-        )
-
-        cambio_el_proveedor = bool(sup_updated and sup_updated > ana_updated)
-        cambio_la_licitacion = bool(lic_updated and lic_updated > ana_updated)
-        return cambio_el_proveedor or cambio_la_licitacion
+        return actual.replace(tzinfo=None) != observado.replace(tzinfo=None)

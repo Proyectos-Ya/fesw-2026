@@ -181,8 +181,19 @@ async def guardar_match(
     return match
 
 
-async def guardar_analisis(esc: Escenario, generado_hace: timedelta) -> DeepAnalysis:
+async def guardar_analisis(
+    esc: Escenario,
+    generado_hace: timedelta,
+    marca_tender: datetime | None = None,
+    marca_supplier: datetime | None = None,
+) -> DeepAnalysis:
+    """Deja un análisis guardado.
+
+    Las marcas son las que el análisis vio al generarse; por omisión coinciden
+    con las actuales, o sea que nada cambió desde entonces.
+    """
     now = datetime.now(UTC).replace(tzinfo=None)
+    licitacion = esc.tender_repo.tenders[esc.tender_id]
     analisis = DeepAnalysis(
         tender_id=esc.tender_id,
         supplier_id=esc.supplier.id,
@@ -190,6 +201,8 @@ async def guardar_analisis(esc: Escenario, generado_hace: timedelta) -> DeepAnal
         recommendation="Evaluar con cautela",
         justification="Ya calculado",
         prompt_instruction="Instruccion previa",
+        tender_updated_at=marca_tender or licitacion.updated_at,
+        supplier_updated_at=marca_supplier or esc.supplier.updated_at,
         created_at=now - generado_hace,
         updated_at=now - generado_hace,
     )
@@ -309,7 +322,11 @@ async def test_regenerate_automatically_on_profile_updated():
     now = datetime.now(UTC).replace(tzinfo=None)
     esc = await armar(supplier_updated_at=now - timedelta(minutes=10))
     await guardar_match(esc)
-    await guardar_analisis(esc, generado_hace=timedelta(minutes=30))
+    await guardar_analisis(
+        esc,
+        generado_hace=timedelta(minutes=30),
+        marca_supplier=now - timedelta(hours=5),
+    )
 
     resultado = await esc.use_case.execute(
         tender_id=esc.tender_id, user_id=esc.user_id
@@ -423,7 +440,11 @@ async def test_only_if_exists_avisa_que_quedo_desactualizado_sin_regenerar():
     now = datetime.now(UTC).replace(tzinfo=None)
     esc = await armar(supplier_updated_at=now - timedelta(minutes=5))
     await guardar_match(esc)
-    await guardar_analisis(esc, generado_hace=timedelta(minutes=30))
+    await guardar_analisis(
+        esc,
+        generado_hace=timedelta(minutes=30),
+        marca_supplier=now - timedelta(hours=5),
+    )
 
     resultado = await esc.use_case.execute(
         tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
@@ -464,3 +485,57 @@ async def test_licitacion_cerrada_con_analisis_lo_devuelve_sin_regenerar():
     # No se marca desactualizado: no hay forma de actualizarlo.
     assert resultado.is_outdated is False
     assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_una_licitacion_con_fecha_futura_no_se_marca_desactualizada():
+    """Es lo que rompía en local: filas restauradas con la hora adelantada.
+
+    Comparando el orden de las fechas, esa licitación es siempre "más nueva"
+    que el análisis —incluso que uno recién generado—, así que el aviso no se
+    podía quitar nunca.
+    """
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    futura = create_dummy_tender(uuid4(), updated_at=ahora + timedelta(days=9))
+    esc = await armar(tender=futura)
+    await guardar_analisis(esc, generado_hace=timedelta(minutes=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_al_generar_guarda_contra_que_version_se_escribio():
+    """Sin estas marcas, la siguiente visita no tiene con qué comparar."""
+    esc = await armar()
+    await guardar_match(esc)
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
+    )
+
+    assert resultado.analysis is not None
+    licitacion = esc.tender_repo.tenders[esc.tender_id]
+    assert resultado.analysis.tender_updated_at == licitacion.updated_at
+    assert resultado.analysis.supplier_updated_at == esc.supplier.updated_at
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_se_considera_vigente():
+    """Los generados antes de la columna: no hay contra qué compararlos."""
+    esc = await armar()
+    await guardar_match(esc)
+    analisis_viejo = await guardar_analisis(esc, generado_hace=timedelta(days=3))
+    analisis_viejo.tender_updated_at = None
+    analisis_viejo.supplier_updated_at = None
+    await esc.tender_repo.save_deep_analysis(analisis_viejo)
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False

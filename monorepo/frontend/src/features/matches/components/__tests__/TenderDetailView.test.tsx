@@ -11,6 +11,7 @@ import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
 const mockRouter = {
   push: vi.fn(),
   replace: vi.fn(),
+  back: vi.fn(),
 };
 
 const mockUser = { id: "user-1", email: "test@example.com" };
@@ -327,5 +328,31 @@ describe("TenderDetailView: puntaje de una recomendada", () => {
       screen.queryByRole("button", { name: /recalcular/i })
     ).not.toBeInTheDocument();
     expect(tenderService.getTenderDetail).not.toHaveBeenCalled();
+  });
+});
+
+describe("TenderDetailView: volver", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+  });
+
+  it("vuelve a la pantalla anterior, no siempre a los matches", async () => {
+    // A la misma ficha se llega desde el buscador, las guardadas o una alerta:
+    // mandar a todos a /matches descarta la búsqueda recién hecha.
+    // jsdom abre cada prueba con una sola entrada; acá interesa el caso
+    // normal, el de alguien que ya venía navegando.
+    vi.spyOn(window.history, "length", "get").mockReturnValue(3);
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    await user.click(await screen.findByRole("button", { name: /volver/i }));
+
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    expect(mockRouter.push).not.toHaveBeenCalled();
   });
 });

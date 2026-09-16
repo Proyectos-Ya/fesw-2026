@@ -6,7 +6,7 @@ import * as tenderService from "../../services/tenderService";
 import { ApiError } from "@/features/shared/api/client";
 import type { DeepAnalysis, Tender } from "../../tenderTypes";
 
-const mockRouter = { push: vi.fn(), replace: vi.fn() };
+const mockRouter = { push: vi.fn(), replace: vi.fn(), back: vi.fn() };
 // Referencia estable: el efecto de carga depende de la identidad de `user`, y
 // un objeto nuevo por render lo dispararía en bucle.
 const mockUser = { id: "user-1", email: "test@example.com" };

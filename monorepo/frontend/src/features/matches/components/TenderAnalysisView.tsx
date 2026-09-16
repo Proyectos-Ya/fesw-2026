@@ -3,11 +3,11 @@
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Badge } from "@/features/shared/components/Badge";
+import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
@@ -156,7 +156,9 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink tenderId={tenderId} />
+        <BackLink fallbackHref={`/matches/${tenderId}`} id="lnk-back-to-tender">
+        Volver al detalle de la licitación
+      </BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center text-sm text-text-muted">
           Cargando análisis de compatibilidad…
         </div>
@@ -167,7 +169,9 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   if (state.kind === "not-found") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink tenderId={tenderId} />
+        <BackLink fallbackHref={`/matches/${tenderId}`} id="lnk-back-to-tender">
+        Volver al detalle de la licitación
+      </BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <h2 className="font-display text-xl font-semibold text-text-strong">
             No encontramos esta licitación
@@ -184,7 +188,9 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   if (state.kind === "error") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink tenderId={tenderId} />
+        <BackLink fallbackHref={`/matches/${tenderId}`} id="lnk-back-to-tender">
+        Volver al detalle de la licitación
+      </BackLink>
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button
@@ -204,7 +210,9 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
 
   return (
     <section className="mx-auto w-full max-w-4xl">
-      <BackLink tenderId={tenderId} />
+      <BackLink fallbackHref={`/matches/${tenderId}`} id="lnk-back-to-tender">
+        Volver al detalle de la licitación
+      </BackLink>
 
       <header className="mb-6 flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs">
         <div className="flex items-center gap-2">
@@ -393,15 +401,4 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   );
 }
 
-function BackLink({ tenderId }: { tenderId: string }) {
-  return (
-    <Link
-      href={`/matches/${tenderId}`}
-      className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-primary transition-colors"
-      id="lnk-back-to-tender"
-    >
-      <Icon name="arrow-left" size={14} />
-      Volver al detalle de la licitación
-    </Link>
-  );
-}
+
