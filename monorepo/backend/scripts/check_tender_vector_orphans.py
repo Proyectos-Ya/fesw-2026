@@ -39,9 +39,10 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.config import settings
+from app.infrastructure.db import crear_engine
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
@@ -168,7 +169,7 @@ async def diagnose() -> Report:
     client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     # Engine propio en vez del compartido: `app.infrastructure.db` fija
     # echo=True, y ese log de SQL en stdout rompe la salida --json.
-    engine = create_async_engine(settings.database_url, echo=False)
+    engine = crear_engine()
 
     try:
         try:

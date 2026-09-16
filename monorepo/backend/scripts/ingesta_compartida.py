@@ -17,12 +17,13 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.config import settings
+from app.infrastructure.db import crear_engine
 from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -71,7 +72,7 @@ def construir_servicio() -> tuple[
     """Arma el servicio de ingesta con las mismas piezas que usa la aplicación."""
     from app.bootstrap import build_embedding_service
 
-    engine = create_async_engine(settings.database_url, echo=False)
+    engine = crear_engine()
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     servicio = TenderIngestionService(
         engine=engine,

@@ -36,9 +36,9 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import settings
+from app.infrastructure.db import crear_engine
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
@@ -115,7 +115,7 @@ async def _existing_point_ids(client: AsyncQdrantClient, ids: list[UUID]) -> set
 
 async def run(dry_run: bool) -> Stats:
     stats = Stats()
-    engine = create_async_engine(settings.database_url)
+    engine = crear_engine()
     client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
     try:
