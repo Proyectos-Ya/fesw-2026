@@ -14,6 +14,7 @@ from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
+from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
@@ -67,6 +68,7 @@ async def armar_caso() -> tuple[
     use_case = ScoreTenderOnDemandUseCase(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
         scorer=CompatibilityScorer(
             reranker_service=FakeRerankerService(),
             weighting_service=FakeWeightingService(),
@@ -147,3 +149,36 @@ async def test_no_calcula_una_licitacion_en_estado_no_activo() -> None:
 
     with pytest.raises(TenderClosedForScoring):
         await use_case.execute(user_id=supplier.user_id, tender_id=tender_id)
+
+
+@pytest.mark.asyncio
+async def test_no_toca_el_puntaje_de_una_recomendada() -> None:
+    """Reescribirlo como cálculo a pedido la sacaría del dashboard.
+
+    El top-N lo refresca su propio pipeline; acá basta con devolver lo que ya
+    hay, que además es el mismo número que el usuario ve en las recomendaciones.
+    """
+    use_case, _, tender_repo, matching_result_repo, supplier = await armar_caso()
+    tender_id = uuid4()
+    tender_repo.tenders[tender_id] = crear_licitacion(tender_id)
+    await matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=supplier.id,
+                tender_id=tender_id,
+                similarity_score=0.8,
+                final_score=0.91,
+                model_version="bge-m3-v1",
+                source="ranking",
+            )
+        ]
+    )
+
+    resultado = await use_case.execute(
+        user_id=supplier.user_id, tender_id=tender_id
+    )
+
+    assert resultado.source == "ranking"
+    assert resultado.final_score == pytest.approx(0.91)
+    filas = await matching_result_repo.get_by_supplier_id(supplier.id)
+    assert [f.source for f in filas] == ["ranking"]

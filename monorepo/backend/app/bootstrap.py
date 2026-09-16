@@ -255,6 +255,7 @@ def get_score_tender_on_demand_use_case(
     return ScoreTenderOnDemandUseCase(
         supplier_repo=SupplierRepository(session),
         tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
         scorer=scorer,
     )
 

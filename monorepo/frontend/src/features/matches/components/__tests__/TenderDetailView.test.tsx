@@ -6,7 +6,7 @@ import { TenderDetailView } from "../TenderDetailView";
 import * as tenderService from "../../services/tenderService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
-import type { MatchingResult } from "../../tenderTypes";
+import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
 
 const mockRouter = {
   push: vi.fn(),
@@ -31,6 +31,8 @@ vi.mock("../../services/tenderService", () => ({
   getRecommendedTenders: vi.fn(),
   getDeepAnalysisOnly: vi.fn(),
   getTenderDetail: vi.fn(),
+  calculateTenderScore: vi.fn(),
+  generateDeepAnalysis: vi.fn(),
 }));
 
 vi.mock("@/features/tender-assistant/components/TenderAssistantDrawer", () => ({
@@ -133,5 +135,173 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(
       screen.getByRole("button", { name: "Quitar de licitaciones guardadas" }),
     ).toBeInTheDocument();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Compatibilidad a pedido: nada se calcula por abrir la ficha
+// ---------------------------------------------------------------------------
+
+/** Abierta de verdad: la ficha esconde los botones de una licitación vencida. */
+const EN_UN_MES = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+const tenderFueraDelTop: Tender = {
+  ...(mockMatch.tender as Tender),
+  id: "tender-77",
+  name: "Mantención de ascensores",
+  closing_at: EN_UN_MES,
+};
+
+const analisisGuardado: DeepAnalysis = {
+  id: "ana-1",
+  tender_id: "tender-77",
+  supplier_id: "sup-1",
+  compatibility_score: 64,
+  recommendation: "Evaluar con cautela",
+  justification: "Escrita con el perfil anterior.",
+  prompt_instruction: null,
+  created_at: "2026-06-01T00:00:00Z",
+  updated_at: "2026-06-01T00:00:00Z",
+};
+
+describe("TenderDetailView: compatibilidad a pedido", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Fuera de las recomendadas: la ficha cae al detalle directo.
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
+      tender: tenderFueraDelTop,
+      score_pct: null,
+      is_closed: false,
+    });
+  });
+
+  it("muestra 'Sin puntaje' y no calcula nada al abrir la ficha", async () => {
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    expect(await screen.findByText("Sin puntaje")).toBeInTheDocument();
+    // Un 0% diría "no calzas"; lo cierto es que nadie lo midió.
+    expect(
+      screen.queryByRole("img", { name: "Compatibilidad 0%" })
+    ).not.toBeInTheDocument();
+    expect(tenderService.calculateTenderScore).not.toHaveBeenCalled();
+    expect(tenderService.generateDeepAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("calcula la compatibilidad cuando el usuario lo pide", async () => {
+    vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({
+      score_pct: 73,
+      calculated_at: "2026-09-16T10:00:00Z",
+    });
+
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    await user.click(await screen.findByRole("button", { name: /calcular compatibilidad/i }));
+
+    expect(tenderService.calculateTenderScore).toHaveBeenCalledWith("tender-77");
+    // El medidor parte el número del signo, así que se busca por su etiqueta.
+    expect(
+      await screen.findByRole("img", { name: "Compatibilidad 73%" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Sin puntaje")).not.toBeInTheDocument();
+  });
+
+  it("ofrece recalcular cuando la licitación ya tiene puntaje", async () => {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
+      tender: tenderFueraDelTop,
+      score_pct: 40,
+      is_closed: false,
+    });
+
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    expect(await screen.findByRole("button", { name: /recalcular/i })).toBeInTheDocument();
+  });
+
+  it("avisa que el análisis quedó desactualizado y permite actualizarlo", async () => {
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue({
+      ...analisisGuardado,
+      is_outdated: true,
+    });
+    vi.mocked(tenderService.generateDeepAnalysis).mockResolvedValue({
+      ...analisisGuardado,
+      compatibility_score: 81,
+      is_outdated: false,
+    });
+
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    expect(
+      await screen.findByText("Este análisis está desactualizado")
+    ).toBeInTheDocument();
+    // Abrir la ficha no regenera: la llamada llega solo con el clic.
+    expect(tenderService.generateDeepAnalysis).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /actualizar análisis/i }));
+
+    expect(tenderService.generateDeepAnalysis).toHaveBeenCalledWith(
+      "tender-77",
+      undefined,
+      true
+    );
+    // El puntaje se actualiza en el medidor de la ficha y en la tarjeta del
+    // análisis: los dos salen del mismo número.
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("img", { name: "Compatibilidad 81%" })
+      ).toHaveLength(2);
+    });
+  });
+
+  it("no ofrece calcular ni generar en una licitación cerrada", async () => {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
+      tender: tenderFueraDelTop,
+      score_pct: null,
+      is_closed: true,
+    });
+
+    render(<TenderDetailView tenderId="tender-77" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Esta licitación ya cerró")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /calcular compatibilidad/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /análisis de compatibilidad ia/i })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("TenderDetailView: puntaje de una recomendada", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
+      {
+        ...mockMatch,
+        tender: { ...(mockMatch.tender as Tender), closing_at: EN_UN_MES },
+        final_score: 0.91,
+      },
+    ]);
+  });
+
+  it("no ofrece recalcular: ese puntaje lo mantiene el ranking", async () => {
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(
+      await screen.findByRole("img", { name: "Compatibilidad 91%" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /recalcular/i })
+    ).not.toBeInTheDocument();
+    expect(tenderService.getTenderDetail).not.toHaveBeenCalled();
   });
 });

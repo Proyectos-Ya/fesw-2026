@@ -12,8 +12,13 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import { Textarea } from "@/features/shared/components/Textarea";
-import { getRecommendedTenders, getDeepAnalysis, generateDeepAnalysis } from "../services/tenderService";
-import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
+import {
+  getDeepAnalysis,
+  getDeepAnalysisOnly,
+  generateDeepAnalysis,
+  getTenderDetail,
+} from "../services/tenderService";
+import type { Tender, DeepAnalysis } from "../tenderTypes";
 import { formatDateTime } from "../utils/format";
 
 interface TenderAnalysisViewProps {
@@ -23,7 +28,7 @@ interface TenderAnalysisViewProps {
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; match: MatchingResult }
+  | { kind: "ready"; tender: Tender; isClosed: boolean }
   | { kind: "not-found" }
   | { kind: "error"; message: string };
 
@@ -46,7 +51,9 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   const [errorMsg, setErrorMsg] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
 
-  // 1. Cargar información de la licitación (match)
+  // 1. Cargar la licitación. Se pide por su ficha y no por las recomendadas:
+  // el análisis no es un privilegio del top-12, y una licitación llegada del
+  // buscador o de una alerta vieja también se puede evaluar.
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -59,16 +66,19 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const matches = await getRecommendedTenders(user.id);
+        const detalle = await getTenderDetail(tenderId);
         if (cancelled) return;
-        const found = matches.find((m) => m.tender?.id === tenderId);
-        if (!found) {
+        setState({
+          kind: "ready",
+          tender: detalle.tender,
+          isClosed: detalle.is_closed,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
           setState({ kind: "not-found" });
           return;
         }
-        setState({ kind: "ready", match: found });
-      } catch (err) {
-        if (cancelled) return;
         if (err instanceof ApiError || err instanceof TimeoutError) {
           setState({ kind: "error", message: err.message });
           return;
@@ -85,7 +95,11 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
     };
   }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
 
-  // 2. Cargar u obtener el análisis profundo inicial
+  // 2. Obtener el análisis. Entrar acá es la petición explícita del usuario,
+  // así que se genera si falta; en una licitación cerrada, en cambio, solo se
+  // muestra lo que ya exista: a esa altura no hay decisión que apoyar.
+  const licitacionCerrada = state.kind === "ready" && state.isClosed;
+
   useEffect(() => {
     if (state.kind !== "ready") return;
 
@@ -93,7 +107,11 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
     setAnalysisLoading(true);
     setErrorMsg("");
 
-    getDeepAnalysis(tenderId)
+    const pedir = licitacionCerrada
+      ? getDeepAnalysisOnly(tenderId)
+      : getDeepAnalysis(tenderId);
+
+    pedir
       .then((res) => {
         if (cancelled) return;
         setAnalysis(res);
@@ -110,7 +128,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [tenderId, state.kind, retryNonce]);
+  }, [tenderId, state.kind, licitacionCerrada, retryNonce]);
 
   // 3. Manejar el flujo de regeneración manual del análisis con prompt
   const handleRegenerate = async (e: React.FormEvent) => {
@@ -155,8 +173,8 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
             No encontramos esta licitación
           </h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-            Es posible que ya no esté entre tus matches recomendados o que el enlace
-            esté desactualizado.
+            Puede que el enlace esté desactualizado o que la licitación ya no
+            exista en el sistema.
           </p>
         </div>
       </section>
@@ -181,8 +199,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
     );
   }
 
-  const { match } = state;
-  const tender = match.tender as Tender;
+  const { tender } = state;
   const buyer = tender.buyer_name ?? "Organismo no especificado";
 
   return (
@@ -202,11 +219,25 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
         </p>
       </header>
 
+      {licitacionCerrada && (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4"
+        >
+          <Icon name="triangle-alert" size={18} color="var(--amber-500)" />
+          <p className="text-sm text-text-body mb-0">
+            Esta licitación ya cerró. Puedes revisar el análisis generado antes
+            del cierre, pero no generar ni regenerar uno nuevo.
+          </p>
+        </div>
+      )}
+
       {analysisLoading ? (
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center text-sm text-text-muted">
           <div className="flex items-center justify-center py-6 text-sm text-text-muted gap-2">
-            <Icon name="loader-2" className="animate-spin text-primary" size={18} />
-            Evaluando requerimientos de la licitación y perfil del proveedor…
+            <Icon name="loader-circle" className="animate-spin text-primary" size={18} />
+            Calculando compatibilidad y evaluando los requerimientos de la
+            licitación…
           </div>
         </div>
       ) : analysis ? (
@@ -280,7 +311,10 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
           </div>
 
           {/* Formulario de Regeneración Personalizada */}
-          <div className="rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs">
+          <div
+            className="rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs"
+            hidden={licitacionCerrada}
+          >
             <h3 className="font-display text-lg font-bold text-text-strong mb-2 flex items-center gap-2">
               <Icon name="sliders" size={18} className="text-primary" />
               Regenerar Análisis con Enfoque Personalizado
@@ -323,7 +357,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
               >
                 {regenerating ? (
                   <span className="inline-flex items-center gap-2">
-                    <Icon name="loader-2" className="animate-spin" size={16} />
+                    <Icon name="loader-circle" className="animate-spin" size={16} />
                     Regenerando análisis…
                   </span>
                 ) : (
@@ -335,6 +369,13 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
               </Button>
             </form>
           </div>
+        </div>
+      ) : licitacionCerrada ? (
+        <div className="rounded-lg border border-border-subtle bg-surface-card p-6 text-center text-sm text-text-muted">
+          <p className="mb-0">
+            Esta licitación cerró sin que se generara un análisis de
+            compatibilidad.
+          </p>
         </div>
       ) : (
         <div className="rounded-lg border border-border-subtle bg-surface-card p-6 text-center text-sm text-text-muted">
