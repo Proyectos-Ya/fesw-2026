@@ -623,7 +623,7 @@ async def _escenario_con_cache(
     await supplier_repo.save(supplier)
 
     vector_repo = FakeSupplierVectorRepository()
-    vector_repo.upsert(supplier.id, [0.1] * 1024)
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
 
     ids = [uuid4(), uuid4()]
     tender_repo = InMemoryTenderRepository()
