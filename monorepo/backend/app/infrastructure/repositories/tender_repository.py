@@ -471,6 +471,8 @@ class TenderRepository(ITenderRepository):
             recommendation=recommendation,
             justification=model.justification,
             prompt_instruction=model.prompt_instruction,
+            tender_updated_at=model.tender_updated_at,
+            supplier_updated_at=model.supplier_updated_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -485,6 +487,8 @@ class TenderRepository(ITenderRepository):
             recommendation=entity.recommendation,
             justification=entity.justification,
             prompt_instruction=entity.prompt_instruction,
+            tender_updated_at=entity.tender_updated_at,
+            supplier_updated_at=entity.supplier_updated_at,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -513,6 +517,8 @@ class TenderRepository(ITenderRepository):
             model.recommendation = deep_analysis.recommendation
             model.justification = deep_analysis.justification
             model.prompt_instruction = deep_analysis.prompt_instruction
+            model.tender_updated_at = deep_analysis.tender_updated_at
+            model.supplier_updated_at = deep_analysis.supplier_updated_at
             model.updated_at = deep_analysis.updated_at
         else:
             model = self._to_deep_analysis_model(deep_analysis)

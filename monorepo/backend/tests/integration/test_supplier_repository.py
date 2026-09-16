@@ -1,15 +1,12 @@
 """SupplierRepository contra Postgres real: unicidad y unidad de trabajo.
 
-El fixture del directorio recrea el esquema con `create_all`, que no conoce los
-índices funcionales de Alembic. El índice del RUT normalizado se crea acá con la
-misma expresión que la migración `d7f2a9c41b58`; si una cambia, la otra también.
+El índice del RUT normalizado lo crea `create_all` desde el modelo, que lo
+declara con la misma expresión que la migración `d7f2a9c41b58`.
 """
 
-from collections.abc import AsyncGenerator
 from uuid import UUID, uuid4
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -25,20 +22,6 @@ from app.shared.datetime_utils import utc_now_naive
 
 RUT = "76.086.428-5"
 OTHER_RUT = "77.777.777-7"
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def rut_index(
-    setup_db_tables: None, integration_engine: AsyncEngine
-) -> AsyncGenerator[None, None]:
-    async with integration_engine.begin() as conn:
-        await conn.execute(
-            text(
-                "CREATE UNIQUE INDEX ix_supplier_rut_normalizado ON supplier "
-                "(upper(replace(replace(rut, '.', ''), '-', '')))"
-            )
-        )
-    yield
 
 
 async def _create_user(session: AsyncSession) -> UUID:

@@ -28,32 +28,30 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
-from app.application.services.identity_directory import IIdentityDirectory
-from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.services.document_validator_service import (
+    IDocumentValidatorService,
+)
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
-from app.application.services.document_validator_service import (
-    IDocumentValidatorService,
-)
-from app.infrastructure.services.document_validator_service import (
-    DocumentValidatorService,
-)
+from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
 )
-from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
-    GetOrCreateDeepAnalysisUseCase,
-)
 from app.application.use_cases.create_tender_chat_session_use_case import (
     CreateTenderChatSessionUseCase,
+)
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
+    GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.delete_tender_chat_document_use_case import (
     DeleteTenderChatDocumentUseCase,
@@ -61,11 +59,13 @@ from app.application.use_cases.delete_tender_chat_document_use_case import (
 from app.application.use_cases.get_tender_chat_history_use_case import (
     GetTenderChatHistoryUseCase,
 )
-
 from app.application.use_cases.list_tender_chat_documents_use_case import (
     ListTenderChatDocumentsUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.matching.score_tender_on_demand import (
+    ScoreTenderOnDemandUseCase,
+)
 from app.application.use_cases.notifications.build_daily_digest import (
     BuildDailyDigestUseCase,
 )
@@ -141,6 +141,9 @@ from app.infrastructure.services.company_lookup.http_company_lookup_service impo
     SreLookupService,
     WebEmpresarioLookupService,
 )
+from app.infrastructure.services.document_validator_service import (
+    DocumentValidatorService,
+)
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
@@ -210,6 +213,20 @@ def get_matching_result_repo(
     return MatchingResultRepository(session)
 
 
+def get_compatibility_scorer(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
+    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+) -> CompatibilityScorer:
+    """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
+    return CompatibilityScorer(
+        reranker_service=reranker_service,
+        weighting_service=weighting_service,
+        matching_result_repo=MatchingResultRepository(session),
+        model_version=settings.embedding_model,
+    )
+
+
 def get_rank_tenders_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     supplier_vector_repo: Annotated[
@@ -218,18 +235,28 @@ def get_rank_tenders_use_case(
     tender_vector_repo: Annotated[
         ITenderVectorRepository, Depends(get_tender_vector_repo)
     ],
-    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
         supplier_vector_repo=supplier_vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=TenderRepository(session),
-        reranker_service=reranker_service,
-        weighting_service=weighting_service,
+        scorer=scorer,
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
+    )
+
+
+def get_score_tender_on_demand_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+) -> ScoreTenderOnDemandUseCase:
+    return ScoreTenderOnDemandUseCase(
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        scorer=scorer,
     )
 
 
@@ -405,12 +432,14 @@ def get_get_or_create_deep_analysis_use_case(
     deep_analysis_service: Annotated[
         IDeepAnalysisService, Depends(get_deep_analysis_service)
     ],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
 ) -> GetOrCreateDeepAnalysisUseCase:
     return GetOrCreateDeepAnalysisUseCase(
         supplier_repo=SupplierRepository(session),
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         deep_analysis_service=deep_analysis_service,
+        scorer=scorer,
     )
 
 
@@ -704,8 +733,12 @@ def build_notification_runners(
                 vector_size=settings.embedding_vector_size,
             ),
             tender_repo=TenderRepository(session),
-            reranker_service=app.state.reranker_service,
-            weighting_service=app.state.weighting_service,
+            scorer=CompatibilityScorer(
+                reranker_service=app.state.reranker_service,
+                weighting_service=app.state.weighting_service,
+                matching_result_repo=MatchingResultRepository(session),
+                model_version=settings.embedding_model,
+            ),
             matching_result_repo=MatchingResultRepository(session),
             model_version=settings.embedding_model,
         )
@@ -833,6 +866,7 @@ def bootstrap(app: FastAPI) -> None:
         get_unsave_tender_use_case=get_unsave_tender_use_case,
         get_search_tenders_use_case=get_search_tenders_use_case,
         get_tender_detail_use_case=get_tender_detail_use_case,
+        get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
         get_list_notifications_use_case=get_list_notifications_use_case,
         get_count_unread_use_case=get_count_unread_use_case,
         get_mark_notification_read_use_case=get_mark_notification_read_use_case,

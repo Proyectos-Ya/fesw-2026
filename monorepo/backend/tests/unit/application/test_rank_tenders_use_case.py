@@ -3,9 +3,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.repositories.matching_result_repository import (
-    IMatchingResultRepository,
-)
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
@@ -14,8 +11,7 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.schemas.tender_schema import TenderFilterCriteria
-from app.application.services.reranker_service import IRerankerService
-from app.application.services.weighting_service import IWeightingService
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
@@ -31,7 +27,10 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
+    FakeRerankerService,
     FakeSupplierVectorRepository,
+    FakeWeightingService,
+    InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
 )
 
@@ -166,67 +165,21 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         return len(self.search_results)
 
 
-class InMemoryMatchingResultRepository(IMatchingResultRepository):
-    """Fake repository para caché de resultados de matching."""
-
-    def __init__(self) -> None:
-        self.results: dict[UUID, list[MatchingResult]] = {}
-
-    async def save_bulk(self, results: list[MatchingResult]) -> None:
-        if not results:
-            return
-        supplier_id = results[0].supplier_id
-        if supplier_id not in self.results:
-            self.results[supplier_id] = []
-        self.results[supplier_id].extend(results)
-
-    async def get_by_supplier_id(self, supplier_id: UUID) -> list[MatchingResult]:
-        return self.results.get(supplier_id, [])
-
-    async def delete_by_supplier_id(self, supplier_id: UUID) -> None:
-        self.results.pop(supplier_id, None)
-
-    async def get_by_proveedor_and_licitacion(
-        self, proveedor_id: UUID, licitacion_id: UUID
-    ) -> MatchingResult | None:
-        for r in self.results.get(proveedor_id, []):
-            if r.tender_id == licitacion_id:
-                return r
-        return None
-
-
-class FakeRerankerService(IRerankerService):
-    """Fake service para simular el re-ranker ONNX."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, list[tuple[UUID, str]], int]] = []
-
-    async def rerank(
-        self,
-        query_text: str,
-        candidates: list[tuple[UUID, str]],
-        limit: int,
-    ) -> list[tuple[UUID, float]]:
-        self.calls.append((query_text, candidates, limit))
-        # Retorna el mismo orden pero con un score simulado decreciente
-        return [(uid, 1.0 - (i * 0.05)) for i, (uid, _) in enumerate(candidates)][
-            :limit
-        ]
-
-
-class FakeWeightingService(IWeightingService):
-    """Fake service para simular ponderación manual por campos."""
-
-    def calculate_scores(
-        self, candidates: list[tuple[Tender, float]], supplier: Supplier
-    ) -> list[tuple[UUID, float]]:
-        # Asigna un score decreciente para cada candidato para simular el resultado de la ponderación
-        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
-
-
 # ---------------------------------------------------------------------------
 # Helpers para creación de entidades dummy
 # ---------------------------------------------------------------------------
+
+
+def crear_scorer(
+    reranker: FakeRerankerService | None = None,
+    matching_result_repo: InMemoryMatchingResultRepository | None = None,
+) -> CompatibilityScorer:
+    """Arma el servicio real de puntaje sobre los dobles de reranker y ponderación."""
+    return CompatibilityScorer(
+        reranker_service=reranker or FakeRerankerService(),
+        weighting_service=FakeWeightingService(),
+        matching_result_repo=matching_result_repo or InMemoryMatchingResultRepository(),
+    )
 
 
 def create_dummy_tender(
@@ -267,8 +220,7 @@ async def test_supplier_not_found_raises_exception() -> None:
         supplier_vector_repo=FakeSupplierVectorRepository(),
         tender_vector_repo=FakeTenderVectorRepository(),
         tender_repo=InMemoryTenderRepository(),
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=InMemoryMatchingResultRepository(),
     )
 
@@ -292,8 +244,7 @@ async def test_supplier_vector_not_found_raises_exception() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=FakeTenderVectorRepository(),
         tender_repo=InMemoryTenderRepository(),
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=InMemoryMatchingResultRepository(),
     )
 
@@ -349,8 +300,7 @@ async def test_cache_hit_returns_immediately_without_pipeline() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=tender_repo,
-        reranker_service=reranker,
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(reranker, matching_result_repo),
         matching_result_repo=matching_result_repo,
     )
 
@@ -394,8 +344,7 @@ async def test_cache_miss_runs_full_pipeline_and_persists() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=tender_repo,
-        reranker_service=reranker,
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(reranker, matching_result_repo),
         matching_result_repo=matching_result_repo,
     )
 
@@ -464,8 +413,7 @@ async def test_closed_tenders_are_filtered_out() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=tender_repo,
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=matching_result_repo,
     )
 
@@ -507,8 +455,7 @@ async def test_orphan_vectors_are_deleted_from_vector_store() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=tender_repo,
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=InMemoryMatchingResultRepository(),
     )
 
@@ -545,8 +492,7 @@ async def test_el_pipeline_sigue_filtrando_por_estado_publicada() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=InMemoryTenderRepository(),
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=InMemoryMatchingResultRepository(),
     )
 
@@ -584,11 +530,113 @@ async def test_el_pipeline_busca_con_el_vector_del_proveedor() -> None:
         supplier_vector_repo=vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=InMemoryTenderRepository(),
-        reranker_service=FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
+        scorer=crear_scorer(),
         matching_result_repo=InMemoryMatchingResultRepository(),
     )
 
     await use_case.execute(user_id=user_id)
 
     assert tender_vector_repo.searched_vectors == [vector_del_proveedor]
+
+
+@pytest.mark.asyncio
+async def test_los_calculos_a_pedido_no_son_recomendaciones() -> None:
+    """Una licitación que el usuario se calculó a mano no entra al dashboard.
+
+    El sistema nunca la propuso: la encontró el usuario buscando. Tratarla como
+    recomendación además dispararía alertas de la HdU 08 por algo que nadie
+    recomendó.
+    """
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
+
+    recomendada = uuid4()
+    a_pedido = uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[recomendada] = create_dummy_tender(recomendada)
+    tender_repo.tenders[a_pedido] = create_dummy_tender(a_pedido)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(recomendada, 0.85)]
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    await matching_result_repo.save_on_demand(
+        MatchingResult(
+            supplier_id=supplier.id,
+            tender_id=a_pedido,
+            similarity_score=None,
+            final_score=0.42,
+            model_version="bge-m3-v1",
+            source="on_demand",
+        )
+    )
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(matching_result_repo=matching_result_repo),
+        matching_result_repo=matching_result_repo,
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert [r.tender_id for r in results] == [recomendada]
+    # Y el recálculo no se llevó por delante lo que el usuario había pedido.
+    guardado = await matching_result_repo.get_by_proveedor_and_licitacion(
+        supplier.id, a_pedido
+    )
+    assert guardado is not None
+    assert guardado.final_score == pytest.approx(0.42)
+
+
+@pytest.mark.asyncio
+async def test_si_la_licitacion_a_pedido_entra_al_top_reemplaza_su_fila() -> None:
+    """Hay una restricción única por par: la fila vieja tiene que salir primero."""
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
+
+    tender_id = uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(tender_id, 0.85)]
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    await matching_result_repo.save_on_demand(
+        MatchingResult(
+            supplier_id=supplier.id,
+            tender_id=tender_id,
+            similarity_score=None,
+            final_score=0.42,
+            model_version="bge-m3-v1",
+            source="on_demand",
+        )
+    )
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(matching_result_repo=matching_result_repo),
+        matching_result_repo=matching_result_repo,
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    filas = await matching_result_repo.get_by_supplier_id(supplier.id)
+    assert len(filas) == 1
+    assert filas[0].source == "ranking"
