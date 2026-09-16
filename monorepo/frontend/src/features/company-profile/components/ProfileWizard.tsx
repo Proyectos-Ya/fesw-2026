@@ -76,10 +76,6 @@ export function ProfileWizard() {
     applyImport,
     totalSteps,
   } = useProfileWizard();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const { currentStep, formData, nextStep, prevStep, goToStep, totalSteps } =
-    useProfileWizard();
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [error, setError] = useState<string | null>(null);
 
