@@ -62,6 +62,7 @@ import asyncio
 import sys
 import time
 from collections.abc import Awaitable, Callable, Coroutine
+from datetime import timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -77,6 +78,7 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.shared.constants import TENDER_STATUSES
+from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import (
     construir_servicio,
     contar_pendientes,
@@ -163,6 +165,24 @@ async def sincronizar(
 
     if preparar_destino is not None:
         await preparar_destino()
+
+    # Ninguna corrida viva puede durar más que el timeout, así que una `running`
+    # más vieja murió sin cerrarse. Una más nueva puede estar corriendo de
+    # verdad —una ejecución lanzada a mano junto a la programada— y dos corridas
+    # sobre la misma cola gastan el doble de cuota. `--forzar` es para cuando se
+    # sabe que no: el deploy se quitó a mano y la fila quedó huérfana.
+    timeout = getattr(args, "timeout_minutos", DEFAULT_TIMEOUT_MINUTOS)
+    forzar = getattr(args, "forzar", False)
+    corte = utc_now_naive() if forzar else utc_now_naive() - timedelta(minutes=timeout)
+    if cerradas := await servicio.cerrar_corridas_colgadas(corte):
+        print(f"--- Corridas colgadas cerradas como 'failed': {cerradas} ---")
+    if await servicio.hay_corrida_en_curso():
+        print(
+            "\nERROR: hay otra corrida en 'running' que empezó hace menos de "
+            f"{timeout:.0f} min.\nSi de verdad no está corriendo (por ejemplo, se "
+            "quitó el deploy a mano),\nvuelve a lanzar con --forzar."
+        )
+        return 1
 
     if not args.sin_marcar:
         print(f"--- Vencidas marcadas como cerradas: {await marcar_vencidas()} ---")
@@ -289,6 +309,11 @@ def main() -> None:
         "--confirmar-produccion",
         action="store_true",
         help="requerido si la base no es local",
+    )
+    p.add_argument(
+        "--forzar",
+        action="store_true",
+        help="cerrar cualquier corrida en 'running' y correr igual",
     )
     p.add_argument(
         "--timeout-minutos",

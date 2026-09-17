@@ -65,7 +65,9 @@ class TestLecturaDelCursor:
 
         desde, hasta = await servicio.ventana_a_sincronizar()
 
-        assert timedelta(days=4, hours=23) < (hasta - desde) < timedelta(days=5, hours=1)
+        assert (
+            timedelta(days=4, hours=23) < (hasta - desde) < timedelta(days=5, hours=1)
+        )
 
     async def test_una_corrida_truncada_no_mueve_el_cursor(
         self, servicio, integration_engine
@@ -166,3 +168,59 @@ class TestRegistroDeCorridas:
         nueva_desde, _ = await servicio.ventana_a_sincronizar()
 
         assert nueva_desde == hasta
+
+
+async def _corrida_en(engine, *, status: str, empezo_hace: timedelta) -> uuid.UUID:
+    run_id = uuid.uuid4()
+    empezo = utc_now_naive() - empezo_hace
+    async with AsyncSession(engine) as s:
+        s.add(
+            IngestionRunModel(
+                id=run_id,
+                window_from=empezo - PISO_VENTANA,
+                window_to=empezo,
+                status=status,
+                started_at=empezo,
+                finished_at=None if status == "running" else empezo,
+            )
+        )
+        await s.commit()
+    return run_id
+
+
+class TestCorridasColgadas:
+    async def test_cierra_solo_las_running_anteriores_al_corte(
+        self, servicio, integration_engine
+    ):
+        colgada = await _corrida_en(
+            integration_engine, status="running", empezo_hace=timedelta(hours=30)
+        )
+        reciente = await _corrida_en(
+            integration_engine, status="running", empezo_hace=timedelta(minutes=10)
+        )
+        buena = await _corrida_en(
+            integration_engine, status="ok", empezo_hace=timedelta(hours=40)
+        )
+
+        cerradas = await servicio.cerrar_corridas_colgadas(
+            utc_now_naive() - timedelta(hours=6)
+        )
+
+        assert cerradas == 1
+        async with AsyncSession(integration_engine) as s:
+            filas = {
+                i: await s.get(IngestionRunModel, i) for i in (colgada, reciente, buena)
+            }
+        assert filas[colgada].status == "failed"  # type: ignore[union-attr]
+        assert filas[colgada].finished_at is not None  # type: ignore[union-attr]
+        assert filas[reciente].status == "running"  # type: ignore[union-attr]
+        assert filas[buena].status == "ok"  # type: ignore[union-attr]
+
+    async def test_detecta_una_corrida_en_curso(self, servicio, integration_engine):
+        assert await servicio.hay_corrida_en_curso() is False
+
+        await _corrida_en(
+            integration_engine, status="running", empezo_hace=timedelta(minutes=5)
+        )
+
+        assert await servicio.hay_corrida_en_curso() is True
