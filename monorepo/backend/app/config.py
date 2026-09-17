@@ -147,11 +147,7 @@ class Settings(BaseSettings):
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
-    # Ingesta dentro del proceso de la API y región a la que acotarla (None =
-    # todas). Apagada por defecto: la ingesta la hace el cron de Railway
-    # (`scripts/sync_diaria.py`), y una API que arrancara sin la variable
-    # ingestaría en paralelo con él, sobre la misma cola y gastando cuota doble.
-    run_auto_ingestion: bool = False
+    # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
     # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
@@ -205,7 +201,7 @@ class Settings(BaseSettings):
     # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
     # lo que el usuario abre desde su bandeja.
     app_base_url: str = "http://localhost:3000"
-    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    # Permite apagar los bucles de alertas sin tocar código.
     run_notification_scan: bool = True
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8

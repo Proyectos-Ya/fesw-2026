@@ -81,9 +81,6 @@ export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
 export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
 ```
 
-Deja además `RUN_AUTO_INGESTION=false`: vas a usar el corpus de prueba del repositorio en
-vez de descargar licitaciones reales.
-
 Verifica que `RUN_NOTIFICATION_SCAN` **no** esté en `false`. Es la variable que enciende
 la detección de alertas; con ella apagada no se genera ni un aviso y parecerá que la
 funcionalidad no existe.

@@ -1,12 +1,12 @@
 """Tareas en segundo plano de las alertas de licitaciones (HdU 08).
 
-Mismo enfoque que `TenderScheduler`: bucles `asyncio` dentro del lifespan de la
-aplicación, sin broker ni cron externo. El scheduler solo decide *cuándo*; el
-*qué* son las funciones que recibe, cada una responsable de abrir y cerrar su
-propia sesión de base de datos.
+Bucles `asyncio` dentro del lifespan de la aplicación, sin broker ni cron
+externo. El scheduler solo decide *cuándo*; el *qué* son las funciones que
+recibe, cada una responsable de abrir y cerrar su propia sesión de base de datos.
 
-Como el de ingesta, esto asume **una sola instancia** de la API. Con dos
-réplicas ambas escanearían y el usuario recibiría correos duplicados.
+Esto asume **una sola instancia** de la API contra la base. Con dos —dos
+réplicas, o dos entornos que comparten base— ambas despachan y el usuario
+recibe correos duplicados (visto el 16-sep-2026; ver PENDIENTES §3.19).
 """
 
 import asyncio
