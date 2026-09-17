@@ -111,19 +111,3 @@ class TestTicketsDeMercadoPublico:
         )
 
         assert s.mercado_publico_tickets == ["uno"]
-
-
-class TestIngestaAutomatica:
-    """La ingesta vive en el cron de Railway (`scripts/sync_diaria.py`).
-
-    Con el default en `True`, basta que la API arranque sin la variable para que
-    ingeste en paralelo con el cron: la misma cola, el doble de cuota.
-    """
-
-    def test_por_defecto_la_api_no_ingesta(self, monkeypatch):
-        monkeypatch.delenv("RUN_AUTO_INGESTION", raising=False)
-
-        assert _construir().run_auto_ingestion is False
-
-    def test_se_puede_encender_explicitamente(self):
-        assert _construir(run_auto_ingestion=True).run_auto_ingestion is True

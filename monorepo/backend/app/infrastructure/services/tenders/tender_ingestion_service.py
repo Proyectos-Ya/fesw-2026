@@ -278,20 +278,6 @@ class TenderIngestionService(ITenderIngestionService):
             nuevos += len(resultado.all())
         return nuevos
 
-    async def ultima_sincronizacion(self) -> datetime | None:
-        """Fecha del registro de metadata más reciente, en UTC con zona.
-
-        La columna se guarda naive —en UTC, por convención del proyecto—, así que
-        se le pone la zona antes de devolverla: quien compara contra `ahora` está
-        en hora de Chile, y restar un naive de un aware lanza TypeError.
-        """
-        async with AsyncSession(self.engine) as session:
-            stmt = select(func.max(col(TenderMetadataModel.created_at)))
-            ultima = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
-            if ultima is None:
-                return None
-            return ultima.replace(tzinfo=UTC)
-
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
 

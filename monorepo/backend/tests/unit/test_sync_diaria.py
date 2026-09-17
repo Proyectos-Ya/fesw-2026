@@ -58,9 +58,6 @@ class ServicioFalso(ITenderIngestionService):
         procesadas, self.pendientes = self.pendientes, 0
         return ResultadoProceso(procesadas=procesadas)
 
-    async def ultima_sincronizacion(self) -> datetime | None:
-        return None
-
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         hasta = datetime(2026, 9, 10, tzinfo=UTC)
         return hasta - timedelta(days=1), hasta
