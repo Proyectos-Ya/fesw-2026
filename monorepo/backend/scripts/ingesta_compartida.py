@@ -101,6 +101,14 @@ async def contar_pendientes(engine: AsyncEngine) -> int:
 # significa que no se pueda avanzar.
 RONDAS_SIN_AVANCE_MAX = 3
 
+# Éxito mínimo de una pasada, sobre lo que intentó, para contarla como avance.
+# Con Mercado Público caído entra alguna licitación de vez en cuando, y si
+# cualquier avance reiniciara el contador el vaciado no se rendiría nunca: la
+# segunda corrida en `dev test` (17-sep-2026) insistió ~45 minutos con 19
+# licitaciones en 504. Se mide sobre el lote y no sobre la cola, para no cortar
+# una cola grande que avanza 200 de 5.000 por ronda.
+EXITO_MINIMO_POR_PASADA = 0.10
+
 
 @dataclass
 class ResultadoRondas:
@@ -133,7 +141,9 @@ async def vaciar_cola(
       una cuota que ya no existe. Se para y se retoma en la corrida siguiente:
       lo que está encolado no se pierde.
     * **Varias rondas sin avance.** Alguna licitación está fallando de forma
-      reproducible. Insistir para siempre bloquearía la cola.
+      reproducible, o la API está caída. Insistir para siempre bloquearía la
+      cola. Una ronda que procesa menos de `EXITO_MINIMO_POR_PASADA` de lo que
+      intentó también cuenta como sin avance, aunque lo que sí entró se suma.
     """
     inicio = time.perf_counter()
     resultado = ResultadoRondas()
@@ -153,24 +163,30 @@ async def vaciar_cola(
             resultado.pendientes = restantes
             break
 
-        if restantes == pendientes:
-            sin_avance += 1
-            if verboso:
-                print(
-                    f"  ronda {resultado.rondas}: sin avance ({restantes} "
-                    f"pendientes), intento {sin_avance}/{RONDAS_SIN_AVANCE_MAX}"
-                )
-            if sin_avance >= RONDAS_SIN_AVANCE_MAX:
-                resultado.sin_avance = True
-                resultado.pendientes = restantes
-                break
-            continue
-
-        sin_avance = 0
         hechas = pendientes - restantes
         resultado.procesadas += hechas
         pendientes = restantes
         resultado.pendientes = restantes
+
+        intentadas = pasada.procesadas + pasada.fallidas
+        goteo = (
+            intentadas > 0
+            and pasada.procesadas < intentadas * EXITO_MINIMO_POR_PASADA
+        )
+        if hechas <= 0 or goteo:
+            sin_avance += 1
+            if verboso:
+                print(
+                    f"  ronda {resultado.rondas}: sin avance ({hechas} procesadas, "
+                    f"{restantes} pendientes), intento "
+                    f"{sin_avance}/{RONDAS_SIN_AVANCE_MAX}"
+                )
+            if sin_avance >= RONDAS_SIN_AVANCE_MAX:
+                resultado.sin_avance = True
+                break
+            continue
+
+        sin_avance = 0
         if verboso:
             print(
                 f"  ronda {resultado.rondas}: {hechas} procesadas, quedan {restantes}"
