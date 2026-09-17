@@ -96,6 +96,17 @@ def _en_utc_naive(momento: datetime) -> datetime:
     return momento.astimezone(UTC).replace(tzinfo=None)
 
 
+def _describir(error: Exception) -> str:
+    """Motivo legible para `tender_metadata.last_error`.
+
+    Con el tipo delante: un timeout de red tiene `str(e) == ""`, y la segunda
+    corrida en `dev test` dejó 46 filas con el error vacío.
+    """
+    mensaje = str(error)
+    nombre = type(error).__name__
+    return f"{nombre}: {mensaje}" if mensaje else nombre
+
+
 def _lotes(elementos: list, tamano: int):
     """Trocea una lista en sublistas de a lo más `tamano`."""
     for inicio in range(0, len(elementos), tamano):
@@ -477,7 +488,7 @@ class TenderIngestionService(ITenderIngestionService):
                     # La licitación existe y el próximo intento la recupera.
                     # Nunca se marca procesada: eso la perdería para siempre.
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=False
+                        session, metadata_id, _describir(e), rendirse=False
                     )
                     resultado.fallidas += 1
                 except Exception as e:
@@ -485,7 +496,7 @@ class TenderIngestionService(ITenderIngestionService):
                         f"[IngestionService] Error al procesar licitación {code}: {e}"
                     )
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=True
+                        session, metadata_id, _describir(e), rendirse=True
                     )
                     resultado.fallidas += 1
 
@@ -523,6 +534,9 @@ class TenderIngestionService(ITenderIngestionService):
         metadata_item = await session.get(TenderMetadataModel, metadata_id)
         if metadata_item:
             metadata_item.is_processed = True
+            # Si falló antes y ahora entró, el error viejo haría que una
+            # licitación ya ingerida pareciera fallida al revisar la cola.
+            metadata_item.last_error = None
             metadata_item.updated_at = utc_now_naive()
             session.add(metadata_item)
         await session.commit()
