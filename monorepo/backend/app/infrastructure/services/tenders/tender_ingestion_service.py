@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
@@ -346,6 +346,34 @@ class TenderIngestionService(ITenderIngestionService):
             corrida.finished_at = utc_now_naive()
             session.add(corrida)
             await session.commit()
+
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        """Pasa a `failed` las `running` que empezaron antes de `antes_de`.
+
+        `failed` y no `partial`: no se sabe hasta dónde llegó, y ninguno de los
+        dos mueve el cursor, así que la ventana se vuelve a pedir igual.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                update(IngestionRunModel)
+                .where(
+                    col(IngestionRunModel.status) == "running",
+                    col(IngestionRunModel.started_at) < _en_utc_naive(antes_de),
+                )
+                .values(status="failed", finished_at=utc_now_naive())
+            )
+            resultado = await session.exec(stmt)  # type: ignore[call-overload]
+            await session.commit()
+            return resultado.rowcount or 0
+
+    async def hay_corrida_en_curso(self) -> bool:
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                select(IngestionRunModel.id)
+                .where(IngestionRunModel.status == "running")
+                .limit(1)
+            )
+            return (await session.exec(stmt)).first() is not None
 
     async def process_unprocessed_tenders(
         self, limite: int | None = None

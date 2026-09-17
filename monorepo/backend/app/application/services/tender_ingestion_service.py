@@ -71,6 +71,20 @@ class ITenderIngestionService(ABC):
         pass
 
     @abstractmethod
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        """Pasa a `failed` las corridas en `running` que empezaron antes del corte.
+
+        Una corrida cuyo proceso murió —un Remove en Railway, un OOM— queda en
+        `running` para siempre. Devuelve cuántas cerró.
+        """
+        pass
+
+    @abstractmethod
+    async def hay_corrida_en_curso(self) -> bool:
+        """Si alguna corrida figura en `running`."""
+        pass
+
+    @abstractmethod
     async def process_unprocessed_tenders(
         self, limite: int | None = None
     ) -> "ResultadoProceso":

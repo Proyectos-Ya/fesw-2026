@@ -37,6 +37,9 @@ class ServicioFalso(ITenderIngestionService):
         self.limite_pedido: int | None = None
         self.por_publicacion_pedido: bool | None = None
         self.cuota_agotada = False
+        # `started_at` de las corridas que figuran en `running`.
+        self.corridas_en_curso: list[datetime] = []
+        self.inicio_registrado = False
 
     async def fetch_tenders_metadata(
         self,
@@ -66,7 +69,16 @@ class ServicioFalso(ITenderIngestionService):
         return hasta - timedelta(days=1), hasta
 
     async def registrar_inicio(self, desde: datetime, hasta: datetime) -> UUID:
+        self.inicio_registrado = True
         return uuid4()
+
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        viejas = [c for c in self.corridas_en_curso if c < antes_de]
+        self.corridas_en_curso = [c for c in self.corridas_en_curso if c >= antes_de]
+        return len(viejas)
+
+    async def hay_corrida_en_curso(self) -> bool:
+        return bool(self.corridas_en_curso)
 
     async def registrar_fin(
         self,
@@ -368,3 +380,45 @@ class TestCodigoDeSalida:
         )
 
         assert await _correr(servicio) == 0
+
+
+class TestCorridasColgadasYSolapadas:
+    """Un Remove en Railway o un proceso muerto dejan la fila en `running` para
+    siempre (16-sep-2026). Y una corrida lanzada a mano puede solaparse con la
+    programada: dos corridas sobre la misma cola gastan el doble de cuota."""
+
+    async def test_cierra_las_colgadas_mas_viejas_que_el_timeout_y_corre(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=10, completo=True))
+        servicio.corridas_en_curso = [_hace(horas=30)]
+
+        codigo = await _correr(servicio, _args(timeout_minutos=360))
+
+        assert servicio.corridas_en_curso == []
+        assert servicio.inicio_registrado
+        assert codigo == 0
+
+    async def test_se_niega_si_hay_otra_corrida_reciente(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=10, completo=True))
+        servicio.corridas_en_curso = [_hace(horas=1)]
+
+        codigo = await _correr(servicio, _args(timeout_minutos=360))
+
+        assert codigo == 1
+        assert not servicio.inicio_registrado
+        assert servicio.ventana_pedida is None
+
+    async def test_con_forzar_cierra_la_reciente_y_corre(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=10, completo=True))
+        servicio.corridas_en_curso = [_hace(horas=1)]
+
+        codigo = await _correr(servicio, _args(timeout_minutos=360, forzar=True))
+
+        assert servicio.corridas_en_curso == []
+        assert servicio.inicio_registrado
+        assert codigo == 0
+
+
+def _hace(*, horas: float) -> datetime:
+    from app.shared.datetime_utils import utc_now_naive
+
+    return utc_now_naive() - timedelta(hours=horas)
