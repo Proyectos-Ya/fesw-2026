@@ -122,23 +122,26 @@ responsabilidades separadas y no intercambiables.
   En la práctica: agregar columnas nullable, y no renombrar ni borrar en el
   mismo despliegue que deja de usarlas.
 
-- **Cabezas múltiples.** Cuando dos ramas crean migraciones desde el mismo
-  punto, el grafo de Alembic queda con dos finales y `alembic upgrade head`
-  **aborta sin aplicar nada**: el despliegue se cae y el código mergeado no
-  llega a producción. Cómo se arregla depende de si tu migración ya se aplicó
-  en algún entorno:
+- **Cabezas múltiples.** Ocurre cuando dos ramas paralelas crean migraciones
+  desde la misma revisión base (`down_revision`). Al integrarse ambas ramas, el
+  grafo de Alembic queda con dos finales concurrentes y `alembic upgrade head`
+  **aborta con error sin aplicar nada**: el despliegue en Railway se cae en el
+  `preDeployCommand` y el código mergeado no llega a producción (ver [ADR 0001](./docs/decisions/0001-esquema-solo-con-alembic.md)
+  y [ADR 0003](./docs/decisions/0003-migraciones-en-predeploy-de-railway.md)).
 
+  **Regla estricta antes de abrir PR (ver [SKILL.md](./SKILL.md) §1)**:
+  Ejecutar `alembic heads`. Debe devolver **una sola línea**. Si devuelve más de
+  una cabeza, resolverlo antes de mergear:
   - **Todavía no se aplicó en ninguna parte** (lo habitual: sigue solo en tu
-    rama): repuntar el `down_revision` de tu migración a la cabeza actual.
-    Es seguro porque nadie la ha aplicado, y deja el grafo lineal.
-  - **Ya se aplicó en algún entorno** (está en `main` y se desplegó, o alguien
-    la corrió contra una base compartida): `alembic merge heads`. Editar el
-    `down_revision` de una migración que otros ya aplicaron rompe su historial.
+    rama local): repuntar el `down_revision` de tu archivo de migración para que
+    apunte a la cabeza actual de `develop`. Es seguro porque nadie la ha
+    aplicado y conserva el historial lineal.
+  - **Ya se aplicó en algún entorno** (está en `main`/`develop` y se desplegó, o
+    alguien la corrió contra una base compartida): `alembic merge heads -m "merge heads"`.
+    Editar el `down_revision` de una migración que otros ya aplicaron rompe su historial.
 
-  Antes de abrir el PR, comprobar con `alembic heads`: si devuelve más de una
-  línea, resolverlo antes de mergear. Ha ocurrido dos veces (30-ago-2026 y
-  2-sep-2026), las dos con la misma forma: dos ramas largas desde el mismo
-  ancestro, mergeadas en secuencia.
+  Este conflicto ha ocurrido repetidamente (30-ago-2026 y 2-sep-2026) al mergear ramas
+  largas en secuencia; validarlo en el checklist de pre-commit previene caídas de despliegue.
 
 Crear una migración (desde `monorepo/backend`, con el entorno virtual activo):
 

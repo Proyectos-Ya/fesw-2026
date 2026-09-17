@@ -1,773 +1,249 @@
-# ProyectosYA Backend - FastAPI
+# Chiripa Backend — FastAPI
 
-Este es el backend de ProyectosYA construido con FastAPI.
+Backend de **Chiripa**, construido con FastAPI, SQLModel, Alembic, PostgreSQL (Supabase) y Qdrant. Proporciona los servicios de ingesta, indexación vectorial, matching semántico híbrido, alertas por correo y asistencia interactiva mediante IA.
 
-## Requisitos
-
-- Python 3.12+
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo,
-  con al menos **4 GB de memoria asignados**
-- [Supabase CLI](https://supabase.com/docs/guides/local-development) — provee la base de
-  datos, en local y en producción:
-
-
-> El contenedor de la API consume ~3 GB cuando termina de cargar el modelo de embeddings.
-> Con menos memoria, Docker lo mata durante el arranque sin un mensaje claro.
-
-> **Windows**: clona el repositorio **dentro de WSL2**, no en `C:\`. Sobre el disco de
-> Windows los eventos de archivo no llegan al contenedor y el hot reload deja de
-> funcionar; además el I/O es mucho más lento. Si no puedes moverlo, agrega
-> `WATCHFILES_FORCE_POLLING=1` a tu `.env`.
+> **Nota sobre identificadores técnicos**: El repositorio y algunos identificadores internos (nombres de servicios en Docker como `proyectosya_api`, base de datos y correos) conservan el nombre histórico del producto (`ProyectosYA` / `fesw-2026`). No renombrarlos sin acuerdo previo.
 
 ---
 
-## Configuración inicial
+## 1. Requisitos Previos
 
-Estos pasos solo se hacen **una vez** al clonar el proyecto.
+* **Python 3.12+**
+* **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: Instalado y en ejecución, con al menos **4 GB de memoria RAM asignados** (el modelo de embeddings `bge-m3` y el reranker consumen ~3 GB al arrancar; con menos memoria, Docker puede finalizar el contenedor silenciosamente).
+* **[Supabase CLI](https://supabase.com/docs/guides/local-development)**: Provee la base de datos PostgreSQL y el servicio de autenticación (GoTrue) en local.
 
-### 1. Crear el archivo `.env`
+> **Usuarios de Windows**: Se recomienda clonar el repositorio dentro de **WSL2** para que los eventos de archivos del hot reload funcionen correctamente y el rendimiento de I/O sea óptimo. Si trabajas directamente sobre Windows, define `WATCHFILES_FORCE_POLLING=1` en tu archivo `.env`.
 
-Desde la raíz del monorepo:
+---
 
+## 2. Configuración Inicial
+
+Estos pasos se ejecutan una sola vez al configurar el entorno:
+
+### A. Variables de Entorno (`.env`)
+Desde la carpeta `monorepo/`:
 ```bash
 cp .env.example .env
 ```
-
-Abre `.env` y completa los valores. Estas variables son **obligatorias** — sin ellas la
-aplicación no arranca:
-
-| Variable | Para qué sirve |
-|---|---|
-| `DATABASE_URL` | Conexión a la base. Con Supabase local: `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
-| `MERCADO_PUBLICO_API_KEY` | Ticket de la API de Mercado Público |
-| `GEMINI_API_KEY` | Clave del servicio de análisis |
-| `GEMINI_MODEL` | Modelo de Gemini a utilizar |
-| `JWT_SECRET_KEY` | Firma de los tokens de sesión |
-| `POSTGRES_PASSWORD` | Solo respaldo si no defines `DATABASE_URL`; aun así hay que declararla |
-
-`JWT_SECRET_KEY` es una credencial y **cada desarrollador genera la suya**. La
-aplicación se niega a arrancar sin ella, y rechaza claves de menos de 32 bytes:
-
-```bash
-python -c "import secrets; print(f'JWT_SECRET_KEY={secrets.token_urlsafe(48)}')" >> ../.env
-```
-
-El archivo `.env` nunca se sube a Git — cada desarrollador tiene su propia copia local.
-
-### 2. Crear el entorno virtual
-
-Desde `monorepo/backend/`:
-
-```bash
-python -m venv .venv
-```
-
-> Alternativa opcional: si tienes [uv](https://docs.astral.sh/uv/) instalado,
-> `uv venv --python 3.12` hace lo mismo en segundos y descarga Python si te falta.
-
-### 3. Activar el entorno virtual
-
-- En Windows (PowerShell):
-  ```powershell
-  .venv\Scripts\Activate.ps1
-  ```
-- En macOS/Linux:
+Completa las variables requeridas en `.env`:
+* `DATABASE_URL`: Conexión a la base de datos (con Supabase local: `postgresql://postgres:postgres@127.0.0.1:54322/postgres`).
+* `JWT_SECRET_KEY`: Secreto para validar sesiones. Genera uno con:
   ```bash
-  source .venv/bin/activate
+  python -c "import secrets; print(f'JWT_SECRET_KEY={secrets.token_urlsafe(48)}')" >> .env
   ```
+* `GEMINI_API_KEY`: Clave para los servicios de análisis asistido.
+* `MERCADO_PUBLICO_API_KEY`: Ticket de la API de Mercado Público (para ingestas o consultas externas).
 
-### 4. Instalar dependencias
-
+### B. Entorno Virtual Local (`.venv`)
+Aunque la aplicación corra dentro de Docker, el entorno virtual local es imprescindible para ejecutar los tests (`pytest`), linters (`ruff`), chequeo de tipos y soporte del editor:
 ```bash
+# Desde monorepo/backend/
+python -m venv .venv
+
+# Activar en macOS/Linux:
+source .venv/bin/activate
+
+# Activar en Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# Instalar dependencias de desarrollo y producción:
 pip install -r requirements-dev.txt
 ```
 
-Ese archivo ya incluye `requirements.txt`, así que un solo comando deja el entorno completo.
-
-### 5. Autenticación: clave de firma y Google
-
-Las sesiones las emite **Supabase Auth**, no esta API. Hacen falta dos cosas antes del
-primer `supabase start`.
-
-**a) La clave con que GoTrue firma los JWT.** Es asimétrica: Supabase guarda la privada y
-publica la pública en su JWKS, que es lo único que el backend necesita para validar una
-sesión. Genera la tuya —no se comparte ni se sube, está en `supabase/.gitignore`:
-
+### C. Autenticación Local con Supabase
+Supabase Auth emite los JWT firmados con algoritmo asimétrico (ES256). Antes del primer arranque de Supabase, inicializa la llave de firma:
 ```bash
+# Desde la raíz del repositorio:
 echo '[]' > supabase/signing_keys.json
 supabase gen signing-key --algorithm ES256 --append
 ```
 
-Son dos pasos y no una redirección: como `supabase/config.toml` ya declara
-`signing_keys_path`, el CLI abre ese archivo para agregarle la clave y falla si todavía no
-existe. La primera línea lo siembra vacío.
-
-Sin ese archivo, GoTrue firma con el secreto HS256 heredado. Ese secreto es *simétrico*:
-quien lo tenga puede emitir sesiones de cualquier usuario, y además el backend rechazaría
-esos tokens porque solo acepta ES256/RS256.
-
-**b) Las credenciales de Google** — **opcionales**, solo si quieres probar el botón
-"Continuar con Google" en local. `[auth.external.google]` viene con `enabled = false` a
-propósito: el CLI valida que, con el proveedor encendido, `client_id` y `secret` no queden
-vacíos, y si faltan **`supabase start` aborta y no levanta nada**, ni la base ni el correo
-de prueba. Apagado, quien no tenga las credenciales igual trabaja con normalidad; lo único
-que no funciona es ese botón.
-
-Para encenderlo: pon `enabled = true` en `supabase/config.toml` y exporta las dos
-variables **en la misma shell** desde la que corres `supabase start`. El CLI lee el
-entorno de la shell, no el `.env`, que lo lee la API:
-
-```bash
-export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
-export SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET="..."
-```
-
-Las credenciales se piden al equipo o se crean en Google Cloud Console (OAuth client de
-tipo *Web application*).
-
-> Al crear el OAuth client en Google, la *Authorized redirect URI* es la de **Supabase**,
-> `http://127.0.0.1:54321/auth/v1/callback`, no la del frontend. Google redirige a
-> Supabase, y recién ahí Supabase redirige a `/auth/callback` de la aplicación. Poner la
-> URL del frontend es el error más común y da `redirect_uri_mismatch`.
-
 ---
 
-## Entornos de trabajo: venv y Docker
+## 3. Cómo Levantar el Proyecto
 
-El proyecto usa **dos entornos con propósitos distintos**, y ambos son necesarios.
-
-| | Qué instala | Quién lo instala | Para qué |
-|---|---|---|---|
-| **Contenedor** | `requirements.txt` | El Dockerfile, al construir | Ejecutar la aplicación |
-| **venv local** | `requirements-dev.txt` | Tú, una vez | Tests, ruff, pyright y el editor |
-
-Aunque la aplicación corra dentro de Docker, **el venv local sigue haciendo falta**:
-
-- Los tests se ejecutan localmente — el contenedor no incluye pytest.
-- Ruff y pyright también se ejecutan localmente.
-- VS Code necesita apuntar a ese venv para resolver los imports; sin él marca en rojo
-  todo el proyecto.
-
-`requirements.txt` nunca se instala a mano: es lo que la imagen instala sola.
-
----
-
-## Cada vez que trabajes en el proyecto
-
-### Flujo A (recomendado): la API en Docker
+### Flujo Principal: Con Docker Compose (Recomendado)
 
 ```bash
-# 1. Desde la raíz del repositorio — la base de datos
+# 1. Desde la raíz del repositorio: levantar base de datos y auth local
 supabase start
 
-# 2. Desde monorepo/ — API y Qdrant
+# 2. Desde monorepo/: levantar API y Qdrant
 docker compose up -d
 
-# 3. Desde monorepo/frontend/
+# 3. (Opcional) Desde monorepo/frontend/: levantar el cliente web
 pnpm dev
 ```
 
-El orden importa: `docker compose` ya no levanta Postgres, así que si Supabase no está
-corriendo la API falla al aplicar las migraciones.
+#### Servicios Disponibles
 
-| Servicio | URL |
-|---|---|
-| Frontend | [http://localhost:3000](http://localhost:3000) |
-| API | [http://localhost:8000](http://localhost:8000) — Swagger en `/docs` |
-| Supabase Studio | [http://localhost:54323](http://localhost:54323) |
-| Postgres | `127.0.0.1:54322` — usuario y contraseña `postgres` |
-| Qdrant | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
-| Correos de prueba | [http://localhost:54324](http://localhost:54324) |
-
-Los cambios en archivos `.py` se recargan solos: el código está montado desde tu máquina
-y `uvicorn` corre con `--reload`.
-
-**El primer arranque tarda varios minutos** porque descarga los modelos de embeddings y
-reranking (~4,9 GB: bge-m3 4,3 GB y el reranker INT8 588 MB). Quedan guardados en un
-volumen de Docker, así que los siguientes arranques toman ~20 segundos.
-
-Comandos útiles:
-
-```bash
-docker compose logs -f api    # ver qué está pasando
-docker compose ps             # estado de los servicios
-docker compose down           # bajar API y Qdrant
-supabase stop                 # bajar la base (conserva los datos)
-```
-
-> Nunca uses `docker compose down -v` salvo que quieras empezar de cero: la bandera `-v`
-> borra los volúmenes, y con ellos los vectores de Qdrant y los modelos descargados.
-> El equivalente para la base es `supabase stop --no-backup`.
-
-
----
-
-## ⚠️ Observación: cuándo hay que reconstruir la imagen
-
-`docker compose up -d` construye la imagen **solo si todavía no existe**. Después la
-reutiliza tal cual, y **no detecta** que cambiaste `requirements.txt` o el `Dockerfile`.
-
-Si agregas o actualizas una dependencia, la imagen se queda con la versión vieja y vas a
-ver errores de import que no tienen sentido. Hay que reconstruir explícitamente:
-
-```bash
-docker compose up -d --build
-```
-
-| Qué cambiaste | ¿Reconstruir? |
-|---|---|
-| Código Python (`.py`) | No — el hot reload se encarga |
-| `requirements.txt` | **Sí** |
-| `Dockerfile` | **Sí** |
-| `docker-compose.yml` | No, pero sí `docker compose up -d` de nuevo |
-
-Y recuerda que una dependencia nueva hay que instalarla **en los dos entornos**: agregarla
-al archivo correspondiente, reconstruir la imagen, y actualizar tu venv local con
-`pip install -r requirements-dev.txt`.
-
-### Síntoma típico: `alembic: not found` al levantar la API
-
-```text
-proyectosya_api  | sh: 1: alembic: not found
-proyectosya_api exited with code 127
-```
-
-Es el caso anterior en su forma más común, y confunde porque el directorio `alembic/` sí
-está ahí dentro del contenedor. Lo que falta no es el directorio sino el ejecutable.
-
-Pasa cuando construiste la imagen **antes** de que `alembic` entrara a
-`requirements.txt`, y después hiciste `git pull`. Ahí conviven tres cosas de distinta
-edad dentro del mismo contenedor:
-
-| Qué | De dónde sale | Qué versión te tocó |
+| Servicio | URL | Descripción |
 |---|---|---|
-| El comando `alembic upgrade head` | `docker-compose.yml`, en cada arranque | La nueva |
-| El código y el directorio `alembic/` | Bind mount `./backend:/app` | La nueva |
-| El venv `/opt/venv` con las dependencias | La imagen, solo al construir | **La vieja** |
+| **API Backend** | [http://localhost:8000](http://localhost:8000) | Documentación interactiva Swagger en `/docs` |
+| **Supabase Studio** | [http://localhost:54323](http://localhost:54323) | Panel de administración de Postgres y Auth |
+| **PostgreSQL** | `127.0.0.1:54322` | Usuario: `postgres`, Contraseña: `postgres` |
+| **Qdrant Dashboard** | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) | Consola visual de colecciones vectoriales |
+| **Mailpit** | [http://localhost:54324](http://localhost:54324) | Bandeja de entrada local para correos de prueba |
 
-El bind mount trae el código nuevo desde tu máquina, pero **no monta el venv**: ese vive
-dentro de la imagen. Entonces el comando nuevo se ejecuta contra un venv que nunca
-instaló alembic, y `sh` responde `not found`.
+> **Primer arranque**: La primera vez que se levanta el backend tardará varios minutos en descargar los modelos de embeddings y reranking (`bge-m3` ~4.3 GB y reranker ~588 MB). Estos se guardan en un volumen persistente de Docker, por lo que los arranques posteriores tomarán ~20 segundos.
+>
+> Puedes verificar cuándo la API está lista con:
+> ```bash
+> curl http://localhost:8000/health
+> # Responderá {"status":"healthy"} cuando los modelos estén cargados
+> ```
 
-Para confirmarlo antes de reconstruir:
-
+#### Comandos Útiles de Docker
 ```bash
-docker compose run --rm --entrypoint sh api -c "which alembic"
-```
-
-Si no imprime nada, es exactamente esto. La solución es reconstruir:
-
-```bash
-docker compose up -d --build
-```
-
-Si aun así persiste, forzar el rebuild sin reutilizar capas:
-
-```bash
-docker compose build --no-cache api
+docker compose logs -f api    # Ver logs en tiempo real
+docker compose ps             # Estado de los contenedores
+docker compose restart api    # Reiniciar la API (necesario al cambiar .env)
+docker compose down           # Detener contenedores (sin borrar volúmenes)
+supabase stop                 # Detener Supabase
 ```
 
 ---
 
+### Flujo Alternativo: Ejecución Local Directa (`uvicorn`)
 
-## Corpus de licitaciones: dump o ingesta
-
-Hay dos formas de tener licitaciones en la base, y se alternan con **una sola
-variable** en `monorepo/.env`:
-
+Si prefieres ejecutar el proceso de FastAPI directamente en tu máquina:
 ```bash
-RUN_AUTO_INGESTION=false   # Modo A: usas el dump del repositorio. No consume cuota.
-RUN_AUTO_INGESTION=true    # Modo B: la aplicación ingesta desde Mercado Público.
-```
-
-|  | Modo A (dump) | Modo B (ingesta) |
-|---|---|---|
-| De dónde salen los datos | `project-data/chiripa_tenders.xlsx` | API de Mercado Público |
-| Cuota del ticket | cero | ~1 petición por licitación |
-| Reproducible entre personas | sí | no |
-| Para qué sirve | evaluar el matching, comparar resultados | probar el flujo real de ingesta |
-
-La cuota de 10.000 peticiones diarias es **del ticket, no de tu máquina**: si tres
-personas dejan la ingesta encendida, se agota entre todas. Por eso el Modo A es el
-recomendado para el día a día.
-
-> Los comandos de abajo asumen el entorno virtual **activado** (ver "Configuración
-> inicial"), así que `python` es el del venv. Si prefieres no activarlo, reemplaza
-> `python` por `.venv/bin/python` en macOS/Linux o `.venv\Scripts\python.exe` en
-> Windows.
-
-### Usar el dump (Modo A)
-
-**1.** En `monorepo/.env`, deja `RUN_AUTO_INGESTION=false`.
-
-**2.** Levanta la infraestructura y crea el esquema:
-
-```bash
+# Asegúrate de que Supabase y Qdrant estén activos:
 supabase start
 docker compose up -d qdrant
-```
 
-```bash
-cd monorepo/backend
+# Con el entorno virtual activo (.venv) y desde monorepo/backend/:
 alembic upgrade head
+uvicorn app.main:app --reload --port 8000
 ```
 
-**3.** Carga el dump. El primer comando llena PostgreSQL; el segundo genera los
-embeddings e indexa en Qdrant, y tarda un par de minutos.
+---
+
+## 4. Cómo Cargar y Gestionar la Base de Datos
+
+### A. Migraciones de Esquema (Alembic)
+El esquema de la base de datos se gestiona **exclusivamente con Alembic**. Está prohibido usar `SQLModel.metadata.create_all` (ver [ADR 0001](../../docs/decisions/0001-esquema-solo-con-alembic.md)).
 
 ```bash
+# Aplicar todas las migraciones pendientes:
+alembic upgrade head
+
+# Crear una nueva migración tras modificar modelos:
+alembic revision --autogenerate -m "descripcion corta"
+```
+
+#### Prevención de Cabezas Múltiples (`multiple heads`)
+Cuando dos ramas concurrentes generan migraciones desde el mismo punto base, el grafo se bifurca y el comando `alembic upgrade head` abortará el despliegue en Railway:
+1. **Comprueba siempre con `alembic heads`** antes de abrir un PR: debe devolver **una sola línea**.
+2. **Si hay más de una cabeza**:
+   * Si tu migración solo existe localmente en tu rama: edita el campo `down_revision` en tu archivo de migración para que apunte al último head de `develop`.
+   * Si la migración ya fue aplicada en un entorno compartido: ejecuta `alembic merge heads -m "merge heads"`.
+
+---
+
+### B. Carga de Datos desde el Dump del Repositorio
+
+Para contar con licitaciones de prueba en desarrollo sin depender de la API de Mercado Público ni consumir cuotas, se utiliza el dump oficial versionado en `project-data/chiripa_tenders.xlsx`.
+
+Con la infraestructura arriba (`supabase start` y `docker compose up -d qdrant`) y desde `monorepo/backend/`:
+
+```bash
+# 1. Cargar las licitaciones en PostgreSQL
 python tests/matching_evaluation/load_postgres_robust.py
+
+# 2. Generar embeddings e indexar los vectores en Qdrant (~1-2 minutos)
 python tests/matching_evaluation/load_dataset.py
 ```
 
-Las licitaciones del dump que ya cerraron se cargan con sus fechas corridas un mes
-hacia adelante (los meses que hagan falta si el dump es más viejo), manteniendo la
-separación entre publicación, cierre y último cambio. Es lo que mantiene el corpus de
-prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
-dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
-para probar la aplicación da lo mismo.
+> **Desplazamiento automático de fechas**: `load_postgres_robust.py` desplaza automáticamente hacia el futuro las fechas de las licitaciones vencidas del dump. Esto garantiza que aparezcan siempre vigentes en la aplicación y que el dashboard de matching no se muestre vacío.
 
-**4.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
-cuentas las emite Supabase Auth, así que hay que registrarse en `/register`,
-confirmar el correo desde Mailpit (http://localhost:54324) y completar el
-onboarding de la empresa. Ver el pendiente **5.3** para el script que lo
-automatizaría.
-
-**5.** Levanta la aplicación:
-
-```bash
-cd monorepo && docker compose up -d
-cd frontend && pnpm dev
-```
-
-**Espera a que la API esté lista antes de abrir el navegador** — tarda porque carga
-el modelo de embeddings. Si entras antes, el frontend muestra `Failed to fetch`:
-
-```bash
-curl http://localhost:8000/health
-```
-
-En Windows (PowerShell), `curl` es un alias de `Invoke-WebRequest`:
-
-```powershell
-curl.exe http://localhost:8000/health
-```
-
-Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
-
-### Volver a la ingesta (Modo B)
-
-```bash
-RUN_AUTO_INGESTION=true
-```
-
-y **reinicia el contenedor**:
-
-```bash
-docker compose restart api
-```
-
-`uvicorn --reload` recarga el código, **no** el `.env`. Sin reiniciar, el cambio no
-se aplica y es la confusión más común.
-
-No hay que deshacer nada del dump: los dos modos escriben en las mismas tablas e
-insertan con `ON CONFLICT DO NOTHING`, así que la ingesta agrega licitaciones nuevas
-sobre las que ya cargaste. Lo único que pierdes es la reproducibilidad.
-
-Para comprobar qué modo quedó activo:
-
-```bash
-docker compose logs api | Select-String -Pattern "ingesta"   # PowerShell
-docker compose logs api | grep -i ingesta                    # macOS/Linux
-```
-
-Con `true` aparece `[Scheduler] Iniciando loop de descarga de metadatos...`; con
-`false`, `Ingesta automática desactivada`.
-
-Si quieres partir solo con lo que traiga la API:
-
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-curl -X DELETE http://localhost:6333/collections/tenders
-```
-
-### Regenerar el dump
-
-Lo hace **una sola persona**, porque consume cuota compartida del ticket.
-
-**No es parte del día a día.** El dump es un corpus de prueba y las compras ágiles
-duran unos diez días, así que sus licitaciones se cierran solas; para eso está el
-desplazamiento de fechas al cargarlo, que las mantiene visibles en la app
-indefinidamente. Regenerar sirve cuando quieres **otro** corpus: más licitaciones,
-de otras regiones o de otros rubros.
-
-**1. Infraestructura arriba.** `generar_dataset.py` no es autónomo: escribe en la
-base del `.env`, indexa en Qdrant y necesita `MERCADO_PUBLICO_API_KEY`.
-
-```bash
-supabase start              # desde la raíz del repositorio
-docker compose up -d qdrant # desde monorepo/
-alembic upgrade head        # desde monorepo/backend/
-```
-
-**2. Base limpia (opcional).** El export saca del `.env` todo lo que tenga
-`closing_at > now()`, así que si ahí quedó un dump cargado, sus licitaciones —con la
-fecha ya desplazada— entran también al xlsx nuevo. Para un corpus de prueba eso no
-molesta; solo ten en cuenta que cada ciclo de cargar y volver a exportar les corre
-otro mes. Vacía la base si quieres el corpus nuevo limpio, o sáltate este paso si
-prefieres acumular sobre lo que ya tienes.
-
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-curl -X DELETE http://localhost:6333/collections/tenders
-```
-
-**3. Traer licitaciones y volcarlas al xlsx.**
-
-```bash
-python tests/matching_evaluation/generar_dataset.py --limite 300
-python tests/matching_evaluation/export_dataset.py
-```
-
-El primero trae compras ágiles vigentes desde la API (~1 petición por licitación) y
-las deja en la base y en Qdrant. Al terminar imprime cuántas quedaron vigentes; si
-son 0, no sigas: el xlsx saldría vacío. El segundo lee la base del `.env` y
-**sobrescribe** el xlsx solo con las vigentes, sin acumular cerradas.
-
-Ese es el único script que escribe el dump. La dirección contraria —dump a base— es
-de `load_postgres_robust.py` y `load_dataset.py`, que nunca tocan el archivo.
-
-**4. Compartirlo por git.**
-
-```bash
-git add project-data/chiripa_tenders.xlsx
-git commit -m "data(dataset): actualizar dump de licitaciones vigentes"
-```
-
-### Comprobar que el corpus sirve
-
-Lo único que importa es cuántas están vigentes:
-
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "select count(*) total, count(*) filter (where closing_at > now()) vigentes from tender;"
-```
-
-Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya. Cargando el
-dump no debería pasar, porque las cerradas entran con la fecha corrida; si pasa,
-revisa que la carga haya sido con `load_postgres_robust.py`.
-
-Y si el dashboard sale vacío con licitaciones vigentes, casi siempre es el **filtro
-por región**, que es estricto: un proveedor solo ve licitaciones de las regiones que
-declaró.
-
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "select r.name, count(*) from tender t join buyer_institution b on b.rut=t.buyer_rut join region r on r.id=b.region_id group by r.name order by 2 desc;"
-```
-
-> **Sobre los porcentajes.** Con la calibración actual del reranker, un perfil bien
-> completado alcanza compatibilidades sobre el umbral verde (70%). Si ves un corpus
-> entero en porcentajes de un dígito, revisa que el perfil tenga rubros y palabras
-> clave cargados: la mitad del puntaje sale de esas coincidencias.
-
+Una vez cargadas las licitaciones:
+1. Regístrate como usuario en la aplicación web (`http://localhost:3000/register`).
+2. Confirma el enlace de verificación en Mailpit (`http://localhost:54324`).
+3. Completa el asistente de perfil de empresa para que el sistema calcule el matching semántico.
 
 ---
 
-## Alertas de nuevas licitaciones (HdU 08)
+### C. Mantenimiento y Reseteo de Datos
 
-La aplicación revisa en segundo plano si aparecieron licitaciones compatibles con cada
-empresa y avisa por dos canales: un aviso en la plataforma y un correo.
+Existen procedimientos y scripts específicos según lo que necesites reiniciar:
 
-### Cómo funciona
+* **Eliminar perfiles de empresas y cuentas de usuario**: Se utiliza el script `reset_cuentas.py`, el cual borra en cascada los usuarios, empresas y datos asociados en PostgreSQL y limpia los vectores en Qdrant, **sin tocar el catálogo de licitaciones**.
+* **Vaciar y recargar el catálogo de licitaciones**: Se realiza truncando las tablas de licitaciones en PostgreSQL y borrando la colección `tenders` de Qdrant, para luego recargar con el dump.
+* **Verificar consistencia vectorial**: Se utiliza `check_tender_vector_orphans.py` para detectar diferencias entre Postgres y Qdrant.
 
-Tres bucles `asyncio` arrancan con la API, igual que los de ingesta
-(`app/infrastructure/services/notifications/notification_scheduler.py`):
-
-| Bucle | Cada cuánto | Qué hace |
-|---|---|---|
-| Escaneo | `NOTIFICATION_SCAN_INTERVAL_SECONDS` (300 s) | Ejecuta el matching por empresa y crea un aviso por cada licitación sobre el umbral del usuario |
-| Entrega | 30 s | Vacía la cola de correos pendientes y reintenta los que fallaron |
-| Resumen | Diario, `NOTIFICATION_DIGEST_HOUR` (hora de Chile) | Agrupa en un correo los avisos de quienes eligieron resumen diario |
-
-La tabla `notification` tiene una constraint única `(user_id, tender_id)`: es el registro
-de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos avisos.
-
-La cola de correos vive en `notification_delivery`. Si el servidor de correo no responde,
-la fila queda en `pending` con un backoff exponencial (2, 4, 8… minutos, con tope de 60) y
-sale sola cuando el servicio vuelve. Si el proveedor rechaza la dirección de forma
-definitiva, la entrega queda en `failed_permanent`, se apaga
-`notification_preference.email_delivery_enabled` y el usuario ve el motivo en
-`/configuracion/notificaciones`, donde puede reactivarlo.
-
-> Como el scheduler de ingesta, esto asume **una sola instancia** de la API. Con dos
-> réplicas ambas escanearían y los correos saldrían duplicados.
-
-### Correo en desarrollo
-
-`supabase start` levanta un servidor de correo de prueba. No hace falta configurar nada:
-los valores por defecto ya apuntan ahí.
-
-| Qué | Dónde |
-|---|---|
-| Bandeja de entrada | [http://localhost:54324](http://localhost:54324) |
-| Puerto SMTP | `54325` (declarado en `supabase/config.toml`) |
-
-Si los correos no llegan, revisa que `smtp_port = 54325` esté **descomentado** en
-`supabase/config.toml` y reinicia con `supabase stop && supabase start`.
-
-Para ver el criterio del servicio caído: baja Supabase, provoca avisos nuevos, mira la
-fila en "Pendiente" en `/configuracion/notificaciones`, y vuelve a levantarlo.
-
-### Correo en producción
-
-El servicio es SMTP genérico (`SmtpEmailService`), así que cambiar de entorno es cambiar
-variables:
-
-| Variable | Local | Brevo | SendGrid |
-|---|---|---|---|
-| `SMTP_HOST` | `host.docker.internal` | `smtp-relay.brevo.com` | `smtp.sendgrid.net` |
-| `SMTP_PORT` | `54325` | `587` | `587` |
-| `SMTP_USER` | *(vacío)* | login SMTP | `apikey` (literal) |
-| `SMTP_PASSWORD` | *(vacío)* | SMTP key | API key |
-| `SMTP_USE_TLS` | `false` | `true` | `true` |
-| `SMTP_FROM` | cualquiera | remitente verificado | remitente verificado |
-| `APP_BASE_URL` | `http://localhost:3000` | URL pública del frontend | ídem |
-
-**Hay que verificar el remitente antes de la demo** o el proveedor rechaza todo envío. No
-requiere dominio propio: ambos permiten verificar una sola dirección que ya controles,
-confirmando desde un correo que te llega. `SMTP_PASSWORD` es un secreto y va en las
-variables del proveedor de despliegue, nunca en el repositorio.
-
-> Si el remitente verificado es un `@gmail.com`, los correos enviados en su nombre chocan
-> con la política DMARC de Gmail y suelen caer en spam. Llegan, pero hay que mirar esa
-> carpeta antes de concluir que falló.
-
-### Cómo comprobar los criterios de aceptación
-
-Cuatro de los siete se ven levantando la aplicación y usándola. Los otros tres describen
-situaciones que el sistema está diseñado para que **no** ocurran, así que hay que
-provocarlas: de eso se encarga `scripts/demo_alertas.py`.
-
-Dos cosas que conviene tener presentes antes de empezar:
-
-- **Reiniciar la API fuerza un escaneo inmediato.** `start_scan_loop` ejecuta antes de
-  dormir, así que no hay que esperar los 5 minutos del intervalo:
-  `docker compose restart api`.
-- **`uvicorn --reload` no relee el `.env`.** Cualquier cambio de variable exige reiniciar
-  el contenedor. Es el error más habitual al probar esto.
-
-El script se ejecuta dentro del contenedor, que ya tiene las dependencias:
-
-```bash
-docker compose exec api python -m scripts.demo_alertas estado
-```
-
-| Criterio | Cómo se comprueba |
-|---|---|
-| Detecta y avisa (correo + panel) | Baja el umbral en `/configuracion/notificaciones`, reinicia la API. El aviso aparece en `/alertas` y el correo en http://localhost:54324 |
-| El enlace lleva al detalle | Clic en el aviso, y clic en el enlace del correo desde Mailpit |
-| Umbral y frecuencia configurables | Se cambian en `/configuracion/notificaciones`. Para ver **llegar** el resumen diario sin esperar a las 08:00: `demo_alertas resumen-ahora` |
-| Licitación ya cerrada | `demo_alertas cerrar-licitacion` y abre ese aviso |
-| Servicio de correo caído | Ver más abajo |
-| Correo inexistente | Solo con proveedor real; `demo_alertas marcar-rebote` reproduce el estado visible, no la detección |
-| Pide sesión antes de mostrar datos | Cierra sesión y abre el enlace del correo en una ventana privada |
-
-#### El criterio del servicio caído
-
-**No uses `supabase stop`.** Mailpit vive dentro del stack de Supabase, así que ese comando
-se lleva también a Postgres: el bucle de entrega no puede ni leer su propia cola y verías
-un error de base de datos, que es otro problema distinto.
-
-La forma correcta es dejar el SMTP apuntando a un puerto muerto, en `monorepo/.env`:
-
-```bash
-SMTP_PORT=59999
-```
-
-```bash
-docker compose restart api
-```
-
-Da *connection refused* inmediato. Genera avisos nuevos bajando el umbral y míralos quedar
-en **Pendiente**, con su contador de intentos, en `/configuracion/notificaciones`. Después
-restaura `SMTP_PORT=54325`, reinicia, y para no esperar el backoff exponencial:
-
-```bash
-docker compose exec api python -m scripts.demo_alertas reintentar-ahora
-```
-
-Es la misma maniobra que en producción, donde se cambia `SMTP_HOST` en el panel del
-proveedor de despliegue.
-
-#### Lo que no se puede comprobar en local
-
-Que el sistema **detecte** un correo inexistente y desactive el envío necesita un
-proveedor real: Mailpit acepta cualquier destinatario por diseño y jamás devuelve un
-rechazo definitivo. Apuntando el `.env` a Brevo o SendGrid se comprueba sin desplegar
-nada, y las cuentas demo ya usan direcciones `@demo.invalid` —un TLD reservado que nunca
-resuelve—, así que el rebote es inmediato y genuino.
+> Consulta la guía completa con ejemplos y comandos paso a paso en:
+> 👉 [`docs/guides/scripts-utilitarios.md`](../../docs/guides/scripts-utilitarios.md)
 
 ---
 
-## Calidad de código
+## 5. Estructura del Proyecto (Clean Architecture)
 
-Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.
-
-```bash
-ruff check .          # detectar problemas
-ruff check . --fix    # corregir los que se pueden automáticamente
-ruff format .         # formatear
-```
-
-Ambos vienen en `requirements-dev.txt`, así que están disponibles con el venv activado.
-
----
-
-## Endpoints principales
-- `GET /` — Mensaje de bienvenida
-- `GET /health` — Estado del servicio
-- `GET /docs` — Documentación interactiva (Swagger UI)
----
-
-## Estructura de Carpetas
-
-La arquitectura del backend sigue los principios de **Clean Architecture** (Arquitectura Limpia), separando la lógica de negocio de los detalles tecnológicos e infraestructura. La estructura del directorio `app/` es la siguiente:
+El backend implementa **Clean Architecture**, asegurando que la lógica de negocio permanezca desacoplada de frameworks y bases de datos:
 
 ```text
-alembic/                    # Migraciones de esquema (ver "Base de datos y migraciones")
-├── env.py                  # Toma la URL de app.config y el metadata de SQLModel
-└── versions/               # Una migración por cambio de esquema
-
-app/
-├── main.py                 # Punto de entrada de la aplicación FastAPI y configuración global
-├── domain/                 # Capa de Dominio: Lógica y conceptos fundamentales de negocio
-│   ├── entities/           # Entidades del dominio (con identidad y lógica interna)
-│   ├── models/             # Modelos de dominio y tipos de datos (e.g., Pydantic/dataclasses)
-│   └── errors/             # Excepciones de negocio personalizadas
-├── application/            # Capa de Aplicación: Casos de uso y reglas de aplicación
-│   ├── useCases/           # Orquestadores de flujo de datos y lógica de casos de uso específicos
-│   ├── repositories/       # Interfaces (clases abstractas) para el acceso a datos
-│   ├── services/           # Servicios de aplicación que coordinan flujos complejos
-│   └── rules/              # Reglas y validaciones específicas de la aplicación
-└── infrastructure/         # Capa de Infraestructura: Detalles técnicos y adaptadores externos
-    ├── repositories/       # Implementaciones concretas de las interfaces de repositories
-    │   └── models.py       # Registro único de los modelos SQLModel, que Alembic necesita
-    └── services/           # Implementaciones de servicios externos (APIs, LLM, notificaciones)
+monorepo/backend/
+├── alembic/                         # Historial de migraciones de esquema
+├── app/
+│   ├── main.py                      # Punto de entrada FastAPI, lifespan y guardias
+│   ├── config.py                    # Configuración centralizada vía pydantic-settings
+│   ├── domain/                      # CAPA DE DOMINIO (Núcleo de negocio, sin dependencias externas)
+│   │   ├── entities/                # Entidades con identidad propia y lógica interna
+│   │   ├── models/                  # Modelos de dominio y tipos de datos
+│   │   └── errors/                  # Excepciones de negocio personalizadas
+│   ├── application/                 # CAPA DE APLICACIÓN (Casos de uso y orquestación)
+│   │   ├── use_cases/               # Casos de uso (matching, tender, auth, supplier, etc.)
+│   │   ├── schemas/                 # Esquemas Pydantic de entrada/salida (DTOs)
+│   │   ├── repositories/            # Interfaces abstractas de repositorios
+│   │   └── rules/                   # Validaciones de aplicación
+│   ├── infrastructure/              # CAPA DE INFRAESTRUCTURA (Detalles técnicos y adaptadores)
+│   │   ├── routers/                 # Endpoints HTTP FastAPI
+│   │   ├── repositories/            # Implementaciones SQLModel/Postgres y Qdrant
+│   │   └── services/                # Clientes externos (Supabase, Mercado Público, Gemini)
+│   └── shared/                      # Constantes y utilidades compartidas
+├── scripts/                         # Scripts de mantenimiento y simulación
+└── tests/                           # Suite de pruebas Pytest (unitarias, integración, e2e)
 ```
+
+### Reglas de Dependencia
+* **Dirección única**: Las capas externas dependen de las internas (`infrastructure` → `application` → `domain`). El dominio nunca importa de la infraestructura.
+* **Inversión de dependencias**: Los casos de uso interactúan con interfaces abstractas (`app/application/repositories/`); las implementaciones concretas residen en `app/infrastructure/repositories/`.
 
 ---
 
-## Reglas de la Arquitectura (Clean Architecture)
+## 6. Calidad de Código, Pruebas y Buenas Prácticas
 
-Para asegurar la mantenibilidad y modularidad de la base de código, se deben respetar de forma estricta las siguientes reglas de dependencia:
-
-### 1. Regla de Dependencia de Dirección Única
-Las dependencias de código solo pueden apuntar hacia adentro (hacia el Dominio). Las capas externas conocen a las internas, pero las internas nunca deben saber de las externas.
-
-```mermaid
-graph TD
-    Infra[Capa de Infraestructura] --> App[Capa de Aplicación]
-    App --> Domain[Capa de Dominio]
-    Infra --> Domain
-```
-
-* **Dominio (`app/domain`)**: Es el núcleo de la aplicación. No debe importar nada de las capas de `application` o `infrastructure`. Tampoco debe depender de frameworks externos (como FastAPI) ni de bases de datos/ORMs (como SQLAlchemy).
-* **Aplicación (`app/application`)**: Contiene los casos de uso. Puede importar elementos de la capa `domain`. **NO** debe importar nada de la capa `infrastructure`.
-* **Infraestructura (`app/infrastructure`)**: Contiene la implementación de los detalles tecnológicos. Puede importar elementos de las capas de `domain` y `application`.
-
-### 2. Inversión de Dependencias
-Cuando la capa de aplicación necesita guardar o recuperar datos (operación de infraestructura), no debe importar directamente la implementación de base de datos/infraestructura:
-1. Se define una clase abstracta (interfaz) en `app/application/repositories/`.
-2. La capa de aplicación interactúa únicamente con esta interfaz abstracta.
-3. La capa de infraestructura implementa esta interfaz en `app/infrastructure/repositories/`.
-4. La dependencia concreta se inyecta en tiempo de ejecución (por ejemplo, a través de dependencias en los endpoints de FastAPI).
-
-### 3. Lógica y Excepciones
-* Las validaciones de negocio e invariantes deben residir en `domain/` o `application/rules/`.
-* Los errores específicos de negocio (e.g., recurso no encontrado, validación fallida) se deben definir en `app/domain/errors/` y ser lanzados desde el dominio/casos de uso, permitiendo que la capa externa (FastAPI en `main.py` o los enrutadores) los capture y traduzca a respuestas HTTP adecuadas.
-
----
-
-## Estándar de Commits
-
-Para mantener un historial de Git claro y facilitar la generación automática de changelogs, se adopta la convención de **Conventional Commits**.
-
-### Formato de un Mensaje de Commit
-
-Cada mensaje de commit debe seguir la siguiente estructura:
-
-```text
-<tipo>(<alcance>): <descripción corta y concisa en minúsculas>
-
-[cuerpo del mensaje opcional con detalles más extensos]
-
-[pie de página opcional para referenciar tickets o PRs, ej: Closes #123]
-```
-
-### Tipos de Commit (`<tipo>`)
-
-* **`feat`**: Nueva funcionalidad para el usuario (e.g., `feat(api): agregar endpoint para actualizar perfil de empresa`).
-* **`fix`**: Corrección de un error o bug (e.g., `fix(auth): corregir expiración del token JWT`).
-* **`docs`**: Cambios exclusivos en la documentación (e.g., `docs(readme): añadir reglas de commits`).
-* **`style`**: Cambios de estilo y formato que no afectan el comportamiento o lógica del código (formateo, comas, espacios, etc.).
-* **`refactor`**: Reestructuración de código que no corrige errores ni añade características (e.g., refactorizar estructura de directorios).
-* **`perf`**: Cambio de código orientado a mejorar el rendimiento de la aplicación.
-* **`test`**: Añadir o modificar pruebas unitarias o de integración.
-* **`chore`**: Tareas de mantenimiento, actualización de dependencias, configuración de herramientas, ruff/pyright configs, etc.
-
-### Reglas Adicionales
-
-1. **Mensaje corto**: La primera línea debe tener un máximo de 72 caracteres.
-2. **Imperativo**: Utilizar verbos en infinitivo o imperativo en la descripción corta (ej. `añadir`, `corregir` o `agrega`, `corrige`).
-3. **Alcance (`<alcance>`)**: Indica la parte afectada del proyecto (ej: `auth`, `api`, `matching`, `db`, `deps`, `docs`).
-
----
-
-## Pruebas y TDD
-
-El proyecto utiliza **Pytest** como framework de pruebas principal, integrado con la metodología **TDD (Test-Driven Development)**.
-
-### Estructura del Directorio de Pruebas
-
-Las pruebas se organizan bajo el directorio `tests/` en la raíz del backend:
-
-```text
-tests/
-├── conftest.py          # Fixtures globales (cliente HTTPX, DB temporal, mocks)
-├── unit/                # Pruebas Unitarias (Lógica aislada sin DB ni servicios externos)
-│   ├── domain/          # Entidades y lógica del dominio
-│   └── application/     # Casos de uso (useCases)
-├── integration/         # Pruebas de Integración (Operaciones de base de datos, APIs de terceros)
-│   ├── repositories/
-│   └── services/
-└── e2e/                 # Pruebas End-to-End (Simulación de llamadas de API HTTP completas)
-    └── api/             # Endpoints y flujos de negocio completos
-```
-
-### Ejecutar Pruebas
-
-Para ejecutar las pruebas del backend, asegúrate de activar el entorno virtual y ejecutar:
-
+### Linters y Formato (Ruff)
 ```bash
-# Ejecutar todas las pruebas
+ruff check .          # Revisar errores y buenas prácticas
+ruff check . --fix    # Corregir incidencias automáticas
+ruff format .         # Formatear código
+```
+
+### Pruebas Automatizadas (Pytest)
+```bash
+# Ejecutar todas las pruebas locales (omitiendo las que requieren DB en vivo)
+pytest -m "not integration and not network"
+
+# Ejecutar suite completa con base de datos de integración corriendo
 pytest
 
 # Ejecutar una prueba específica
-pytest tests/e2e/api/test_main.py
-
-# Ejecutar pruebas con reporte de cobertura (coverage)
-pytest --cov=app
-
-# Omitir los que necesitan base de datos
-pytest -m "not integration"
+pytest tests/unit/infrastructure/test_openapi_metadata.py
 ```
 
-Los tests marcados `integration` necesitan la base corriendo (`supabase start`). Si no
-está, **se saltan** con un mensaje que lo explica, en vez de fallar. Trabajan contra una
-base `<nombre>_test` aparte, que el propio conftest crea: la de desarrollo queda intacta.
+> **Excepción de pruebas en spikes**: Los spikes (`spikes/`) son investigaciones desechables y **no requieren tests obligatorios**. Si un desarrollo de un spike pasa a producción en `monorepo/`, se reescribe adoptando TDD (ver [AGENTS.md](../../AGENTS.md)).
 
-No hace falta un `.env` completo para correr la suite. Las variables obligatorias que
-falten se rellenan con valores de prueba (`conftest.py` en la raíz del backend), sin
-pisar las que sí tengas definidas.
+### Metadatos OpenAPI y Documentación de la API
+* La documentación interactiva (Swagger UI) está disponible en `/docs` cuando `ENABLE_API_DOCS=true` o en entorno de desarrollo (`IS_DEV=true`).
+* **Guardia de CI**: Toda ruta expuesta en FastAPI debe incluir obligatoriamente `summary`, `tags` y `response_model`. El test `tests/unit/infrastructure/test_openapi_metadata.py` valida esto automáticamente en cada PR.
 
+---
 
+## 7. Mapa de Documentación
 
+* [AGENTS.md](../../AGENTS.md): Reglas de arquitectura, testing y directrices generales del proyecto.
+* [SKILL.md](../../SKILL.md): Reglas de Git, validación pre-commit/pre-PR y convenciones de commits.
+* [docs/README.md](../../docs/README.md): Índice maestro de planes técnicos, decisiones de arquitectura (ADRs) y guías.
+* [docs/decisions/](../../docs/decisions/): Decisiones de Arquitectura ([ADR 0001](../../docs/decisions/0001-esquema-solo-con-alembic.md) sobre Alembic, [ADR 0003](../../docs/decisions/0003-migraciones-en-predeploy-de-railway.md) sobre Railway).
+* [docs/guides/scripts-utilitarios.md](../../docs/guides/scripts-utilitarios.md): Catálogo detallado de scripts de mantenimiento y simulación.
