@@ -2,22 +2,19 @@
 
 Qué resuelve
 ------------
-El scheduler que hay hoy vive dentro del proceso de la API (`main.py`, dentro del
-`lifespan`). Eso obliga al contenedor a un solo worker —dos duplicarían la
-ingesta—, mete ~50 minutos diarios de CPU y red en el mismo proceso que atiende a
-los usuarios, y sondea la base cada 2 segundos aunque no haya nada que hacer
-(43.200 consultas al día). Sacado a un cron, las tres cosas desaparecen.
+La ingesta vivía dentro del proceso de la API (`TenderScheduler`, en el
+`lifespan`): obligaba a un solo worker, metía horas diarias de CPU y red en el
+proceso que atiende a los usuarios y sondeaba la base cada 2 segundos. Se sacó
+de ahí; este script, corriendo como cron de Railway, es el único camino.
 
-Y, sobre todo, **usa el cursor**. `ingestion_run`, `ventana_a_sincronizar()`,
-`registrar_inicio()` y `registrar_fin()` estaban implementados y probados desde
-la ingesta de septiembre, pero **sin ningún llamador en producción**: el
-scheduler sigue pidiendo "las últimas 24 h contadas desde ahora". Con un proceso
-siempre vivo eso casi nunca falla; con un cron sí, porque una ejecución que no
-corre deja un hueco que nadie vuelve a mirar. Este script es el que cierra ese
-circuito.
+Y, sobre todo, **usa el cursor** (`ingestion_run`): cada corrida pide desde donde
+terminó la última buena, en vez de "las últimas 24 h contadas desde ahora". Con
+un cron eso importa, porque una ejecución que no corre deja un hueco que nadie
+vuelve a mirar.
 
 Qué hace, en orden
 ------------------
+0. **Cierra las corridas colgadas** y se niega si hay otra en curso (ver abajo).
 1. **Marca las vencidas.** Cuota cero: `closing_at` ya está en Postgres. Va
    primero porque es lo que libera cupos del pre-filtrado, y porque conviene que
    ocurra aunque la API esté caída.
@@ -42,18 +39,24 @@ Uso
     python -m scripts.sync_diaria --confirmar-produccion        # lo que ejecuta el cron
     python -m scripts.sync_diaria --sin-marcar                  # solo la sincronización
 
-Dos protecciones para correr sin supervisión:
+Tres protecciones para correr sin supervisión:
 
 - **Se niega contra una base que no sea local** salvo `--confirmar-produccion`.
   Una prueba local con un `.env` que quedó apuntando a producción escribía ahí sin
   avisar; el servicio de Railway lleva el flag en su `startCommand`.
-- **Timeout duro** (`--timeout-minutos`, 120 por defecto). Railway no termina una
+- **Timeout duro** (`--timeout-minutos`, 360 por defecto). Railway no termina una
   corrida colgada y **omite todas las siguientes**, así que un cron que se queda
   esperando deja de correr para siempre. Al vencer sale con código 1; la fila de
   `ingestion_run` queda en `running`, que nunca mueve el cursor.
 
-Códigos de salida: 0 si la ventana se listó entera; 1 si quedó a medias o venció
-el timeout; 2 si se negó a correr contra una base no local. En un cron de Railway
+- **Una sola corrida a la vez.** Las `running` más viejas que el timeout se
+  cierran como `failed` (su proceso murió); si queda una más nueva, se niega.
+  `--forzar` las cierra todas, para cuando se quitó un deploy a mano.
+
+Códigos de salida: 0 si la ventana se listó entera, aunque queden licitaciones en
+la cola por errores de red (las retoma la corrida siguiente); 1 si el listado
+quedó a medias, se agotó la cuota, venció el timeout o había otra corrida en
+curso; 2 si se negó a correr contra una base no local. En un cron de Railway
 ese código es la única señal visible de que algo salió mal.
 """
 
