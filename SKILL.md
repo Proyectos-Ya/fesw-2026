@@ -39,20 +39,17 @@ Al realizar un commit, los agentes de IA deben seguir las siguientes directrices
 
 ---
 
-## 4. Regla Crítica: PROHIBIDO HACER PUSH AL ORIGEN
+## 4. Regla para Push al Remoto: Prohibido hacer push sin confirmación explícita
 
-Por motivos de seguridad, auditoría y control de calidad, **los agentes de IA tienen estrictamente prohibido ejecutar `git push` hacia cualquier repositorio remoto (origin o similares).**
+Por motivos de seguridad, auditoría y control de calidad, **los agentes de IA tienen prohibido ejecutar `git push` de manera autónoma sin preguntar previamente y contar con una confirmación explícita del usuario.**
 
 ### Procedimiento a seguir:
 1. El agente debe realizar los commits necesarios de forma local.
-2. Al finalizar su tarea, el agente debe informar al desarrollador humano que su trabajo local ha concluido.
-3. El agente debe solicitar explícitamente al humano que realice el push de su rama e indicarle el comando sugerido para facilitarle la acción.
+2. Si la tarea requiere subir los cambios, el agente debe informar al desarrollador humano que el trabajo local ha concluido y **preguntar si desea que se realice el push**, indicando la rama de destino.
+3. **Solo si el usuario otorga una confirmación explícita en ese momento**, el agente puede proceder a ejecutar el `git push`. En su defecto, también puede facilitarle el comando sugerido para que el usuario lo ejecute manualmente si lo prefiere.
 
-**Ejemplo de respuesta esperada del agente al finalizar:**
-> "He completado las tareas y guardado los cambios en la rama local. Por favor, sube los cambios al repositorio remoto ejecutando el siguiente comando:
-> ```bash
-> git push origin mi-rama-de-trabajo
-> ```"
+**Ejemplo de flujo esperado:**
+> "He completado las tareas y guardado los cambios en la rama local `mi-rama-de-trabajo`. ¿Deseas que suba los cambios al repositorio remoto (`git push origin mi-rama-de-trabajo`) o prefieres hacerlo tú mismo?"
 
 ---
 

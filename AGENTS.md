@@ -43,17 +43,22 @@ Es obligatorio el flujo **TDD (Red-Green-Refactor)** al escribir código de prod
 - Frontend (`monorepo/frontend`): `pnpm run test` (Vitest) y `pnpm run test:e2e`
   (Playwright) si se tocan flujos críticos.
 
-#### Excepción: los spikes no llevan tests
+#### Excepción: los spikes no necesitan tests
 
-TDD aplica al código de producción (`monorepo/`). **Todo lo relacionado con un
-spike queda fuera de esa regla y no se le crean tests**: ni en `spikes/`, ni en
-`monorepo/backend/tests/`, ni en `monorepo/frontend/`.
+TDD es obligatorio para el código de producción (`monorepo/`). **El código de un
+spike no necesita tests**: no es obligatorio escribirlos, ni en `spikes/` ni en
+`monorepo/backend/tests/` ni en `monorepo/frontend/`. No es una prohibición: si a
+quien hace el spike le sirven —por ejemplo, para no gastar cuota real de una API
+mientras ajusta un arnés—, puede escribirlos.
 
 - Un spike es una investigación desechable (pruebas de concepto, arneses de
-  medición, benchmarks, notebooks). Su resultado es el informe, no el código.
-- Un test de un spike no protege nada del producto y agrega peso y fallas al CI.
+  medición, benchmarks, notebooks). Su resultado es el informe, no el código, así
+  que exigirle tests es trabajo que no protege nada del producto.
+- Un PR de spike **no se bloquea** por no tener tests.
+- Si un test de spike se vuelve lento o inestable en CI, se borra sin discutirlo:
+  vale menos que el ruido que mete.
 - Si algo de un spike pasa a producción, se reescribe dentro de `monorepo/`
-  siguiendo TDD, y recién ahí lleva tests.
+  siguiendo TDD, y recién ahí los tests son obligatorios.
 
 ### Estrategia de documentación
 
@@ -75,7 +80,7 @@ los criterios de aceptación.
 ### Git y commits
 
 Ver [SKILL.md](./SKILL.md): Conventional Commits, marca `[AI Generated]`, trazabilidad
-con issues y **prohibición de `git push` para agentes**.
+con issues y **prohibición de `git push` sin confirmación explícita del usuario**.
 
 ---
 

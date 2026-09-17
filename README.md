@@ -47,4 +47,4 @@ Todas las reglas están en [AGENTS.md](./AGENTS.md). Cada herramienta lo carga a
 - **Cursor, Copilot, Codex y otros**: leen `AGENTS.md` de la raíz. Si tu herramienta no
   lo hace, agrégalo a sus instrucciones de workspace.
 
-Los agentes **no hacen `git push`**: dejan los commits locales y te piden subirlos.
+Los agentes **no hacen `git push` sin autorización explícita**: dejan los commits locales y solicitan tu confirmación antes de subir cambios.
