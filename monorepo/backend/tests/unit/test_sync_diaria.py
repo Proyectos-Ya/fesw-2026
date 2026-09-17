@@ -36,6 +36,7 @@ class ServicioFalso(ITenderIngestionService):
         self.ventana_pedida: tuple | None = None
         self.limite_pedido: int | None = None
         self.por_publicacion_pedido: bool | None = None
+        self.cuota_agotada = False
 
     async def fetch_tenders_metadata(
         self,
@@ -55,6 +56,8 @@ class ServicioFalso(ITenderIngestionService):
     async def process_unprocessed_tenders(
         self, limite: int | None = None
     ) -> ResultadoProceso:
+        if self.cuota_agotada:
+            return ResultadoProceso(cuota_agotada=True)
         procesadas, self.pendientes = self.pendientes, 0
         return ResultadoProceso(procesadas=procesadas)
 
@@ -338,3 +341,30 @@ class TestTimeout:
             return 0
 
         assert await con_timeout(rapida(), segundos=5) == 0
+
+
+class TestCodigoDeSalida:
+    """En un cron de Railway el código de salida es la única señal visible."""
+
+    async def test_cuota_agotada_sale_con_error_aunque_el_listado_este_completo(self):
+        """El cursor avanza igual (se listó todo), pero hay que enterarse: si pasa
+        seguido, el ticket no alcanza para el volumen del día."""
+        servicio = ServicioFalso(
+            ResultadoListado(nuevas=50, listadas=50, completo=True), pendientes=50
+        )
+        servicio.cuota_agotada = True
+
+        codigo = await _correr(servicio)
+
+        assert servicio.cierre is not None
+        assert servicio.cierre["status"] == "ok"
+        assert codigo == 1
+
+    async def test_pendientes_por_errores_de_red_no_son_un_fallo(self):
+        """La cola las retoma mañana; marcar la ejecución como fallida todos los
+        días que Mercado Público tenga 504 volvería inútil el aviso."""
+        servicio = ServicioFalso(
+            ResultadoListado(nuevas=0, listadas=10, completo=True), pendientes=0
+        )
+
+        assert await _correr(servicio) == 0
