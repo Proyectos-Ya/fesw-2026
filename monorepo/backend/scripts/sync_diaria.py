@@ -240,7 +240,10 @@ async def sincronizar(
     )
 
     print(f"\nCorrida '{estado}' en {(time.perf_counter() - inicio) / 60:.1f} min.")
-    return 0 if estado == "ok" else 1
+    # Pendientes por errores de red no cuentan como fallo: la cola las retoma. La
+    # cuota agotada sí, aunque el cursor avance, porque si se repite el ticket no
+    # alcanza para el volumen diario y alguien tiene que enterarse.
+    return 0 if estado == "ok" and not resultado.cuota_agotada else 1
 
 
 async def _correr(args: argparse.Namespace) -> int:
