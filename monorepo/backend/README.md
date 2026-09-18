@@ -44,7 +44,7 @@ Backend de **Chiripa**, construido con FastAPI, SQLModel, Alembic, PostgreSQL (S
 
 ## Cómo Levantar el Proyecto
 
-### Con Docker Compose (Recomendado)
+El backend se ejecuta siempre a través de **Docker Compose**:
 
 ```bash
 # 1. Base de datos y Auth local (desde la raíz del repo)
@@ -61,15 +61,6 @@ docker compose up -d
 
 > **Nota**: El primer arranque descarga los modelos de embeddings (`bge-m3` y reranker, ~4.9 GB). Comprueba que la API esté lista con:
 > `curl http://localhost:8000/health` (responderá `{"status":"healthy"}`).
-
-### Ejecución Local con Uvicorn
-
-```bash
-supabase start
-docker compose up -d qdrant
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
-```
 
 ---
 
