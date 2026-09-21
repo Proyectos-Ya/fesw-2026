@@ -71,13 +71,15 @@ class ListSavedTendersUseCase:
                 match.tender = tender
                 results.append(match)
             else:
-                # Fallback seguro
+                # Sin puntaje calculado. Se devuelve igual, pero en nulo: un 0.0
+                # acá se lee como "incompatible", cuando lo cierto es que nadie
+                # lo ha medido.
                 results.append(
                     MatchingResult(
                         supplier_id=supplier.id if supplier else user_id,
                         tender_id=tender.id,
-                        similarity_score=0.0,
-                        final_score=0.0,
+                        similarity_score=None,
+                        final_score=None,
                         model_version="v1.0",
                         tender=tender,
                     )

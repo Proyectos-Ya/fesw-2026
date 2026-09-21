@@ -91,7 +91,11 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       try {
         const all = await getRecommendedTenders(user.id);
         if (cancelled) return;
-        const green = all.filter((m) => normalizeScore(m.final_score) >= GREEN_THRESHOLD);
+        // Las recomendadas siempre traen puntaje; el nulo existe para las
+        // licitaciones que nadie ha medido, y esas no son recomendaciones.
+        const green = all.filter(
+          (m) => m.final_score !== null && normalizeScore(m.final_score) >= GREEN_THRESHOLD
+        );
         setState({ kind: "ready", matches: green });
       } catch (err) {
         if (cancelled) return;

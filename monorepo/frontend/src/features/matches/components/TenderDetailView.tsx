@@ -3,15 +3,17 @@
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
+import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
 import {
+  calculateTenderScore,
+  generateDeepAnalysis,
   getRecommendedTenders,
   getDeepAnalysisOnly,
   getTenderDetail,
@@ -43,9 +45,18 @@ interface TenderDetailViewProps {
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; match: MatchingResult; isClosed: boolean }
+  | {
+      kind: "ready";
+      match: MatchingResult;
+      isClosed: boolean;
+      /** Viene del top-N: su puntaje lo mantiene al día el propio ranking. */
+      isRecommended: boolean;
+    }
   | { kind: "not-found" }
   | { kind: "error"; message: string };
+
+/** Qué acción de IA está en curso, para no permitir dos a la vez. */
+type PendingAction = "score" | "analysis" | null;
 
 const DETAIL_THRESHOLDS = { high: 70, mid: 40 };
 const DETAIL_COLORS = {
@@ -79,6 +90,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  // El puntaje vive aparte del estado de carga: el usuario puede calcularlo o
+  // recalcularlo sin volver a pedir la licitación entera.
+  const [score, setScore] = useState<number | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -97,6 +112,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     let cancelled = false;
     setState({ kind: "loading" });
     setAnalysis(null);
+    setScore(null);
 
     void (async () => {
       try {
@@ -117,23 +133,36 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
         const found = matches.find((m) => m.tender?.id === tenderId);
         if (found) {
-          setState({ kind: "ready", match: found, isClosed: false });
+          setScore(
+            found.final_score !== null ? normalizeScore(found.final_score) : null
+          );
+          setState({
+            kind: "ready",
+            match: found,
+            isClosed: false,
+            isRecommended: true,
+          });
         } else {
           // Las recomendaciones descartan lo que ya cerró, así que no encontrarla
           // ahí no significa que no exista: puede ser una alerta de hace días.
           // El detalle directo sí la devuelve, marcada como cerrada.
           const detalle = await getTenderDetail(tenderId);
           if (cancelled) return;
+          // `score_pct` en nulo significa "nadie lo ha calculado", no "cero":
+          // el ranking solo puntúa sus doce mejores.
+          setScore(detalle.score_pct ?? null);
           setState({
             kind: "ready",
             isClosed: detalle.is_closed,
+            isRecommended: false,
             match: {
               id: detalle.tender.id,
               supplier_id: "",
               tender_id: detalle.tender.id,
-              similarity_score: 0,
+              similarity_score: null,
               reranker_score: null,
-              final_score: (detalle.score_pct ?? 0) / 100,
+              final_score:
+                detalle.score_pct !== null ? detalle.score_pct / 100 : null,
               model_version: "",
               calculated_at: detalle.tender.updated_at,
               tender: detalle.tender,
@@ -177,6 +206,49 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     };
   }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
 
+  const handleCalculateScore = async () => {
+    setActionError(null);
+    setPendingAction("score");
+    try {
+      const resultado = await calculateTenderScore(tenderId);
+      setScore(resultado.score_pct);
+      // Si el número se movió, la justificación guardada quedó explicando otro
+      // puntaje. Se marca desactualizada en vez de dejar dos cifras distintas
+      // en la misma pantalla.
+      if (analysis && Math.round(analysis.compatibility_score) !== resultado.score_pct) {
+        setAnalysis({ ...analysis, is_outdated: true });
+      }
+    } catch (err) {
+      console.error("Error al calcular la compatibilidad:", err);
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos calcular la compatibilidad. Inténtalo de nuevo."
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleRegenerateAnalysis = async () => {
+    setActionError(null);
+    setPendingAction("analysis");
+    try {
+      const actualizado = await generateDeepAnalysis(tenderId, undefined, true);
+      setAnalysis(actualizado);
+      setScore(Math.round(actualizado.compatibility_score));
+    } catch (err) {
+      console.error("Error al actualizar el análisis:", err);
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos actualizar el análisis. Inténtalo de nuevo."
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const handleToggleSave = async () => {
     const previousState = isSaved;
     setActionError(null);
@@ -198,7 +270,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center text-sm text-text-muted">
           Cargando detalle…
         </div>
@@ -209,7 +281,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (state.kind === "not-found") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <h2 className="font-display text-xl font-semibold text-text-strong">
             No encontramos esta licitación
@@ -226,7 +298,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   if (state.kind === "error") {
     return (
       <section className="mx-auto w-full max-w-4xl">
-        <BackLink />
+        <BackLink fallbackHref="/matches">Volver</BackLink>
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button
@@ -243,7 +315,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
   const { match } = state;
   const tender = match.tender as Tender;
-  const score = normalizeScore(match.final_score);
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
@@ -253,7 +324,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
   return (
     <section className="mx-auto w-full max-w-4xl">
-      <BackLink />
+      <BackLink fallbackHref="/matches">Volver</BackLink>
 
       {/* Criterio de la HdU 08: al abrir la alerta de una licitación cuyo plazo
           ya pasó, hay que decirlo en vez de mostrar la ficha como si siguiera
@@ -294,16 +365,52 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       )}
 
       <header className="mb-6 flex flex-col gap-5 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-start">
-        <div className="flex-none">
-          <MatchMeter
-            value={score}
-            size="lg"
-            thresholds={DETAIL_THRESHOLDS}
-            colors={DETAIL_COLORS}
-          />
-          <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
-            {scoreLabel(score)}
-          </div>
+        <div className="flex-none sm:w-28">
+          {score !== null ? (
+            <>
+              <MatchMeter
+                value={score}
+                size="lg"
+                thresholds={DETAIL_THRESHOLDS}
+                colors={DETAIL_COLORS}
+              />
+              <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+                {scoreLabel(score)}
+              </div>
+            </>
+          ) : (
+            /* Sin puntaje no es lo mismo que cero: el ranking solo calcula sus
+               doce mejores, y el resto se mide cuando el usuario lo pide. */
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-strong p-4 text-center">
+              <Icon name="gauge" size={22} color="var(--text-subtle)" />
+              <span className="mt-1 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+                Sin puntaje
+              </span>
+            </div>
+          )}
+
+          {/* En una recomendada no se ofrece recalcular: ese puntaje lo
+              refresca el ranking, y rehacerlo acá la sacaría del dashboard. */}
+          {!cerrada && !state.isRecommended && (
+            <Button
+              variant="ghost"
+              onClick={handleCalculateScore}
+              disabled={pendingAction !== null}
+              className="mt-2 w-full border border-border-strong bg-white text-xs hover:bg-slate-50"
+              id="btn-calculate-score"
+            >
+              {pendingAction === "score" ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="loader-circle" className="animate-spin" size={13} />
+                  Calculando…
+                </span>
+              ) : score !== null ? (
+                "Recalcular"
+              ) : (
+                "Calcular compatibilidad"
+              )}
+            </Button>
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -375,7 +482,9 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               Análisis de compatibilidad IA
             </h3>
             <p className="text-sm text-text-muted mb-0">
-              Obtén una evaluación detallada de esta licitación según el perfil de tu empresa.
+              {cerrada
+                ? "Esta licitación ya cerró: puedes revisar el análisis generado, pero no generar uno nuevo."
+                : "Obtén una evaluación detallada de esta licitación según el perfil de tu empresa."}
             </p>
           </div>
         </div>
@@ -393,19 +502,65 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           </Button>
 
 
-          <Button
-            onClick={() => router.push(`/matches/${tenderId}/analisis`)}
-            variant="primary"
-            className="shrink-0"
-            id="btn-generate-ai-analysis"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Icon name="sparkles" size={16} />
-              Generar análisis de compatibilidad IA
-            </span>
-          </Button>
+          {/* Una licitación cerrada no genera nada: si no hay análisis
+              guardado, no hay a dónde ir. */}
+          {(!cerrada || analysis) && (
+            <Button
+              onClick={() => router.push(`/matches/${tenderId}/analisis`)}
+              variant="primary"
+              className="shrink-0"
+              id="btn-generate-ai-analysis"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Icon name="sparkles" size={16} />
+                {cerrada || analysis
+                  ? "Ver análisis de compatibilidad IA"
+                  : "Generar análisis de compatibilidad IA"}
+              </span>
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* El desfase se avisa, no se corrige solo: regenerar cuesta una llamada
+          a la IA, así que la decisión es del usuario. */}
+      {analysis?.is_outdated && !cerrada && (
+        <div
+          role="status"
+          className="mb-6 flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <Icon name="triangle-alert" size={18} color="var(--amber-500)" />
+            <div>
+              <p className="text-sm font-semibold text-text-strong">
+                Este análisis está desactualizado
+              </p>
+              <p className="mt-1 text-sm text-text-body mb-0">
+                Tu perfil o la licitación cambiaron después de generarlo.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            onClick={handleRegenerateAnalysis}
+            disabled={pendingAction !== null}
+            className="shrink-0"
+            id="btn-refresh-analysis"
+          >
+            {pendingAction === "analysis" ? (
+              <span className="inline-flex items-center gap-2">
+                <Icon name="loader-circle" className="animate-spin" size={16} />
+                Actualizando…
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2">
+                <Icon name="rotate-cw" size={16} />
+                Actualizar análisis
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
 
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
@@ -596,18 +751,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     </section>
   );
 
-}
-
-function BackLink() {
-  return (
-    <Link
-      href="/matches"
-      className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-primary transition-colors"
-    >
-      <Icon name="arrow-left" size={14} />
-      Volver a mis matches
-    </Link>
-  );
 }
 
 function Section({
