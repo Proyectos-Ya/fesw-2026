@@ -11,6 +11,10 @@ aplicación por casualidad. Al agregar un modelo nuevo, agregarlo también aquí
 from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
+from app.infrastructure.repositories.kanban_model import (
+    KanbanCardModel,
+    KanbanColumnModel,
+)
 from app.infrastructure.repositories.matching_result_model import (
     MatchingResultModel,
 )
@@ -53,6 +57,8 @@ __all__ = [
     "QuotationMaterialModel",
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
+    "KanbanCardModel",
+    "KanbanColumnModel",
     "MatchingResultModel",
     "NotificationDeliveryModel",
     "NotificationModel",
@@ -73,5 +79,3 @@ __all__ = [
     "TenderChatSessionModel",
     "UserModel",
 ]
-
-
