@@ -10,12 +10,30 @@ vi.mock("@/features/shared/api/client", async importOriginal => {
 const saved = { id: "quote", supplier_id: "company", tender_id: "tender", currency: "CLP", items: [{ description: "Cemento", unit: "saco", quantity: "2.5", unit_price: "100.25" }], total: "250.63", updated_at: "2026-09-16T12:00:00Z" };
 
 async function open() {
-  render(<QuotationEditor tenderId="tender" tenderCode="123-45" />);
+  render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} />);
   fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
   await screen.findByLabelText("Descripción 1");
 }
 
 describe("editor de cotización", () => {
+  it("precarga materiales de la licitación y solo pide cantidad y precio en CLP", async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError(404, "No existe"));
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[{ name: "Cemento", description: "Cemento Portland", unit_of_measure: "saco" }, { name: "Arena", description: null }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    expect(await screen.findByDisplayValue("Cemento Portland")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Arena")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cantidad 1")).toHaveValue(null);
+    expect(screen.getByLabelText("Precio unitario 1")).toHaveValue(null);
+    expect(screen.queryByLabelText("Moneda")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Unidad 1")).toHaveValue("saco");
+    fireEvent.change(screen.getByLabelText("Cantidad 1"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Precio unitario 1"), { target: { value: "100" } });
+    fireEvent.click(screen.getByLabelText("Eliminar material 2"));
+    vi.mocked(apiFetch).mockResolvedValueOnce(saved);
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
+    await screen.findByText("Cotización guardada.");
+    expect(apiFetch).toHaveBeenLastCalledWith("/tenders/tender/quotation", { method: "PUT", body: JSON.stringify({ currency: "CLP", items: [{ description: "Cemento Portland", unit: "saco", quantity: "2", unit_price: "100" }] }) });
+  });
   beforeEach(() => { vi.clearAllMocks(); });
   it("bloquea guardar y descargar con campos incompletos", async () => {
     vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError(404, "No existe"));
@@ -47,6 +65,21 @@ describe("editor de cotización", () => {
     fireEvent.click(screen.getByLabelText("Eliminar material 1"));
     fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
     expect(screen.getByRole("alert")).toHaveTextContent("al menos un material");
+  });
+  it("respeta la cotización guardada en lugar de regenerarla", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(saved);
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[{ name: "Arena", description: null }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    expect(await screen.findByDisplayValue("Cemento")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Arena")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Cantidad 1")).toHaveValue(2.5);
+  });
+  it("no convierte silenciosamente cotizaciones antiguas de otra moneda", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ ...saved, currency: "USD" });
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("USD");
+    expect(screen.queryByRole("button", { name: "Guardar cotización" })).not.toBeInTheDocument();
   });
   it("no permite sobrescribir una cotización que no se pudo cargar", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new ApiError(500, "Servicio no disponible"));

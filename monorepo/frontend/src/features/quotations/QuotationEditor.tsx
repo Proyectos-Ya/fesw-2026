@@ -3,13 +3,16 @@
 import { useEffect, useState } from "react";
 import { ApiError, apiFetch } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
-import { type Currency, type Material, type Quotation, subtotal, total, validate, toCsv } from "./quotation";
+import { type TenderMaterial, type Material, type Quotation, materialsFromTender, subtotal, total, validate, toCsv } from "./quotation";
 
-const blank = (): Material => ({ description: "", unit: "", quantity: "1", unit_price: "0" });
+const blank = (): Material => ({ description: "", unit: "", quantity: "", unit_price: "" });
+const currency = "CLP" as const;
+const noTenderItems: TenderMaterial[] = [];
+interface QuotationEditorProps { tenderId: string; tenderCode: string; tenderItems?: TenderMaterial[]; }
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });
 
-export function QuotationEditor({ tenderId, tenderCode }: { tenderId: string; tenderCode: string }) {
+export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   return <section className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-6">
@@ -18,13 +21,13 @@ export function QuotationEditor({ tenderId, tenderCode }: { tenderId: string; te
         <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p></div>
       <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : "Generar cotización"}</Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} /></div>}
+    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} /></div>}
   </section>;
 }
 
-function QuotationForm({ tenderId, tenderCode }: { tenderId: string; tenderCode: string }) {
+function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
   const [items, setItems] = useState<Row[]>([]);
-  const [currency, setCurrency] = useState<Currency>("CLP");
+  const [initialTenderItems] = useState(tenderItems);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -38,14 +41,21 @@ function QuotationForm({ tenderId, tenderCode }: { tenderId: string; tenderCode:
     let cancelled = false;
     apiFetch<Quotation>(endpoint).then(data => {
       if (cancelled) return;
-      setItems(data.items.map(row)); setCurrency(data.currency);
+      if (data.currency !== "CLP") {
+        setLoadError(`La cotización guardada está en ${data.currency}. No se puede convertir a CLP sin revisar sus precios.`);
+        return;
+      }
+      setItems(data.items.map(row));
     }).catch((error: unknown) => {
       if (cancelled) return;
-      if (error instanceof ApiError && error.status === 404) setItems([row(blank())]);
+      if (error instanceof ApiError && error.status === 404) {
+        const materials = materialsFromTender(initialTenderItems);
+        setItems((materials.length ? materials : [blank()]).map(row));
+      }
       else setLoadError(error instanceof Error ? error.message : "No se pudo cargar la cotización.");
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [endpoint, attempt]);
+  }, [endpoint, attempt, initialTenderItems]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -87,12 +97,8 @@ function QuotationForm({ tenderId, tenderCode }: { tenderId: string; tenderCode:
   const inputClass = "mt-1 w-full rounded-md border border-border-subtle bg-surface-card p-2 text-text-strong";
   return <form className="mt-6 space-y-4" noValidate onSubmit={event => { event.preventDefault(); void save(false); }}>
     <fieldset disabled={busy} className="space-y-4">
-      <label className="block text-sm font-medium">Moneda
-        <select aria-label="Moneda" className={inputClass} value={currency} onChange={event => { changed(); setCurrency(event.target.value as Currency); }}>
-          {(["CLP", "USD", "EUR", "UF"] as const).map(code => <option key={code}>{code}</option>)}
-        </select>
-      </label>
-      <p className="text-sm text-text-muted">Total de materiales, sin impuestos ni recargos. Cambiar la moneda no convierte los precios. Cantidades: hasta 3 decimales; precios: hasta 2.</p>
+      <p className="text-sm text-text-muted">Completa las cantidades y los precios unitarios en pesos chilenos (CLP). Revisa la unidad de medida. Puedes editar los materiales o agregar los que falten. Total sin impuestos ni recargos.</p>
+      {!materialsFromTender(initialTenderItems).length && <p className="text-sm text-text-muted">La licitación no tiene materiales detallados. Agrégalos manualmente según sus especificaciones.</p>}
       {items.map((item, index) => <fieldset key={item.key} className="rounded-md border border-border-subtle p-4">
         <legend className="px-1 font-semibold">Material {index + 1}</legend>
         <div className="grid gap-3 sm:grid-cols-2">

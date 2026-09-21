@@ -364,7 +364,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       </header>
 
       {/* AI Compatibility Analysis CTA Card */}
-      <QuotationEditor tenderId={tenderId} tenderCode={tender.code} />
+      <QuotationEditor tenderId={tenderId} tenderCode={tender.code} tenderItems={tender.items} />
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">

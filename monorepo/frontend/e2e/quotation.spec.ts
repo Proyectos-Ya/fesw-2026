@@ -15,9 +15,10 @@ test("crear, guardar, recuperar, editar y descargar materiales", async ({ page }
   await page.goto("/");
   await page.getByRole("button", { name: "Generar cotización" }).click();
   await page.getByRole("button", { name: "Guardar cotización" }).click();
-  await expect(page.getByRole("alert")).toContainText("descripción");
-  await page.getByLabel("Descripción 1", { exact: true }).fill("Cemento");
-  await page.getByLabel("Unidad 1", { exact: true }).fill("saco");
+  await expect(page.getByRole("alert")).toContainText("cantidad");
+  await expect(page.getByLabel("Descripción 1", { exact: true })).toHaveValue("Cemento");
+  await expect(page.getByLabel("Moneda", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Unidad 1", { exact: true })).toHaveValue("saco");
   await page.getByLabel("Cantidad 1", { exact: true }).fill("2.5");
   await page.getByLabel("Precio unitario 1", { exact: true }).fill("100.25");
   await expect(page.getByLabel("Subtotal 1")).toHaveText("Subtotal: 250.63 CLP");
@@ -36,6 +37,8 @@ test("crear, guardar, recuperar, editar y descargar materiales", async ({ page }
   const file = await download.path();
   expect(await readFile(file!, "utf8")).toContain("300.75");
   expect(await readFile(file!, "utf8")).toContain("Cemento");
+  expect(await readFile(file!, "utf8")).toContain('"Unidad"');
+  expect(await readFile(file!, "utf8")).toContain('"saco"');
   await expect(page.getByText("Cotización guardada y descargada.", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("quotation.png"), fullPage: true });

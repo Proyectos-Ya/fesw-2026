@@ -45,6 +45,17 @@ def test_empty_quotation_rejected():
         QuotationInput(items=[])
 
 
+def test_clp_default_and_unit_required():
+    item = MaterialItem(description="Cemento", unit="saco", quantity="2", unit_price="1500")
+    with pytest.raises(ValidationError):
+        MaterialItem(description="Cemento", quantity="2", unit_price="1500")
+    data = QuotationInput(items=[item])
+    assert data.currency == "CLP"
+    assert data.total == Decimal("3000.00")
+    with pytest.raises(ValidationError):
+        QuotationInput(currency="USD", items=[item])
+
+
 @pytest.mark.asyncio
 async def test_company_is_resolved_from_authenticated_user():
     supplier_id, user_id, tender_id = uuid4(), uuid4(), uuid4()

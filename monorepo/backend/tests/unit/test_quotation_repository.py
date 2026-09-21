@@ -69,7 +69,7 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
                 supplier,
                 tender,
                 QuotationInput(
-                    currency="USD",
+                    currency="CLP",
                     items=[
                         MaterialItem(
                             description="Arena", unit="m3", quantity="1", unit_price="0"
@@ -80,7 +80,7 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
             assert updated.id == first.id
         async with AsyncSession(engine) as session:
             retrieved = await QuotationRepository(session).get(supplier, tender)
-            assert retrieved.currency == "USD"
+            assert retrieved.currency == "CLP"
             assert [item.description for item in retrieved.items] == ["Arena"]
             assert retrieved.total == 0
             assert (

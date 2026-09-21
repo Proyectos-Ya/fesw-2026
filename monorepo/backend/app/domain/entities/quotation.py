@@ -34,7 +34,7 @@ class MaterialItem(BaseModel):
 class QuotationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    currency: Literal["CLP", "USD", "EUR", "UF"] = "CLP"
+    currency: Literal["CLP"] = "CLP"
     items: list[MaterialItem] = Field(min_length=1, max_length=200)
 
     @computed_field
@@ -44,6 +44,8 @@ class QuotationInput(BaseModel):
 
 
 class Quotation(QuotationInput):
+    # Lectura compatible con cotizaciones anteriores, sin convertir sus importes.
+    currency: Literal["CLP", "USD", "EUR", "UF"] = "CLP"
     id: UUID
     supplier_id: UUID
     tender_id: UUID

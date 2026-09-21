@@ -6,6 +6,14 @@ export interface Material {
 }
 
 export type Currency = "CLP" | "USD" | "EUR" | "UF";
+export interface TenderMaterial { name: string; description: string | null; unit_of_measure?: string | null; }
+
+export function materialsFromTender(items: TenderMaterial[]): Material[] {
+  return items.flatMap(item => {
+    const description = item.description?.trim() || item.name.trim();
+    return description ? [{ description, unit: item.unit_of_measure?.trim() || "", quantity: "", unit_price: "" }] : [];
+  });
+}
 export interface Quotation {
   id: string;
   supplier_id: string;

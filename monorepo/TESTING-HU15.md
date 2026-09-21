@@ -6,20 +6,20 @@ Implementación sobre `develop` (`9cd77c0c`). Issue: https://github.com/Proyecto
 
 1. Iniciar sesión con un usuario que tenga una empresa registrada.
 2. Abrir el detalle de una licitación y seleccionar **Generar cotización**.
-3. Agregar materiales con descripción, unidad, cantidad y precio unitario.
+3. Los materiales se precargan desde los productos de la licitación (descripción o nombre y unidad de medida, cuando exista). Completar la unidad si falta, cantidad y precio unitario; **Agregar material** permite incorporar faltantes. Si no hay productos detallados, se inicia una fila manual.
 4. Seleccionar **Guardar cotización**. Volver a abrirla permite consultar y editar los materiales guardados.
 5. **Descargar CSV** guarda primero los cambios y descarga el archivo; si falla el guardado no descarga una versión divergente.
 
-Existe una cotización por combinación empresa/licitación. La empresa se obtiene del usuario autenticado; la API no acepta un identificador de empresa enviado por el cliente.
+Existe una cotización por combinación empresa/licitación. Las cotizaciones guardadas tienen prioridad sobre la precarga y conservan sus cambios. Se usan los productos estructurados disponibles en la ficha, sin inferir materiales de documentos adjuntos. La empresa se obtiene del usuario autenticado; la API no acepta un identificador de empresa enviado por el cliente.
 
-Los criterios 5 y 6 de la issue están duplicados. Se implementó además la descarga solicitada en su descripción, en CSV UTF-8 con BOM, separador punto y coma, identificadores de licitación/empresa, moneda, materiales, subtotales y total. Los campos de texto se escapan para evitar fórmulas al abrir el archivo en una hoja de cálculo.
+Los criterios 5 y 6 de la issue están duplicados. Se implementó además la descarga solicitada en su descripción, en CSV UTF-8 con BOM, separador punto y coma, identificadores de licitación/empresa, CLP, materiales, subtotales y total, con columna de unidad. Los campos de texto se escapan para evitar fórmulas al abrir el archivo en una hoja de cálculo.
 
 ## Cálculos y límites
 
-- Monedas: CLP (predeterminada), USD, EUR y UF. Cambiar moneda no convierte precios.
+- Moneda fija: CLP, sin selector. Las cotizaciones antiguas de otra moneda no se convierten ni se sobrescriben automáticamente.
 - El total suma los subtotales redondeados a dos decimales (mitades hacia arriba), sin IVA ni recargos automáticos.
 - El servidor usa `Decimal`; el navegador usa aritmética entera escalada para evitar errores binarios.
-- Entre 1 y 200 materiales; descripción de hasta 500 caracteres y unidad de hasta 40.
+- Entre 1 y 200 materiales; descripción de hasta 500 caracteres. Unidad obligatoria de hasta 40 caracteres, precargada cuando la licitación la informa. No requiere una migración nueva.
 - Cantidad positiva, con hasta 9 enteros y 3 decimales. Precio no negativo, con hasta 12 enteros y 2 decimales. El precio cero es válido.
 - Se valida tanto en el navegador como en el servidor. El total se calcula, nunca se acepta como entrada.
 - Cerrar el panel conserva el borrador durante la visita; los cambios guardados persisten entre visitas.
