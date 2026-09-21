@@ -94,6 +94,7 @@ const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = 
   { icon: "search", label: "Buscar", href: "/buscar" },
   { icon: "target", label: "Matches", href: "/matches" },
   { icon: "bookmark", label: "Guardados", href: "/guardados" },
+  { icon: "kanban", label: "Tablero", href: "/tablero" },
   { icon: "bell", label: "Alertas", href: "/alertas" },
 ];
 
