@@ -1,17 +1,17 @@
+"""Pruebas del análisis de compatibilidad IA.
+
+Dos reglas mandan acá: el análisis no se limita a las licitaciones que el
+sistema recomendó —si falta el puntaje, se calcula y se guarda— y nunca se
+genera solo desde la ficha, que consulta con `only_if_exists`.
+"""
+
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.repositories.matching_result_repository import (
-    IMatchingResultRepository,
-)
-from app.application.repositories.tender_repository import (
-    ITenderRepository,
-    TenderFilters,
-)
-from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
@@ -20,121 +20,16 @@ from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
-from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
-from app.domain.errors.tender_errors import TenderNotFound
-from tests.unit.application.fakes import InMemorySupplierRepository
-
-# ---------------------------------------------------------------------------
-# Fakes específicos para la prueba del caso de uso
-# ---------------------------------------------------------------------------
-
-
-class FakeTenderRepositoryForAnalysis(ITenderRepository):
-    def __init__(self):
-        self.items_reemplazados: list = []
-        self.actualizadas: list = []
-        self.tenders: dict[UUID, Tender] = {}
-        self.analyses: dict[tuple[UUID, UUID], DeepAnalysis] = {}
-
-    async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
-        results = []
-        for t in self.tenders.values():
-            if filters.ids and t.id not in filters.ids:
-                continue
-            results.append(t)
-        return results
-
-    async def search_tenders(
-        self,
-        criteria: TenderFilterCriteria,
-        limit: int,
-        offset: int = 0,
-        q: str | None = None,
-    ) -> tuple[list[Tender], int]:  # noqa: ARG002
-        return ([], 0)
-
-    async def get_items_by_tender_id(self, tender_id: UUID) -> list:
-        return []
-
-    async def replace_tender_items(self, tender_id: UUID, items: list) -> None:
-        self.items_reemplazados = list(items)
-
-    async def update_tender(self, tender) -> None:
-        self.actualizadas.append(tender)
-
-    async def get_expired_published_ids(self) -> list[UUID]:
-        return []
-
-    async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
-        self.cerradas.extend(tender_ids)
-
-    async def get_by_code(self, code: str) -> Any | None:
-        return None
-
-    async def get_or_create_buyer(
-        self,
-        rut: str,
-        name: str,
-        region_id: int,
-        comuna_id: int | None = None,
-        comuna_resolution_source: str | None = None,
-    ) -> str:
-        return rut
-
-    async def get_comuna_id_by_name(self, name: str) -> int | None:
-        return None
-
-    async def get_provincia_id_by_comuna_id(self, comuna_id: int) -> int | None:
-        return None
-
-    async def save_complex_tender(self, tender_model: Any, items: list[Any]) -> None:
-        pass
-
-    async def get_or_create_status(self, status_id: int, code: str) -> int:
-        return status_id
-
-    async def rollback(self) -> None:
-        pass
-
-    async def get_deep_analysis(
-        self, tender_id: UUID, supplier_id: UUID
-    ) -> DeepAnalysis | None:
-        return self.analyses.get((tender_id, supplier_id))
-
-    async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
-        self.analyses[(deep_analysis.tender_id, deep_analysis.supplier_id)] = (
-            deep_analysis
-        )
-        return deep_analysis
-
-    async def get_latest_tender_created_at(self) -> datetime | None:
-        if not self.tenders:
-            return None
-        return max(
-            (t.created_at for t in self.tenders.values() if t.created_at is not None),
-            default=None,
-        )
-
-
-class FakeMatchingResultRepositoryForAnalysis(IMatchingResultRepository):
-    def __init__(self):
-        self.results: dict[tuple[UUID, UUID], MatchingResult] = {}
-
-    async def save_bulk(self, results: list[MatchingResult]) -> None:
-        for r in results:
-            self.results[(r.supplier_id, r.tender_id)] = r
-
-    async def get_by_supplier_id(self, supplier_id: UUID) -> list[MatchingResult]:
-        return [r for r in self.results.values() if r.supplier_id == supplier_id]
-
-    async def delete_by_supplier_id(self, supplier_id: UUID) -> None:
-        pass
-
-    async def get_by_proveedor_and_licitacion(
-        self, proveedor_id: UUID, licitacion_id: UUID
-    ) -> MatchingResult | None:
-        return self.results.get((proveedor_id, licitacion_id))
+from app.domain.errors.tender_errors import TenderClosedForAnalysis, TenderNotFound
+from app.shared.constants import TENDER_STATUSES
+from tests.unit.application.fakes import (
+    FakeRerankerService,
+    FakeWeightingService,
+    InMemoryMatchingResultRepository,
+    InMemorySupplierRepository,
+    InMemoryTenderRepository,
+)
 
 
 class FakeDeepAnalysisService(IDeepAnalysisService):
@@ -162,11 +57,18 @@ class FakeDeepAnalysisService(IDeepAnalysisService):
         )
 
 
-# Helper para crear objetos de prueba
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
 def create_dummy_tender(
-    tender_id: UUID, updated_at: datetime | None = None
+    tender_id: UUID,
+    updated_at: datetime | None = None,
+    cierra_en_horas: int = 48,
+    status_code: str = TENDER_STATUSES["PUBLISHED"],
 ) -> Tender:
-    """Licitación de prueba. Por defecto, sin cambios recientes.
+    """Licitación de prueba: abierta y sin cambios recientes.
 
     `updated_at` va deliberadamente en el pasado: desde que el análisis se
     regenera también cuando cambia la licitación (6.4), una licitación con
@@ -181,9 +83,9 @@ def create_dummy_tender(
         name="Licitación de Prueba",
         description="Descripción",
         status_id=1,
-        status_code="publicada",
-        published_at=now,
-        closing_at=now,
+        status_code=status_code,
+        published_at=now - timedelta(days=8),
+        closing_at=now + timedelta(hours=cierra_en_horas),
         last_change_at=now,
         buyer_rut="11.111.111-1",
         buyer_name="Buyer",
@@ -205,6 +107,108 @@ def create_dummy_supplier(
     )
 
 
+@dataclass
+class Escenario:
+    use_case: GetOrCreateDeepAnalysisUseCase
+    tender_repo: InMemoryTenderRepository
+    matching_result_repo: InMemoryMatchingResultRepository
+    ai_service: FakeDeepAnalysisService
+    supplier: Supplier
+    user_id: UUID
+    tender_id: UUID
+
+
+async def armar(
+    supplier_updated_at: datetime | None = None,
+    tender: Tender | None = None,
+    con_supplier: bool = True,
+    con_tender: bool = True,
+) -> Escenario:
+    now = datetime.now(UTC).replace(tzinfo=None)
+    supplier_id, user_id = uuid4(), uuid4()
+
+    supplier_repo = InMemorySupplierRepository()
+    supplier = create_dummy_supplier(
+        supplier_id, user_id, supplier_updated_at or (now - timedelta(hours=2))
+    )
+    if con_supplier:
+        await supplier_repo.save(supplier)
+
+    tender_repo = InMemoryTenderRepository()
+    licitacion = tender or create_dummy_tender(uuid4())
+    if con_tender:
+        tender_repo.tenders[licitacion.id] = licitacion
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    ai_service = FakeDeepAnalysisService()
+
+    return Escenario(
+        use_case=GetOrCreateDeepAnalysisUseCase(
+            supplier_repo=supplier_repo,
+            tender_repo=tender_repo,
+            matching_result_repo=matching_result_repo,
+            deep_analysis_service=ai_service,
+            scorer=CompatibilityScorer(
+                reranker_service=FakeRerankerService(),
+                weighting_service=FakeWeightingService(),
+                matching_result_repo=matching_result_repo,
+            ),
+        ),
+        tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
+        ai_service=ai_service,
+        supplier=supplier,
+        user_id=user_id,
+        tender_id=licitacion.id,
+    )
+
+
+async def guardar_match(
+    esc: Escenario, final_score: float = 0.85, source: str = "ranking"
+) -> MatchingResult:
+    match = MatchingResult(
+        supplier_id=esc.supplier.id,
+        tender_id=esc.tender_id,
+        similarity_score=0.80 if source == "ranking" else None,
+        final_score=final_score,
+        model_version="v1",
+        source=source,  # type: ignore[arg-type]
+    )
+    if source == "ranking":
+        await esc.matching_result_repo.save_bulk([match])
+    else:
+        await esc.matching_result_repo.save_on_demand(match)
+    return match
+
+
+async def guardar_analisis(
+    esc: Escenario,
+    generado_hace: timedelta,
+    marca_tender: datetime | None = None,
+    marca_supplier: datetime | None = None,
+) -> DeepAnalysis:
+    """Deja un análisis guardado.
+
+    Las marcas son las que el análisis vio al generarse; por omisión coinciden
+    con las actuales, o sea que nada cambió desde entonces.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    licitacion = esc.tender_repo.tenders[esc.tender_id]
+    analisis = DeepAnalysis(
+        tender_id=esc.tender_id,
+        supplier_id=esc.supplier.id,
+        compatibility_score=85.0,
+        recommendation="Evaluar con cautela",
+        justification="Ya calculado",
+        prompt_instruction="Instruccion previa",
+        tender_updated_at=marca_tender or licitacion.updated_at,
+        supplier_updated_at=marca_supplier or esc.supplier.updated_at,
+        created_at=now - generado_hace,
+        updated_at=now - generado_hace,
+    )
+    return await esc.tender_repo.save_deep_analysis(analisis)
+
+
 # ---------------------------------------------------------------------------
 # Pruebas Unitarias del Caso de Uso
 # ---------------------------------------------------------------------------
@@ -213,399 +217,366 @@ def create_dummy_supplier(
 @pytest.mark.asyncio
 async def test_supplier_not_found_raises():
     """Lanza SupplierNotFoundForUser si el usuario no tiene perfil de proveedor."""
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=InMemorySupplierRepository(),
-        tender_repo=FakeTenderRepositoryForAnalysis(),
-        matching_result_repo=FakeMatchingResultRepositoryForAnalysis(),
-        deep_analysis_service=FakeDeepAnalysisService(),
-    )
+    esc = await armar(con_supplier=False)
+
     with pytest.raises(SupplierNotFoundForUser):
-        await use_case.execute(tender_id=uuid4(), user_id=uuid4())
+        await esc.use_case.execute(tender_id=esc.tender_id, user_id=esc.user_id)
 
 
 @pytest.mark.asyncio
 async def test_tender_not_found_raises():
     """Lanza TenderNotFound si la licitación no existe en la base de datos."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    supplier_repo = InMemorySupplierRepository()
-    await supplier_repo.save(
-        create_dummy_supplier(
-            supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
-        )
-    )
+    esc = await armar(con_tender=False)
 
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=FakeTenderRepositoryForAnalysis(),
-        matching_result_repo=FakeMatchingResultRepositoryForAnalysis(),
-        deep_analysis_service=FakeDeepAnalysisService(),
-    )
     with pytest.raises(TenderNotFound):
-        await use_case.execute(tender_id=uuid4(), user_id=user_id)
+        await esc.use_case.execute(tender_id=esc.tender_id, user_id=esc.user_id)
 
 
 @pytest.mark.asyncio
-async def test_matching_score_not_found_raises():
-    """Lanza ScoreMatchingNoEncontrado si no existe una recomendación precalculada (matching) para ese par."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+async def test_sin_fila_de_matching_calcula_el_puntaje_y_lo_persiste():
+    """Una licitación fuera del top-N se analiza igual: el puntaje se calcula al vuelo.
 
-    supplier_repo = InMemorySupplierRepository()
-    await supplier_repo.save(
-        create_dummy_supplier(
-            supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
-        )
+    Antes esto era un 404. Como el usuario llega a estas licitaciones desde el
+    buscador, el resultado se guarda para que la próxima visita lo encuentre.
+    """
+    esc = await armar()
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
     )
 
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=FakeMatchingResultRepositoryForAnalysis(),
-        deep_analysis_service=FakeDeepAnalysisService(),
+    assert resultado.analysis is not None
+    assert len(esc.ai_service.calls) == 1
+    fila = await esc.matching_result_repo.get_by_proveedor_and_licitacion(
+        esc.supplier.id, esc.tender_id
     )
-    with pytest.raises(ScoreMatchingNoEncontrado):
-        await use_case.execute(tender_id=tender_id, user_id=user_id)
+    assert fila is not None
+    assert fila.source == "on_demand"
+    # El análisis justifica exactamente el puntaje que quedó guardado.
+    assert resultado.analysis.compatibility_score == pytest.approx(
+        fila.final_score * 100
+    )
 
 
 @pytest.mark.asyncio
 async def test_create_new_analysis_success():
-    """Crea y persiste un nuevo análisis de compatibilidad usando Gemini si no existía previamente."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+    """Crea y persiste un nuevo análisis usando el puntaje ya calculado del ranking."""
+    esc = await armar()
+    await guardar_match(esc, final_score=0.85)
 
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(
-        supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
-    )
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender = create_dummy_tender(tender_id)
-    tender_repo.tenders[tender_id] = tender
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, prompt_instruction="Usar ISO"
     )
 
-    # Ejecutar
-    result = await use_case.execute(
-        tender_id=tender_id, user_id=user_id, prompt_instruction="Usar ISO"
+    assert resultado.analysis is not None
+    assert resultado.analysis.compatibility_score == 85.0  # final_score * 100
+    assert resultado.analysis.recommendation == "Postular"
+    assert resultado.analysis.prompt_instruction == "Usar ISO"
+    assert esc.ai_service.calls == [
+        (esc.tender_id, esc.supplier.id, 85.0, "Usar ISO")
+    ]
+
+    persisted = await esc.tender_repo.get_deep_analysis(
+        esc.tender_id, esc.supplier.id
     )
-
-    # Aserciones
-    assert result is not None
-    assert result.compatibility_score == 85.0  # final_score * 100
-    assert result.recommendation == "Postular"
-    assert result.prompt_instruction == "Usar ISO"
-    assert len(ai_service.calls) == 1
-    assert ai_service.calls[0] == (tender_id, supplier_id, 85.0, "Usar ISO")
-
-    # Verificar persistencia en repo
-    persisted = await tender_repo.get_deep_analysis(tender_id, supplier_id)
     assert persisted is not None
     assert persisted.compatibility_score == 85.0
 
 
 @pytest.mark.asyncio
 async def test_return_existing_analysis_no_profile_change():
-    """Retorna el análisis existente de inmediato si no hay cambios en el perfil del proveedor y no se fuerza regeneración."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+    """Retorna el análisis existente si nada cambió desde que se generó."""
+    esc = await armar()
+    await guardar_match(esc)
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
 
-    # Simulamos que el proveedor se actualizó hace 2 horas y el análisis se generó hace 1 hora (no hay cambios de perfil desde entonces)
-    now = datetime.now(UTC).replace(tzinfo=None)
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    existing_analysis = DeepAnalysis(
-        tender_id=tender_id,
-        supplier_id=supplier_id,
-        compatibility_score=85.0,
-        recommendation="Evaluar con cautela",
-        justification="Ya calculado",
-        prompt_instruction="Instruccion previa",
-        created_at=now - timedelta(hours=1),
-        updated_at=now - timedelta(hours=1),
-    )
-    await tender_repo.save_deep_analysis(existing_analysis)
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
     )
 
-    # Ejecutar
-    result = await use_case.execute(tender_id=tender_id, user_id=user_id)
+    assert resultado.analysis is not None
+    assert resultado.analysis.recommendation == "Evaluar con cautela"
+    assert resultado.analysis.justification == "Ya calculado"
+    assert resultado.is_outdated is False
+    assert esc.ai_service.calls == []
 
-    # Debe retornar el existente directamente sin llamar a Gemini
-    assert result is not None
-    assert result.recommendation == "Evaluar con cautela"
-    assert result.justification == "Ya calculado"
-    assert len(ai_service.calls) == 0
+
+@pytest.mark.asyncio
+async def test_devuelve_el_analisis_guardado_aunque_ya_no_haya_fila_de_matching():
+    """Salir del top-N no puede esconder un análisis que el usuario ya generó."""
+    esc = await armar()
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
+    )
+
+    assert resultado.analysis is not None
+    assert resultado.analysis.justification == "Ya calculado"
+    assert esc.ai_service.calls == []
 
 
 @pytest.mark.asyncio
 async def test_regenerate_automatically_on_profile_updated():
-    """Regenera automáticamente y de forma silenciosa el análisis (manteniendo el prompt previo) si supplier.updated_at > deep_analysis.updated_at."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
-
-    # Proveedor actualizado hace 10 minutos
+    """Regenera solo (manteniendo el prompt previo) si el perfil cambió después."""
     now = datetime.now(UTC).replace(tzinfo=None)
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(minutes=10))
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    # Análisis generado hace 30 minutos (antiguo con respecto a la última actualización del proveedor)
-    existing_analysis = DeepAnalysis(
-        tender_id=tender_id,
-        supplier_id=supplier_id,
-        compatibility_score=85.0,
-        recommendation="Evaluar con cautela",
-        justification="Ya calculado",
-        prompt_instruction="Instruccion previa guardada",
-        created_at=now - timedelta(minutes=30),
-        updated_at=now - timedelta(minutes=30),
-    )
-    await tender_repo.save_deep_analysis(existing_analysis)
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
+    esc = await armar(supplier_updated_at=now - timedelta(minutes=10))
+    await guardar_match(esc)
+    await guardar_analisis(
+        esc,
+        generado_hace=timedelta(minutes=30),
+        marca_supplier=now - timedelta(hours=5),
     )
 
-    # Ejecutar sin forzar regeneración
-    result = await use_case.execute(tender_id=tender_id, user_id=user_id)
-
-    # Debe haber regenerado porque el perfil cambió después, reutilizando el prompt anterior
-    assert len(ai_service.calls) == 1
-    assert ai_service.calls[0] == (
-        tender_id,
-        supplier_id,
-        85.0,
-        "Instruccion previa guardada",
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
     )
-    assert result is not None
-    assert result.recommendation == "Postular"
-    assert result.prompt_instruction == "Instruccion previa guardada"
+
+    assert esc.ai_service.calls == [
+        (esc.tender_id, esc.supplier.id, 85.0, "Instruccion previa")
+    ]
+    assert resultado.analysis is not None
+    assert resultado.analysis.recommendation == "Postular"
+    assert resultado.analysis.prompt_instruction == "Instruccion previa"
 
 
 @pytest.mark.asyncio
 async def test_manual_force_regenerate_overwrites_prompt():
-    """Regenera manualmente si force_regenerate=True, aplicando y guardando el nuevo prompt_instruction."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+    """Con force_regenerate=True se aplica y guarda el prompt nuevo."""
+    esc = await armar()
+    await guardar_match(esc)
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
 
-    now = datetime.now(UTC).replace(tzinfo=None)
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    existing_analysis = DeepAnalysis(
-        tender_id=tender_id,
-        supplier_id=supplier_id,
-        compatibility_score=85.0,
-        recommendation="Evaluar con cautela",
-        justification="Ya calculado",
-        prompt_instruction="Instruccion previa",
-        created_at=now - timedelta(hours=1),
-        updated_at=now - timedelta(hours=1),
-    )
-    await tender_repo.save_deep_analysis(existing_analysis)
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
-    )
-
-    # Ejecutar forzando regeneración y pasando un nuevo prompt
-    result = await use_case.execute(
-        tender_id=tender_id,
-        user_id=user_id,
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id,
+        user_id=esc.user_id,
         force_regenerate=True,
         prompt_instruction="Priorizar certificaciones ISO 14001",
     )
 
-    # Debe haber llamado a Gemini con el nuevo prompt
-    assert len(ai_service.calls) == 1
-    assert ai_service.calls[0] == (
-        tender_id,
-        supplier_id,
-        85.0,
-        "Priorizar certificaciones ISO 14001",
+    assert esc.ai_service.calls == [
+        (
+            esc.tender_id,
+            esc.supplier.id,
+            85.0,
+            "Priorizar certificaciones ISO 14001",
+        )
+    ]
+    assert resultado.analysis is not None
+    assert resultado.analysis.prompt_instruction == "Priorizar certificaciones ISO 14001"
+
+
+@pytest.mark.asyncio
+async def test_regenerar_no_convierte_una_fila_del_ranking_en_calculo_a_pedido():
+    """El puntaje del ranking manda: reescribirlo sacaría la licitación del dashboard."""
+    esc = await armar()
+    await guardar_match(esc, final_score=0.85, source="ranking")
+
+    await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, force_regenerate=True
     )
-    assert result is not None
-    assert result.prompt_instruction == "Priorizar certificaciones ISO 14001"
+
+    fila = await esc.matching_result_repo.get_by_proveedor_and_licitacion(
+        esc.supplier.id, esc.tender_id
+    )
+    assert fila is not None
+    assert fila.source == "ranking"
+    assert fila.final_score == pytest.approx(0.85)
+    assert esc.ai_service.calls[0][2] == 85.0
+
+
+@pytest.mark.asyncio
+async def test_regenerar_si_actualiza_un_calculo_a_pedido():
+    """El puntaje a pedido no lo refresca nadie más: al regenerar, se recalcula."""
+    esc = await armar()
+    await guardar_match(esc, final_score=0.10, source="on_demand")
+
+    await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, force_regenerate=True
+    )
+
+    fila = await esc.matching_result_repo.get_by_proveedor_and_licitacion(
+        esc.supplier.id, esc.tender_id
+    )
+    assert fila is not None
+    assert fila.source == "on_demand"
+    assert fila.final_score != pytest.approx(0.10)
 
 
 @pytest.mark.asyncio
 async def test_only_if_exists_returns_none_when_missing():
-    """Retorna None si only_if_exists=True y no hay análisis generado previamente."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+    """Sin análisis previo, la ficha no genera nada: devuelve None."""
+    esc = await armar()
+    await guardar_match(esc)
 
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(
-        supplier_id, user_id, datetime.now(UTC).replace(tzinfo=None)
-    )
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
     )
 
-    # Ejecutar con only_if_exists=True
-    result = await use_case.execute(
-        tender_id=tender_id, user_id=user_id, only_if_exists=True
-    )
-
-    # Debe retornar None y no llamar al LLM
-    assert result is None
-    assert len(ai_service.calls) == 0
+    assert resultado.analysis is None
+    assert esc.ai_service.calls == []
 
 
 @pytest.mark.asyncio
 async def test_only_if_exists_returns_existing_when_present():
-    """Retorna el análisis existente si only_if_exists=True y ya existía previamente."""
-    supplier_id = uuid4()
-    user_id = uuid4()
-    tender_id = uuid4()
+    """Con análisis previo y sin cambios, la ficha lo muestra tal cual."""
+    esc = await armar()
+    await guardar_match(esc)
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
 
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.analysis is not None
+    assert resultado.analysis.justification == "Ya calculado"
+    assert resultado.is_outdated is False
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_only_if_exists_avisa_que_quedo_desactualizado_sin_regenerar():
+    """La ficha informa el desfase; regenerar es decisión del usuario, no un efecto de abrirla."""
     now = datetime.now(UTC).replace(tzinfo=None)
-    supplier_repo = InMemorySupplierRepository()
-    supplier = create_dummy_supplier(supplier_id, user_id, now - timedelta(hours=2))
-    await supplier_repo.save(supplier)
-
-    tender_repo = FakeTenderRepositoryForAnalysis()
-    tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
-
-    matching_result_repo = FakeMatchingResultRepositoryForAnalysis()
-    matching_result = MatchingResult(
-        supplier_id=supplier_id,
-        tender_id=tender_id,
-        similarity_score=0.80,
-        final_score=0.85,
-        model_version="v1",
-    )
-    await matching_result_repo.save_bulk([matching_result])
-
-    existing_analysis = DeepAnalysis(
-        tender_id=tender_id,
-        supplier_id=supplier_id,
-        compatibility_score=85.0,
-        recommendation="Evaluar con cautela",
-        justification="Ya calculado",
-        prompt_instruction="Instruccion previa",
-        created_at=now - timedelta(hours=1),
-        updated_at=now - timedelta(hours=1),
-    )
-    await tender_repo.save_deep_analysis(existing_analysis)
-
-    ai_service = FakeDeepAnalysisService()
-    use_case = GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        matching_result_repo=matching_result_repo,
-        deep_analysis_service=ai_service,
+    esc = await armar(supplier_updated_at=now - timedelta(minutes=5))
+    await guardar_match(esc)
+    await guardar_analisis(
+        esc,
+        generado_hace=timedelta(minutes=30),
+        marca_supplier=now - timedelta(hours=5),
     )
 
-    # Ejecutar con only_if_exists=True
-    result = await use_case.execute(
-        tender_id=tender_id, user_id=user_id, only_if_exists=True
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
     )
 
-    # Debe retornar el análisis existente
-    assert result is not None
-    assert result.recommendation == "Evaluar con cautela"
-    assert result.justification == "Ya calculado"
-    assert len(ai_service.calls) == 0
+    assert resultado.is_outdated is True
+    assert resultado.analysis is not None
+    assert resultado.analysis.justification == "Ya calculado"
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_licitacion_cerrada_sin_analisis_no_genera():
+    """A una licitación cerrada ya no se postula: generar el análisis no ayuda a decidir."""
+    cerrada = create_dummy_tender(uuid4(), cierra_en_horas=-3)
+    esc = await armar(tender=cerrada)
+
+    with pytest.raises(TenderClosedForAnalysis):
+        await esc.use_case.execute(tender_id=esc.tender_id, user_id=esc.user_id)
+
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_licitacion_cerrada_con_analisis_lo_devuelve_sin_regenerar():
+    """Lo ya generado sigue visible: es el registro de lo que se evaluó."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cerrada = create_dummy_tender(uuid4(), cierra_en_horas=-3)
+    esc = await armar(supplier_updated_at=now - timedelta(minutes=5), tender=cerrada)
+    await guardar_analisis(esc, generado_hace=timedelta(minutes=30))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, force_regenerate=True
+    )
+
+    assert resultado.analysis is not None
+    assert resultado.analysis.justification == "Ya calculado"
+    # No se marca desactualizado: no hay forma de actualizarlo.
+    assert resultado.is_outdated is False
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_una_licitacion_con_fecha_futura_no_se_marca_desactualizada():
+    """Es lo que rompía en local: filas restauradas con la hora adelantada.
+
+    Comparando el orden de las fechas, esa licitación es siempre "más nueva"
+    que el análisis —incluso que uno recién generado—, así que el aviso no se
+    podía quitar nunca.
+    """
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    futura = create_dummy_tender(uuid4(), updated_at=ahora + timedelta(days=9))
+    esc = await armar(tender=futura)
+    await guardar_analisis(esc, generado_hace=timedelta(minutes=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False
+    assert esc.ai_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_al_generar_guarda_contra_que_version_se_escribio():
+    """Sin estas marcas, la siguiente visita no tiene con qué comparar."""
+    esc = await armar()
+    await guardar_match(esc)
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id
+    )
+
+    assert resultado.analysis is not None
+    licitacion = esc.tender_repo.tenders[esc.tender_id]
+    assert resultado.analysis.tender_updated_at == licitacion.updated_at
+    assert resultado.analysis.supplier_updated_at == esc.supplier.updated_at
+
+
+async def guardar_analisis_sin_marcas(
+    esc: Escenario, generado_hace: timedelta
+) -> DeepAnalysis:
+    """Un análisis como los que quedaron antes de existir las marcas."""
+    analisis = await guardar_analisis(esc, generado_hace=generado_hace)
+    analisis.tender_updated_at = None
+    analisis.supplier_updated_at = None
+    return await esc.tender_repo.save_deep_analysis(analisis)
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_sigue_avisando_si_cambio_el_perfil():
+    """Los generados antes de la columna no pueden quedarse mudos.
+
+    Del proveedor sí se puede comparar el orden: su `updated_at` lo escribe
+    esta misma aplicación, con el mismo reloj que el análisis.
+    """
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    esc = await armar(supplier_updated_at=ahora)
+    await guardar_match(esc)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is True
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_no_avisa_si_no_cambio_nada():
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    esc = await armar(supplier_updated_at=ahora - timedelta(days=2))
+    await guardar_match(esc)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False
+
+
+@pytest.mark.asyncio
+async def test_un_analisis_sin_marcas_ignora_la_fecha_de_la_licitacion():
+    """Es la fecha que no es confiable: puede venir de datos cargados a mano."""
+    ahora = datetime.now(UTC).replace(tzinfo=None)
+    futura = create_dummy_tender(uuid4(), updated_at=ahora + timedelta(days=9))
+    esc = await armar(supplier_updated_at=ahora - timedelta(days=2), tender=futura)
+    await guardar_analisis_sin_marcas(esc, generado_hace=timedelta(hours=1))
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, only_if_exists=True
+    )
+
+    assert resultado.is_outdated is False

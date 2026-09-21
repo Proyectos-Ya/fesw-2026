@@ -28,6 +28,7 @@ def create_router(
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
     get_tender_detail_use_case: Callable,
+    get_score_tender_on_demand_use_case: Callable,
     get_list_notifications_use_case: Callable,
     get_count_unread_use_case: Callable,
     get_mark_notification_read_use_case: Callable,
@@ -79,6 +80,7 @@ def create_router(
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
             get_tender_detail_use_case=get_tender_detail_use_case,
+            get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
         )
     )
 

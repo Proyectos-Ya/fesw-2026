@@ -3,6 +3,9 @@
 from datetime import datetime
 from uuid import UUID
 
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
 from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
     INotificationPreferenceRepository,
@@ -26,8 +29,11 @@ from app.application.services.company_lookup_service import ICompanyLookupServic
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
+from app.application.services.reranker_service import IRerankerService
+from app.application.services.weighting_service import IWeightingService
 from app.domain.entities.company_profile import CompanyRecord
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.notification import (
     Notification,
     NotificationDelivery,
@@ -393,6 +399,7 @@ class InMemoryTenderRepository(ITenderRepository):
         # Registro de llamadas: permite verificar que un caso de uso NO consulte
         # la base cuando no tiene ids que buscar.
         self.get_tenders_calls: list[TenderFilters] = []
+        self.analyses: dict[tuple[UUID, UUID], DeepAnalysis] = {}
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         self.get_tenders_calls.append(filters)
@@ -469,9 +476,12 @@ class InMemoryTenderRepository(ITenderRepository):
     async def get_deep_analysis(
         self, tender_id: UUID, supplier_id: UUID
     ) -> DeepAnalysis | None:
-        return None
+        return self.analyses.get((tender_id, supplier_id))
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        self.analyses[(deep_analysis.tender_id, deep_analysis.supplier_id)] = (
+            deep_analysis
+        )
         return deep_analysis
 
 
@@ -626,3 +636,91 @@ class FakeEmailService(IEmailService):
 
     def restablecer(self) -> None:
         self.fail_with = None
+
+
+class InMemoryMatchingResultRepository(IMatchingResultRepository):
+    """Caché de matching en memoria, con la distinción ranking / a pedido."""
+
+    def __init__(self) -> None:
+        self.results: dict[UUID, list[MatchingResult]] = {}
+
+    async def save_bulk(self, results: list[MatchingResult]) -> None:
+        if not results:
+            return
+        supplier_id = results[0].supplier_id
+        self.results.setdefault(supplier_id, []).extend(results)
+
+    async def save_on_demand(self, result: MatchingResult) -> MatchingResult:
+        await self.delete_by_supplier_and_tender_ids(
+            result.supplier_id, [result.tender_id]
+        )
+        self.results.setdefault(result.supplier_id, []).append(result)
+        return result
+
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[MatchingResult]:
+        return self.results.get(supplier_id, [])
+
+    async def get_ranking_by_supplier_id(
+        self, supplier_id: UUID
+    ) -> list[MatchingResult]:
+        return [
+            r for r in self.results.get(supplier_id, []) if r.source != "on_demand"
+        ]
+
+    async def delete_by_supplier_id(self, supplier_id: UUID) -> None:
+        self.results.pop(supplier_id, None)
+
+    async def delete_ranking_by_supplier_id(self, supplier_id: UUID) -> None:
+        self.results[supplier_id] = [
+            r for r in self.results.get(supplier_id, []) if r.source == "on_demand"
+        ]
+
+    async def delete_by_supplier_and_tender_ids(
+        self, supplier_id: UUID, tender_ids: list[UUID]
+    ) -> None:
+        if not tender_ids:
+            return
+        self.results[supplier_id] = [
+            r
+            for r in self.results.get(supplier_id, [])
+            if r.tender_id not in tender_ids
+        ]
+
+    async def get_by_proveedor_and_licitacion(
+        self, proveedor_id: UUID, licitacion_id: UUID
+    ) -> MatchingResult | None:
+        for r in self.results.get(proveedor_id, []):
+            if r.tender_id == licitacion_id:
+                return r
+        return None
+
+
+class FakeRerankerService(IRerankerService):
+    """Re-ranker simulado: conserva el orden recibido con puntajes decrecientes."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[tuple[UUID, str]], int]] = []
+
+    async def rerank(
+        self,
+        query_text: str,
+        candidates: list[tuple[UUID, str]],
+        limit: int,
+    ) -> list[tuple[UUID, float]]:
+        self.calls.append((query_text, candidates, limit))
+        return [(uid, 1.0 - (i * 0.05)) for i, (uid, _) in enumerate(candidates)][
+            :limit
+        ]
+
+
+class FakeWeightingService(IWeightingService):
+    """Ponderación simulada: un score decreciente por candidata."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[tuple[Tender, float]]] = []
+
+    def calculate_scores(
+        self, candidates: list[tuple[Tender, float]], supplier: Supplier
+    ) -> list[tuple[UUID, float]]:
+        self.calls.append(list(candidates))
+        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
