@@ -19,6 +19,7 @@ def create_router(
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
+    get_company_lookup_service: Callable,
     get_user_repo: Callable,
     get_current_user: Callable,
     get_get_or_create_deep_analysis_use_case: Callable,
@@ -27,6 +28,7 @@ def create_router(
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
     get_tender_detail_use_case: Callable,
+    get_score_tender_on_demand_use_case: Callable,
     get_list_notifications_use_case: Callable,
     get_count_unread_use_case: Callable,
     get_mark_notification_read_use_case: Callable,
@@ -64,6 +66,7 @@ def create_router(
             get_supplier_repo=get_supplier_repo,
             get_supplier_vector_repo=get_supplier_vector_repo,
             get_embedding_service=get_embedding_service,
+            get_company_lookup_service=get_company_lookup_service,
             get_current_user=get_current_user,
         )
     )
@@ -77,6 +80,7 @@ def create_router(
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
             get_tender_detail_use_case=get_tender_detail_use_case,
+            get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
         )
     )
 

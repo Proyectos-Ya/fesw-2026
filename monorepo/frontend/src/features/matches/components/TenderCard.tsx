@@ -48,8 +48,9 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
   const tender: Tender | null = rawTender ?? match?.tender ?? null;
   if (!tender) return null;
 
-  // Solo calcula el score si viene un objeto match definido
-  const score = match ? normalizeScore(match.final_score) : null;
+  // Solo calcula el score si viene un match con puntaje ya medido
+  const score =
+    match && match.final_score !== null ? normalizeScore(match.final_score) : null;
   const closing = daysUntilClosing(tender.closing_at);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const savedState = isSaved ?? tender.is_saved ?? false;

@@ -10,7 +10,9 @@ import {
   unsaveTenderApi,
 } from "@/features/saved-tenders/services/savedTenders.service";
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
+import { getMySupplierOrNull } from "@/features/company-profile/services/supplierService";
 import { searchTenders } from "../services/searchService";
+import { toSearchRegions } from "../data/profileRegions";
 import type { Tender } from "@/features/matches/tenderTypes";
 import type { TenderSearchParams } from "../types";
 import {
@@ -20,6 +22,16 @@ import {
 } from "../data/searchConstants";
 
 export const SEARCH_STORAGE_KEY = "proyectosya_last_search";
+
+/**
+ * Marca de que ya se ofrecieron las regiones del perfil en esta pestaña.
+ *
+ * Va aparte de la búsqueda guardada porque hay que distinguir dos estados que
+ * se ven iguales —ambos son "sin filtros"—: quien recién llega y quien acaba de
+ * limpiarlos. Sin esta marca, volver al buscador después de limpiar repondría
+ * las regiones una y otra vez.
+ */
+export const SEARCH_REGIONS_PREFILLED_KEY = "proyectosya_search_regions_prefilled";
 
 export interface SearchState {
   items: Tender[];
@@ -35,20 +47,56 @@ export function useTenderSearch() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // 1. Restore search state from sessionStorage if URL query is empty on mount
+  // 1. Restore search state from sessionStorage if URL query is empty on mount.
+  // Y si no hay nada que restaurar, partir con las regiones donde la empresa
+  // declaró que opera: es el filtro que casi siempre iba a poner igual.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const currentQuery = searchParams.toString();
-    if (!currentQuery) {
-      try {
-        const savedQuery = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
-        if (savedQuery) {
-          router.replace(`${pathname}?${savedQuery}`, { scroll: false });
-        }
-      } catch (err) {
-        console.error("Error al restaurar búsqueda desde sessionStorage:", err);
-      }
+    if (searchParams.toString()) return;
+
+    let savedQuery: string | null = null;
+    let yaOfrecidas = false;
+    try {
+      savedQuery = window.sessionStorage.getItem(SEARCH_STORAGE_KEY);
+      yaOfrecidas =
+        window.sessionStorage.getItem(SEARCH_REGIONS_PREFILLED_KEY) !== null;
+    } catch (err) {
+      console.error("Error al leer la búsqueda guardada:", err);
     }
+
+    if (savedQuery) {
+      router.replace(`${pathname}?${savedQuery}`, { scroll: false });
+      return;
+    }
+    if (yaOfrecidas) return;
+
+    let cancelled = false;
+    void (async () => {
+      const empresa = await getMySupplierOrNull();
+      if (cancelled) return;
+
+      // Se marca aunque no haya regiones que poner: el intento ya se hizo, y
+      // repetirlo en cada visita solo agrega una petición.
+      try {
+        window.sessionStorage.setItem(SEARCH_REGIONS_PREFILLED_KEY, "1");
+      } catch {}
+
+      const regiones = toSearchRegions(empresa?.regions ?? []);
+      if (regiones.length === 0) return;
+
+      const sp = new URLSearchParams();
+      for (const region of regiones) sp.append("regions", region);
+      const queryString = sp.toString();
+
+      try {
+        window.sessionStorage.setItem(SEARCH_STORAGE_KEY, queryString);
+      } catch {}
+      router.replace(`${pathname}?${queryString}`, { scroll: false });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [pathname, router, searchParams]);
 
   // 2. Parse params from URL

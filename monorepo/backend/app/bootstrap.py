@@ -28,31 +28,30 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
-from app.application.services.identity_directory import IIdentityDirectory
-from app.application.services.token_verifier import IAuthTokenVerifier
+from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.services.document_validator_service import (
+    IDocumentValidatorService,
+)
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
-from app.application.services.document_validator_service import (
-    IDocumentValidatorService,
-)
-from app.infrastructure.services.document_validator_service import (
-    DocumentValidatorService,
-)
+from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
 )
-from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
-    GetOrCreateDeepAnalysisUseCase,
-)
 from app.application.use_cases.create_tender_chat_session_use_case import (
     CreateTenderChatSessionUseCase,
+)
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
+    GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.delete_tender_chat_document_use_case import (
     DeleteTenderChatDocumentUseCase,
@@ -60,11 +59,13 @@ from app.application.use_cases.delete_tender_chat_document_use_case import (
 from app.application.use_cases.get_tender_chat_history_use_case import (
     GetTenderChatHistoryUseCase,
 )
-
 from app.application.use_cases.list_tender_chat_documents_use_case import (
     ListTenderChatDocumentsUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.matching.score_tender_on_demand import (
+    ScoreTenderOnDemandUseCase,
+)
 from app.application.use_cases.notifications.build_daily_digest import (
     BuildDailyDigestUseCase,
 )
@@ -135,6 +136,14 @@ from app.infrastructure.services.api_embedding_service import (
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    HttpCompanyLookupService,
+    SreLookupService,
+    WebEmpresarioLookupService,
+)
+from app.infrastructure.services.document_validator_service import (
+    DocumentValidatorService,
+)
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
@@ -164,7 +173,7 @@ def get_supplier_repo(
 
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
     # Reutiliza el cliente Qdrant inicializado en el lifespan
-    return QdrantSupplierRepository(request.app.state.qdrant_client)
+    return QdrantSupplierRepository(request.app.state.qdrant_async_client)
 
 
 def get_tender_repo(
@@ -176,6 +185,11 @@ def get_tender_repo(
 
 def get_embedding_service(request: Request) -> IEmbeddingService:
     return request.app.state.embedding_service
+
+
+def get_company_lookup_service(request: Request) -> ICompanyLookupService | None:
+    # `None` cuando COMPANY_LOOKUP_PROVIDER=none: el caso de uso responde 503.
+    return request.app.state.company_lookup_service
 
 
 def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
@@ -199,6 +213,20 @@ def get_matching_result_repo(
     return MatchingResultRepository(session)
 
 
+def get_compatibility_scorer(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
+    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+) -> CompatibilityScorer:
+    """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
+    return CompatibilityScorer(
+        reranker_service=reranker_service,
+        weighting_service=weighting_service,
+        matching_result_repo=MatchingResultRepository(session),
+        model_version=settings.embedding_model,
+    )
+
+
 def get_rank_tenders_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     supplier_vector_repo: Annotated[
@@ -207,18 +235,28 @@ def get_rank_tenders_use_case(
     tender_vector_repo: Annotated[
         ITenderVectorRepository, Depends(get_tender_vector_repo)
     ],
-    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
         supplier_vector_repo=supplier_vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=TenderRepository(session),
-        reranker_service=reranker_service,
-        weighting_service=weighting_service,
+        scorer=scorer,
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
+    )
+
+
+def get_score_tender_on_demand_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+) -> ScoreTenderOnDemandUseCase:
+    return ScoreTenderOnDemandUseCase(
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        scorer=scorer,
     )
 
 
@@ -394,12 +432,14 @@ def get_get_or_create_deep_analysis_use_case(
     deep_analysis_service: Annotated[
         IDeepAnalysisService, Depends(get_deep_analysis_service)
     ],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
 ) -> GetOrCreateDeepAnalysisUseCase:
     return GetOrCreateDeepAnalysisUseCase(
         supplier_repo=SupplierRepository(session),
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         deep_analysis_service=deep_analysis_service,
+        scorer=scorer,
     )
 
 
@@ -645,6 +685,30 @@ def build_reranker_service() -> IRerankerService:
         return MockRerankerService()
 
 
+_FUENTE_DE_EMPRESAS_POR_PROVEEDOR: dict[str, type[HttpCompanyLookupService]] = {
+    "sre": SreLookupService,
+    "web-empresario": WebEmpresarioLookupService,
+}
+
+
+def build_company_lookup_service() -> ICompanyLookupService | None:
+    """Fuente de datos de empresas para importar el perfil por RUT (HdU 16).
+
+    Sin fuente configurada devuelve `None` y la importación queda apagada: es una
+    ayuda del wizard, no algo de lo que dependa crear la empresa. La credencial ya
+    la exigió `config.py` y construir el cliente no toca la red.
+    """
+    if settings.company_lookup_provider == "none":
+        logger.info("Importación de perfil por RUT desactivada (COMPANY_LOOKUP_PROVIDER=none).")
+        return None
+
+    logger.info("Importación de perfil por RUT servida por %s.", settings.company_lookup_provider)
+    return _FUENTE_DE_EMPRESAS_POR_PROVEEDOR[settings.company_lookup_provider](
+        api_key=settings.company_lookup_api_key or "",
+        base_url=settings.company_lookup_url,
+    )
+
+
 def build_notification_runners(
     app: FastAPI,
 ) -> tuple[
@@ -663,14 +727,18 @@ def build_notification_runners(
     def _rank_tenders(session: AsyncSession) -> RankTendersUseCase:
         return RankTendersUseCase(
             supplier_repo=SupplierRepository(session),
-            supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_client),
+            supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_async_client),
             tender_vector_repo=QdrantTenderRepository(
                 client=app.state.qdrant_async_client,
                 vector_size=settings.embedding_vector_size,
             ),
             tender_repo=TenderRepository(session),
-            reranker_service=app.state.reranker_service,
-            weighting_service=app.state.weighting_service,
+            scorer=CompatibilityScorer(
+                reranker_service=app.state.reranker_service,
+                weighting_service=app.state.weighting_service,
+                matching_result_repo=MatchingResultRepository(session),
+                model_version=settings.embedding_model,
+            ),
             matching_result_repo=MatchingResultRepository(session),
             model_version=settings.embedding_model,
         )
@@ -749,6 +817,8 @@ def bootstrap(app: FastAPI) -> None:
 
     app.state.reranker_service = build_reranker_service()
 
+    app.state.company_lookup_service = build_company_lookup_service()
+
     # El envío de correo es stateless y barato de construir, pero vive en
     # app.state igual que el resto: así el scheduler y los endpoints usan
     # exactamente la misma instancia configurada.
@@ -787,6 +857,7 @@ def bootstrap(app: FastAPI) -> None:
         get_supplier_repo=get_supplier_repo,
         get_supplier_vector_repo=get_supplier_vector_repo,
         get_embedding_service=get_embedding_service,
+        get_company_lookup_service=get_company_lookup_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
@@ -795,6 +866,7 @@ def bootstrap(app: FastAPI) -> None:
         get_unsave_tender_use_case=get_unsave_tender_use_case,
         get_search_tenders_use_case=get_search_tenders_use_case,
         get_tender_detail_use_case=get_tender_detail_use_case,
+        get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
         get_list_notifications_use_case=get_list_notifications_use_case,
         get_count_unread_use_case=get_count_unread_use_case,
         get_mark_notification_read_use_case=get_mark_notification_read_use_case,
