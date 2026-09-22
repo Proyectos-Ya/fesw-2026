@@ -203,7 +203,7 @@ class SearchTendersUseCase:
 
         if supplier is None:
             return None
-        return self.supplier_vector_repo.get_vector(supplier.id)
+        return await self.supplier_vector_repo.get_vector(supplier.id)
 
     async def _search_without_ranking(
         self, criteria: TenderFilterCriteria, limit: int, offset: int

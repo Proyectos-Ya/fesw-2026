@@ -31,6 +31,9 @@ class ISupplierMemberRepository(ABC):
     async def save(self, member: SupplierMember) -> SupplierMember: ...
 
     @abstractmethod
+    async def add(self, member: SupplierMember) -> SupplierMember: ...
+
+    @abstractmethod
     async def update(self, member: SupplierMember) -> SupplierMember: ...
 
     @abstractmethod

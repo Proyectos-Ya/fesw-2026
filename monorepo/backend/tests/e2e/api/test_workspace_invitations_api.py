@@ -4,21 +4,14 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_full_workspace_invitation_and_acceptance_flow(api: AsyncClient):
-    # 1. Registrar Usuario A (Dueño/Admin)
-    admin_data = {
-        "email": "admin_empresa@demo.cl",
-        "password": "password123",
-        "full_name": "Admin Empresa",
-    }
-    resp_reg_a = await api.post("/auth/register", json=admin_data)
-    assert resp_reg_a.status_code == 201
-
-    resp_login_a = await api.post(
-        "/auth/login",
-        json={"email": admin_data["email"], "password": admin_data["password"]},
+    # 1. Registrar Usuario A (Dueño/Admin) vía Supabase Auth
+    sub_a = "11111111-1111-4111-8111-111111111111"
+    api.directorio_de_identidad.confirmar(sub_a)
+    token_a = api.claves.token(
+        sub=sub_a,
+        email="admin_empresa@demo.cl",
+        user_metadata={"full_name": "Admin Empresa"},
     )
-    assert resp_login_a.status_code == 200
-    token_a = resp_login_a.json()["access_token"]
     headers_a = {"Authorization": f"Bearer {token_a}"}
 
     # Crear empresa para Usuario A
@@ -62,20 +55,13 @@ async def test_full_workspace_invitation_and_acceptance_flow(api: AsyncClient):
     assert verify_data["email"] == "socio@demo.cl"
 
     # 4. Registrar e iniciar sesión como Usuario B (el invitado)
-    user_b_data = {
-        "email": "socio@demo.cl",
-        "password": "password123",
-        "full_name": "Socio Colaborador",
-    }
-    resp_reg_b = await api.post("/auth/register", json=user_b_data)
-    assert resp_reg_b.status_code == 201
-
-    resp_login_b = await api.post(
-        "/auth/login",
-        json={"email": user_b_data["email"], "password": user_b_data["password"]},
+    sub_b = "22222222-2222-4222-8222-222222222222"
+    api.directorio_de_identidad.confirmar(sub_b)
+    token_b = api.claves.token(
+        sub=sub_b,
+        email="socio@demo.cl",
+        user_metadata={"full_name": "Socio Colaborador"},
     )
-    assert resp_login_b.status_code == 200
-    token_b = resp_login_b.json()["access_token"]
     headers_b = {"Authorization": f"Bearer {token_b}"}
 
     # Usuario B consulta sus invitaciones pendientes
@@ -117,17 +103,14 @@ async def test_full_workspace_invitation_and_acceptance_flow(api: AsyncClient):
 @pytest.mark.asyncio
 async def test_accept_invitation_email_mismatch_fails_e2e(api: AsyncClient):
     # Registrar Admin
-    admin_data = {
-        "email": "owner@corp.cl",
-        "password": "password123",
-        "full_name": "Corp Owner",
-    }
-    await api.post("/auth/register", json=admin_data)
-    login_a = await api.post(
-        "/auth/login",
-        json={"email": admin_data["email"], "password": admin_data["password"]},
+    sub_owner = "33333333-3333-4333-8333-333333333333"
+    api.directorio_de_identidad.confirmar(sub_owner)
+    token_a = api.claves.token(
+        sub=sub_owner,
+        email="owner@corp.cl",
+        user_metadata={"full_name": "Corp Owner"},
     )
-    headers_a = {"Authorization": f"Bearer {login_a.json()['access_token']}"}
+    headers_a = {"Authorization": f"Bearer {token_a}"}
 
     # Crear empresa
     sup_resp = await api.post(
@@ -146,7 +129,6 @@ async def test_accept_invitation_email_mismatch_fails_e2e(api: AsyncClient):
     assert sup_resp.status_code == 201
     supplier_id = sup_resp.json()["id"]
 
-
     # Invitar a alguien@corp.cl
     inv_resp = await api.post(
         "/workspaces/invitations",
@@ -156,17 +138,14 @@ async def test_accept_invitation_email_mismatch_fails_e2e(api: AsyncClient):
     token = inv_resp.json()["token"]
 
     # Registrar usuario C con otro correo
-    user_c_data = {
-        "email": "intruso@externo.cl",
-        "password": "password123",
-        "full_name": "Intruso",
-    }
-    await api.post("/auth/register", json=user_c_data)
-    login_c = await api.post(
-        "/auth/login",
-        json={"email": user_c_data["email"], "password": user_c_data["password"]},
+    sub_c = "44444444-4444-4444-8444-444444444444"
+    api.directorio_de_identidad.confirmar(sub_c)
+    token_c = api.claves.token(
+        sub=sub_c,
+        email="intruso@externo.cl",
+        user_metadata={"full_name": "Intruso"},
     )
-    headers_c = {"Authorization": f"Bearer {login_c.json()['access_token']}"}
+    headers_c = {"Authorization": f"Bearer {token_c}"}
 
     # Intentar aceptar invitación ajena -> 403 Forbidden
     resp_accept = await api.post(

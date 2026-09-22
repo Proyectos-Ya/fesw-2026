@@ -5,17 +5,13 @@ from httpx import AsyncClient
 @pytest.mark.asyncio
 async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
     # 1. Crear Usuario A y su Empresa 1
-    user_a = {
-        "email": "user_a@test.cl",
-        "password": "password123",
-        "full_name": "Usuario A",
-    }
-    await api.post("/auth/register", json=user_a)
-    login_a = await api.post(
-        "/auth/login",
-        json={"email": user_a["email"], "password": user_a["password"]},
+    api.directorio_de_identidad.confirmar("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    token_a = api.claves.token(
+        sub="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        email="user_a@test.cl",
+        user_metadata={"full_name": "Usuario A"},
     )
-    headers_a = {"Authorization": f"Bearer {login_a.json()['access_token']}"}
+    headers_a = {"Authorization": f"Bearer {token_a}"}
 
     sup_1 = await api.post(
         "/suppliers",
@@ -34,17 +30,13 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
     empresa_1_id = sup_1.json()["id"]
 
     # 2. Crear Usuario B y su Empresa 2
-    user_b = {
-        "email": "user_b@test.cl",
-        "password": "password123",
-        "full_name": "Usuario B",
-    }
-    await api.post("/auth/register", json=user_b)
-    login_b = await api.post(
-        "/auth/login",
-        json={"email": user_b["email"], "password": user_b["password"]},
+    api.directorio_de_identidad.confirmar("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    token_b = api.claves.token(
+        sub="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        email="user_b@test.cl",
+        user_metadata={"full_name": "Usuario B"},
     )
-    headers_b = {"Authorization": f"Bearer {login_b.json()['access_token']}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
 
     sup_2 = await api.post(
         "/suppliers",
@@ -147,17 +139,13 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_switch_unauthorized_workspace_fails(api: AsyncClient):
-    user_a = {
-        "email": "solo@empresa.cl",
-        "password": "password123",
-        "full_name": "Solo",
-    }
-    await api.post("/auth/register", json=user_a)
-    login_a = await api.post(
-        "/auth/login",
-        json={"email": user_a["email"], "password": user_a["password"]},
+    api.directorio_de_identidad.confirmar("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+    token_c = api.claves.token(
+        sub="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        email="solo@empresa.cl",
+        user_metadata={"full_name": "Solo"},
     )
-    headers_a = {"Authorization": f"Bearer {login_a.json()['access_token']}"}
+    headers_a = {"Authorization": f"Bearer {token_c}"}
 
     # Intentar cambiarse a un UUID de empresa al que no pertenece -> 403
     from uuid import uuid4
@@ -170,3 +158,60 @@ async def test_switch_unauthorized_workspace_fails(api: AsyncClient):
     )
     # 404 si no existe la empresa, o 403 si no pertenece
     assert resp.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_same_user_can_create_multiple_workspaces(api: AsyncClient):
+    """Verifica que un mismo usuario puede crear mltiples empresas/workspaces sin error de unicidad."""
+    sub_user = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    api.directorio_de_identidad.confirmar(sub_user)
+    token = api.claves.token(
+        sub=sub_user,
+        email="multi@workspaces.cl",
+        user_metadata={"full_name": "Multi Workspace Owner"},
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Crear Workspace 1
+    sup1 = await api.post(
+        "/suppliers",
+        json={
+            "rut": "76.999.001-1",
+            "legal_name": "Empresa Uno SpA",
+            "description": "Primera empresa de servicios profesionales de tecnologia.",
+            "regions": ["Metropolitana"],
+            "sectors": ["Tecnología"],
+            "years_experience": 3,
+            "num_employees": 10,
+        },
+        headers=headers,
+    )
+    assert sup1.status_code == 201
+    w1_id = sup1.json()["id"]
+
+    # Crear Workspace 2 (con el mismo usuario y sesión)
+    sup2 = await api.post(
+        "/suppliers",
+        json={
+            "rut": "76.999.002-K",
+            "legal_name": "Empresa Dos SpA",
+            "description": "Segunda empresa de logistica y suministros integrales.",
+            "regions": ["Biobío"],
+            "sectors": ["Logística"],
+            "years_experience": 5,
+            "num_employees": 20,
+        },
+        headers=headers,
+    )
+    assert sup2.status_code == 201
+    w2_id = sup2.json()["id"]
+    assert w1_id != w2_id
+
+    # Listar mis espacios de trabajo
+    my_workspaces_resp = await api.get("/workspaces", headers=headers)
+    assert my_workspaces_resp.status_code == 200
+    workspaces = my_workspaces_resp.json()
+    assert len(workspaces) == 2
+    supplier_ids = {ws["supplier_id"] for ws in workspaces}
+    assert w1_id in supplier_ids
+    assert w2_id in supplier_ids

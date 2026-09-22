@@ -148,14 +148,25 @@ export function SavedTendersList() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {matches.map((m) => (
-            <TenderCard
-              key={m.id}
-              match={m}
-              isSaved={true}
-              onToggleSave={handleToggleSave}
-            />
-          ))}
+          {matches.map((m) =>
+            // Sin puntaje calculado se pasa la licitación suelta: `TenderCard`
+            // oculta el medidor, que es más honesto que dibujar un 0%.
+            m.final_score !== null ? (
+              <TenderCard
+                key={m.id}
+                match={m}
+                isSaved={true}
+                onToggleSave={handleToggleSave}
+              />
+            ) : (
+              <TenderCard
+                key={m.id}
+                tender={m.tender ?? undefined}
+                isSaved={true}
+                onToggleSave={handleToggleSave}
+              />
+            )
+          )}
         </div>
       )}
     </section>

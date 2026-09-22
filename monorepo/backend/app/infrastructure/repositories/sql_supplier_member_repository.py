@@ -96,6 +96,12 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         await self.session.refresh(model)
         return _to_entity(model)
 
+    async def add(self, member: SupplierMember) -> SupplierMember:
+        model = _to_model(member)
+        self.session.add(model)
+        await self.session.flush()
+        return _to_entity(model)
+
     async def update(self, member: SupplierMember) -> SupplierMember:
         statement = select(SupplierMemberModel).where(SupplierMemberModel.id == member.id)
         result = await self.session.exec(statement)

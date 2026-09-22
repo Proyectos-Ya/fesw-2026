@@ -1,21 +1,27 @@
 # Dependencias de runtime: lo único que se instala en la imagen de producción.
 # Las herramientas de desarrollo (ruff, pyright, pytest) van en requirements-dev.txt.
+#
+# Versiones fijadas con == a propósito: con ">=" cada build instalaba lo último de
+# PyPI y una versión nueva podía romper producción o el CI sin cambios en el repo.
+# Solo se fijan las dependencias directas; las que estas arrastran (starlette,
+# pydantic-core, anyio...) todavía pueden moverse entre builds. Para actualizar,
+# cambiar el número acá y correr la suite.
 
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-pydantic>=2.6.0
-pydantic-settings>=2.7.0
-python-dotenv>=1.0.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
 
 # Base de datos
-sqlmodel>=0.0.38
+sqlmodel==0.0.42
 # Migraciones de esquema. También en producción: el despliegue corre `alembic upgrade head`.
-alembic>=1.14.0
-asyncpg>=0.29.0
+alembic==1.20.0
+asyncpg==0.31.0
 greenlet==3.5.1
 
 # Cliente HTTP (usado por MercadoPublicoClient)
-httpx>=0.27.0
+httpx==0.28.1
 
 # Búsqueda vectorial
 qdrant-client==1.18.0
@@ -35,14 +41,14 @@ bcrypt==5.0.0
 pyjwt[crypto]==2.13.0
 # Envío de correo de las alertas de licitaciones (HdU 08). SMTP asíncrono para
 # no bloquear el event loop mientras se habla con el servidor de correo.
-aiosmtplib>=3.0.0
+aiosmtplib==5.1.3
 # Resolución DNS del dominio del destinatario, antes de enviar. Brevo y SendGrid
 # aceptan el mensaje y avisan del rebote por webhook (que no exponemos), así que
 # sin esta comprobación una dirección inexistente se daba por enviada.
-dnspython>=2.6.0
+dnspython==2.8.0
 
 # Carga y lectura de documentos para el asistente de licitaciones.
-python-multipart>=0.0.9
-openpyxl>=3.1.2
-pypdf>=4.0.0
+python-multipart==0.0.32
+openpyxl==3.1.5
+pypdf==6.18.1
 

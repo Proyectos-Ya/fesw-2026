@@ -48,8 +48,11 @@ graphify-out/
 
 PENDIENTES.md
 
-# Qdrant local standalone
-qdrant_bin/
-.qdrant-initialized
-
 .continueignore
+
+# Qdrant local
+qdrant_bin/
+**/qdrant_bin/
+.qdrant-initialized
+**/.qdrant-initialized
+

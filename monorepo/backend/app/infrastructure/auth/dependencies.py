@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.application.repositories.supplier_member_repository import (
@@ -10,7 +10,6 @@ from app.application.repositories.supplier_member_repository import (
 )
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.user_repository import IUserRepository
-from app.application.services.token_service import ITokenService
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.use_cases.auth.resolve_authenticated_user import (
@@ -93,6 +92,7 @@ def build_get_current_workspace_context(
     get_supplier_repo: Callable,
     workspace_header: str = "X-Workspace-Id",
     workspace_cookie: str = "active_workspace_id",
+    optional: bool = False,
 ) -> Callable:
     """Construye la dependencia para obtener el WorkspaceContext activo del usuario."""
 
@@ -101,7 +101,7 @@ def build_get_current_workspace_context(
         current_user: Annotated[User, Depends(get_current_user)],
         member_repo: Annotated[ISupplierMemberRepository, Depends(get_member_repo)],
         supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
-    ) -> WorkspaceContext:
+    ) -> WorkspaceContext | None:
         # 1. Obtener workspace id desde header o cookie
         header_val = request.headers.get(workspace_header)
         cookie_val = request.cookies.get(workspace_cookie)
@@ -112,7 +112,7 @@ def build_get_current_workspace_context(
             try:
                 target_supplier_id = UUID(target_id_raw)
             except ValueError:
-                if header_val:
+                if header_val and not optional:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Identificador de espacio de trabajo inválido",
@@ -143,6 +143,8 @@ def build_get_current_workspace_context(
                 if legacy_supplier:
                     target_supplier_id = legacy_supplier.id
                 else:
+                    if optional:
+                        return None
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="El usuario no pertenece a ningún espacio de trabajo",
@@ -153,6 +155,8 @@ def build_get_current_workspace_context(
         # 3. Validar membresía y existencia de empresa
         supplier = await supplier_repo.get_by_id(target_supplier_id)
         if not supplier:
+            if optional:
+                return None
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="El espacio de trabajo solicitado no existe",
@@ -183,12 +187,16 @@ def build_get_current_workspace_context(
                     permissions=all_perms,
                     is_admin=True,
                 )
+            if optional:
+                return None
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes acceso a este espacio de trabajo",
             )
 
         if member.status != MemberStatus.ACTIVE:
+            if optional:
+                return None
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tu membresía en este espacio de trabajo está inactiva o suspendida",
@@ -219,4 +227,22 @@ def build_get_current_workspace_context(
         )
 
     return get_current_workspace_context
+
+
+def build_get_optional_workspace_context(
+    get_current_user: Callable,
+    get_member_repo: Callable,
+    get_supplier_repo: Callable,
+    workspace_header: str = "X-Workspace-Id",
+    workspace_cookie: str = "active_workspace_id",
+) -> Callable:
+    """Construye la dependencia opcional para obtener el WorkspaceContext activo del usuario o None."""
+    return build_get_current_workspace_context(
+        get_current_user=get_current_user,
+        get_member_repo=get_member_repo,
+        get_supplier_repo=get_supplier_repo,
+        workspace_header=workspace_header,
+        workspace_cookie=workspace_cookie,
+        optional=True,
+    )
 

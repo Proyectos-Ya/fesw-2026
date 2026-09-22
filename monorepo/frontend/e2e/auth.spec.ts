@@ -7,8 +7,13 @@ import { expect, test } from "@playwright/test";
  * podía ver, y devolvía al login a quien acababa de entrar. La sesión de
  * Supabase vive en el origen del propio frontend, así que ahora sí decide, y
  * conviene que un test lo note si alguien lo vuelve a apagar.
+ *
+ * Son `@smoke` (los corre el CI en cada push) porque no necesitan backend ni
+ * Supabase: sin cookie de sesión, `getUser()` resuelve sin salir a la red.
  */
-test("una ruta protegida sin sesión manda al login conservando el destino", async ({
+const smoke = { tag: "@smoke" };
+
+test("una ruta protegida sin sesión manda al login conservando el destino", smoke, async ({
   page,
 }) => {
   await page.goto("/matches");
@@ -16,20 +21,20 @@ test("una ruta protegida sin sesión manda al login conservando el destino", asy
   await expect(page).toHaveURL(/\/login\?next=%2Fmatches/);
 });
 
-test("la raíz sin sesión manda al login sin parámetro sobrante", async ({ page }) => {
+test("la raíz sin sesión manda al login sin parámetro sobrante", smoke, async ({ page }) => {
   await page.goto("/");
 
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("el login ofrece correo y Google", async ({ page }) => {
+test("el login ofrece correo y Google", smoke, async ({ page }) => {
   await page.goto("/login");
 
   await expect(page.getByRole("button", { name: /iniciar sesión/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /continuar con google/i })).toBeVisible();
 });
 
-test("el registro lleva a la pantalla de verificación", async ({ page }) => {
+test("el registro lleva a la pantalla de verificación", smoke, async ({ page }) => {
   await page.goto("/verificar?email=persona%40ejemplo.cl");
 
   await expect(page.getByText(/revisa tu correo/i)).toBeVisible();

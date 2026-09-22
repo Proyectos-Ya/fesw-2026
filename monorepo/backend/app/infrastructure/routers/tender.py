@@ -17,6 +17,9 @@ from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import 
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.matching.score_tender_on_demand import (
+    ScoreTenderOnDemandUseCase,
+)
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
@@ -39,13 +42,18 @@ from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
     InvalidPromptInstruction,
 )
-from app.domain.errors.matching_errors import ScoreMatchingNoEncontrado
+from app.domain.errors.matching_errors import ScoreCalculationError
 from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
-from app.domain.errors.tender_errors import InvalidSearchCriteria, TenderNotFound
+from app.domain.errors.tender_errors import (
+    InvalidSearchCriteria,
+    TenderClosedForAnalysis,
+    TenderClosedForScoring,
+    TenderNotFound,
+)
 from app.shared.regions import region_id_by_name
 
 
@@ -63,10 +71,7 @@ def _resolve_region_ids(regions: list[str] | None) -> list[int] | None:
     for name in regions:
         region_id = region_id_by_name(name)
         if region_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Región no válida: {name!r}",
-            )
+            raise InvalidSearchCriteria(f"Región desconocida: {name!r}.")
         ids.append(region_id)
     return ids
 
@@ -76,13 +81,34 @@ class DeepAnalysisRequest(BaseModel):
 
     prompt_instruction: str | None = Field(
         default=None,
-        max_length=500,
+        max_length=1000,
         description="Instrucción adicional para personalizar el análisis.",
+    )
+    force_regenerate: bool = Field(
+        default=False,
+        description="Indica si se debe forzar una nueva generación de análisis ignorando el caché.",
     )
     only_if_exists: bool = Field(
         default=False,
         description="Si es True, no genera el análisis si no existe y en su lugar retorna un error 404.",
     )
+
+
+class DeepAnalysisResponse(DeepAnalysis):
+    """El análisis más si dejó de estar al día.
+
+    La ficha lo consulta sin generar, así que necesita distinguir "vigente" de
+    "escrito con datos anteriores" para ofrecer el botón de actualizar.
+    """
+
+    is_outdated: bool = False
+
+
+class TenderScoreResponse(BaseModel):
+    """Resultado de un cálculo de compatibilidad pedido por el usuario."""
+
+    score_pct: int = Field(description="Compatibilidad en porcentaje (0-100).")
+    calculated_at: datetime
 
 
 def create_tender_router(
@@ -94,6 +120,7 @@ def create_tender_router(
     get_unsave_tender_use_case: Callable,
     get_search_tenders_use_case: Callable,
     get_tender_detail_use_case: Callable,
+    get_score_tender_on_demand_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     """
@@ -166,30 +193,30 @@ def create_tender_router(
         min_amount: Annotated[float | None, Query(ge=0)] = None,
         max_amount: Annotated[float | None, Query(ge=0)] = None,
         limit: Annotated[
-            int | None,
+            int,
             Query(
                 ge=1,
                 le=MAX_RESULT_LIMIT,
                 description=f"Tope de resultados por petición. Por defecto {DEFAULT_RESULT_LIMIT}, máximo {MAX_RESULT_LIMIT}.",
             ),
-        ] = None,
+        ] = DEFAULT_RESULT_LIMIT,
         offset: Annotated[int, Query(ge=0)] = 0,
     ):
         """Búsqueda manual de licitaciones con filtros por ubicación, estado, fechas y montos."""
-        region_ids = _resolve_region_ids(regions)
-        criteria = TenderFilterCriteria(
-            region_ids=region_ids,
-            province_id=province_id,
-            commune_id=commune_id,
-            status_codes=status_codes,
-            closing_from=closing_from,
-            closing_to=closing_to,
-            published_from=published_from,
-            published_to=published_to,
-            min_amount=min_amount,
-            max_amount=max_amount,
-        )
         try:
+            region_ids = _resolve_region_ids(regions)
+            criteria = TenderFilterCriteria(
+                region_ids=region_ids,
+                province_id=province_id,
+                commune_id=commune_id,
+                status_codes=status_codes,
+                closing_from=closing_from,
+                closing_to=closing_to,
+                published_from=published_from,
+                published_to=published_to,
+                min_amount=min_amount,
+                max_amount=max_amount,
+            )
             supplier_id = (
                 workspace_context.active_supplier_id if workspace_context else None
             )
@@ -317,18 +344,66 @@ def create_tender_router(
             ) from e
 
     @router.post(
+        "/{tender_id}/score",
+        response_model=TenderScoreResponse,
+        responses={
+            404: {"description": "Licitación o proveedor no encontrado"},
+            409: {"description": "La licitación ya cerró"},
+            502: {"description": "No se pudo calcular la compatibilidad"},
+        },
+    )
+    async def score_tender(
+        tender_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ScoreTenderOnDemandUseCase,
+            Depends(get_score_tender_on_demand_use_case),
+        ],
+    ):
+        """Calcula la compatibilidad de una licitación que el usuario eligió.
+
+        El ranking solo puntúa su top-N, así que lo que llega del buscador o de
+        las guardadas no tiene porcentaje. Este endpoint lo calcula cuando
+        alguien lo pide —nunca solo— y lo deja guardado.
+        """
+        try:
+            resultado = await use_case.execute(
+                user_id=current_user.id, tender_id=tender_id
+            )
+        except (SupplierNotFoundForUser, TenderNotFound) as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except TenderClosedForScoring as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
+            ) from e
+        except ScoreCalculationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
+
+        # `final_score` viene del cálculo recién hecho, nunca en nulo.
+        return TenderScoreResponse(
+            score_pct=round((resultado.final_score or 0.0) * 100),
+            calculated_at=resultado.calculated_at,
+        )
+
+    @router.post(
         "/{tender_id}/analysis",
-        response_model=DeepAnalysis,
+        response_model=DeepAnalysisResponse,
         responses={
             400: {
                 "description": "Instrucción de prompt inválida o detección de prompt injection"
             },
-            404: {
-                "description": "Licitación, proveedor o score de matching no encontrado"
+            404: {"description": "Licitación, proveedor o análisis no encontrado"},
+            409: {
+                "description": "La licitación ya cerró y no tiene análisis generado"
             },
             422: {"description": "Error de validación de entradas"},
             502: {
-                "description": "Error de comunicación con el servicio de IA (Gemini)"
+                "description": "Error de comunicación con el servicio de IA (Gemini) "
+                "o al calcular la compatibilidad"
             },
         },
     )
@@ -355,19 +430,22 @@ def create_tender_router(
         only_if_exists = request_body.only_if_exists if request_body else False
 
         try:
-            analysis = await use_case.execute(
+            resultado = await use_case.execute(
                 tender_id=tender_id,
                 user_id=current_user.id,
                 force_regenerate=force_regenerate,
                 prompt_instruction=prompt_instruction,
                 only_if_exists=only_if_exists,
             )
-            if analysis is None:
+            if resultado.analysis is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="El análisis de compatibilidad aún no ha sido generado.",
                 )
-            return analysis
+            return DeepAnalysisResponse(
+                **resultado.analysis.model_dump(),
+                is_outdated=resultado.is_outdated,
+            )
         except SupplierNotFoundForUser as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -376,15 +454,15 @@ def create_tender_router(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
-        except ScoreMatchingNoEncontrado as e:
+        except TenderClosedForAnalysis as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
             ) from e
         except InvalidPromptInstruction as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
             ) from e
-        except DeepAnalysisServiceError as e:
+        except (DeepAnalysisServiceError, ScoreCalculationError) as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
             ) from e

@@ -1,7 +1,7 @@
 """crear tablas membresias e invitaciones y migrar relaciones existentes
 
 Revision ID: f1e2d3c4b5a6
-Revises: b1c4a7e93f10
+Revises: d7f2a9c41b58
 Create Date: 2026-09-12 04:35:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'f1e2d3c4b5a6'
-down_revision: str | Sequence[str] | None = 'b1c4a7e93f10'
+down_revision: str | Sequence[str] | None = 'c8b2e5f41a76'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -69,11 +69,16 @@ def upgrade() -> None:
         ON CONFLICT (user_id, supplier_id) DO NOTHING;
     """)
 
-    # 4. Quitar restricción única en supplier.user_id si existía para permitir multi-empresa
+    # 4. Quitar restricción única en supplier.user_id para permitir multi-empresa
     op.execute("ALTER TABLE supplier DROP CONSTRAINT IF EXISTS supplier_user_id_key;")
+    op.drop_index('ix_supplier_user_id', table_name='supplier')
+    op.create_index('ix_supplier_user_id', 'supplier', ['user_id'], unique=False)
 
 
 def downgrade() -> None:
+    op.drop_index('ix_supplier_user_id', table_name='supplier')
+    op.create_index('ix_supplier_user_id', 'supplier', ['user_id'], unique=True)
+
     op.drop_index(op.f('ix_supplier_invitations_status'), table_name='supplier_invitations')
     op.drop_index(op.f('ix_supplier_invitations_token'), table_name='supplier_invitations')
     op.drop_index(op.f('ix_supplier_invitations_email'), table_name='supplier_invitations')

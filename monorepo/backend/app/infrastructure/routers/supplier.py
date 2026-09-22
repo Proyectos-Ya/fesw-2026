@@ -17,6 +17,7 @@ from app.application.schemas.supplier_schema import (
     RutExistsResponse,
     UpdateSupplierSchema,
 )
+from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.check_rut_exists import CheckRutExistsUseCase
 from app.application.use_cases.supplier.create_supplier import CreateSupplierUseCase
@@ -24,13 +25,25 @@ from app.application.use_cases.supplier.get_supplier import GetSupplierUseCase
 from app.application.use_cases.supplier.get_supplier_by_user import (
     GetSupplierByUserUseCase,
 )
+from app.application.use_cases.supplier.import_company_profile import (
+    ImportCompanyProfileUseCase,
+)
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
+from app.domain.entities.company_profile import CompanyProfileDraft
+from app.config import settings
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.user import User
+from app.domain.errors.company_lookup_errors import (
+    CompanyLookupNotConfigured,
+    CompanyLookupUnavailable,
+    CompanyNotFoundInSource,
+    InvalidRutForLookup,
+)
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierNotFound,
     SupplierNotFoundForUser,
+    SupplierProfileIndexingUnavailable,
     SupplierValidationError,
     UserAlreadyHasSupplier,
 )
@@ -40,6 +53,7 @@ def create_supplier_router(
     get_supplier_repo: Callable,
     get_supplier_vector_repo: Callable,
     get_embedding_service: Callable,
+    get_company_lookup_service: Callable,
     get_current_user: Callable,
     get_supplier_member_repo: Callable,
 ) -> APIRouter:
@@ -65,8 +79,16 @@ def create_supplier_router(
         response_model=Supplier,
         status_code=status.HTTP_201_CREATED,
         responses={
+            200: {
+                "description": "El usuario ya tenía esta misma empresa: el reintento "
+                "devuelve la existente sin crear otra"
+            },
             400: {"description": "Bad Request - Invalid supplier data"},
             409: {"description": "Conflict - Supplier already exists"},
+            503: {
+                "description": "El perfil no se pudo indexar a tiempo; no se guardó "
+                "nada y se puede reintentar"
+            },
         },
     )
     async def create_supplier(
@@ -91,21 +113,24 @@ def create_supplier_router(
         # Crea la empresa asociada al usuario autenticado:
         # la persiste en PostgreSQL e indexa su vector en Qdrant
         try:
-            created = await CreateSupplierUseCase(
-                repo, vector_repo, embedding_service, member_repo=member_repo
-            ).execute(data, user_id=current_user.id)
+            result = await CreateSupplierUseCase(
+                repo,
+                vector_repo,
+                embedding_service,
+                member_repo=member_repo,
+                embedding_deadline_seconds=settings.supplier_embedding_deadline_seconds,
+            ).create(data, user_id=current_user.id)
 
             # Establecer cookie active_workspace_id para activar de inmediato este espacio
             response.set_cookie(
                 key="active_workspace_id",
-                value=str(created.id),
+                value=str(result.supplier.id),
                 path="/",
                 httponly=True,
                 secure=bool(settings.auth_cookie_secure),
                 samesite=settings.auth_cookie_samesite,
                 max_age=settings.access_token_expire_minutes * 60,
             )
-            return created
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(e)
@@ -115,6 +140,18 @@ def create_supplier_router(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
             ) from e
+        except SupplierProfileIndexingUnavailable as e:
+            # No se guardó nada: 503 le dice al cliente que puede reintentar.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+
+        if not result.created:
+            # Reintento del dueño con el mismo RUT: la empresa ya existía. Se
+            # responde 200 y no 201 para que quien llama pueda distinguirlo,
+            # pero es un éxito: el wizard tiene que terminar igual.
+            response.status_code = status.HTTP_200_OK
+        return result.supplier
 
     @router.get(
         "/me",
@@ -175,6 +212,43 @@ def create_supplier_router(
         return RutExistsResponse(exists=await CheckRutExistsUseCase(repo).execute(rut))
 
     @router.get(
+        "/profile-import",
+        response_model=CompanyProfileDraft,
+        responses={
+            400: {"description": "RUT inválido"},
+            404: {"description": "La fuente no tiene datos para ese RUT"},
+            502: {"description": "La fuente de datos no respondió"},
+            503: {"description": "No hay fuente de datos de empresas configurada"},
+        },
+    )
+    async def import_company_profile(
+        rut: str,
+        lookup_service: Annotated[
+            ICompanyLookupService | None, Depends(get_company_lookup_service)
+        ],
+    ):
+        # Borrador de regiones, rubros y palabras clave para el wizard (HdU 16).
+        # No guarda nada: el usuario lo revisa antes de crear la empresa.
+        try:
+            return await ImportCompanyProfileUseCase(lookup_service).execute(rut)
+        except InvalidRutForLookup as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        except CompanyNotFoundInSource as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except CompanyLookupUnavailable as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
+        except CompanyLookupNotConfigured as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+
+    @router.get(
         "/{supplier_id}",
         response_model=Supplier,
         responses={404: {"description": "Not Found - Supplier does not exist"}},
@@ -183,8 +257,11 @@ def create_supplier_router(
         supplier_id: UUID,
         current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
     ):
-        """Busca una empresa por su id interno, solo si es la del usuario.
+        """Busca una empresa por su id interno, solo si es del usuario o es miembro activo.
 
         Sin la comprobación, cualquier usuario autenticado con un id de empresa
         ajeno obtenía su perfil completo **incluido el `user_id`**, que es
@@ -200,11 +277,14 @@ def create_supplier_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
 
-        if supplier.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No existe una empresa con ese identificador.",
-            )
+        is_owner = (supplier.user_id == current_user.id)
+        if not is_owner:
+            member = await member_repo.get_by_user_and_supplier(current_user.id, supplier_id)
+            if not member or member.status.value != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No existe una empresa con ese identificador.",
+                )
         return supplier
 
     return router

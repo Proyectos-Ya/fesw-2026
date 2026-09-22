@@ -23,7 +23,8 @@
 # Etapa 1: builder — dependencias de runtime
 # Las herramientas de compilación se quedan acá y no llegan a ninguna imagen final.
 # ------------------------------------------------------------
-FROM python:3.12-slim AS builder
+# Parche de Python fijado: el mismo que usa el CI (.github/workflows/ci.yml).
+FROM python:3.12.14-slim AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -62,7 +63,9 @@ FROM builder AS builder-dev
 # suma varios GB que nunca usamos, porque el modelo corre en CPU. Esto aplica
 # tanto a amd64 como a arm64: PyTorch publica wheels con CUDA para las dos.
 # El índice /whl/cpu entrega la variante CPU-only.
-COPY requirements-dev.txt .
+#
+# requirements-dev.txt incluye requirements-test.txt, así que se copian los dos.
+COPY requirements-test.txt requirements-dev.txt ./
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
     && pip install -r requirements-dev.txt
 
@@ -70,7 +73,7 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
 # ------------------------------------------------------------
 # Etapa 3: base — lo común a las dos imágenes finales, sin dependencias
 # ------------------------------------------------------------
-FROM python:3.12-slim AS base
+FROM python:3.12.14-slim AS base
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
