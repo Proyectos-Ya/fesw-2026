@@ -10,7 +10,10 @@ interface SuccessViewProps {
 export function SuccessView({ onRedirect }: SuccessViewProps) {
   const [started, setStarted] = useState(false);
   const onRedirectRef = useRef(onRedirect);
-  onRedirectRef.current = onRedirect;
+
+  useEffect(() => {
+    onRedirectRef.current = onRedirect;
+  });
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setStarted(true));

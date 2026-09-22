@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Icon } from "@/features/shared/components/Icon";
 import { Avatar } from "@/features/shared/components/Avatar";
 import { useWorkspace } from "../WorkspaceContext";
@@ -10,7 +9,6 @@ import { getRoleBadge } from "./WorkspaceSelector";
 import { PendingInvitationsList } from "./PendingInvitationsList";
 
 export function WorkspaceSelectionScreen() {
-  const router = useRouter();
   const { workspaces, activeWorkspace, switchActiveWorkspace, isLoading } = useWorkspace();
   const [isSwitching, setIsSwitching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);

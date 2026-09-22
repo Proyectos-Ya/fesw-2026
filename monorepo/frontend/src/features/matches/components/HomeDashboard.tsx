@@ -33,7 +33,7 @@ type LoadState =
 export function HomeDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
-  const { workspaces, activeWorkspace, isLoading: workspaceLoading } = useWorkspace();
+  const { workspaces, activeWorkspace } = useWorkspace();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 

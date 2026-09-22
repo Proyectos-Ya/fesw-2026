@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { useProfileWizard } from "../hooks/useProfileWizard";
 import { WizardProgress } from "@/features/shared/components/WizardProgress";
@@ -14,7 +13,6 @@ import { formatRut, profileSchema } from "../profileSchema";
 import type { Step1Data, Step2Data, Step3Data } from "../profileSchema";
 import { createSupplier, waitForMySupplier } from "../services/supplierService";
 import { useCompany } from "./CompanyProvider";
-import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 import { CreatingCompanyView } from "./CreatingCompanyView";
 import { SuccessView } from "./SuccessView";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
@@ -64,10 +62,8 @@ function errorMessage(err: unknown): string {
 type SubmitState = "idle" | "creating" | "verifying" | "success";
 
 export function ProfileWizard() {
-  const router = useRouter();
   const { user } = useAuth();
   const { setSupplier } = useCompany();
-  const { switchActiveWorkspace, refreshWorkspaces } = useWorkspace();
   const {
     currentStep,
     formData,

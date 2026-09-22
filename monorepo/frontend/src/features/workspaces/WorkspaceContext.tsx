@@ -48,14 +48,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [invitations, setInvitations] = useState<SupplierInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const currentUserId = user?.id;
+
   // Load recent workspaces for the current user from localStorage
   useEffect(() => {
-    if (typeof window === "undefined" || !user?.id) {
+    if (typeof window === "undefined" || !currentUserId) {
       setRecentIds([]);
       return;
     }
     try {
-      const stored = localStorage.getItem(`proyectosya_recent_workspaces_${user.id}`);
+      const stored = localStorage.getItem(`proyectosya_recent_workspaces_${currentUserId}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
@@ -65,29 +67,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } catch {
       setRecentIds([]);
     }
-  }, [user?.id]);
+  }, [currentUserId]);
 
   const updateRecentSupplier = useCallback(
     (supplierId: string) => {
-      if (!user?.id || !supplierId) return;
+      if (!currentUserId || !supplierId) return;
       setRecentIds((prev) => {
         const next = [supplierId, ...prev.filter((id) => id !== supplierId)].slice(0, 4);
         try {
-          localStorage.setItem(`proyectosya_recent_workspaces_${user.id}`, JSON.stringify(next));
+          localStorage.setItem(`proyectosya_recent_workspaces_${currentUserId}`, JSON.stringify(next));
         } catch {
           // ignore storage error
         }
         return next;
       });
     },
-    [user?.id],
+    [currentUserId],
   );
 
+  const activeSupplierId = activeWorkspace?.active_supplier_id;
   useEffect(() => {
-    if (activeWorkspace?.active_supplier_id) {
-      updateRecentSupplier(activeWorkspace.active_supplier_id);
+    if (activeSupplierId) {
+      updateRecentSupplier(activeSupplierId);
     }
-  }, [activeWorkspace?.active_supplier_id, updateRecentSupplier]);
+  }, [activeSupplierId, updateRecentSupplier]);
 
   const refreshInvitations = useCallback(async () => {
     if (!isAuthenticated) {
@@ -176,8 +179,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const ordered: UserWorkspaceSummary[] = [];
 
     // Prioritize active workspace first
-    if (activeWorkspace?.active_supplier_id) {
-      const active = map.get(activeWorkspace.active_supplier_id);
+    if (activeSupplierId) {
+      const active = map.get(activeSupplierId);
       if (active) {
         ordered.push(active);
       }
@@ -201,7 +204,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     return ordered.slice(0, 4);
-  }, [workspaces, recentIds, activeWorkspace?.active_supplier_id]);
+  }, [workspaces, recentIds, activeSupplierId]);
 
   useEffect(() => {
     if (isAuthenticated) {
