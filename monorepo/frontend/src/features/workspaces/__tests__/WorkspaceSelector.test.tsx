@@ -45,6 +45,7 @@ describe("WorkspaceSelector", () => {
   it("renderiza botón de registrar empresa si el usuario no tiene ninguna", () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: [],
+      recentWorkspaces: [],
       activeWorkspace: null,
       invitations: [],
       isLoading: false,
@@ -63,6 +64,7 @@ describe("WorkspaceSelector", () => {
   it("renderiza el espacio de trabajo activo con su rol (Admin)", () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: mockWorkspaces,
+      recentWorkspaces: [],
       activeWorkspace: mockActiveWorkspace,
       invitations: [],
       isLoading: false,
@@ -83,6 +85,7 @@ describe("WorkspaceSelector", () => {
   it("despliega la lista de espacios de trabajo al hacer clic y permite conmutar", async () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: mockWorkspaces,
+      recentWorkspaces: [],
       activeWorkspace: mockActiveWorkspace,
       invitations: [],
       isLoading: false,

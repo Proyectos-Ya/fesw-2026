@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { execSync } from "child_process";
 import path from "path";
 
@@ -36,12 +36,12 @@ test.describe("HdU 14: Asociación a distintas empresas con el mismo perfil (3 P
     const pageMulti = await contextMulti.newPage(); // Pestaña 3: Usuario Multi-Empresa (Manuel)
 
     // Función auxiliar de login
-    const loginUser = async (page, email: string) => {
+    const loginUser = async (page: Page, email: string) => {
       await page.goto("/login");
       await page.fill('input[type="email"]', email);
       await page.fill('input[type="password"]', password);
       await page.click('button[type="submit"]');
-      await page.waitForURL((url) => !url.pathname.includes("/login"), {
+      await page.waitForURL((url: URL) => !url.pathname.includes("/login"), {
         timeout: 15000,
       });
     };

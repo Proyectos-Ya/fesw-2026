@@ -15,6 +15,7 @@ describe("PendingInvitationsList", () => {
   it("no renderiza nada si la lista de invitaciones está vacía", () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: [],
+      recentWorkspaces: [],
       activeWorkspace: null,
       invitations: [],
       isLoading: false,
@@ -47,6 +48,7 @@ describe("PendingInvitationsList", () => {
 
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: [],
+      recentWorkspaces: [],
       activeWorkspace: null,
       invitations: mockInvitations,
       isLoading: false,
