@@ -293,6 +293,18 @@ def get_score_tender_on_demand_use_case(
     )
 
 
+def get_score_tender_on_demand_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+) -> ScoreTenderOnDemandUseCase:
+    return ScoreTenderOnDemandUseCase(
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        scorer=scorer,
+    )
+
+
 def get_saved_tender_repo(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ISavedTenderRepository:

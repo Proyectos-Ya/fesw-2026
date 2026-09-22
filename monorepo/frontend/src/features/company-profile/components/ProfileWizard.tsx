@@ -149,6 +149,16 @@ export function ProfileWizard() {
     );
   }
 
+  if (submitState === "creating" || submitState === "verifying") {
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+          <CreatingCompanyView phase={submitState} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl">
       <WizardProgress currentStep={currentStep} totalSteps={totalSteps} />
