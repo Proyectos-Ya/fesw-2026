@@ -1,7 +1,7 @@
 """tablero-kanban
 
 Revision ID: fa511ba1ba22
-Revises: 5d0cd7e936db
+Revises: c8b2e5f41a76
 Create Date: 2026-09-20 22:46:41.318382
 
 """
@@ -18,7 +18,7 @@ import sqlmodel
 
 # revision identifiers, used by Alembic.
 revision: str = 'fa511ba1ba22'
-down_revision: str | Sequence[str] | None = '5d0cd7e936db'
+down_revision: str | Sequence[str] | None = 'c8b2e5f41a76'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
