@@ -6,11 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerSchema, type RegisterData } from "../authSchema";
-import { register as registerUser } from "../services/authService";
+import { registrarse } from "../services/authService";
+import { mensajeDeErrorAuth } from "../authErrors";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
-import { ApiError } from "@/features/shared/api/client";
+import { GoogleButton } from "./GoogleButton";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -29,14 +30,13 @@ export function RegisterForm() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await registerUser(data);
-      router.push("/login?registered=true");
+      await registrarse(data);
+      // `signUp` no devuelve sesión mientras la confirmación de correo esté
+      // encendida: el usuario todavía no puede entrar, y mandarlo al login solo
+      // le daría un "Email not confirmed" que no explica nada.
+      router.push(`/verificar?email=${encodeURIComponent(data.email)}`);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Ocurrió un error inesperado. Inténtalo de nuevo.");
-      }
+      setError(mensajeDeErrorAuth(err, "Ocurrió un error inesperado. Inténtalo de nuevo."));
     } finally {
       setIsSubmitting(false);
     }
@@ -103,6 +103,16 @@ export function RegisterForm() {
             </Button>
           </form>
 
+          <div className="flex items-center gap-4 my-8">
+            <div className="h-px flex-1 bg-border-subtle" />
+            <span className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              o continúa con
+            </span>
+            <div className="h-px flex-1 bg-border-subtle" />
+          </div>
+
+          <GoogleButton onError={setError} />
+
           <p className="text-center text-sm text-text-muted mt-10">
             ¿Ya tienes una cuenta?{" "}
             <Link
@@ -111,6 +121,17 @@ export function RegisterForm() {
             >
               Inicia sesión
             </Link>
+          </p>
+
+          <p className="text-center text-xs text-text-subtle mt-6">
+            Al continuar aceptas nuestra{" "}
+            <Link
+              href="/privacidad"
+              className="underline hover:text-text-muted"
+            >
+              política de privacidad
+            </Link>
+            .
           </p>
         </div>
       </div>

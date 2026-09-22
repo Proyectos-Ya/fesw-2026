@@ -8,8 +8,10 @@ from uuid import uuid4
 import pytest_asyncio
 from httpx import AsyncClient
 
+from tests.support.api_auth import autenticar
+
 VALID_SUPPLIER = {
-    "rut": "76086428-5",
+    "rut": "76.086.428-5",
     "legal_name": "Constructora Demo SpA",
     "description": "Empresa con experiencia en obras civiles.",
     "sectors": ["Construcción"],
@@ -21,11 +23,8 @@ VALID_SUPPLIER = {
 
 @pytest_asyncio.fixture(autouse=True)
 async def _session(api: AsyncClient) -> None:
-    """Las rutas de /suppliers exigen sesión: registra e inicia sesión antes
-    de cada prueba; la cookie httpOnly queda guardada en el cliente."""
-    credentials = {"email": "pipeline@example.com", "password": "supersecret"}
-    await api.post("/auth/register", json={**credentials, "full_name": "Pipeline Test"})
-    await api.post("/auth/login", json=credentials)
+    """Las rutas de /suppliers exigen sesión: la deja puesta antes de cada prueba."""
+    await autenticar(api, email="pipeline@example.com", full_name="Pipeline Test")
 
 
 # ---------------------------------------------------------------------------
@@ -78,8 +77,20 @@ async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
 
 
 async def test_crear_proveedor_rut_duplicado_retorna_409(api: AsyncClient) -> None:
-    """Registrar el mismo RUT dos veces retorna 409 Conflict."""
+    """Otro usuario que registra un RUT ya tomado recibe 409 Conflict.
+
+    Si quien repite el RUT es el mismo dueño se trata de un reintento y responde
+    200 con su empresa (ver test_supplier_router); el conflicto es entre usuarios.
+    """
     await api.post("/suppliers", json=VALID_SUPPLIER)
+    # La identidad sale del `sub` del token, no del correo: sin un `sub` distinto
+    # seguiría siendo el mismo dueño y el reintento respondería 200.
+    await autenticar(
+        api,
+        sub="22222222-2222-4222-8222-222222222222",
+        email="otro@example.com",
+        full_name="Otro Usuario",
+    )
     response = await api.post("/suppliers", json=VALID_SUPPLIER)
 
     assert response.status_code == 409

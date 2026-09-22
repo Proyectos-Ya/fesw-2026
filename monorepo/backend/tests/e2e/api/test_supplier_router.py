@@ -1,33 +1,37 @@
 """
 Pruebas e2e del router /suppliers.
 
-Todas las rutas requieren sesión iniciada (cookie httpOnly de login).
+Todas las rutas requieren sesión (token de Supabase en `Authorization`).
 GET /suppliers/me devuelve la empresa del usuario autenticado o 404.
 """
 
 import pytest
 from httpx import AsyncClient
 
+from app import bootstrap
+from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
+from app.domain.errors.company_lookup_errors import (
+    CompanyLookupUnavailable,
+    CompanyNotFoundInSource,
+)
+from app.main import app
+from tests.support.api_auth import autenticar
+from tests.unit.application.fakes import FakeCompanyLookupService
+
 REGISTER = {
     "email": "dueno@example.com",
-    "password": "supersecret",
     "full_name": "Dueño Empresa",
 }
 
 SUPPLIER = {
-    "rut": "76086428-5",
+    "rut": "76.086.428-5",
     "legal_name": "Constructora Norte SpA",
 }
 
 
 async def _login(api: AsyncClient) -> None:
-    """Registra e inicia sesión; la cookie queda en el cliente."""
-    await api.post("/auth/register", json=REGISTER)
-    resp = await api.post(
-        "/auth/login",
-        json={"email": REGISTER["email"], "password": REGISTER["password"]},
-    )
-    assert resp.status_code == 200
+    """Deja el cliente con una sesión de Supabase válida."""
+    await autenticar(api, email=REGISTER["email"], full_name=REGISTER["full_name"])
 
 
 @pytest.mark.asyncio
@@ -130,6 +134,89 @@ async def test_rut_exists_returns_true_when_registered(api: AsyncClient):
     assert resp.json() == {"exists": True}
 
 
+def _fuente(servicio: FakeCompanyLookupService | None) -> None:
+    app.dependency_overrides[bootstrap.get_company_lookup_service] = lambda: servicio
+
+
+IMPORT_RUT = "76.668.304-5"
+REGISTRO_WEB_EMPRESARIO = CompanyRecord(
+    source="web-empresario",
+    rut="76668304-5",
+    legal_name="PLANETA LIBRE SOLUCIONES SUSTENTABLES LIMITADA",
+    activities=[EconomicActivity(code=433000), EconomicActivity(code=952200)],
+    raw_regions=["XIII REGION METROPOLITANA"],
+    is_active=True,
+)
+
+
+@pytest.mark.asyncio
+async def test_profile_import_without_session_returns_401(api: AsyncClient):
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_profile_import_returns_draft(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source"] == "web-empresario"
+    assert body["regions"] == ["Metropolitana"]
+    assert body["sectors"] == [
+        "Obras de Construcción e Infraestructura",
+        "Mantención y Reparación",
+    ]
+    assert "pintura" in body["keywords"]
+    assert isinstance(body["notices"], list)
+
+
+@pytest.mark.asyncio
+async def test_profile_import_invalid_rut_returns_400(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(REGISTRO_WEB_EMPRESARIO))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": "76.668.304-0"})
+
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_profile_import_not_found_returns_404(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(error=CompanyNotFoundInSource("76668304-5")))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_profile_import_source_down_returns_502(api: AsyncClient):
+    await _login(api)
+    _fuente(FakeCompanyLookupService(error=CompanyLookupUnavailable("HTTP 500")))
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 502
+    # El detalle técnico queda en los logs, no en la respuesta.
+    assert "HTTP 500" not in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_profile_import_without_provider_returns_503(api: AsyncClient):
+    await _login(api)
+    _fuente(None)
+
+    resp = await api.get("/suppliers/profile-import", params={"rut": IMPORT_RUT})
+
+    assert resp.status_code == 503
+
+
 @pytest.mark.asyncio
 async def test_get_supplier_me_returns_own_company(api: AsyncClient):
     await _login(api)
@@ -173,3 +260,52 @@ async def test_crear_empresa_sin_barra_final_no_redirige(api: AsyncClient):
         f"Location: {resp.headers.get('location')!r}"
     )
     assert "location" not in resp.headers
+
+
+@pytest.mark.asyncio
+async def test_reintento_del_mismo_usuario_devuelve_la_empresa_existente(
+    api: AsyncClient,
+):
+    """Repetir el POST con el mismo RUT responde 200 con la misma empresa.
+
+    El 3-sep un usuario vio un timeout, reintentó y recibió 409 aunque la empresa
+    era suya y se había creado. El reintento del dueño no es un conflicto: el
+    201 queda para la creación real y el 200 dice "ya la tenías".
+    """
+    await _login(api)
+
+    first = await api.post("/suppliers", json=SUPPLIER)
+    retry = await api.post("/suppliers", json=SUPPLIER)
+
+    assert first.status_code == 201
+    assert retry.status_code == 200
+    assert retry.json()["id"] == first.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
+    api: AsyncClient,
+):
+    """Si el perfil no se puede indexar a tiempo, 503 y la empresa no existe.
+
+    El 503 le dice al cliente que puede reintentar; lo importante es que no
+    quede nada guardado, para que ese reintento funcione.
+    """
+    from app import bootstrap
+    from app.main import app
+    from tests.unit.application.fakes import FakeEmbeddingService
+
+    class ProveedorCaido(FakeEmbeddingService):
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            raise ConnectionError("el proveedor de embeddings no responde")
+
+    await _login(api)
+    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
+        ProveedorCaido()
+    )
+
+    resp = await api.post("/suppliers", json=SUPPLIER)
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]
+    assert (await api.get("/suppliers/me")).status_code == 404

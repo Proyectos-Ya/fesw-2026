@@ -12,6 +12,29 @@
  */
 const API_BASE_PATH = "/api";
 
+/**
+ * De dónde sale el token de sesión que se manda al backend.
+ *
+ * Se registra desde fuera en vez de importar la feature de auth desde acá:
+ * `shared` no debe conocer a ninguna feature (Screaming Architecture), y este
+ * módulo lo usan todas.
+ *
+ * El token va en `Authorization: Bearer` y no se confía en que el rewrite
+ * reenvíe la cookie de Supabase. Esa cookie no es un JWT: es un JSON en base64
+ * con prefijo `base64-`, **partido en varios trozos** en cuanto crece, y lleva
+ * dentro el refresh token. Hacer que el backend la reensamble sería
+ * reimplementar el formato privado de una librería, y reenviarle el refresh
+ * token sería darle una credencial de larga duración que no necesita.
+ */
+type ProveedorDeToken = () => Promise<string | null>;
+
+let obtenerToken: ProveedorDeToken = async () => null;
+
+/** Lo llama `AuthProvider` al montarse. */
+export function registrarProveedorDeToken(proveedor: ProveedorDeToken): void {
+  obtenerToken = proveedor;
+}
+
 const REQUEST_TIMEOUT_MS = 60_000; 
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
@@ -35,8 +58,8 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de ProyectosYA.
- * Envía la cookie de sesión (credentials) y normaliza los errores de FastAPI,
+ * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
  * que vienen como `{ detail: string }`.
  *
  * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
@@ -49,6 +72,10 @@ export async function apiFetch<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+  // Es una lectura local de la sesión en memoria: solo toca la red cuando el
+  // token está por vencer y hay que refrescarlo.
+  const token = await obtenerToken();
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_PATH}${path}`, {
@@ -57,6 +84,8 @@ export async function apiFetch<T>(
       credentials: "include",
       headers: {
         ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        // Antes de `options.headers` para que quien llame pueda sobreescribirlo.
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options?.headers,
       },
 

@@ -17,8 +17,9 @@ RELLENO_ENV = {
     "MERCADO_PUBLICO_API_KEY": "test-mercado-publico-key",
     "GEMINI_API_KEY": "test-gemini-key",
     "GEMINI_MODEL": "gemini-test",
-    # Tiene que superar el mínimo de config.MIN_JWT_SECRET_BYTES (32 bytes).
-    # Es una clave de pruebas y se nota; firmar con ella fuera de los tests no
-    # protege nada.
-    "JWT_SECRET_KEY": "clave-de-pruebas-no-usar-en-produccion",
+    # Host inexistente a propósito: ningún test debe llegar a la red para
+    # verificar un token. Los que ejercitan la verificación inyectan el JWKS.
+    # Va en https porque `is_dev` es False por defecto y la configuración exige
+    # TLS fuera de desarrollo: el relleno tiene que ser válido sin ayuda.
+    "SUPABASE_URL": "https://supabase-de-pruebas.local",
 }

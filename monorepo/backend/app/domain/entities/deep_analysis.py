@@ -22,6 +22,14 @@ class DeepAnalysis(BaseModel):
     recommendation: RecommendationLiteral
     justification: str
     prompt_instruction: str | None = None
+    # Las marcas de tiempo que tenían la licitación y el proveedor cuando se
+    # escribió este análisis. Se guardan para saber si algo cambió después
+    # comparando por igualdad y no por orden: comparar fechas de dos relojes
+    # distintos convierte cualquier desfase —un volcado restaurado, un reloj
+    # adelantado— en un "desactualizado" permanente que el usuario no puede
+    # quitar, porque regenerar vuelve a escribir una fecha anterior.
+    tender_updated_at: UtcDateTime | None = None
+    supplier_updated_at: UtcDateTime | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

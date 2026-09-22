@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError } from "../client";
+import { apiFetch, ApiError, registrarProveedorDeToken } from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
@@ -7,6 +7,7 @@ function mockFetchOnce(response: Response) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  registrarProveedorDeToken(async () => null);
 });
 
 describe("apiFetch", () => {
@@ -65,5 +66,59 @@ describe("apiFetch — origen de la API", () => {
     await apiFetch<void>("/auth/logout", { method: "POST" });
 
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: "include" });
+  });
+});
+
+describe("apiFetch — token de sesión", () => {
+  /**
+   * El token va en la cabecera y no en la cookie de Supabase a propósito: esa
+   * cookie es un JSON en base64 partido en trozos, y lleva dentro el refresh
+   * token. Que el backend lo reciba en `Authorization` es lo que evita tener
+   * que reensamblar en Python un formato privado de la librería.
+   */
+  function espiarFetch() {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function cabeceras(fetchMock: ReturnType<typeof vi.fn>): Record<string, string> {
+    return (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+  }
+
+  it("adjunta el token como Bearer cuando hay sesión", async () => {
+    registrarProveedorDeToken(async () => "jwt-de-supabase");
+    const fetchMock = espiarFetch();
+
+    await apiFetch<void>("/auth/me");
+
+    expect(cabeceras(fetchMock).Authorization).toBe("Bearer jwt-de-supabase");
+  });
+
+  it("no manda la cabecera cuando no hay sesión", async () => {
+    const fetchMock = espiarFetch();
+
+    await apiFetch<void>("/auth/me");
+
+    expect(cabeceras(fetchMock).Authorization).toBeUndefined();
+  });
+
+  it("respeta la cabecera que ponga quien llama", async () => {
+    registrarProveedorDeToken(async () => "jwt-de-supabase");
+    const fetchMock = espiarFetch();
+
+    await apiFetch<void>("/auth/me", { headers: { Authorization: "Bearer otro" } });
+
+    expect(cabeceras(fetchMock).Authorization).toBe("Bearer otro");
+  });
+
+  it("sigue sin fijar Content-Type cuando el cuerpo es FormData", async () => {
+    registrarProveedorDeToken(async () => "jwt-de-supabase");
+    const fetchMock = espiarFetch();
+
+    await apiFetch<void>("/upload", { method: "POST", body: new FormData() });
+
+    expect(cabeceras(fetchMock)["Content-Type"]).toBeUndefined();
+    expect(cabeceras(fetchMock).Authorization).toBe("Bearer jwt-de-supabase");
   });
 });

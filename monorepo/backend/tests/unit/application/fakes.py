@@ -3,6 +3,9 @@
 from datetime import datetime
 from uuid import UUID
 
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
 from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
     INotificationPreferenceRepository,
@@ -22,11 +25,15 @@ from app.application.repositories.tender_vector_repository import (
 )
 from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
+from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
-from app.application.services.password_hasher import IPasswordHasher
-from app.application.services.token_service import ITokenService
+from app.application.services.identity_directory import IIdentityDirectory
+from app.application.services.reranker_service import IRerankerService
+from app.application.services.weighting_service import IWeightingService
+from app.domain.entities.company_profile import CompanyRecord
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.notification import (
     Notification,
     NotificationDelivery,
@@ -36,10 +43,14 @@ from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
-from app.domain.errors.auth_errors import InvalidToken
+from app.domain.errors.auth_errors import UserAlreadyExists
 from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
+)
+from app.domain.errors.supplier_errors import (
+    SupplierAlreadyExists,
+    UserAlreadyHasSupplier,
 )
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
@@ -57,26 +68,57 @@ class InMemoryUserRepository(IUserRepository):
     async def get_by_id(self, user_id: UUID) -> User | None:
         return self.users.get(user_id)
 
+    async def get_by_auth_provider_id(self, subject: str) -> User | None:
+        for user in self.users.values():
+            if user.auth_provider_id == subject:
+                return user
+        return None
+
     async def save(self, user: User) -> User:
+        # Imita el UNIQUE de auth_provider_id en la base: sin esto, el doble
+        # aceptaría en silencio dos perfiles para la misma identidad y los tests
+        # de la carrera de aprovisionamiento no probarían nada.
+        if user.auth_provider_id is not None:
+            existente = await self.get_by_auth_provider_id(user.auth_provider_id)
+            if existente is not None and existente.id != user.id:
+                raise UserAlreadyExists(user.email)
         self.users[user.id] = user
         return user
 
 
+def _rut_key(rut: str) -> str:
+    """Misma expresión que el índice `ix_supplier_rut_normalizado`."""
+    return rut.replace(".", "").replace("-", "").upper()
+
+
 class InMemorySupplierRepository(ISupplierRepository):
+    """Imita una sesión de base de datos con transacción.
+
+    `suppliers` son las filas confirmadas. Lo que entra con `add` o
+    `stage_update` queda pendiente —visible para las lecturas de la misma
+    sesión, como en Postgres— hasta `commit`, y `rollback` lo descarta.
+    """
+
     def __init__(self) -> None:
         self.suppliers: dict[str, Supplier] = {}
+        self._pending: dict[str, Supplier] = {}
+        # Si se asigna, `commit` lanza esta excepción sin confirmar nada.
+        self.fail_on_commit: Exception | None = None
+
+    def _visibles(self) -> dict[str, Supplier]:
+        return {**self.suppliers, **self._pending}
 
     async def get_by_rut(self, rut: str) -> Supplier | None:
-        return self.suppliers.get(rut)
+        return self._visibles().get(rut)
 
     async def get_by_id(self, supplier_id: UUID) -> Supplier | None:
-        for supplier in self.suppliers.values():
+        for supplier in self._visibles().values():
             if supplier.id == supplier_id:
                 return supplier
         return None
 
     async def get_by_user_id(self, user_id: UUID) -> Supplier | None:
-        for supplier in self.suppliers.values():
+        for supplier in self._visibles().values():
             if supplier.user_id == user_id:
                 return supplier
         return None
@@ -85,27 +127,59 @@ class InMemorySupplierRepository(ISupplierRepository):
         return [s.user_id for s in self.suppliers.values() if s.user_id is not None]
 
     async def save(self, supplier: Supplier) -> Supplier:
-        self.suppliers[supplier.rut] = supplier
-        return supplier
+        saved = await self.add(supplier)
+        await self.commit()
+        return saved
 
     async def update(self, supplier: Supplier) -> Supplier:
-        self.suppliers[supplier.rut] = supplier
+        updated = await self.stage_update(supplier)
+        await self.commit()
+        return updated
+
+    async def add(self, supplier: Supplier) -> Supplier:
+        # Imita los índices únicos de `supplier` (RUT normalizado y user_id):
+        # sin esto, las carreras entre dos peticiones no se podrían probar.
+        for existente in self._visibles().values():
+            if existente.id == supplier.id:
+                continue
+            if _rut_key(existente.rut) == _rut_key(supplier.rut):
+                raise SupplierAlreadyExists(supplier.rut)
+            if supplier.user_id is not None and existente.user_id == supplier.user_id:
+                raise UserAlreadyHasSupplier(supplier.user_id)
+        self._pending[supplier.rut] = supplier
         return supplier
+
+    async def stage_update(self, supplier: Supplier) -> Supplier:
+        self._pending[supplier.rut] = supplier
+        return supplier
+
+    async def commit(self) -> None:
+        if self.fail_on_commit is not None:
+            raise self.fail_on_commit
+        self.suppliers.update(self._pending)
+        self._pending.clear()
+
+    async def rollback(self) -> None:
+        self._pending.clear()
 
 
 class FakeSupplierVectorRepository(ISupplierVectorRepository):
     def __init__(self) -> None:
         self.upserts: list[UUID] = []
         self.vectors: dict[UUID, list[float]] = {}
+        # Si se asigna, `upsert` lanza esta excepción sin escribir nada.
+        self.fail_on_upsert: Exception | None = None
 
-    def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+    async def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+        if self.fail_on_upsert is not None:
+            raise self.fail_on_upsert
         self.upserts.append(supplier_id)
         self.vectors[supplier_id] = embedding
 
-    def delete(self, supplier_id: UUID) -> None:
+    async def delete(self, supplier_id: UUID) -> None:
         self.vectors.pop(supplier_id, None)
 
-    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+    async def get_vector(self, supplier_id: UUID) -> list[float] | None:
         return self.vectors.get(supplier_id)
 
 
@@ -157,27 +231,42 @@ class FakeEmbeddingService(IEmbeddingService):
         return [self.vector] * len(texts)
 
 
-class FakePasswordHasher(IPasswordHasher):
-    """Hash reversible y trivial — solo para pruebas, jamás producción."""
+class FakeCompanyLookupService(ICompanyLookupService):
+    """Fuente de datos de empresas: devuelve un registro fijo o lanza un error."""
 
-    def hash(self, plain_password: str) -> str:
-        return f"hashed::{plain_password}"
+    def __init__(
+        self,
+        record: CompanyRecord | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.record = record
+        self.error = error
+        self.calls: list[str] = []
 
-    def verify(self, plain_password: str, hashed_password: str) -> bool:
-        return hashed_password == f"hashed::{plain_password}"
+    async def lookup(self, rut: str) -> CompanyRecord:
+        self.calls.append(rut)
+        if self.error is not None:
+            raise self.error
+        assert self.record is not None, "FakeCompanyLookupService sin registro"
+        return self.record
 
 
-class FakeTokenService(ITokenService):
-    def create_access_token(self, user_id: UUID) -> str:
-        return f"token::{user_id}"
+class FakeIdentityDirectory(IIdentityDirectory):
+    """Doble del padrón de GoTrue: quién tiene el correo confirmado.
 
-    def decode_token(self, token: str) -> UUID:
-        if not token.startswith("token::"):
-            raise InvalidToken()
-        try:
-            return UUID(token.removeprefix("token::"))
-        except ValueError as exc:
-            raise InvalidToken() from exc
+    En producción esto es un SELECT sobre `auth.users`. Acá es un conjunto de
+    `sub`, para poder escribir el caso de la cuenta sin verificar sin levantar
+    Supabase.
+    """
+
+    def __init__(self, confirmados: set[str] | None = None) -> None:
+        self.confirmados = confirmados if confirmados is not None else set()
+
+    async def email_confirmado(self, subject: str) -> bool:
+        return subject in self.confirmados
+
+    def confirmar(self, subject: str) -> None:
+        self.confirmados.add(subject)
 
 
 from app.domain.entities.tender_chat import TenderChatSession
@@ -310,6 +399,7 @@ class InMemoryTenderRepository(ITenderRepository):
         # Registro de llamadas: permite verificar que un caso de uso NO consulte
         # la base cuando no tiene ids que buscar.
         self.get_tenders_calls: list[TenderFilters] = []
+        self.analyses: dict[tuple[UUID, UUID], DeepAnalysis] = {}
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         self.get_tenders_calls.append(filters)
@@ -386,9 +476,12 @@ class InMemoryTenderRepository(ITenderRepository):
     async def get_deep_analysis(
         self, tender_id: UUID, supplier_id: UUID
     ) -> DeepAnalysis | None:
-        return None
+        return self.analyses.get((tender_id, supplier_id))
 
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
+        self.analyses[(deep_analysis.tender_id, deep_analysis.supplier_id)] = (
+            deep_analysis
+        )
         return deep_analysis
 
 
@@ -543,3 +636,91 @@ class FakeEmailService(IEmailService):
 
     def restablecer(self) -> None:
         self.fail_with = None
+
+
+class InMemoryMatchingResultRepository(IMatchingResultRepository):
+    """Caché de matching en memoria, con la distinción ranking / a pedido."""
+
+    def __init__(self) -> None:
+        self.results: dict[UUID, list[MatchingResult]] = {}
+
+    async def save_bulk(self, results: list[MatchingResult]) -> None:
+        if not results:
+            return
+        supplier_id = results[0].supplier_id
+        self.results.setdefault(supplier_id, []).extend(results)
+
+    async def save_on_demand(self, result: MatchingResult) -> MatchingResult:
+        await self.delete_by_supplier_and_tender_ids(
+            result.supplier_id, [result.tender_id]
+        )
+        self.results.setdefault(result.supplier_id, []).append(result)
+        return result
+
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[MatchingResult]:
+        return self.results.get(supplier_id, [])
+
+    async def get_ranking_by_supplier_id(
+        self, supplier_id: UUID
+    ) -> list[MatchingResult]:
+        return [
+            r for r in self.results.get(supplier_id, []) if r.source != "on_demand"
+        ]
+
+    async def delete_by_supplier_id(self, supplier_id: UUID) -> None:
+        self.results.pop(supplier_id, None)
+
+    async def delete_ranking_by_supplier_id(self, supplier_id: UUID) -> None:
+        self.results[supplier_id] = [
+            r for r in self.results.get(supplier_id, []) if r.source == "on_demand"
+        ]
+
+    async def delete_by_supplier_and_tender_ids(
+        self, supplier_id: UUID, tender_ids: list[UUID]
+    ) -> None:
+        if not tender_ids:
+            return
+        self.results[supplier_id] = [
+            r
+            for r in self.results.get(supplier_id, [])
+            if r.tender_id not in tender_ids
+        ]
+
+    async def get_by_proveedor_and_licitacion(
+        self, proveedor_id: UUID, licitacion_id: UUID
+    ) -> MatchingResult | None:
+        for r in self.results.get(proveedor_id, []):
+            if r.tender_id == licitacion_id:
+                return r
+        return None
+
+
+class FakeRerankerService(IRerankerService):
+    """Re-ranker simulado: conserva el orden recibido con puntajes decrecientes."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[tuple[UUID, str]], int]] = []
+
+    async def rerank(
+        self,
+        query_text: str,
+        candidates: list[tuple[UUID, str]],
+        limit: int,
+    ) -> list[tuple[UUID, float]]:
+        self.calls.append((query_text, candidates, limit))
+        return [(uid, 1.0 - (i * 0.05)) for i, (uid, _) in enumerate(candidates)][
+            :limit
+        ]
+
+
+class FakeWeightingService(IWeightingService):
+    """Ponderación simulada: un score decreciente por candidata."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[tuple[Tender, float]]] = []
+
+    def calculate_scores(
+        self, candidates: list[tuple[Tender, float]], supplier: Supplier
+    ) -> list[tuple[UUID, float]]:
+        self.calls.append(list(candidates))
+        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]

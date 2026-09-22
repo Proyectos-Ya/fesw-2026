@@ -9,10 +9,22 @@ Con este test, agregar un campo obligatorio sin agregarlo al relleno falla como
 un test normal y con un mensaje que dice exactamente qué hacer.
 """
 
+import pytest
 from pydantic import ValidationError
 
-from app.config import MIN_JWT_SECRET_BYTES, Settings
+from app.config import Settings
 from pytest_env_defaults import RELLENO_ENV
+
+
+@pytest.fixture(autouse=True)
+def _sin_variables_de_entorno(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quitar una clave del dict no sirve si sigue en `os.environ`.
+
+    En CI el `conftest.py` raíz la puso ahí (no hay `.env`), y Settings la leería
+    igual: la clave parecería sobrante aunque sí haga falta.
+    """
+    for clave in [*RELLENO_ENV, "DATABASE_URL"]:
+        monkeypatch.delenv(clave, raising=False)
 
 
 def _construir(entorno: dict[str, str]) -> Settings:
@@ -48,9 +60,3 @@ def test_cada_clave_del_relleno_hace_falta():
         f"RELLENO_ENV define claves que Settings ya no exige: {sorted(sobrantes)}. "
         "Quítalas de pytest_env_defaults.py."
     )
-
-
-def test_la_clave_de_pruebas_pasa_la_validacion_de_largo():
-    """De nada sirve rellenar JWT_SECRET_KEY con algo que el validador rechaza."""
-    clave = RELLENO_ENV["JWT_SECRET_KEY"]
-    assert len(clave.encode("utf-8")) >= MIN_JWT_SECRET_BYTES

@@ -5,6 +5,9 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
+    DeepAnalysisResult,
+)
 from app.bootstrap import (
     get_list_saved_tenders_use_case,
     get_rank_tenders_use_case,
@@ -21,8 +24,13 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
-from app.domain.errors.tender_errors import TenderNotFound
+from app.domain.errors.tender_errors import (
+    TenderClosedForAnalysis,
+    TenderClosedForScoring,
+    TenderNotFound,
+)
 from app.main import app
+from tests.support.api_auth import autenticar
 
 
 @pytest.fixture(autouse=True)
@@ -56,14 +64,12 @@ async def test_get_recommended_tenders_success(api: AsyncClient) -> None:
     # Registrar e iniciar sesión para estar autenticado en la API
     register_data = {
         "email": "juan@example.com",
-        "password": "supersecretpassword",
         "full_name": "Juan Pérez",
     }
-    registro = await api.post("/auth/register", json=register_data)
-    id_del_usuario = UUID(registro.json()["id"])
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    id_del_usuario = await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # `profile_id` va a propósito, y con el id de OTRA empresa: el endpoint lo
@@ -98,13 +104,12 @@ async def test_get_recommended_tenders_supplier_not_found(api: AsyncClient) -> N
     # Iniciar sesión
     register_data = {
         "email": "maria@example.com",
-        "password": "password123",
         "full_name": "María Gómez",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
@@ -125,13 +130,12 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
     # Iniciar sesión
     register_data = {
         "email": "pedro@example.com",
-        "password": "securepwd123",
         "full_name": "Pedro Díaz",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.get(f"/tenders/recommended?profile_id={profile_id}")
@@ -174,7 +178,7 @@ async def test_analyze_tender_compatibility_success(api: AsyncClient) -> None:
     )
 
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = mock_analysis
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
     # Registrar la dependencia mockeada en la app de FastAPI
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
@@ -184,13 +188,12 @@ async def test_analyze_tender_compatibility_success(api: AsyncClient) -> None:
     # Registrar e iniciar sesión para estar autenticado
     register_data = {
         "email": "ana@example.com",
-        "password": "mypassword123",
         "full_name": "Ana Gómez",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Ejecutar la llamada al endpoint
@@ -223,13 +226,12 @@ async def test_analyze_tender_compatibility_invalid_prompt(api: AsyncClient) -> 
     # Registrar e iniciar sesión
     register_data = {
         "email": "lucas@example.com",
-        "password": "mypassword123",
         "full_name": "Lucas Silva",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Enviar prompt sospechoso
@@ -262,13 +264,12 @@ async def test_analyze_tender_compatibility_not_found(api: AsyncClient) -> None:
     # Registrar e iniciar sesión
     register_data = {
         "email": "carlos@example.com",
-        "password": "mypassword123",
         "full_name": "Carlos González",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(f"/tenders/{tender_id}/analysis", json={})
@@ -292,13 +293,12 @@ async def test_analyze_tender_compatibility_validation_error(api: AsyncClient) -
     # Registrar e iniciar sesión
     register_data = {
         "email": "elena@example.com",
-        "password": "mypassword123",
         "full_name": "Elena Torres",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     # Crear una cadena de instrucciones de prompt que supera los 1000 caracteres
@@ -336,7 +336,7 @@ async def test_analyze_tender_compatibility_only_if_exists_not_found(
     """Valida que retorne código 404 si only_if_exists es True y no hay análisis generado previamente."""
     tender_id = uuid4()
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = None
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=None)
 
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
 
@@ -345,13 +345,12 @@ async def test_analyze_tender_compatibility_only_if_exists_not_found(
     # Registrar e iniciar sesión
     register_data = {
         "email": "only_not_found@example.com",
-        "password": "mypassword123",
         "full_name": "Only Not Found",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(
@@ -385,7 +384,7 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     )
 
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = mock_analysis
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
 
@@ -394,13 +393,12 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     # Registrar e iniciar sesión
     register_data = {
         "email": "only_success@example.com",
-        "password": "mypassword123",
         "full_name": "Only Success",
     }
-    await api.post("/auth/register", json=register_data)
-    await api.post(
-        "/auth/login",
-        json={"email": register_data["email"], "password": register_data["password"]},
+    await autenticar(
+        api,
+        email=register_data["email"],
+        full_name=register_data["full_name"],
     )
 
     response = await api.post(
@@ -412,6 +410,131 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     assert data["compatibility_score"] == 75.0
     assert data["recommendation"] == "Postular"
     mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_informa_desactualizado(
+    api: AsyncClient,
+) -> None:
+    """La ficha necesita saber que lo guardado se escribió con datos anteriores."""
+    tender_id = uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    mock_analysis = DeepAnalysis(
+        tender_id=tender_id,
+        supplier_id=uuid4(),
+        compatibility_score=75.0,
+        recommendation="Postular",
+        justification="Escrita con el perfil anterior.",
+        created_at=now,
+        updated_at=now,
+    )
+
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = DeepAnalysisResult(
+        analysis=mock_analysis, is_outdated=True
+    )
+
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="outdated@example.com", full_name="Out Dated")
+
+    response = await api.post(
+        f"/tenders/{tender_id}/analysis", json={"only_if_exists": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_outdated"] is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_licitacion_cerrada(
+    api: AsyncClient,
+) -> None:
+    """Una licitación cerrada sin análisis no se genera: 409, no 404."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderClosedForAnalysis(tender_id)
+
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="cerrada@example.com", full_name="Licitación Cerrada")
+
+    response = await api.post(f"/tenders/{tender_id}/analysis", json={})
+
+    assert response.status_code == 409
+    assert "cerró" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Pruebas del cálculo de compatibilidad a pedido
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_score_tender_devuelve_el_porcentaje(api: AsyncClient) -> None:
+    """El usuario pide el cálculo de una licitación que no está entre sus matches."""
+    tender_id = uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=None,
+        final_score=0.6234,
+        model_version="bge-m3-v1",
+        source="on_demand",
+        calculated_at=now,
+    )
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score@example.com", full_name="Score Pedido")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 200
+    assert response.json()["score_pct"] == 62
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_score_tender_rechaza_una_licitacion_cerrada(api: AsyncClient) -> None:
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderClosedForScoring(tender_id)
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score_cerrada@example.com", full_name="Score Cerrada")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_score_tender_licitacion_inexistente(api: AsyncClient) -> None:
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderNotFound(tender_id)
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score_404@example.com", full_name="Score 404")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -442,12 +565,7 @@ def _build_tender(tender_id: UUID) -> Tender:
 
 async def _login(api: AsyncClient, email: str, full_name: str) -> None:
     """Registra e inicia sesión: deja la cookie httpOnly en el cliente."""
-    password = "supersecretpassword"
-    await api.post(
-        "/auth/register",
-        json={"email": email, "password": password, "full_name": full_name},
-    )
-    await api.post("/auth/login", json={"email": email, "password": password})
+    await autenticar(api, email=email, full_name=full_name)
 
 
 @pytest.mark.asyncio
@@ -479,7 +597,6 @@ async def test_get_saved_tenders_success(api: AsyncClient) -> None:
     assert data[0]["tender"]["buyer_name"] == "Municipalidad de Santiago"
     assert data[0]["tender"]["region"] == "Metropolitana"
     mock_uc.execute.assert_called_once()
-
 
 
 @pytest.mark.asyncio

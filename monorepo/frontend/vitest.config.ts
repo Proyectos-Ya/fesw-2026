@@ -7,6 +7,13 @@ import path from 'path';
 // dependan de la configuración de la máquina que ejecuta la suite.
 process.env.TZ = 'America/Santiago';
 
+// El módulo de configuración de Supabase lanza al importarse si faltan estas
+// variables, y es a propósito (ver src/features/auth/supabase/env.ts). En los
+// tests nada llega a la red: se rellenan con valores reconocibles para que los
+// módulos que lo importan se puedan cargar.
+process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://127.0.0.1:54321';
+process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= 'clave-publicable-de-pruebas';
+
 export default defineConfig({
   plugins: [react()],
   test: {

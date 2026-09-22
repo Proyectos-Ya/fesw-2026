@@ -14,12 +14,28 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
+from pytest_env_defaults import RELLENO_ENV
+
+
+@pytest.fixture(autouse=True)
+def _sin_variables_de_entorno(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_env_file=None` evita el `.env`, pero Settings sigue leyendo el entorno.
+
+    En CI no hay `.env`, así que el `conftest.py` raíz pone `POSTGRES_PASSWORD` y
+    el resto de `RELLENO_ENV` en `os.environ`, y estos tests verían esos valores.
+    En local no se nota porque el `.env` ya los trae y el conftest no toca nada.
+    """
+    for clave in [*RELLENO_ENV, "DATABASE_URL"]:
+        monkeypatch.delenv(clave, raising=False)
+
 
 BASE = {
     "gemini_api_key": "x",
     "gemini_model": "x",
     "mercado_publico_api_key": "x",
-    "jwt_secret_key": "K" * 32,
+    # Supabase Auth es el emisor de las sesiones: sin esta variable la
+    # aplicación no arranca, así que tampoco se puede construir Settings.
+    "supabase_url": "http://127.0.0.1:54321",
 }
 
 URL_GESTIONADA = (

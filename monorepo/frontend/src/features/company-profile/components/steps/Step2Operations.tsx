@@ -6,19 +6,34 @@ import { step2Schema, type Step2Data } from "../../profileSchema";
 import { Input } from "@/features/shared/components/Input";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { WizardNavigation } from "../WizardNavigation";
+import { CompanyImportCard } from "../CompanyImportCard";
 import { REGIONS } from "../../data/regions";
+import type { CompanyProfileImport } from "../../services/supplierService";
 
 interface Step2Props {
   defaultValues: Partial<Step2Data>;
+  /** RUT ya validado en el paso 1; sin él no se ofrece importar. */
+  rut?: string;
+  importedProfile: CompanyProfileImport | null;
+  onImported: (profile: CompanyProfileImport) => void;
   onNext: (data: Step2Data) => void;
   onBack: () => void;
 }
 
-export function Step2Operations({ defaultValues, onNext, onBack }: Step2Props) {
+export function Step2Operations({
+  defaultValues,
+  rut,
+  importedProfile,
+  onImported,
+  onNext,
+  onBack,
+}: Step2Props) {
   const {
     register,
     handleSubmit,
     control,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm<Step2Data>({
     resolver: zodResolver(step2Schema),
@@ -27,6 +42,17 @@ export function Step2Operations({ defaultValues, onNext, onBack }: Step2Props) {
       ...defaultValues,
     },
   });
+
+  const handleImported = (profile: CompanyProfileImport) => {
+    onImported(profile);
+    const imported = profile.regions.filter((region) => REGIONS.includes(region));
+    if (imported.length === 0) return;
+    const current = getValues("regions") ?? [];
+    setValue("regions", [...current, ...imported.filter((r) => !current.includes(r))], {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   return (
     <div>
@@ -38,6 +64,10 @@ export function Step2Operations({ defaultValues, onNext, onBack }: Step2Props) {
       </div>
 
       <div className="flex flex-col gap-8">
+        {rut && (
+          <CompanyImportCard rut={rut} imported={importedProfile} onImported={handleImported} />
+        )}
+
         <Controller
           name="regions"
           control={control}

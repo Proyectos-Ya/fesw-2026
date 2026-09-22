@@ -1,8 +1,13 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useTenderSearch, SEARCH_STORAGE_KEY } from "../useTenderSearch";
+import {
+  useTenderSearch,
+  SEARCH_STORAGE_KEY,
+  SEARCH_REGIONS_PREFILLED_KEY,
+} from "../useTenderSearch";
 import * as searchService from "../../services/searchService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
+import * as supplierService from "@/features/company-profile/services/supplierService";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { TenderSearchResult } from "../../types";
 
@@ -20,6 +25,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("../../services/searchService");
 vi.mock("@/features/saved-tenders/services/savedTenders.service");
+vi.mock("@/features/company-profile/services/supplierService");
 
 const mockSearchResult: TenderSearchResult = {
   items: [
@@ -55,7 +61,15 @@ beforeEach(() => {
   window.sessionStorage.clear();
   vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
   vi.mocked(searchService.searchTenders).mockResolvedValue(mockSearchResult);
+  vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(null);
 });
+
+/** Empresa con solo lo que mira el buscador: dónde declaró que opera. */
+function empresaConRegiones(regions: string[]) {
+  return { regions } as Awaited<
+    ReturnType<typeof supplierService.getMySupplier>
+  >;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -362,5 +376,81 @@ describe("useTenderSearch", () => {
       expect(result.current.savedTenderIds.has("tender-1")).toBe(true);
       expect(result.current.actionError).toBe(SAVED_TENDERS_ERRORS.UNSAVE_FAILED);
     });
+  });
+});
+
+describe("useTenderSearch: regiones de la empresa por defecto", () => {
+  it("parte con las regiones del perfil cuando no hay búsqueda previa", async () => {
+    vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(
+      empresaConRegiones(["Metropolitana", "Valparaíso"])
+    );
+
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    // "Metropolitana" es como lo escribe el perfil; el buscador exige el
+    // nombre canónico y responde 422 con cualquier otro.
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?regions=Metropolitana+de+Santiago&regions=Valpara%C3%ADso",
+      { scroll: false }
+    );
+    expect(window.sessionStorage.getItem(SEARCH_STORAGE_KEY)).toContain(
+      "Metropolitana+de+Santiago"
+    );
+  });
+
+  it("no pisa una búsqueda guardada", async () => {
+    window.sessionStorage.setItem(SEARCH_STORAGE_KEY, "q=aseo");
+    vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(
+      empresaConRegiones(["Metropolitana"])
+    );
+
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    expect(replaceMock).toHaveBeenCalledWith("/buscar?q=aseo", { scroll: false });
+    expect(supplierService.getMySupplierOrNull).not.toHaveBeenCalled();
+  });
+
+  it("no las repone después de que el usuario las quitó", async () => {
+    // Limpiar filtros deja la URL y la búsqueda guardada vacías, igual que al
+    // llegar por primera vez: sin la marca, volver acá las repondría.
+    window.sessionStorage.setItem(SEARCH_REGIONS_PREFILLED_KEY, "1");
+    vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(
+      empresaConRegiones(["Metropolitana"])
+    );
+
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() =>
+      expect(searchService.searchTenders).toHaveBeenCalled()
+    );
+    expect(supplierService.getMySupplierOrNull).not.toHaveBeenCalled();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("no toca la URL si la empresa no declaró regiones", async () => {
+    vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(
+      empresaConRegiones([])
+    );
+
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() =>
+      expect(
+        window.sessionStorage.getItem(SEARCH_REGIONS_PREFILLED_KEY)
+      ).toBe("1")
+    );
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("no rompe la búsqueda si el usuario todavía no tiene empresa", async () => {
+    vi.mocked(supplierService.getMySupplierOrNull).mockResolvedValue(null);
+
+    const { result } = renderHook(() => useTenderSearch());
+
+    await waitFor(() => expect(result.current.state.isLoading).toBe(false));
+    expect(result.current.state.items).toHaveLength(1);
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 });
