@@ -20,6 +20,10 @@ from app.infrastructure.repositories.notification_model import (
     NotificationPreferenceModel,
 )
 from app.infrastructure.repositories.question_model import QuestionModel
+from app.infrastructure.repositories.quotation_model import (
+    QuotationMaterialModel,
+    QuotationModel,
+)
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_model import SupplierModel
 from app.infrastructure.repositories.tender_chat_model import (
@@ -44,6 +48,8 @@ from app.infrastructure.repositories.tender_chat_model import (
 )
 
 __all__ = [
+    "QuotationModel",
+    "QuotationMaterialModel",
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "MatchingResultModel",
@@ -67,4 +73,3 @@ __all__ = [
     "TenderChatMessageModel",
     "TenderChatDocumentModel",
 ]
-
