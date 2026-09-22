@@ -255,7 +255,12 @@ def get_quotation_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> QuotationUseCase:
     return QuotationUseCase(
-        QuotationRepository(session), SupplierRepository(session), TenderRepository(session)
+        QuotationRepository(session),
+        SupplierRepository(session),
+        TenderRepository(session),
+    )
+
+
 def get_score_tender_on_demand_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
