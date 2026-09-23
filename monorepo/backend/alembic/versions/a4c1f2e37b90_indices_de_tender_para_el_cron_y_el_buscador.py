@@ -38,7 +38,7 @@ consulta para usarla, y eso es un cambio de código además de uno de esquema.
 Queda anotado en PENDIENTES.
 
 Revision ID: a4c1f2e37b90
-Revises: d7f2a9c41b58
+Revises: a227c0150001
 Create Date: 2026-09-10
 """
 
@@ -48,7 +48,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a4c1f2e37b90"
-down_revision: str | Sequence[str] | None = "d7f2a9c41b58"
+down_revision: str | Sequence[str] | None = "a227c0150001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
