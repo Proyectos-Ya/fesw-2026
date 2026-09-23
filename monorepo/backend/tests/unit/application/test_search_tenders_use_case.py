@@ -185,6 +185,9 @@ class FakeTenderRepo(ITenderRepository):
     async def get_latest_tender_created_at(self) -> datetime | None:
         return None
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return None
+
 
 async def _build(
     *,

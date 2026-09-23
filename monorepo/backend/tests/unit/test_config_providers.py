@@ -77,3 +77,37 @@ class TestCredencialesObligatoriasEnModoApi:
         s = _construir(embedding_provider="huggingface", embedding_api_key="hf")
         assert s.embedding_provider == "huggingface"
         assert s.reranker_provider == "local"
+
+
+class TestTicketsDeMercadoPublico:
+    """`MERCADO_PUBLICO_API_KEYS` (plural) reemplaza la lista completa.
+
+    La cuota de 10.000 peticiones al día es del **ticket**, así que varios
+    tickets suman capacidad. El singular sigue siendo obligatorio para que la
+    lista nunca pueda quedar vacía: eso ahorra un validador y evita que el
+    cliente tenga que defenderse de un caso que no puede pasar.
+    """
+
+    @staticmethod
+    def _settings(**extra) -> Settings:
+        # `_env_file=None` para que el .env de la máquina no se cuele.
+        return Settings(_env_file=None, **{**BASE, **extra})  # type: ignore[arg-type,call-arg]
+
+    def test_sin_el_plural_usa_el_ticket_de_siempre(self):
+        s = self._settings(mercado_publico_api_key="uno")
+
+        assert s.mercado_publico_tickets == ["uno"]
+
+    def test_el_plural_manda_y_admite_espacios(self):
+        s = self._settings(
+            mercado_publico_api_key="uno", mercado_publico_api_keys="a, b ,c"
+        )
+
+        assert s.mercado_publico_tickets == ["a", "b", "c"]
+
+    def test_un_plural_vacio_cae_al_singular(self):
+        s = self._settings(
+            mercado_publico_api_key="uno", mercado_publico_api_keys=" , "
+        )
+
+        assert s.mercado_publico_tickets == ["uno"]

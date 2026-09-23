@@ -135,14 +135,19 @@ class Settings(BaseSettings):
     pinecone_api_version: str = "2025-04"
 
     # --- Mercado Público ---
+    # La cuota (10.000 peticiones al día) es del **ticket**, no de la máquina ni
+    # del proyecto. Con varios tickets se suman, y por eso hay dos variables:
+    # `MERCADO_PUBLICO_API_KEY` es el ticket de siempre y sigue siendo
+    # obligatorio, y `MERCADO_PUBLICO_API_KEYS` —separados por coma— reemplaza la
+    # lista completa cuando hay más de uno. Ver `mercado_publico_tickets`.
     mercado_publico_api_key: str
+    mercado_publico_api_keys: str | None = None
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
     mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
-    # Ingesta automática al arrancar y región a la que acotarla (None = todas).
-    run_auto_ingestion: bool = True
+    # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
     # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
@@ -196,7 +201,7 @@ class Settings(BaseSettings):
     # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
     # lo que el usuario abre desde su bandeja.
     app_base_url: str = "http://localhost:3000"
-    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    # Permite apagar los bucles de alertas sin tocar código.
     run_notification_scan: bool = True
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
@@ -243,6 +248,25 @@ class Settings(BaseSettings):
         justamente las dos cosas que pueden no coincidir dentro de Docker.
         """
         return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+    @property
+    def mercado_publico_tickets(self) -> list[str]:
+        """Los tickets disponibles, en el orden en que se van a gastar.
+
+        El cliente rota al siguiente cuando uno agota su cuota diaria, así que el
+        orden importa poco salvo para saber cuál se quema primero.
+
+        Nunca devuelve una lista vacía: `mercado_publico_api_key` es obligatorio,
+        así que en el peor caso hay uno. Eso ahorra un validador y, sobre todo,
+        evita que el cliente tenga que defenderse de un caso que no puede pasar.
+        """
+        if self.mercado_publico_api_keys:
+            tickets = [
+                t.strip() for t in self.mercado_publico_api_keys.split(",") if t.strip()
+            ]
+            if tickets:
+                return tickets
+        return [self.mercado_publico_api_key]
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -75,7 +75,7 @@ async def main(limite: int, retardo: float) -> None:
 
     servicio = TenderIngestionService(
         engine=engine,
-        client=MercadoPublicoClient(api_key=settings.mercado_publico_api_key),
+        client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
         embedding_service=BgeM3EmbeddingService(),
         qdrant_client=qdrant,
         tender_vector_repo=repositorio,

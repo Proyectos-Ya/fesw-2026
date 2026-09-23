@@ -120,6 +120,9 @@ class FakeTenderRepository(ITenderRepository):
     async def get_latest_tender_created_at(self) -> datetime | None:
         return None
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return None
+
 
 # Id fijo para las licitaciones que un fake finge tener ya guardadas.
 _ID_EXISTENTE = uuid4()
