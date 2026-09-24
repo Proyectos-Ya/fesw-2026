@@ -128,7 +128,7 @@ export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) 
         <div className="overflow-y-auto flex-1">
           {results.length === 0 && query.trim() && !searching && (
             <p className="p-4 text-sm text-text-subtle text-center">
-              Sin resultados para "{query}"
+              Sin resultados para &quot;{query}&quot;
             </p>
           )}
           {results.length === 0 && !query.trim() && (
