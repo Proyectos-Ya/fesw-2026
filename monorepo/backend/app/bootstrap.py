@@ -129,9 +129,28 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.application.services.milestone_extraction_ai_service import (
+    IMilestoneExtractionAIService,
+)
+from app.application.use_cases.milestones.extract_tender_milestones import (
+    ExtractTenderMilestonesUseCase,
+)
+from app.application.use_cases.milestones.get_tender_milestones import (
+    GetTenderMilestonesUseCase,
+)
 from app.application.use_cases.quotation import QuotationUseCase
+from app.infrastructure.repositories.calendar_repository import (
+    CalendarEventLinkRepository,
+)
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.tender_milestone_repository import (
+    TenderMilestoneRepository,
+)
+from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.quotation import create_quotation_router
+from app.infrastructure.services.gemini_milestone_extraction_service import (
+    GeminiMilestoneExtractionService,
+)
 from app.infrastructure.routers.router import create_router
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
@@ -497,6 +516,36 @@ def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIServi
     return request.app.state.tender_assistant_ai_service
 
 
+def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAIService:
+    return request.app.state.milestone_extraction_service
+
+
+def get_tender_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> GetTenderMilestonesUseCase:
+    return GetTenderMilestonesUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        event_links=CalendarEventLinkRepository(session),
+        chat=chat_repo,
+    )
+
+
+def get_extract_tender_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
+) -> ExtractTenderMilestonesUseCase:
+    return ExtractTenderMilestonesUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        event_links=CalendarEventLinkRepository(session),
+        chat=chat_repo,
+        ai=ai,
+    )
+
+
 def get_document_validator_service() -> IDocumentValidatorService:
     return DocumentValidatorService()
 
@@ -827,6 +876,10 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.milestone_extraction_service = GeminiMilestoneExtractionService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
 
     app.state.reranker_service = build_reranker_service()
 
@@ -896,3 +949,10 @@ def bootstrap(app: FastAPI) -> None:
     )
     app.include_router(router)
     app.include_router(create_quotation_router(get_current_user, get_quotation_use_case))
+    app.include_router(
+        create_milestones_router(
+            get_current_user,
+            get_tender_milestones_use_case,
+            get_extract_tender_milestones_use_case,
+        )
+    )

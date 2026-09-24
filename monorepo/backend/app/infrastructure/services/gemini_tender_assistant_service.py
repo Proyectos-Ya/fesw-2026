@@ -1,6 +1,5 @@
 import base64
 import json
-from io import BytesIO
 from typing import List, Optional
 import httpx
 
@@ -15,6 +14,7 @@ from app.domain.entities.tender_chat import (
     DocumentDiscrepancy,
 )
 from app.domain.errors.tender_chat_errors import TenderAssistantUnavailableError
+from app.infrastructure.services.document_text import xlsx_to_text
 
 
 class GeminiTenderAssistantService(ITenderAssistantAIService):
@@ -32,21 +32,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
 
     def _parse_xlsx_to_text(self, file_bytes: bytes, file_name: str) -> str:
         """Intenta extraer las hojas de cálculo de un archivo XLSX a formato tabular."""
-        try:
-            import openpyxl  # type: ignore
-
-            wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
-            output = [f"=== DOCUMENTO EXCEL: {file_name} ==="]
-            for sheet in wb.sheetnames:
-                ws = wb[sheet]
-                output.append(f"\n--- Hoja: {sheet} ---")
-                for row in ws.iter_rows(values_only=True):
-                    row_values = [str(val) if val is not None else "" for val in row]
-                    if any(row_values):
-                        output.append(" | ".join(row_values))
-            return "\n".join(output)
-        except Exception:
-            return f"[Documento Excel adjunto: {file_name} (no se pudo parsear el contenido tabular)]"
+        return xlsx_to_text(file_bytes, file_name)
 
     def _build_system_instruction(
         self, has_supplier: bool = False, has_tender: bool = False
