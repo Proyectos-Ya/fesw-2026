@@ -28,6 +28,7 @@ import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import {
   daysUntilClosing,
   formatCLP,
@@ -658,15 +659,11 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         </div>
       )}
 
-      <Section title="Fechas importantes" icon="calendar">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-          <DateRow label="Publicación" value={formatDateTime(tender.published_at)} />
-          <DateRow label="Cierre" value={formatDateTime(tender.closing_at)} />
-          <DateRow
-            label="Última modificación"
-            value={formatDateTime(tender.last_change_at)}
-          />
-        </dl>
+      <Section title="Hitos y fechas importantes" icon="calendar">
+        <MilestonesSection tenderId={tenderId} />
+        <p className="mt-4 text-xs text-text-subtle">
+          Última modificación en Mercado Público: {formatDateTime(tender.last_change_at)}
+        </p>
       </Section>
 
       <Section title="Requisitos y descripción" icon="file-text">
@@ -792,15 +789,6 @@ function KeyValueCard({
       </div>
       <div className="font-mono text-lg font-semibold text-text-strong">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-text-muted">{hint}</div>}
-    </div>
-  );
-}
-
-function DateRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">{label}</dt>
-      <dd className="font-mono text-sm text-text-strong">{value}</dd>
     </div>
   );
 }
