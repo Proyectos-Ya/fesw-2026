@@ -11,6 +11,8 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { getRecommendedTenders } from "../services/tenderService";
 import type { MatchingResult } from "../tenderTypes";
+import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import {
   EMPTY_BUDGET_RANGE,
   filterMatchesByBudget,
@@ -47,6 +49,7 @@ function isSupplierMissing(err: ApiError): boolean {
 export function MatchesDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { workspaces, activeWorkspace } = useWorkspace();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
@@ -103,8 +106,18 @@ export function MatchesDashboard() {
         setState({ kind: "ready", matches });
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          window.location.replace(
+            loginUrlWithReturn(window.location.pathname, window.location.search),
+          );
+          return;
+        }
         if (!isBackground) {
           if (err instanceof ApiError && isSupplierMissing(err)) {
+            if (workspaces.length > 0 || activeWorkspace !== null) {
+              setState({ kind: "ready", matches: [] });
+              return;
+            }
             setState({ kind: "no-supplier" });
             return;
           }
@@ -130,7 +143,7 @@ export function MatchesDashboard() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce]);
+  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
 
   const handleToggleSave = async (tenderId: string) => {
     const isCurrentlySaved = savedTenderIds.has(tenderId);

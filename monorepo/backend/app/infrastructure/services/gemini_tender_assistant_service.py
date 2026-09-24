@@ -14,7 +14,11 @@ from app.domain.entities.tender_chat import (
     Citation,
     DocumentDiscrepancy,
 )
-from app.domain.errors.tender_chat_errors import TenderAssistantUnavailableError
+from app.domain.errors.tender_chat_errors import (
+    TenderAssistantUnavailableError,
+    TenderAssistantAIProviderError,
+    TenderAssistantResponseError,
+)
 
 
 class GeminiTenderAssistantService(ITenderAssistantAIService):
@@ -236,24 +240,29 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, json=payload, timeout=60.0)
         except Exception as e:
-            raise TenderAssistantUnavailableError(
-                f"El asistente virtual se encuentra temporalmente fuera de servicio: {e}"
-            ) from e
+            import logging
+            logging.getLogger(__name__).error(f"Error conectando a Gemini API: {e}", exc_info=True)
+            raise TenderAssistantAIProviderError() from e
 
         if resp.status_code != 200:
             import logging
             logging.getLogger(__name__).error(
                 f"Gemini API error (HTTP {resp.status_code}): {resp.text}"
             )
-            raise TenderAssistantUnavailableError(
-                f"El asistente virtual se encuentra temporalmente fuera de servicio (HTTP {resp.status_code})"
+            raise TenderAssistantAIProviderError(
+                f"El asistente virtual se encuentra temporalmente fuera de servicio (HTTP {resp.status_code})."
             )
-
 
         try:
             resp_data = resp.json()
-            candidate = resp_data["candidates"][0]
-            json_text = candidate["content"]["parts"][0]["text"]
+            candidates = resp_data.get("candidates")
+            if not candidates:
+                raise ValueError("La respuesta del proveedor de IA no contiene candidatos válidos.")
+            candidate = candidates[0]
+            parts = candidate.get("content", {}).get("parts", [])
+            if not parts or "text" not in parts[0]:
+                raise ValueError("La respuesta del proveedor de IA está vacía.")
+            json_text = parts[0]["text"]
             parsed = json.loads(json_text)
 
             citations = [
@@ -293,7 +302,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                 has_sufficient_info=bool(parsed.get("has_sufficient_info", True))
             )
         except Exception as e:
-            raise TenderAssistantUnavailableError(
-                f"El asistente virtual se encuentra temporalmente fuera de servicio: {e}"
-            ) from e
+            import logging
+            logging.getLogger(__name__).error(f"Error procesando respuesta del modelo de IA: {e}", exc_info=True)
+            raise TenderAssistantResponseError() from e
 

@@ -108,7 +108,7 @@ async def main() -> None:
 
     constructor = TextBuilder()
     embeddings = BgeM3EmbeddingService()
-    cliente = AsyncQdrantClient(url=settings.qdrant_url)
+    cliente = AsyncQdrantClient(url=settings.qdrant_url, timeout=60.0)
     repositorio = QdrantTenderRepository(
         client=cliente, vector_size=settings.embedding_vector_size
     )

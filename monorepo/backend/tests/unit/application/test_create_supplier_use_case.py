@@ -20,7 +20,6 @@ from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierProfileIndexingUnavailable,
     SupplierValidationError,
-    UserAlreadyHasSupplier,
 )
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
@@ -32,7 +31,18 @@ VALID_RUT = "76.086.428-5"
 OTHER_VALID_RUT = "77.777.777-7"
 # Mismo cuerpo que VALID_RUT pero con dígito verificador incorrecto
 INVALID_RUT = "76.086.428-0"
-SUPPLIER_DATA = CreateSupplierSchema(rut=VALID_RUT, legal_name="Empresa SpA")
+DEFAULT_PROFILE = {
+    "description": "Empresa especializada en construcción y obras civiles con amplia trayectoria.",
+    "regions": ["Metropolitana"],
+    "sectors": ["Construcción"],
+    "years_experience": 5,
+    "num_employees": 20,
+}
+SUPPLIER_DATA = CreateSupplierSchema(
+    rut=VALID_RUT,
+    legal_name="Empresa SpA",
+    **DEFAULT_PROFILE,
+)
 
 
 @pytest.fixture
@@ -166,7 +176,9 @@ async def test_duplicate_rut_detected_with_other_format(
 
     with pytest.raises(SupplierAlreadyExists):
         await use_case.execute(
-            CreateSupplierSchema(rut=other_format, legal_name="Otra Empresa SpA")
+            CreateSupplierSchema(
+                rut=other_format, legal_name="Otra Empresa SpA", **DEFAULT_PROFILE
+            )
         )
 
     assert len(supplier_repo.suppliers) == 1
@@ -176,7 +188,9 @@ async def test_supplier_rut_stored_in_canonical_format(
     use_case: CreateSupplierUseCase,
 ) -> None:
     """El RUT se guarda como XX.XXX.XXX-X aunque llegue sin puntos."""
-    data = CreateSupplierSchema(rut="760864285", legal_name="Empresa SpA")
+    data = CreateSupplierSchema(
+        rut="760864285", legal_name="Empresa SpA", **DEFAULT_PROFILE
+    )
 
     supplier = await use_case.execute(data)
 
@@ -192,7 +206,7 @@ async def test_invalid_rut_raises_validation_error(
     use_case: CreateSupplierUseCase,
 ) -> None:
     """Un RUT con dígito verificador incorrecto lanza SupplierValidationError."""
-    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
+    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA", **DEFAULT_PROFILE)
 
     with pytest.raises(SupplierValidationError):
         await use_case.execute(data)
@@ -204,7 +218,7 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 ) -> None:
     """Un RUT inválido falla en la validación: ni SQL ni Qdrant reciben datos."""
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, FakeEmbeddingService())
-    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA")
+    data = CreateSupplierSchema(rut=INVALID_RUT, legal_name="Empresa SpA", **DEFAULT_PROFILE)
 
     with pytest.raises(SupplierValidationError):
         await use_case.execute(data)
@@ -219,35 +233,62 @@ async def test_invalid_rut_writes_neither_sql_nor_qdrant(
 
 
 async def test_supplier_saved_with_owner_user_id(
-    use_case: CreateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
 ) -> None:
-    """El user_id del creador queda persistido en el proveedor."""
+    """El user_id del creador queda persistido en el proveedor y se crea membresía ADMIN."""
+    from tests.unit.application.fakes import InMemorySupplierMemberRepository
+    from app.domain.entities.supplier_member import MemberRole, MemberStatus
+
+    member_repo = InMemorySupplierMemberRepository(supplier_repo=supplier_repo)
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, embedding_service, member_repo=member_repo
+    )
     owner_id = uuid4()
 
     supplier = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
 
-    stored = await supplier_repo.get_by_user_id(owner_id)
+    stored = await supplier_repo.get_by_id(supplier.id)
     assert stored is not None
     assert stored.id == supplier.id
     assert stored.user_id == owner_id
 
+    # Membresía admin creada automáticamente
+    memberships = await member_repo.list_by_user_id(owner_id)
+    assert len(memberships) == 1
+    assert memberships[0].supplier_id == supplier.id
+    assert memberships[0].role == MemberRole.ADMIN
+    assert memberships[0].status == MemberStatus.ACTIVE
 
-async def test_user_with_supplier_cannot_create_another(
-    use_case: CreateSupplierUseCase,
+
+async def test_user_can_create_multiple_companies(
     supplier_repo: InMemorySupplierRepository,
     vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
 ) -> None:
-    """Un usuario que ya tiene empresa no puede crear otra (regla de negocio)."""
+    """Un usuario existente puede crear múltiples empresas desde su sesión (CA-5)."""
+    from tests.unit.application.fakes import InMemorySupplierMemberRepository
+    from app.domain.entities.supplier_member import MemberRole
+
+    member_repo = InMemorySupplierMemberRepository(supplier_repo=supplier_repo)
+    use_case = CreateSupplierUseCase(
+        supplier_repo, vector_repo, embedding_service, member_repo=member_repo
+    )
     owner_id = uuid4()
-    await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
 
-    second = CreateSupplierSchema(rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA")
-    with pytest.raises(UserAlreadyHasSupplier):
-        await use_case.execute(second, user_id=owner_id)
+    supplier1 = await use_case.execute(SUPPLIER_DATA, user_id=owner_id)
+    second_data = CreateSupplierSchema(
+        rut=OTHER_VALID_RUT, legal_name="Otra Empresa SpA", **DEFAULT_PROFILE
+    )
+    supplier2 = await use_case.execute(second_data, user_id=owner_id)
 
-    # El intento fallido no contamina SQL ni Qdrant
-    assert len(supplier_repo.suppliers) == 1
-    assert len(vector_repo.upserts) == 1
+    assert len(supplier_repo.suppliers) == 2
+    assert len(vector_repo.upserts) == 2
+
+    memberships = await member_repo.list_by_user_id(owner_id)
+    assert len(memberships) == 2
+    assert all(m.role == MemberRole.ADMIN for m in memberships)
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +328,10 @@ async def test_embedding_text_includes_trade_name_when_present(
     """El nombre de fantasía, si existe, forma parte del texto del embedding."""
     embedding_service = FakeEmbeddingService()
     data = CreateSupplierSchema(
-        rut=VALID_RUT, legal_name="Empresa SpA", trade_name="La Constructora"
+        rut=VALID_RUT,
+        legal_name="Empresa SpA",
+        trade_name="La Constructora",
+        **DEFAULT_PROFILE,
     )
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
 
@@ -302,7 +346,11 @@ async def test_embedding_text_includes_legal_name(
 ) -> None:
     """El texto enviado al EmbeddingService contiene el nombre legal del proveedor."""
     embedding_service = FakeEmbeddingService()
-    data = CreateSupplierSchema(rut=VALID_RUT, legal_name="Constructora Norte SpA")
+    data = CreateSupplierSchema(
+        rut=VALID_RUT,
+        legal_name="Constructora Norte SpA",
+        **DEFAULT_PROFILE,
+    )
     use_case = CreateSupplierUseCase(supplier_repo, vector_repo, embedding_service)
 
     await use_case.execute(data)
@@ -552,7 +600,9 @@ async def test_same_user_retry_with_rut_in_other_format_is_idempotent(
     first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
 
     retry = await use_case.create(
-        CreateSupplierSchema(rut=other_format, legal_name="Empresa SpA"),
+        CreateSupplierSchema(
+            rut=other_format, legal_name="Empresa SpA", **DEFAULT_PROFILE
+        ),
         user_id=owner_id,
     )
 
@@ -700,3 +750,45 @@ async def test_retry_after_deadline_creates_supplier(
 
     assert result.created is True
     assert result.supplier.id in vector_repo.vectors
+
+
+async def test_same_user_can_create_multiple_workspaces_with_different_ruts(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+    embedding_service: FakeEmbeddingService,
+) -> None:
+    """Un mismo usuario puede registrar múltiples empresas con diferente RUT (HU-014)."""
+    owner_id = uuid4()
+    from tests.unit.application.fakes import InMemorySupplierMemberRepository
+    from app.domain.entities.supplier_member import MemberRole, MemberStatus
+
+    member_repo = InMemorySupplierMemberRepository(supplier_repo=supplier_repo)
+    use_case = CreateSupplierUseCase(
+        supplier_repo,
+        vector_repo,
+        embedding_service,
+        member_repo=member_repo,
+    )
+
+    first = await use_case.create(SUPPLIER_DATA, user_id=owner_id)
+    assert first.created is True
+
+    second_data = CreateSupplierSchema(
+        rut=OTHER_VALID_RUT,
+        legal_name="Segunda Empresa SpA",
+        **DEFAULT_PROFILE,
+    )
+    second = await use_case.create(second_data, user_id=owner_id)
+    assert second.created is True
+    assert second.supplier.id != first.supplier.id
+    assert second.supplier.user_id == owner_id
+
+    # Verificar membresías en member_repo
+    user_memberships = await member_repo.list_by_user_id(owner_id, status=MemberStatus.ACTIVE)
+    assert len(user_memberships) == 2
+    supplier_ids = {m.supplier_id for m in user_memberships}
+    assert first.supplier.id in supplier_ids
+    assert second.supplier.id in supplier_ids
+    for m in user_memberships:
+        assert m.role == MemberRole.ADMIN
+

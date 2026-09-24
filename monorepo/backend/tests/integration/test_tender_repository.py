@@ -15,6 +15,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderStatusModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.shared.constants import CERRADA_STATUS_ID, PUBLICADA_STATUS_ID
 from app.shared.regions import CHILE_REGIONS
 
 # `db_session` y el esquema limpio los aporta tests/integration/conftest.py,
@@ -167,8 +168,12 @@ async def _seed_para_busqueda(session: AsyncSession) -> None:
     """Dos regiones, y licitaciones que varían en cierre, monto y estado."""
     session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
     session.add(RegionModel(id=5, name=CHILE_REGIONS[5]))
-    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
-    session.add(TenderStatusModel(id=7, code="cerrada", name="Cerrada"))
+    session.add(
+        TenderStatusModel(id=PUBLICADA_STATUS_ID, code="publicada", name="Publicada")
+    )
+    session.add(
+        TenderStatusModel(id=CERRADA_STATUS_ID, code="cerrada", name="Cerrada")
+    )
     for rut, nombre, region_id in (
         ("11.111.111-1", "Municipalidad RM", 13),
         ("22.222.222-2", "Municipalidad Valpo", 5),
@@ -187,12 +192,30 @@ async def _seed_para_busqueda(session: AsyncSession) -> None:
     base = datetime(2026, 9, 1, 12, 0, 0)
     filas = [
         # code,      buyer,          status, cierre,          monto
-        ("RM-PRONTO", "11.111.111-1", 1, base + timedelta(days=1), 200_000.0),
-        ("RM-MEDIO", "11.111.111-1", 1, base + timedelta(days=5), 1_000_000.0),
-        ("RM-TARDE", "11.111.111-1", 1, base + timedelta(days=10), 5_000_000.0),
-        ("RM-SIN-MONTO", "11.111.111-1", 1, base + timedelta(days=3), None),
-        ("RM-CERRADA", "11.111.111-1", 7, base + timedelta(days=2), 300_000.0),
-        ("VALPO-1", "22.222.222-2", 1, base + timedelta(days=4), 800_000.0),
+        (
+            "RM-PRONTO",
+            "11.111.111-1",
+            PUBLICADA_STATUS_ID,
+            base + timedelta(days=1),
+            200_000.0,
+        ),
+        (
+            "RM-MEDIO",
+            "11.111.111-1",
+            PUBLICADA_STATUS_ID,
+            base + timedelta(days=5),
+            1_000_000.0,
+        ),
+        (
+            "RM-TARDE",
+            "11.111.111-1",
+            PUBLICADA_STATUS_ID,
+            base + timedelta(days=10),
+            5_000_000.0,
+        ),
+        ("RM-SIN-MONTO", "11.111.111-1", PUBLICADA_STATUS_ID, base + timedelta(days=3), None),
+        ("RM-CERRADA", "11.111.111-1", CERRADA_STATUS_ID, base + timedelta(days=2), 300_000.0),
+        ("VALPO-1", "22.222.222-2", PUBLICADA_STATUS_ID, base + timedelta(days=4), 800_000.0),
     ]
     for code, buyer, status_id, cierre, monto in filas:
         session.add(

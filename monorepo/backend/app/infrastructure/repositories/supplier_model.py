@@ -22,7 +22,7 @@ class SupplierModel(SQLModel, table=True):
     )
     id: UUID = Field(primary_key=True)
     user_id: UUID | None = Field(
-        default=None, foreign_key="users.id", index=True, unique=True
+        default=None, foreign_key="users.id", index=True
     )
     rut: str
     legal_name: str

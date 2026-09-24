@@ -4,6 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from app.config import settings
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -51,6 +55,7 @@ def create_supplier_router(
     get_embedding_service: Callable,
     get_company_lookup_service: Callable,
     get_current_user: Callable,
+    get_supplier_member_repo: Callable,
 ) -> APIRouter:
     """
     Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
@@ -95,6 +100,9 @@ def create_supplier_router(
             ISupplierVectorRepository, Depends(get_supplier_vector_repo)
         ],
         embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
     ):
         # TEMPORAL solo para demo del CA de timeout (>1 min sin respuesta).
         # Descomentar para el primer intento: duerme 70s (el cliente aborta a los
@@ -109,8 +117,20 @@ def create_supplier_router(
                 repo,
                 vector_repo,
                 embedding_service,
+                member_repo=member_repo,
                 embedding_deadline_seconds=settings.supplier_embedding_deadline_seconds,
             ).create(data, user_id=current_user.id)
+
+            # Establecer cookie active_workspace_id para activar de inmediato este espacio
+            response.set_cookie(
+                key="active_workspace_id",
+                value=str(result.supplier.id),
+                path="/",
+                httponly=True,
+                secure=bool(settings.auth_cookie_secure),
+                samesite=settings.auth_cookie_samesite,
+                max_age=settings.access_token_expire_minutes * 60,
+            )
         except (SupplierAlreadyExists, UserAlreadyHasSupplier) as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(e)
@@ -237,8 +257,11 @@ def create_supplier_router(
         supplier_id: UUID,
         current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
     ):
-        """Busca una empresa por su id interno, solo si es la del usuario.
+        """Busca una empresa por su id interno, solo si es del usuario o es miembro activo.
 
         Sin la comprobación, cualquier usuario autenticado con un id de empresa
         ajeno obtenía su perfil completo **incluido el `user_id`**, que es
@@ -254,11 +277,14 @@ def create_supplier_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
 
-        if supplier.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No existe una empresa con ese identificador.",
-            )
+        is_owner = (supplier.user_id == current_user.id)
+        if not is_owner:
+            member = await member_repo.get_by_user_and_supplier(current_user.id, supplier_id)
+            if not member or member.status.value != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No existe una empresa con ese identificador.",
+                )
         return supplier
 
     return router

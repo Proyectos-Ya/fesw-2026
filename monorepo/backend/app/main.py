@@ -34,17 +34,26 @@ async def lifespan(app: FastAPI):
     await verificar_esquema_migrado()
 
     # api_key va en None contra el Qdrant del compose local, que no autentica.
-    app.state.qdrant_client = QdrantClient(
-        url=settings.qdrant_url, api_key=settings.qdrant_api_key
-    )
-    app.state.qdrant_async_client = AsyncQdrantClient(
-        url=settings.qdrant_url, api_key=settings.qdrant_api_key
-    )
+    try:
+        app.state.qdrant_client = QdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
+        )
+        app.state.qdrant_async_client = AsyncQdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
+        )
+        existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
+    except Exception as e:
+        if settings.is_dev:
+            print(f"[Main] Qdrant no disponible ({e}), usando cliente en memoria para desarrollo.")
+            app.state.qdrant_client = QdrantClient(location=":memory:")
+            app.state.qdrant_async_client = AsyncQdrantClient(location=":memory:")
+            existing = set()
+        else:
+            raise
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
 
-    existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="suppliers",

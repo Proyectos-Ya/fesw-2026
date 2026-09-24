@@ -102,14 +102,11 @@ class SupplierRepository(ISupplierRepository):
             constraint = _constraint_name(exc)
             if constraint == _RUT_INDEX:
                 raise SupplierAlreadyExists(supplier.rut) from exc
-            if constraint == _USER_INDEX and supplier.user_id is not None:
-                raise UserAlreadyHasSupplier(supplier.user_id) from exc
             raise
 
 
 # Nombres de los índices únicos de `supplier` (ver las migraciones de Alembic).
 _RUT_INDEX = "ix_supplier_rut_normalizado"
-_USER_INDEX = "ix_supplier_user_id"
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -123,7 +120,6 @@ def _constraint_name(exc: IntegrityError) -> str | None:
     if isinstance(name, str):
         return name
     mensaje = str(exc)
-    for candidato in (_RUT_INDEX, _USER_INDEX):
-        if candidato in mensaje:
-            return candidato
+    if _RUT_INDEX in mensaje:
+        return _RUT_INDEX
     return None

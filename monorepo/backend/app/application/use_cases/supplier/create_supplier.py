@@ -5,6 +5,9 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -12,11 +15,15 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.schemas.supplier_schema import CreateSupplierSchema
 from app.application.services.embedding_service import IEmbeddingService
 from app.domain.entities.supplier import Supplier, format_rut
+from app.domain.entities.supplier_member import (
+    MemberRole,
+    MemberStatus,
+    SupplierMember,
+)
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     SupplierProfileIndexingUnavailable,
     SupplierValidationError,
-    UserAlreadyHasSupplier,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,11 +60,13 @@ class CreateSupplierUseCase:
         repo: ISupplierRepository,
         vector_repo: ISupplierVectorRepository,
         embedding_service: IEmbeddingService,
+        member_repo: ISupplierMemberRepository | None = None,
         embedding_deadline_seconds: float = DEFAULT_EMBEDDING_DEADLINE_SECONDS,
     ):
         self.repo = repo
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
+        self.member_repo = member_repo
         self.embedding_deadline_seconds = embedding_deadline_seconds
 
     async def execute(
@@ -74,18 +83,12 @@ class CreateSupplierUseCase:
         except ValidationError as e:
             raise SupplierValidationError(str(e.errors()[0]["msg"])) from e
 
-        # Regla de negocio: un usuario solo puede ser dueño de una empresa. Si ya
-        # tiene *esta misma* no es un conflicto sino un reintento —el cliente se
-        # cansó de esperar y volvió a enviar—, y se devuelve la que ya existe.
-        if user_id is not None:
-            own = await self.repo.get_by_user_id(user_id)
-            if own is not None:
-                if _same_rut(own.rut, supplier.rut):
-                    return CreateSupplierResult(own, created=False)
-                raise UserAlreadyHasSupplier(user_id)
-
-        # Se busca con el RUT ya normalizado por la entidad, no con el recibido
-        if await self.repo.get_by_rut(supplier.rut):
+        # Verificación temprana: si el RUT ya existe, si pertenece al mismo usuario es un reintento.
+        # Si pertenece a otro o no tiene dueño, es un conflicto.
+        existing = await self.repo.get_by_rut(supplier.rut)
+        if existing is not None:
+            if user_id is not None and existing.user_id == user_id:
+                return CreateSupplierResult(existing, created=False)
             raise SupplierAlreadyExists(supplier.rut)
 
         # El embedding se calcula ANTES de persistir. Es una llamada de red a un
@@ -103,10 +106,28 @@ class CreateSupplierUseCase:
         # con el mismo RUT, este envío también termina bien.
         try:
             saved_supplier = await self.repo.add(supplier)
-        except (SupplierAlreadyExists, UserAlreadyHasSupplier):
-            own = await self._own_supplier_with_rut(user_id, supplier.rut)
-            if own is not None:
-                return CreateSupplierResult(own, created=False)
+            if user_id is not None and self.member_repo is not None:
+                new_member = SupplierMember(
+                    user_id=user_id,
+                    supplier_id=saved_supplier.id,
+                    role=MemberRole.ADMIN,
+                    status=MemberStatus.ACTIVE,
+                )
+                if hasattr(self.member_repo, "add"):
+                    await self.member_repo.add(new_member)
+                else:
+                    await self.member_repo.save(new_member)
+        except SupplierAlreadyExists:
+            existing = await self.repo.get_by_rut(supplier.rut)
+            if existing is None and user_id is not None:
+                existing = await self.repo.get_by_user_id(user_id)
+            if (
+                existing is not None
+                and user_id is not None
+                and existing.user_id == user_id
+                and _same_rut(existing.rut, supplier.rut)
+            ):
+                return CreateSupplierResult(existing, created=False)
             raise
 
         # Postgres y Qdrant se escriben como una sola operación: la fila queda
@@ -143,16 +164,6 @@ class CreateSupplierUseCase:
         except Exception as exc:
             logger.warning("No se pudo calcular el embedding del proveedor: %r", exc)
             raise SupplierProfileIndexingUnavailable() from exc
-
-    async def _own_supplier_with_rut(
-        self, user_id: UUID | None, rut: str
-    ) -> Supplier | None:
-        if user_id is None:
-            return None
-        own = await self.repo.get_by_user_id(user_id)
-        if own is not None and _same_rut(own.rut, rut):
-            return own
-        return None
 
 
 def _same_rut(stored: str, candidate: str) -> bool:

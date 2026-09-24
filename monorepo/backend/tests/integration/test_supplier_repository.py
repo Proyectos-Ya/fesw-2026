@@ -59,18 +59,18 @@ async def test_legacy_rut_in_other_format_raises_supplier_already_exists(
         await repo.add(Supplier(rut=RUT, legal_name="Empresa SpA"))
 
 
-async def test_repeated_user_id_raises_user_already_has_supplier(
+async def test_repeated_user_id_allowed_for_multiple_workspaces(
     db_session: AsyncSession,
 ) -> None:
-    """Un segundo proveedor para el mismo usuario es un conflicto de dominio."""
+    """Un mismo usuario puede registrar múltiples empresas con distinto RUT."""
     user_id = await _create_user(db_session)
     repo = SupplierRepository(db_session)
-    await repo.save(Supplier(rut=RUT, legal_name="Empresa SpA", user_id=user_id))
-
-    with pytest.raises(UserAlreadyHasSupplier):
-        await repo.add(
-            Supplier(rut=OTHER_RUT, legal_name="Otra Empresa SpA", user_id=user_id)
-        )
+    first = await repo.save(Supplier(rut=RUT, legal_name="Empresa SpA", user_id=user_id))
+    second = await repo.save(
+        Supplier(rut=OTHER_RUT, legal_name="Otra Empresa SpA", user_id=user_id)
+    )
+    assert first.id != second.id
+    assert first.user_id == second.user_id
 
 
 async def test_session_is_usable_after_a_conflict(db_session: AsyncSession) -> None:
