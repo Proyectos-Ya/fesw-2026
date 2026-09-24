@@ -15,6 +15,10 @@ from app.application.repositories.notification_repository import (
     INotificationRepository,
 )
 from app.application.repositories.question_repository import IQuestionRepository
+from app.application.repositories.kanban_repository import (
+    IKanbanCardRepository,
+    IKanbanColumnRepository,
+)
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
@@ -90,6 +94,14 @@ from app.application.use_cases.questions.answer_question_use_case import (
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
+from app.application.use_cases.kanban.add_tender_to_board import AddTenderToBoardUseCase
+from app.application.use_cases.kanban.create_kanban_column import CreateKanbanColumnUseCase
+from app.application.use_cases.kanban.delete_kanban_column import DeleteKanbanColumnUseCase
+from app.application.use_cases.kanban.list_kanban_cards import ListKanbanCardsUseCase
+from app.application.use_cases.kanban.list_kanban_columns import ListKanbanColumnsUseCase
+from app.application.use_cases.kanban.move_kanban_card import MoveKanbanCardUseCase
+from app.application.use_cases.kanban.remove_tender_from_board import RemoveTenderFromBoardUseCase
+from app.application.use_cases.kanban.update_kanban_column import UpdateKanbanColumnUseCase
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
@@ -120,6 +132,10 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+from app.infrastructure.repositories.kanban_repository import (
+    KanbanCardRepository,
+    KanbanColumnRepository,
+)
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
@@ -546,6 +562,75 @@ def get_tender_chat_history_use_case(
 
 
 
+# --- Tablero Kanban (HdU 10) ---
+
+
+def get_kanban_column_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IKanbanColumnRepository:
+    return KanbanColumnRepository(session)
+
+
+def get_kanban_card_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IKanbanCardRepository:
+    return KanbanCardRepository(session)
+
+
+def get_list_kanban_columns_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListKanbanColumnsUseCase:
+    return ListKanbanColumnsUseCase(column_repo=KanbanColumnRepository(session))
+
+
+def get_create_kanban_column_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CreateKanbanColumnUseCase:
+    return CreateKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+
+
+def get_update_kanban_column_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UpdateKanbanColumnUseCase:
+    return UpdateKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+
+
+def get_delete_kanban_column_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DeleteKanbanColumnUseCase:
+    return DeleteKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+
+
+def get_list_kanban_cards_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListKanbanCardsUseCase:
+    return ListKanbanCardsUseCase(card_repo=KanbanCardRepository(session))
+
+
+def get_add_tender_to_board_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AddTenderToBoardUseCase:
+    return AddTenderToBoardUseCase(
+        card_repo=KanbanCardRepository(session),
+        column_repo=KanbanColumnRepository(session),
+    )
+
+
+def get_move_kanban_card_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MoveKanbanCardUseCase:
+    return MoveKanbanCardUseCase(
+        card_repo=KanbanCardRepository(session),
+        column_repo=KanbanColumnRepository(session),
+    )
+
+
+def get_remove_tender_from_board_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RemoveTenderFromBoardUseCase:
+    return RemoveTenderFromBoardUseCase(card_repo=KanbanCardRepository(session))
+
+
 class MockRerankerService(IRerankerService):
     """Reranker neutro para cuando está desactivado o falta ONNX en local/tests."""
 
@@ -880,6 +965,14 @@ def bootstrap(app: FastAPI) -> None:
         get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
         get_tender_chat_history_use_case=get_tender_chat_history_use_case,
         get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
+        get_list_kanban_columns_use_case=get_list_kanban_columns_use_case,
+        get_create_kanban_column_use_case=get_create_kanban_column_use_case,
+        get_update_kanban_column_use_case=get_update_kanban_column_use_case,
+        get_delete_kanban_column_use_case=get_delete_kanban_column_use_case,
+        get_list_kanban_cards_use_case=get_list_kanban_cards_use_case,
+        get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
+        get_move_kanban_card_use_case=get_move_kanban_card_use_case,
+        get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
     )
     app.include_router(router)
 

@@ -8,12 +8,9 @@ Importar desde acá evita que eso dependa de qué módulos haya cargado la
 aplicación por casualidad. Al agregar un modelo nuevo, agregarlo también aquí.
 """
 
-from app.infrastructure.repositories.deep_analysis_model import (
-    DeepAnalysisModel,
-)
-from app.infrastructure.repositories.matching_result_model import (
-    MatchingResultModel,
-)
+from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
+from app.infrastructure.repositories.matching_result_model import MatchingResultModel
+
 from app.infrastructure.repositories.notification_model import (
     NotificationDeliveryModel,
     NotificationModel,
@@ -22,10 +19,6 @@ from app.infrastructure.repositories.notification_model import (
 from app.infrastructure.repositories.question_model import QuestionModel
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_model import SupplierModel
-from app.infrastructure.repositories.tender_chat_model import (
-    TenderChatDocumentModel,
-    TenderChatMessageModel,
-)
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -36,11 +29,15 @@ from app.infrastructure.repositories.tender_model import (
     TenderStatusModel,
 )
 from app.infrastructure.repositories.user_model import UserModel
-from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.tender_chat_model import (
     TenderChatSessionModel,
     TenderChatMessageModel,
     TenderChatDocumentModel,
+)
+
+from app.infrastructure.repositories.kanban_model import (
+    KanbanColumnModel,
+    KanbanCardModel,
 )
 
 __all__ = [
@@ -52,19 +49,18 @@ __all__ = [
     "NotificationPreferenceModel",
     "QuestionModel",
     "RegionModel",
-    "SavedTenderModel",
     "SupplierModel",
     "TenderAIAnalysisModel",
     "TenderItemModel",
     "TenderMetadataModel",
     "TenderModel",
     "TenderStatusModel",
-    "TenderChatDocumentModel",
-    "TenderChatMessageModel",
     "UserModel",
     "SavedTenderModel",
     "TenderChatSessionModel",
     "TenderChatMessageModel",
     "TenderChatDocumentModel",
+    "KanbanColumnModel",
+    "KanbanCardModel",
 ]
 
