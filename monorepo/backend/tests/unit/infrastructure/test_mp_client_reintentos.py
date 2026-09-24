@@ -28,8 +28,10 @@ def _cliente() -> MercadoPublicoClient:
 
 
 async def _pedir(cliente: MercadoPublicoClient) -> httpx.Response | None:
+    # Las cabeceras ya no se pasan: las arma el cliente en cada intento, porque
+    # el ticket puede haber rotado entre uno y otro.
     async with httpx.AsyncClient() as c:
-        return await cliente._get_con_reintentos(c, {"ticket": "x"}, {"p": 1})
+        return await cliente._get_con_reintentos(c, {"p": 1})
 
 
 class TestReintentoDel429:

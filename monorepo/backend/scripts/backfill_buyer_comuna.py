@@ -36,9 +36,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import settings
+from app.infrastructure.db import crear_engine
 from app.shared.comunas import resolve_comuna
 
 _SELECT_SIN_COMUNA = text("""
@@ -67,7 +66,7 @@ class Stats:
 
 async def run(dry_run: bool, include_generic: bool) -> Stats:
     stats = Stats()
-    engine = create_async_engine(settings.database_url)
+    engine = crear_engine()
 
     try:
         async with engine.connect() as conn:

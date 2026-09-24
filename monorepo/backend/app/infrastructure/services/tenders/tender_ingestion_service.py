@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
@@ -81,6 +81,30 @@ class ResultadoProceso:
     procesadas: int = 0
     fallidas: int = 0
     cuota_agotada: bool = False
+
+
+def _en_utc_naive(momento: datetime) -> datetime:
+    """Un instante del sistema, listo para persistir.
+
+    No es `to_utc_naive`: ese conversor es para las fechas de Mercado Público y
+    supone que un naive viene en hora de Chile. La ventana la calcula
+    `utc_now_naive()`, así que un naive acá **ya está en UTC** y convertirlo lo
+    corría 3-4 h hacia el futuro.
+    """
+    if momento.tzinfo is None:
+        return momento
+    return momento.astimezone(UTC).replace(tzinfo=None)
+
+
+def _describir(error: Exception) -> str:
+    """Motivo legible para `tender_metadata.last_error`.
+
+    Con el tipo delante: un timeout de red tiene `str(e) == ""`, y la segunda
+    corrida en `dev test` dejó 46 filas con el error vacío.
+    """
+    mensaje = str(error)
+    nombre = type(error).__name__
+    return f"{nombre}: {mensaje}" if mensaje else nombre
 
 
 def _lotes(elementos: list, tamano: int):
@@ -265,20 +289,6 @@ class TenderIngestionService(ITenderIngestionService):
             nuevos += len(resultado.all())
         return nuevos
 
-    async def ultima_sincronizacion(self) -> datetime | None:
-        """Fecha del registro de metadata más reciente, en UTC con zona.
-
-        La columna se guarda naive —en UTC, por convención del proyecto—, así que
-        se le pone la zona antes de devolverla: quien compara contra `ahora` está
-        en hora de Chile, y restar un naive de un aware lanza TypeError.
-        """
-        async with AsyncSession(self.engine) as session:
-            stmt = select(func.max(col(TenderMetadataModel.created_at)))
-            ultima = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
-            if ultima is None:
-                return None
-            return ultima.replace(tzinfo=UTC)
-
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
 
@@ -307,8 +317,8 @@ class TenderIngestionService(ITenderIngestionService):
             session.add(
                 IngestionRunModel(
                     id=run_id,
-                    window_from=to_utc_naive(desde) or utc_now_naive(),
-                    window_to=to_utc_naive(hasta) or utc_now_naive(),
+                    window_from=_en_utc_naive(desde),
+                    window_to=_en_utc_naive(hasta),
                     status="running",
                 )
             )
@@ -336,6 +346,34 @@ class TenderIngestionService(ITenderIngestionService):
             corrida.finished_at = utc_now_naive()
             session.add(corrida)
             await session.commit()
+
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        """Pasa a `failed` las `running` que empezaron antes de `antes_de`.
+
+        `failed` y no `partial`: no se sabe hasta dónde llegó, y ninguno de los
+        dos mueve el cursor, así que la ventana se vuelve a pedir igual.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                update(IngestionRunModel)
+                .where(
+                    col(IngestionRunModel.status) == "running",
+                    col(IngestionRunModel.started_at) < _en_utc_naive(antes_de),
+                )
+                .values(status="failed", finished_at=utc_now_naive())
+            )
+            resultado = await session.exec(stmt)  # type: ignore[call-overload]
+            await session.commit()
+            return resultado.rowcount or 0
+
+    async def hay_corrida_en_curso(self) -> bool:
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                select(IngestionRunModel.id)
+                .where(IngestionRunModel.status == "running")
+                .limit(1)
+            )
+            return (await session.exec(stmt)).first() is not None
 
     async def process_unprocessed_tenders(
         self, limite: int | None = None
@@ -478,7 +516,7 @@ class TenderIngestionService(ITenderIngestionService):
                     # La licitación existe y el próximo intento la recupera.
                     # Nunca se marca procesada: eso la perdería para siempre.
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=False
+                        session, metadata_id, _describir(e), rendirse=False
                     )
                     resultado.fallidas += 1
                 except Exception as e:
@@ -486,7 +524,7 @@ class TenderIngestionService(ITenderIngestionService):
                         f"[IngestionService] Error al procesar licitación {code}: {e}"
                     )
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=True
+                        session, metadata_id, _describir(e), rendirse=True
                     )
                     resultado.fallidas += 1
 
@@ -524,6 +562,9 @@ class TenderIngestionService(ITenderIngestionService):
         metadata_item = await session.get(TenderMetadataModel, metadata_id)
         if metadata_item:
             metadata_item.is_processed = True
+            # Si falló antes y ahora entró, el error viejo haría que una
+            # licitación ya ingerida pareciera fallida al revisar la cola.
+            metadata_item.last_error = None
             metadata_item.updated_at = utc_now_naive()
             session.add(metadata_item)
         await session.commit()

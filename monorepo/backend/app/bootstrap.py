@@ -146,6 +146,9 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.application.use_cases.quotation import QuotationUseCase
+from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
 
 from app.infrastructure.services.api_embedding_service import (
@@ -290,6 +293,16 @@ def get_score_tender_on_demand_use_case(
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         scorer=scorer,
+    )
+
+
+def get_quotation_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> QuotationUseCase:
+    return QuotationUseCase(
+        QuotationRepository(session),
+        SupplierRepository(session),
+        TenderRepository(session),
     )
 
 
@@ -942,6 +955,4 @@ def bootstrap(app: FastAPI) -> None:
         get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
     )
     app.include_router(router)
-
-
-
+    app.include_router(create_quotation_router(get_current_user, get_quotation_use_case))

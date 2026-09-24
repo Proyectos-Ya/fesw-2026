@@ -272,13 +272,13 @@ docker compose build --no-cache api
 
 ## Corpus de licitaciones: dump o ingesta
 
-Hay dos formas de tener licitaciones en la base, y se alternan con **una sola
-variable** en `monorepo/.env`:
+Hay dos formas de tener licitaciones en la base:
 
-```bash
-RUN_AUTO_INGESTION=false   # Modo A: usas el dump del repositorio. No consume cuota.
-RUN_AUTO_INGESTION=true    # Modo B: la aplicación ingesta desde Mercado Público.
-```
+- **Modo A**: cargar el dump del repositorio. No consume cuota.
+- **Modo B**: correr a mano la sincronización diaria, `scripts/sync_diaria.py`.
+
+La API no ingesta sola: en Railway lo hace el servicio de cron `ingesta`, que
+corre ese mismo script una vez al día.
 
 |  | Modo A (dump) | Modo B (ingesta) |
 |---|---|---|
@@ -298,9 +298,7 @@ recomendado para el día a día.
 
 ### Usar el dump (Modo A)
 
-**1.** En `monorepo/.env`, deja `RUN_AUTO_INGESTION=false`.
-
-**2.** Levanta la infraestructura y crea el esquema:
+**1.** Levanta la infraestructura y crea el esquema:
 
 ```bash
 supabase start
@@ -312,7 +310,7 @@ cd monorepo/backend
 alembic upgrade head
 ```
 
-**3.** Carga el dump. El primer comando llena PostgreSQL; el segundo genera los
+**2.** Carga el dump. El primer comando llena PostgreSQL; el segundo genera los
 embeddings e indexa en Qdrant, y tarda un par de minutos.
 
 ```bash
@@ -327,13 +325,13 @@ prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
 dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
 para probar la aplicación da lo mismo.
 
-**4.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
+**3.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
 cuentas las emite Supabase Auth, así que hay que registrarse en `/register`,
 confirmar el correo desde Mailpit (http://localhost:54324) y completar el
 onboarding de la empresa. Ver el pendiente **5.3** para el script que lo
 automatizaría.
 
-**5.** Levanta la aplicación:
+**4.** Levanta la aplicación:
 
 ```bash
 cd monorepo && docker compose up -d
@@ -355,34 +353,23 @@ curl.exe http://localhost:8000/health
 
 Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
 
-### Volver a la ingesta (Modo B)
+### Ingestar desde Mercado Público (Modo B)
+
+Con la infraestructura arriba y `MERCADO_PUBLICO_API_KEY` en `monorepo/.env`:
 
 ```bash
-RUN_AUTO_INGESTION=true
+python -m scripts.sync_diaria --limite 100
 ```
 
-y **reinicia el contenedor**:
-
-```bash
-docker compose restart api
-```
-
-`uvicorn --reload` recarga el código, **no** el `.env`. Sin reiniciar, el cambio no
-se aplica y es la confusión más común.
+Es el mismo script que corre el cron de Railway: marca las vencidas, lista lo
+publicado en las últimas 24 h, baja el detalle y registra la corrida en
+`ingestion_run`. `--limite` acota cuántas se listan; con él la corrida termina
+`partial` (código 1), que es lo esperado en una prueba. El script se niega a
+correr contra una base que no sea local salvo con `--confirmar-produccion`.
 
 No hay que deshacer nada del dump: los dos modos escriben en las mismas tablas e
 insertan con `ON CONFLICT DO NOTHING`, así que la ingesta agrega licitaciones nuevas
 sobre las que ya cargaste. Lo único que pierdes es la reproducibilidad.
-
-Para comprobar qué modo quedó activo:
-
-```bash
-docker compose logs api | Select-String -Pattern "ingesta"   # PowerShell
-docker compose logs api | grep -i ingesta                    # macOS/Linux
-```
-
-Con `true` aparece `[Scheduler] Iniciando loop de descarga de metadatos...`; con
-`false`, `Ingesta automática desactivada`.
 
 Si quieres partir solo con lo que traiga la API:
 

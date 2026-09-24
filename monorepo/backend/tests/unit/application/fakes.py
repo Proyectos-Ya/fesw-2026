@@ -599,6 +599,9 @@ class InMemoryTenderRepository(ITenderRepository):
             return None
         return max(t.created_at for t in self.tenders.values())
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return None
+
     async def rollback(self) -> None:
         pass
 
