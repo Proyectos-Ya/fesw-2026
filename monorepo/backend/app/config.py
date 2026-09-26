@@ -201,6 +201,17 @@ class Settings(BaseSettings):
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
 
+    # --- Sincronización con Google Calendar (HU-16) ---
+    # Opcional: sin el cliente configurado, el resto de la app funciona igual y
+    # los endpoints de calendario responden que la sincronización no está
+    # disponible. La redirección se arma con app_base_url y debe coincidir
+    # exactamente con la registrada en Google Cloud.
+    google_calendar_client_id: str | None = None
+    google_calendar_client_secret: str | None = None
+    # Llave Fernet para cifrar los tokens en la base. Admite varias separadas
+    # por coma para rotarla: la primera cifra y todas descifran.
+    token_encryption_key: str | None = None
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.
@@ -276,11 +287,45 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def google_calendar_enabled(self) -> bool:
+        return self.google_calendar_client_id is not None
+
+    @property
+    def google_calendar_redirect_uri(self) -> str:
+        return f"{self.app_base_url.rstrip('/')}/calendario/callback/google"
+
+    @model_validator(mode="after")
+    def _exigir_configuracion_de_calendario(self) -> "Settings":
+        """Con el cliente de Google puesto, el secreto y la llave son obligatorios.
+
+        Sin la llave, los tokens de los usuarios no se podrían guardar cifrados;
+        mejor que no arranque a que falle al conectar el primer calendario.
+        """
+        if not self.google_calendar_client_id:
+            return self
+        faltantes = [
+            nombre
+            for nombre, valor in (
+                ("GOOGLE_CALENDAR_CLIENT_SECRET", self.google_calendar_client_secret),
+                ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
+            )
+            if not valor
+        ]
+        if faltantes:
+            raise ValueError(
+                "Falta configurar para Google Calendar: " + ", ".join(faltantes)
+            )
+        return self
+
     @field_validator(
         "embedding_api_key",
         "pinecone_api_key",
         "postgres_password",
         "company_lookup_api_key",
+        "google_calendar_client_id",
+        "google_calendar_client_secret",
+        "token_encryption_key",
         mode="after",
     )
     @classmethod

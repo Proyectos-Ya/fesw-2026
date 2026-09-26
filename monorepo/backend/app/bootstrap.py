@@ -129,8 +129,37 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.application.repositories.calendar_repository import (
+    ICalendarConnectionRepository,
+)
+from app.application.services.calendar_provider_client import (
+    CalendarProviders,
+    ICalendarProviderClient,
+)
 from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
+)
+from app.application.services.token_cipher import ITokenCipher
+from app.application.use_cases.calendar.calendar_authorization import (
+    CompleteCalendarAuthorizationUseCase,
+    StartCalendarAuthorizationUseCase,
+)
+from app.application.use_cases.calendar.calendar_connections import (
+    DisconnectCalendarUseCase,
+    GetCalendarConnectionsUseCase,
+)
+from app.domain.entities.calendar import CalendarProvider
+from app.infrastructure.repositories.calendar_repository import (
+    CalendarConnectionRepository,
+    CalendarOAuthStateRepository,
+)
+from app.infrastructure.routers.calendar import create_calendar_router
+from app.infrastructure.services.calendar.google_calendar_client import (
+    GoogleCalendarClient,
+)
+from app.infrastructure.services.security.fernet_token_cipher import (
+    FernetTokenCipher,
+    UnconfiguredTokenCipher,
 )
 from app.application.use_cases.milestones.extract_tender_milestones import (
     ExtractTenderMilestonesUseCase,
@@ -520,6 +549,70 @@ def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAI
     return request.app.state.milestone_extraction_service
 
 
+def get_calendar_providers(request: Request) -> CalendarProviders:
+    return request.app.state.calendar_providers
+
+
+def get_token_cipher(request: Request) -> ITokenCipher:
+    return request.app.state.token_cipher
+
+
+def get_calendar_connection_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    cipher: Annotated[ITokenCipher, Depends(get_token_cipher)],
+) -> ICalendarConnectionRepository:
+    return CalendarConnectionRepository(session, cipher)
+
+
+def get_calendar_connections_use_case(
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> GetCalendarConnectionsUseCase:
+    return GetCalendarConnectionsUseCase(connections, providers)
+
+
+def get_start_calendar_authorization_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> StartCalendarAuthorizationUseCase:
+    return StartCalendarAuthorizationUseCase(
+        milestones=TenderMilestoneRepository(session),
+        states=CalendarOAuthStateRepository(session),
+        providers=providers,
+    )
+
+
+def get_complete_calendar_authorization_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> CompleteCalendarAuthorizationUseCase:
+    return CompleteCalendarAuthorizationUseCase(
+        states=CalendarOAuthStateRepository(session),
+        connections=connections,
+        providers=providers,
+    )
+
+
+def get_disconnect_calendar_use_case(
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> DisconnectCalendarUseCase:
+    return DisconnectCalendarUseCase(connections, providers)
+
+
+def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient]:
+    """Solo los proveedores con credenciales; sin ninguno, la sincronización queda apagada."""
+    providers: dict[CalendarProvider, ICalendarProviderClient] = {}
+    if settings.google_calendar_client_id and settings.google_calendar_client_secret:
+        providers[CalendarProvider.GOOGLE] = GoogleCalendarClient(
+            client_id=settings.google_calendar_client_id,
+            client_secret=settings.google_calendar_client_secret,
+            redirect_uri=settings.google_calendar_redirect_uri,
+        )
+    return providers
+
+
 def get_tender_milestones_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
@@ -880,6 +973,13 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    # Una llave inválida corta el arranque acá, no al guardar el primer token.
+    app.state.token_cipher = (
+        FernetTokenCipher(settings.token_encryption_key)
+        if settings.token_encryption_key
+        else UnconfiguredTokenCipher()
+    )
+    app.state.calendar_providers = build_calendar_providers()
 
     app.state.reranker_service = build_reranker_service()
 
@@ -954,5 +1054,14 @@ def bootstrap(app: FastAPI) -> None:
             get_current_user,
             get_tender_milestones_use_case,
             get_extract_tender_milestones_use_case,
+        )
+    )
+    app.include_router(
+        create_calendar_router(
+            get_current_user,
+            get_calendar_connections_use_case,
+            get_start_calendar_authorization_use_case,
+            get_complete_calendar_authorization_use_case,
+            get_disconnect_calendar_use_case,
         )
     )

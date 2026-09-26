@@ -10,6 +10,11 @@ class InvalidMilestoneDate(MilestoneError):
         self.reason = reason
 
 
+class MilestoneNotFound(MilestoneError):
+    def __init__(self, message: str = "Uno o más hitos no existen en esta licitación."):
+        super().__init__(message)
+
+
 class MilestoneExtractionUnavailable(MilestoneError):
     def __init__(
         self,

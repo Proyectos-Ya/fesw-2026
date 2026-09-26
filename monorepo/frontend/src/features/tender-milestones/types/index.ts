@@ -36,6 +36,34 @@ export interface MilestoneList {
   discarded_count: number;
 }
 
+export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google"];
+
+export const CALENDAR_PROVIDER_LABELS: Record<CalendarProvider, string> = {
+  google: "Google Calendar",
+};
+
+export interface CalendarConnection {
+  provider: CalendarProvider;
+  connected: boolean;
+  account_email: string | null;
+  needs_reconnect: boolean;
+}
+
+export interface CalendarAuthorizationRequest {
+  tender_id: string;
+  milestone_ids: string[];
+  /** Hora de Chile "HH:MM" para los hitos sin hora exacta. */
+  default_time: string | null;
+}
+
+export interface CalendarAuthorizationResult {
+  provider: CalendarProvider;
+  tender_id: string;
+  milestone_ids: string[];
+  default_time: string | null;
+  account_email: string | null;
+}
+
 export const MILESTONE_KIND_LABELS: Record<MilestoneKind, string> = {
   publicacion: "Publicación",
   consultas: "Consultas",

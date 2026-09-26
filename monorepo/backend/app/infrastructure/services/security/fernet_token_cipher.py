@@ -7,6 +7,16 @@ class TokenDecryptionError(Exception):
     """El texto no se cifró con ninguna de las llaves configuradas."""
 
 
+class UnconfiguredTokenCipher(ITokenCipher):
+    """Sin TOKEN_ENCRYPTION_KEY no se guarda ningún token, ni siquiera en claro."""
+
+    def encrypt(self, plaintext: str) -> str:
+        raise RuntimeError("TOKEN_ENCRYPTION_KEY no está configurada.")
+
+    def decrypt(self, ciphertext: str) -> str:
+        raise RuntimeError("TOKEN_ENCRYPTION_KEY no está configurada.")
+
+
 class FernetTokenCipher(ITokenCipher):
     """Cifrado autenticado (AES-128-CBC + HMAC) de tokens de terceros.
 
