@@ -67,7 +67,7 @@ docker compose up -d
 ## Base de Datos y Datos de Prueba
 
 ### Migraciones con Alembic
-El esquema se gestiona **únicamente con Alembic** (ver [ADR 0001](../../docs/decisions/0001-esquema-solo-con-alembic.md)):
+El esquema se gestiona **únicamente con Alembic** (ver [AGENTS.md](../../AGENTS.md)):
 ```bash
 alembic upgrade head
 alembic revision --autogenerate -m "descripcion"
@@ -108,7 +108,7 @@ app/
 * **Linter y formato**: `ruff check . --fix && ruff format .`
 * **Tests**: `pytest` (o `pytest -m "not integration and not network"` para pruebas rápidas unitarias).
 * **Spikes**: Los experimentos en `spikes/` no requieren tests obligatorios (ver [AGENTS.md](../../AGENTS.md)).
-* **OpenAPI**: Toda ruta de la API debe definir `summary`, `tags` y `response_model`, validado automáticamente por `test_openapi_metadata.py`.
+* **OpenAPI**: Toda ruta de la API debe definir `summary`, `tags` y `response_model` para la documentación en `/docs` (ver [AGENTS.md](../../AGENTS.md)).
 
 ---
 

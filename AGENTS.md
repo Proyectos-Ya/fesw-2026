@@ -126,8 +126,7 @@ responsabilidades separadas y no intercambiables.
   desde la misma revisión base (`down_revision`). Al integrarse ambas ramas, el
   grafo de Alembic queda con dos finales concurrentes y `alembic upgrade head`
   **aborta con error sin aplicar nada**: el despliegue en Railway se cae en el
-  `preDeployCommand` y el código mergeado no llega a producción (ver [ADR 0001](./docs/decisions/0001-esquema-solo-con-alembic.md)
-  y [ADR 0003](./docs/decisions/0003-migraciones-en-predeploy-de-railway.md)).
+  `preDeployCommand` y el código mergeado no llega a producción.
 
   **Regla estricta antes de abrir PR (ver [SKILL.md](./SKILL.md) §1)**:
   Ejecutar `alembic heads`. Debe devolver **una sola línea**. Si devuelve más de
