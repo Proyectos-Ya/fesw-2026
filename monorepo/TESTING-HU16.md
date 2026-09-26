@@ -192,10 +192,11 @@ que reenvía solo los hitos fallidos.
 
 ## Verificación reproducible
 
-Backend (sin Python 3.12 local, en un contenedor):
+Backend (sin Python 3.12 local, en un contenedor desde `monorepo/backend`, en Git Bash).
+Se omite `sentence-transformers`, que el conftest reemplaza y arrastraría torch:
 
 ```bash
-docker run --rm -v "$(pwd -W):/app" -w /app -e POSTGRES_PASSWORD=x -e MERCADO_PUBLICO_API_KEY=x -e GEMINI_API_KEY=x -e GEMINI_MODEL=x python:3.12-slim sh -c "grep -v sentence-transformers requirements.txt > /tmp/r.txt && pip install -q -r /tmp/r.txt -r requirements-test.txt huggingface_hub && pytest -q -m 'not integration and not network'"
+MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/app" -w /app -e POSTGRES_PASSWORD=x -e MERCADO_PUBLICO_API_KEY=x -e GEMINI_API_KEY=x -e GEMINI_MODEL=x python:3.12-slim sh -c "cat requirements.txt requirements-test.txt | grep -v -e sentence-transformers -e '^-r' > /tmp/r.txt && pip install -q -r /tmp/r.txt huggingface_hub && pytest -q -m 'not integration and not network'"
 ```
 
 Con un Postgres disponible se agregan `tests/integration/test_milestone_calendar_repositories.py`
