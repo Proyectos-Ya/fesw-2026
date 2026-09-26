@@ -148,12 +148,18 @@ from app.application.use_cases.calendar.calendar_connections import (
     DisconnectCalendarUseCase,
     GetCalendarConnectionsUseCase,
 )
+from app.application.use_cases.calendar.sync_milestones import (
+    SyncMilestonesToCalendarUseCase,
+)
 from app.domain.entities.calendar import CalendarProvider
 from app.infrastructure.repositories.calendar_repository import (
     CalendarConnectionRepository,
     CalendarOAuthStateRepository,
 )
-from app.infrastructure.routers.calendar import create_calendar_router
+from app.infrastructure.routers.calendar import (
+    create_calendar_router,
+    create_milestone_sync_router,
+)
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
 )
@@ -591,6 +597,21 @@ def get_complete_calendar_authorization_use_case(
         states=CalendarOAuthStateRepository(session),
         connections=connections,
         providers=providers,
+    )
+
+
+def get_sync_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> SyncMilestonesToCalendarUseCase:
+    return SyncMilestonesToCalendarUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        connections=connections,
+        event_links=CalendarEventLinkRepository(session),
+        providers=providers,
+        app_base_url=settings.app_base_url,
     )
 
 
@@ -1064,4 +1085,7 @@ def bootstrap(app: FastAPI) -> None:
             get_complete_calendar_authorization_use_case,
             get_disconnect_calendar_use_case,
         )
+    )
+    app.include_router(
+        create_milestone_sync_router(get_current_user, get_sync_milestones_use_case)
     )

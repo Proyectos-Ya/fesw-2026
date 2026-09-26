@@ -81,6 +81,7 @@ class CalendarEventDraft(BaseModel):
     start: UtcDateTime
     end: UtcDateTime
     reminders_minutes: tuple[int, ...]
+    return_url: str
 
     @classmethod
     def from_milestone(
@@ -97,4 +98,5 @@ class CalendarEventDraft(BaseModel):
             start=milestone.due_at,
             end=milestone.due_at + _DURACION_EVENTO,
             reminders_minutes=_RECORDATORIOS_MINUTOS,
+            return_url=return_url,
         )

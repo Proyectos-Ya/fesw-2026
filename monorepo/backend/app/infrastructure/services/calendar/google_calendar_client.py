@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from datetime import UTC, datetime, timedelta
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -9,12 +9,14 @@ from app.application.services.calendar_provider_client import (
     ICalendarProviderClient,
     OAuthTokens,
 )
+from app.domain.entities.calendar import CalendarEventDraft
 from app.domain.errors.calendar_errors import (
     CalendarAuthExpired,
+    CalendarEventNotFound,
     CalendarPermissionMissing,
     CalendarProviderUnavailable,
 )
-from app.shared.datetime_utils import utc_now_naive
+from app.shared.datetime_utils import CHILE_TZ, utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ _AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 _REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 # Solo eventos: el scope completo de calendario permitiría leer y borrar todo.
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 _SCOPES = f"openid email {CALENDAR_SCOPE}"
@@ -92,6 +95,38 @@ class GoogleCalendarClient(ICalendarProviderClient):
         except httpx.HTTPError as error:
             logger.warning("No se pudo revocar el token en Google: %s", type(error).__name__)
 
+    async def create_event(self, access_token: str, draft: CalendarEventDraft) -> str:
+        respuesta = await self._evento("POST", _EVENTS_URL, access_token, draft)
+        evento_id = respuesta.json().get("id")
+        if not evento_id:
+            raise CalendarProviderUnavailable()
+        return str(evento_id)
+
+    async def update_event(self, access_token: str, event_id: str, draft: CalendarEventDraft) -> None:
+        await self._evento("PATCH", f"{_EVENTS_URL}/{quote(event_id, safe='')}", access_token, draft)
+
+    async def _evento(
+        self, metodo: str, url: str, access_token: str, draft: CalendarEventDraft
+    ) -> httpx.Response:
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as http:
+                respuesta = await http.request(
+                    metodo,
+                    url,
+                    json=_cuerpo_evento(draft),
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+        except httpx.HTTPError as error:
+            raise CalendarProviderUnavailable() from error
+        if respuesta.status_code == 200:
+            return respuesta
+        if respuesta.status_code == 401:
+            raise CalendarAuthExpired()
+        if respuesta.status_code in (404, 410):
+            raise CalendarEventNotFound()
+        logger.error("Google Calendar rechazó el evento (HTTP %s)", respuesta.status_code)
+        raise CalendarProviderUnavailable()
+
     async def _token(self, form: dict[str, str]) -> dict[str, object]:
         form = {**form, "client_id": self.client_id, "client_secret": self.client_secret}
         try:
@@ -126,6 +161,29 @@ class GoogleCalendarClient(ICalendarProviderClient):
     def _vencimiento(self, datos: dict[str, object]) -> datetime:
         segundos = datos.get("expires_in", 3600)
         return self.now() + timedelta(seconds=int(segundos) if isinstance(segundos, int | str) else 3600)
+
+
+def _local(fecha: datetime) -> dict[str, str]:
+    """UTC naive → hora de Chile con su zona: Google aplica el cambio de horario."""
+    local = fecha.replace(tzinfo=UTC).astimezone(CHILE_TZ).replace(tzinfo=None)
+    return {"dateTime": local.isoformat(timespec="seconds"), "timeZone": "America/Santiago"}
+
+
+def _cuerpo_evento(draft: CalendarEventDraft) -> dict[str, object]:
+    recordatorios: list[dict[str, object]] = [
+        {"method": "popup", "minutes": minutos} for minutos in draft.reminders_minutes
+    ]
+    if draft.reminders_minutes:
+        recordatorios.append({"method": "email", "minutes": max(draft.reminders_minutes)})
+    return {
+        "summary": draft.title,
+        "description": draft.description,
+        "start": _local(draft.start),
+        "end": _local(draft.end),
+        "reminders": {"useDefault": False, "overrides": recordatorios},
+        "source": {"title": "ProyectosYA", "url": draft.return_url},
+        "extendedProperties": {"private": {"milestone_id": str(draft.milestone_id)}},
+    }
 
 
 def _opcional(valor: object) -> str | None:

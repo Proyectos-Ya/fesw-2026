@@ -8,7 +8,7 @@ import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
 import { completeCalendarAuthorization } from "../services/calendarService";
 import { CALENDAR_PROVIDER_LABELS, type CalendarProvider } from "../types";
-import { consumeCalendarReturnTender } from "../utils/calendarReturn";
+import { consumeCalendarReturnTender, savePendingCalendarSync } from "../utils/calendarReturn";
 
 interface CalendarOAuthCallbackProps {
   provider: CalendarProvider;
@@ -51,6 +51,7 @@ export function CalendarOAuthCallback({ provider, code, state, error }: Calendar
 
     completeCalendarAuthorization(provider, code, state)
       .then((result) => {
+        savePendingCalendarSync(result);
         router.replace(`/matches/${encodeURIComponent(result.tender_id)}?calendario=${provider}`);
       })
       .catch((err: unknown) => {

@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.domain.entities.calendar import CalendarProvider
+from app.domain.entities.calendar import CalendarEventDraft, CalendarProvider
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,14 @@ class ICalendarProviderClient(ABC):
     @abstractmethod
     async def revoke(self, token: str) -> None:
         """Mejor esfuerzo: no lanza si el proveedor rechaza la revocación."""
+
+    @abstractmethod
+    async def create_event(self, access_token: str, draft: CalendarEventDraft) -> str:
+        """Devuelve el id del evento. Lanza CalendarAuthExpired si el token fue rechazado."""
+
+    @abstractmethod
+    async def update_event(self, access_token: str, event_id: str, draft: CalendarEventDraft) -> None:
+        """Lanza CalendarEventNotFound si el usuario borró el evento."""
 
 
 CalendarProviders = Mapping[CalendarProvider, ICalendarProviderClient]

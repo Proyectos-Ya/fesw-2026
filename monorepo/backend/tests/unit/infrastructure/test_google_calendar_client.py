@@ -162,3 +162,87 @@ class TestRevocacion:
         respx.post(REVOKE_URL).respond(400, json={"error": "invalid_token"})
 
         await client.revoke("1//ya-revocado")
+
+
+EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+
+
+def _borrador():
+    from uuid import UUID
+
+    from app.domain.entities.calendar import CalendarEventDraft
+
+    return CalendarEventDraft(
+        milestone_id=UUID("11111111-1111-1111-1111-111111111111"),
+        title="Visita técnica — Reparación de techumbre",
+        description="Ver la licitación en ProyectosYA: https://app/matches/t-1",
+        start=datetime(2026, 10, 20, 18, 0),  # 15:00 en Chile (UTC-3)
+        end=datetime(2026, 10, 20, 19, 0),
+        reminders_minutes=(1440, 60),
+        return_url="https://app/matches/t-1",
+    )
+
+
+class TestEventos:
+    @respx.mock
+    async def test_crea_el_evento_en_hora_de_chile_con_recordatorios_y_enlace(self, client):
+        import json
+
+        ruta = respx.post(EVENTS_URL).respond(200, json={"id": "evento-123"})
+
+        evento_id = await client.create_event("ya29.acceso", _borrador())
+
+        assert evento_id == "evento-123"
+        peticion = ruta.calls.last.request
+        assert peticion.headers["Authorization"] == "Bearer ya29.acceso"
+        cuerpo = json.loads(peticion.content)
+        assert cuerpo["summary"] == "Visita técnica — Reparación de techumbre"
+        assert "https://app/matches/t-1" in cuerpo["description"]
+        assert cuerpo["start"] == {"dateTime": "2026-10-20T15:00:00", "timeZone": "America/Santiago"}
+        assert cuerpo["end"] == {"dateTime": "2026-10-20T16:00:00", "timeZone": "America/Santiago"}
+        assert cuerpo["reminders"]["useDefault"] is False
+        assert {"method": "popup", "minutes": 60} in cuerpo["reminders"]["overrides"]
+        assert {"method": "popup", "minutes": 1440} in cuerpo["reminders"]["overrides"]
+        assert {"method": "email", "minutes": 1440} in cuerpo["reminders"]["overrides"]
+        assert cuerpo["source"] == {"title": "ProyectosYA", "url": "https://app/matches/t-1"}
+        assert cuerpo["extendedProperties"]["private"]["milestone_id"] == "11111111-1111-1111-1111-111111111111"
+
+    @respx.mock
+    async def test_actualiza_un_evento_existente(self, client):
+        ruta = respx.patch(f"{EVENTS_URL}/evento-123").respond(200, json={"id": "evento-123"})
+
+        await client.update_event("ya29.acceso", "evento-123", _borrador())
+
+        assert ruta.called
+
+    @respx.mock
+    @pytest.mark.parametrize("estado", [404, 410])
+    async def test_un_evento_borrado_por_el_usuario_se_informa(self, client, estado):
+        from app.domain.errors.calendar_errors import CalendarEventNotFound
+
+        respx.patch(f"{EVENTS_URL}/evento-123").respond(estado)
+
+        with pytest.raises(CalendarEventNotFound):
+            await client.update_event("ya29.acceso", "evento-123", _borrador())
+
+    @respx.mock
+    async def test_un_token_rechazado_pide_refrescar(self, client):
+        respx.post(EVENTS_URL).respond(401)
+
+        with pytest.raises(CalendarAuthExpired):
+            await client.create_event("ya29.vencido", _borrador())
+
+    @respx.mock
+    @pytest.mark.parametrize("respuesta", [httpx.Response(500), httpx.Response(403, json={"error": {"errors": [{"reason": "rateLimitExceeded"}]}})])
+    async def test_otros_errores_son_no_disponible(self, client, respuesta):
+        respx.post(EVENTS_URL).mock(return_value=respuesta)
+
+        with pytest.raises(CalendarProviderUnavailable):
+            await client.create_event("ya29.acceso", _borrador())
+
+    @respx.mock
+    async def test_un_timeout_es_no_disponible(self, client):
+        respx.post(EVENTS_URL).mock(side_effect=httpx.ReadTimeout("lento"))
+
+        with pytest.raises(CalendarProviderUnavailable):
+            await client.create_event("ya29.acceso", _borrador())

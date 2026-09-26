@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/features/shared/api/client";
 import * as calendarService from "../../services/calendarService";
-import { rememberCalendarReturnTender } from "../../utils/calendarReturn";
+import {
+  consumePendingCalendarSync,
+  rememberCalendarReturnTender,
+} from "../../utils/calendarReturn";
 import { CalendarOAuthCallback } from "../CalendarOAuthCallback";
 
 const replace = vi.fn();
@@ -40,6 +43,15 @@ describe("CalendarOAuthCallback", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/conectando con google calendar/i);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/matches/t-1?calendario=google"));
     expect(calendarService.completeCalendarAuthorization).toHaveBeenCalledWith("google", "codigo", "estado");
+  });
+
+  it("deja pendiente la sincronización que el usuario había pedido", async () => {
+    vi.mocked(calendarService.completeCalendarAuthorization).mockResolvedValue(RESULTADO);
+
+    render(<CalendarOAuthCallback provider="google" code="codigo" state="estado" error={null} />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalled());
+    expect(consumePendingCalendarSync("t-1")).toEqual(RESULTADO);
   });
 
   it("no usa el código dos veces aunque React monte dos veces el efecto", async () => {

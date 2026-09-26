@@ -64,6 +64,28 @@ describe("useTenderMilestones", () => {
     expect(result.current.isExtracting).toBe(false);
   });
 
+  it("refresh recarga sin pasar por el estado de carga", async () => {
+    vi.mocked(service.getTenderMilestones)
+      .mockResolvedValueOnce(buildMilestoneList())
+      .mockResolvedValueOnce(
+        buildMilestoneList({ milestones: [buildMilestone({ synced_providers: ["google"] })] }),
+      );
+    const { result } = renderHook(() => useTenderMilestones("t-1"));
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    const estados: string[] = [];
+
+    await act(async () => {
+      const promesa = result.current.refresh();
+      estados.push(result.current.state.status);
+      await promesa;
+    });
+
+    expect(estados).toEqual(["ready"]);
+    expect(
+      result.current.state.status === "ready" && result.current.state.data.milestones[0].synced_providers,
+    ).toEqual(["google"]);
+  });
+
   it("si la extracción falla conserva los hitos y muestra el error", async () => {
     vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
     vi.mocked(service.extractTenderMilestones).mockRejectedValue(

@@ -64,6 +64,11 @@ export interface CalendarAuthorizationResult {
   account_email: string | null;
 }
 
+export interface MilestoneSyncResponse {
+  results: { milestone_id: string; synced: boolean }[];
+  failed_count: number;
+}
+
 export const MILESTONE_KIND_LABELS: Record<MilestoneKind, string> = {
   publicacion: "Publicación",
   consultas: "Consultas",

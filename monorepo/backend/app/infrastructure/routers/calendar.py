@@ -14,25 +14,35 @@ from app.application.use_cases.calendar.calendar_connections import (
     DisconnectCalendarUseCase,
     GetCalendarConnectionsUseCase,
 )
+from app.application.use_cases.calendar.sync_milestones import (
+    SyncMilestonesToCalendarUseCase,
+)
 from app.domain.entities.calendar import CalendarProvider
 from app.domain.entities.user import User
 from app.domain.errors.calendar_errors import (
     CalendarAuthExpired,
     CalendarError,
     CalendarNotConfigured,
+    CalendarNotConnected,
     CalendarPermissionMissing,
     CalendarProviderUnavailable,
     InvalidOAuthState,
+    MilestoneTimeRequired,
 )
 from app.domain.errors.milestone_errors import MilestoneNotFound
+from app.domain.errors.tender_errors import TenderNotFound
 
 HoraMinuto = Annotated[time, PlainSerializer(lambda t: t.strftime("%H:%M"), return_type=str)]
 
 _ESTADOS: dict[type[Exception], int] = {
     MilestoneNotFound: 404,
+    TenderNotFound: 404,
     InvalidOAuthState: 400,
     CalendarPermissionMissing: 403,
+    # 409 significa "hay que (re)conectar": el frontend lo resuelve redirigiendo.
+    CalendarNotConnected: 409,
     CalendarAuthExpired: 409,
+    MilestoneTimeRequired: 422,
     CalendarProviderUnavailable: 502,
     CalendarNotConfigured: 503,
 }
@@ -151,5 +161,54 @@ def create_calendar_router(
         except CalendarError as error:
             raise _http(error) from error
         return Response(status_code=204)
+
+    return router
+
+
+class SyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: CalendarProvider
+    milestone_ids: list[UUID] = Field(min_length=1, max_length=50)
+    default_time: time | None = None
+
+
+class MilestoneSyncResponse(BaseModel):
+    milestone_id: UUID
+    synced: bool
+
+
+class SyncResponse(BaseModel):
+    results: list[MilestoneSyncResponse]
+    failed_count: int
+
+
+def create_milestone_sync_router(
+    get_current_user: Callable, get_sync_milestones_use_case: Callable
+) -> APIRouter:
+    router = APIRouter(prefix="/tenders", tags=["Calendar"])
+
+    @router.post("/{tender_id}/milestones/sync", response_model=SyncResponse)
+    async def sync_milestones(
+        tender_id: UUID,
+        body: SyncRequest,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            SyncMilestonesToCalendarUseCase, Depends(get_sync_milestones_use_case)
+        ],
+    ):
+        try:
+            resultado = await use_case.execute(
+                user.id, body.provider, tender_id, body.milestone_ids, body.default_time
+            )
+        except (CalendarError, MilestoneNotFound, TenderNotFound) as error:
+            raise _http(error) from error
+        return SyncResponse(
+            results=[
+                MilestoneSyncResponse(milestone_id=r.milestone_id, synced=r.synced)
+                for r in resultado.results
+            ],
+            failed_count=resultado.failed_count,
+        )
 
     return router

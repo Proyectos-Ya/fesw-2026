@@ -6,6 +6,7 @@ import {
   disconnectCalendar,
   getCalendarConnections,
   startCalendarAuthorization,
+  syncMilestones,
 } from "../calendarService";
 
 vi.mock("@/features/shared/api/client", () => ({
@@ -43,6 +44,15 @@ describe("calendarService", () => {
     expect(apiFetch).toHaveBeenCalledWith("/calendar/google/callback", {
       method: "POST",
       body: JSON.stringify({ code: "codigo", state: "estado" }),
+    });
+  });
+
+  it("sincroniza los hitos elegidos con la hora por defecto", async () => {
+    await syncMilestones("t-1", "google", ["m-1"], "09:00");
+
+    expect(apiFetch).toHaveBeenCalledWith("/tenders/t-1/milestones/sync", {
+      method: "POST",
+      body: JSON.stringify({ provider: "google", milestone_ids: ["m-1"], default_time: "09:00" }),
     });
   });
 

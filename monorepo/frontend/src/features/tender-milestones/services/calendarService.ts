@@ -5,6 +5,7 @@ import type {
   CalendarAuthorizationResult,
   CalendarConnection,
   CalendarProvider,
+  MilestoneSyncResponse,
 } from "../types";
 
 export function getCalendarConnections(): Promise<CalendarConnection[]> {
@@ -34,4 +35,19 @@ export function completeCalendarAuthorization(
 
 export function disconnectCalendar(provider: CalendarProvider): Promise<void> {
   return apiFetch<void>(`/calendar/connections/${provider}`, { method: "DELETE" });
+}
+
+export function syncMilestones(
+  tenderId: string,
+  provider: CalendarProvider,
+  milestoneIds: string[],
+  defaultTime: string | null,
+): Promise<MilestoneSyncResponse> {
+  return apiFetch<MilestoneSyncResponse>(
+    `/tenders/${encodeURIComponent(tenderId)}/milestones/sync`,
+    {
+      method: "POST",
+      body: JSON.stringify({ provider, milestone_ids: milestoneIds, default_time: defaultTime }),
+    },
+  );
 }

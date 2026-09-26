@@ -22,11 +22,17 @@ from app.application.services.milestone_extraction_ai_service import (
 from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.calendar import (
     CalendarConnection,
+    CalendarEventDraft,
     CalendarEventLink,
     CalendarOAuthState,
     CalendarProvider,
 )
 from app.domain.entities.tender_milestone import TenderMilestone
+from app.domain.errors.calendar_errors import (
+    CalendarAuthExpired,
+    CalendarEventNotFound,
+    CalendarProviderUnavailable,
+)
 from app.domain.errors.milestone_errors import MilestoneExtractionUnavailable
 
 
@@ -124,6 +130,14 @@ class FakeCalendarProviderClient(ICalendarProviderClient):
         self.codigos: list[str] = []
         self.refrescos: list[str] = []
         self.revocados: list[str] = []
+        self.eventos: dict[str, CalendarEventDraft] = {}
+        self.actualizados: list[str] = []
+        self.tokens_usados: list[str] = []
+        self.fallar_en: set[UUID] = set()
+        self.refresh_revocado = False
+        # Token que Google rechaza con 401 aunque todavía no haya vencido.
+        self.rechazar_token: str | None = None
+        self._creados = 0
 
     def authorization_url(self, state: str) -> str:
         self.urls_pedidas.append(state)
@@ -135,7 +149,30 @@ class FakeCalendarProviderClient(ICalendarProviderClient):
 
     async def refresh(self, refresh_token: str) -> OAuthTokens:
         self.refrescos.append(refresh_token)
+        if self.refresh_revocado:
+            raise CalendarAuthExpired()
         return self.tokens
 
     async def revoke(self, token: str) -> None:
         self.revocados.append(token)
+
+    def _verificar(self, access_token: str, draft: CalendarEventDraft) -> None:
+        if access_token == self.rechazar_token:
+            raise CalendarAuthExpired()
+        if draft.milestone_id in self.fallar_en:
+            raise CalendarProviderUnavailable()
+        self.tokens_usados.append(access_token)
+
+    async def create_event(self, access_token: str, draft: CalendarEventDraft) -> str:
+        self._verificar(access_token, draft)
+        self._creados += 1
+        evento_id = f"evento-{self._creados}"
+        self.eventos[evento_id] = draft
+        return evento_id
+
+    async def update_event(self, access_token: str, event_id: str, draft: CalendarEventDraft) -> None:
+        self._verificar(access_token, draft)
+        if event_id not in self.eventos:
+            raise CalendarEventNotFound()
+        self.eventos[event_id] = draft
+        self.actualizados.append(event_id)

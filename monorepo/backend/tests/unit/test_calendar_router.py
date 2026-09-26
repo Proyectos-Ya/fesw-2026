@@ -171,3 +171,94 @@ def test_sin_sesion_es_401(api):
     assert api.client.post("/calendar/google/callback", json={"code": "c", "state": "s"}).status_code == 401
     assert api.client.delete("/calendar/connections/google").status_code == 401
     api.completar.execute.assert_not_awaited()
+
+
+@pytest.fixture
+def sync_api():
+    from app.application.use_cases.calendar.sync_milestones import (
+        MilestoneSyncResult,
+        SyncResult,
+    )
+    from app.infrastructure.routers.calendar import create_milestone_sync_router
+
+    user_id, tender_id, ok_id, malo_id = uuid4(), uuid4(), uuid4(), uuid4()
+    sync = AsyncMock()
+    sync.execute.return_value = SyncResult(
+        results=[
+            MilestoneSyncResult(milestone_id=ok_id, synced=True),
+            MilestoneSyncResult(milestone_id=malo_id, synced=False),
+        ]
+    )
+    app = FastAPI()
+
+    def current_user():
+        return SimpleNamespace(id=user_id)
+
+    app.include_router(create_milestone_sync_router(current_user, lambda: sync))
+    return SimpleNamespace(
+        client=TestClient(app),
+        sync=sync,
+        user_id=user_id,
+        tender_id=tender_id,
+        ok_id=ok_id,
+        malo_id=malo_id,
+        path=f"/tenders/{tender_id}/milestones/sync",
+    )
+
+
+def _sincronizar(sync_api, **cambios):
+    cuerpo = {"provider": "google", "milestone_ids": [str(sync_api.ok_id), str(sync_api.malo_id)]}
+    cuerpo.update(cambios)
+    return sync_api.client.post(sync_api.path, json=cuerpo)
+
+
+def test_sincronizar_devuelve_el_resultado_por_hito(sync_api):
+    respuesta = _sincronizar(sync_api, default_time="09:00")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {
+        "results": [
+            {"milestone_id": str(sync_api.ok_id), "synced": True},
+            {"milestone_id": str(sync_api.malo_id), "synced": False},
+        ],
+        "failed_count": 1,
+    }
+    sync_api.sync.execute.assert_awaited_once_with(
+        sync_api.user_id, GOOGLE, sync_api.tender_id, [sync_api.ok_id, sync_api.malo_id], time(9, 0)
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "estado"),
+    [
+        ("no_conectado", 409),
+        ("expirado", 409),
+        ("hora", 422),
+        ("hito", 404),
+        ("configuracion", 503),
+    ],
+)
+def test_errores_de_sincronizacion(sync_api, error, estado):
+    from app.domain.errors.calendar_errors import (
+        CalendarNotConnected,
+        MilestoneTimeRequired,
+    )
+
+    sync_api.sync.execute.side_effect = {
+        "no_conectado": CalendarNotConnected(),
+        "expirado": CalendarAuthExpired(),
+        "hora": MilestoneTimeRequired([sync_api.malo_id]),
+        "hito": MilestoneNotFound(),
+        "configuracion": CalendarNotConfigured(GOOGLE),
+    }[error]
+
+    respuesta = _sincronizar(sync_api)
+
+    assert respuesta.status_code == estado
+    assert isinstance(respuesta.json()["detail"], str)
+
+
+def test_sincronizar_valida_el_cuerpo(sync_api):
+    assert _sincronizar(sync_api, milestone_ids=[]).status_code == 422
+    assert _sincronizar(sync_api, provider="yahoo").status_code == 422
+    sync_api.sync.execute.assert_not_awaited()

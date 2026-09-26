@@ -51,6 +51,16 @@ export function useTenderMilestones(tenderId: string) {
     setReloadNonce((n) => n + 1);
   }, []);
 
+  /** Recarga sin pasar por "cargando": la tabla sigue visible mientras tanto. */
+  const refresh = useCallback(async () => {
+    try {
+      const data = await getTenderMilestones(tenderId);
+      setState({ status: "ready", data });
+    } catch {
+      // Se conserva la tabla anterior; la próxima carga completa mostrará el error.
+    }
+  }, [tenderId]);
+
   const extract = useCallback(async () => {
     setIsExtracting(true);
     setExtractError(null);
@@ -66,5 +76,5 @@ export function useTenderMilestones(tenderId: string) {
     }
   }, [tenderId]);
 
-  return { state, reload, extract, isExtracting, extractError, notice };
+  return { state, reload, refresh, extract, isExtracting, extractError, notice };
 }

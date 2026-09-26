@@ -1,9 +1,12 @@
 "use client";
 
+import { useCallback, useState } from "react";
+
 import { Badge } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 
+import { useCalendarSync } from "../hooks/useCalendarSync";
 import { useTenderMilestones } from "../hooks/useTenderMilestones";
 import {
   MILESTONE_KIND_LABELS,
@@ -11,6 +14,8 @@ import {
   type TenderMilestone,
 } from "../types";
 import { formatMilestoneDate, urgencyBadge } from "../utils/milestoneFormat";
+import { CalendarSyncBar } from "./CalendarSyncBar";
+import { DefaultTimeDialog } from "./DefaultTimeDialog";
 
 interface MilestonesSectionProps {
   tenderId: string;
@@ -18,9 +23,28 @@ interface MilestonesSectionProps {
   now?: Date;
 }
 
+const NO_MILESTONES: TenderMilestone[] = [];
+
 export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
-  const { state, reload, extract, isExtracting, extractError, notice } =
+  const { state, reload, refresh, extract, isExtracting, extractError, notice } =
     useTenderMilestones(tenderId);
+  const milestones = state.status === "ready" ? state.data.milestones : NO_MILESTONES;
+  const onSynced = useCallback(() => void refresh(), [refresh]);
+  const calendar = useCalendarSync({ tenderId, milestones, onSynced });
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+
+  const toggle = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const pending = milestones.filter((m) => m.urgency !== "vencido");
+  const allPendingSelected = pending.length > 0 && pending.every((m) => selected.has(m.id));
+  const toggleAll = () =>
+    setSelected(allPendingSelected ? new Set() : new Set(pending.map((m) => m.id)));
+  const selectable = calendar.available;
 
   if (state.status === "loading") {
     return (
@@ -34,7 +58,7 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
     return <ErrorAlert message={state.message} onRetry={reload} />;
   }
 
-  const { milestones, documents_count: documentsCount } = state.data;
+  const documentsCount = state.data.documents_count;
 
   return (
     <div className="space-y-4">
@@ -69,6 +93,14 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
         </p>
       )}
 
+      {calendar.available && (
+        <CalendarSyncBar
+          calendar={calendar}
+          selectedCount={selected.size}
+          onSync={() => void calendar.sync(milestones.filter((m) => selected.has(m.id)).map((m) => m.id))}
+        />
+      )}
+
       {milestones.length === 0 ? (
         <p className="text-sm italic text-text-subtle">Esta licitación todavía no tiene hitos.</p>
       ) : (
@@ -76,6 +108,18 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
               <tr className="border-b border-border-subtle text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+                {selectable && (
+                  <th scope="col" className="w-8 py-2 pr-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Seleccionar todos los hitos pendientes"
+                      checked={allPendingSelected}
+                      onChange={toggleAll}
+                      disabled={pending.length === 0}
+                      className="size-4 accent-[var(--primary)]"
+                    />
+                  </th>
+                )}
                 <th scope="col" className="py-2 pr-4">Hito</th>
                 <th scope="col" className="py-2 pr-4">Fecha</th>
                 <th scope="col" className="py-2 pr-4">Plazo</th>
@@ -84,22 +128,57 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
             </thead>
             <tbody>
               {milestones.map((milestone) => (
-                <MilestoneRow key={milestone.id} milestone={milestone} now={now} />
+                <MilestoneRow
+                  key={milestone.id}
+                  milestone={milestone}
+                  now={now}
+                  selectable={selectable}
+                  selected={selected.has(milestone.id)}
+                  onToggle={() => toggle(milestone.id)}
+                />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {calendar.state.status === "needsTime" && (
+        <DefaultTimeDialog
+          open
+          count={calendar.state.missingCount}
+          onConfirm={(time) => void calendar.confirmTime(time)}
+          onCancel={calendar.cancelTime}
+        />
+      )}
     </div>
   );
 }
 
-function MilestoneRow({ milestone, now }: { milestone: TenderMilestone; now?: Date }) {
+interface MilestoneRowProps {
+  milestone: TenderMilestone;
+  now?: Date;
+  selectable: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+function MilestoneRow({ milestone, now, selectable, selected, onToggle }: MilestoneRowProps) {
   const urgency = urgencyBadge(milestone.urgency, milestone.due_at, now);
   const isPast = milestone.urgency === "vencido";
 
   return (
     <tr className={`border-b border-border-subtle align-top last:border-0 ${isPast ? "opacity-60" : ""}`}>
+      {selectable && (
+        <td className="py-3 pr-2">
+          <input
+            type="checkbox"
+            aria-label={`Seleccionar ${milestone.title}`}
+            checked={selected}
+            onChange={onToggle}
+            className="size-4 accent-[var(--primary)]"
+          />
+        </td>
+      )}
       <td className="py-3 pr-4">
         <div className="font-semibold text-text-strong">{milestone.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">

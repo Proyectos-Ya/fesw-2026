@@ -39,6 +39,18 @@ class CalendarPermissionMissing(CalendarError):
         super().__init__(message)
 
 
+class CalendarNotConnected(CalendarError):
+    def __init__(self, message: str = "Conecta tu calendario para sincronizar los hitos."):
+        super().__init__(message)
+
+
+class CalendarEventNotFound(CalendarError):
+    """El evento ya no existe en el calendario externo (el usuario lo borró)."""
+
+    def __init__(self, message: str = "El evento ya no existe en el calendario."):
+        super().__init__(message)
+
+
 class CalendarProviderUnavailable(CalendarError):
     def __init__(
         self,
