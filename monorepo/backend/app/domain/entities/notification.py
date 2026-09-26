@@ -21,6 +21,9 @@ from app.shared.constants import HIGH_COMPATIBILITY_THRESHOLD
 from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 DeliveryMode = Literal["immediate", "daily_digest"]
+# `match`: licitación compatible (HdU 08). `date_changed`: Mercado Público movió
+# una fecha de una licitación con hitos en el calendario del usuario (HU-16).
+NotificationKind = Literal["match", "date_changed"]
 DeliveryKind = Literal["immediate", "digest"]
 DeliveryStatus = Literal["pending", "sent", "failed_permanent"]
 
@@ -63,20 +66,30 @@ class NotificationPreference(BaseModel):
         return self.enabled and self.email_delivery_enabled
 
 
-class Notification(BaseModel):
-    """Aviso in-app de una licitación compatible.
+class MilestoneDateChange(BaseModel):
+    """Una fecha oficial que Mercado Público movió."""
 
-    La unicidad de `(user_id, tender_id)` la garantiza la base de datos; acá
-    solo se modela el aviso.
+    label: str
+    previous_at: UtcDateTime
+    new_at: UtcDateTime
+
+
+class Notification(BaseModel):
+    """Aviso in-app sobre una licitación.
+
+    La unicidad de `(user_id, tender_id, kind)` la garantiza la base de datos;
+    acá solo se modela el aviso.
     """
 
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     tender_id: UUID
+    kind: NotificationKind = "match"
     # Score que tenía el match cuando se generó el aviso. Se congela a propósito:
     # el pipeline recalcula y el número puede moverse, pero el aviso debe seguir
-    # explicando por qué se envió.
-    score: float
+    # explicando por qué se envió. Solo lo tienen los avisos `match`.
+    score: float | None = None
+    date_changes: list[MilestoneDateChange] = Field(default_factory=list)
     read_at: UtcDateTime | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

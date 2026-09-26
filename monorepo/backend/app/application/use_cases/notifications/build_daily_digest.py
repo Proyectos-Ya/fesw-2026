@@ -47,7 +47,10 @@ class BuildDailyDigestUseCase:
             ya_entregados = await self.delivery_repo.list_pending_notification_ids(
                 preference.user_id
             )
-            pendientes = [a.id for a in avisos if a.id not in ya_entregados]
+            # Los "Fecha modificada" (HU-16) salen al momento con su propio correo.
+            pendientes = [
+                a.id for a in avisos if a.kind == "match" and a.id not in ya_entregados
+            ]
             if not pendientes:
                 continue
 

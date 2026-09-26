@@ -306,3 +306,103 @@ class TestEnlacesDeEventos:
 
 
 pytestmark = pytest.mark.integration
+
+
+class TestConsultasDelRefresco:
+    async def test_hitos_oficiales_de_todos_los_usuarios(self, db_session: AsyncSession):
+        uno, otro = await _usuario(db_session), await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = TenderMilestoneRepository(db_session)
+        oficial = _hito(uno, tender_id, 2, source=MilestoneSource.MERCADO_PUBLICO)
+        oficial_otro = _hito(otro, tender_id, 2, source=MilestoneSource.MERCADO_PUBLICO)
+        de_ia = _hito(uno, tender_id, 3)
+        await repo.save_many([oficial, oficial_otro, de_ia])
+
+        encontrados = await repo.list_by_tender_and_source(tender_id, MilestoneSource.MERCADO_PUBLICO)
+
+        assert {h.id for h in encontrados} == {oficial.id, oficial_otro.id}
+
+    async def test_licitaciones_con_hitos_sincronizados_y_sus_enlaces(self, db_session: AsyncSession):
+        user_id = await _usuario(db_session)
+        sincronizada = await _licitacion(db_session)
+        sin_sincronizar = await _licitacion(db_session)
+        hitos = TenderMilestoneRepository(db_session)
+        hito, otro_hito = _hito(user_id, sincronizada, 2), _hito(user_id, sincronizada, 4)
+        await hitos.save_many([hito, otro_hito, _hito(user_id, sin_sincronizar, 2)])
+        repo = CalendarEventLinkRepository(db_session)
+        for h in (hito, otro_hito):
+            await repo.save(
+                CalendarEventLink(
+                    user_id=user_id,
+                    milestone_id=h.id,
+                    provider=GOOGLE,
+                    external_event_id=f"evento-{h.id}",
+                    synced_due_at=h.due_at,
+                )
+            )
+
+        assert await repo.list_linked_tender_ids() == [sincronizada]
+        assert {e.milestone_id for e in await repo.list_by_tender(sincronizada)} == {hito.id, otro_hito.id}
+        assert await repo.list_by_tender(sin_sincronizar) == []
+
+
+class TestAvisoDeFechaModificada:
+    async def test_convive_con_el_de_compatibilidad_y_no_cuenta_como_avisado(self, db_session: AsyncSession):
+        from app.domain.entities.notification import MilestoneDateChange, Notification
+        from app.infrastructure.repositories.notification_repository import (
+            NotificationRepository,
+        )
+
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = NotificationRepository(db_session)
+        await repo.save_bulk([Notification(user_id=user_id, tender_id=tender_id, score=0.9)])
+        cambio = MilestoneDateChange(
+            label="Cierre de recepción de ofertas",
+            previous_at=datetime(2026, 10, 20, 18, 0),
+            new_at=datetime(2026, 10, 27, 18, 0),
+        )
+
+        aviso = await repo.save_date_change(
+            Notification(user_id=user_id, tender_id=tender_id, kind="date_changed", date_changes=[cambio])
+        )
+
+        guardados = await repo.list_by_user(user_id)
+        assert {a.kind for a in guardados} == {"match", "date_changed"}
+        leido = await repo.get(aviso.id)
+        assert leido is not None
+        assert leido.score is None
+        assert leido.date_changes == [cambio]
+
+    async def test_un_segundo_cambio_reemplaza_el_aviso_y_lo_marca_no_leido(self, db_session: AsyncSession):
+        from app.domain.entities.notification import MilestoneDateChange, Notification
+        from app.infrastructure.repositories.notification_repository import (
+            NotificationRepository,
+        )
+
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = NotificationRepository(db_session)
+
+        def _aviso(dias: int) -> Notification:
+            return Notification(
+                user_id=user_id,
+                tender_id=tender_id,
+                kind="date_changed",
+                date_changes=[
+                    MilestoneDateChange(
+                        label="Cierre",
+                        previous_at=datetime(2026, 10, 20),
+                        new_at=datetime(2026, 10, 20) + timedelta(days=dias),
+                    )
+                ],
+            )
+
+        primero = await repo.save_date_change(_aviso(7))
+        await repo.mark_all_read(user_id)
+        segundo = await repo.save_date_change(_aviso(9))
+
+        assert segundo.id == primero.id
+        assert segundo.read_at is None
+        assert segundo.date_changes[0].new_at == datetime(2026, 10, 29)
+        assert await repo.count_unread(user_id) == 1

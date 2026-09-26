@@ -6,7 +6,11 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import bootstrap, build_notification_runners
+from app.bootstrap import (
+    bootstrap,
+    build_milestone_refresh_runner,
+    build_notification_runners,
+)
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
@@ -22,6 +26,12 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
 )
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     TenderIngestionService,
+)
+from app.infrastructure.services.milestone_refresh_scheduler import (
+    MilestoneRefreshScheduler,
+)
+from app.infrastructure.services.tenders.tender_refresher import (
+    MercadoPublicoTenderRefresher,
 )
 from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
@@ -112,6 +122,19 @@ async def lifespan(app: FastAPI):
     else:
         print("[Main] Alertas desactivadas (RUN_NOTIFICATION_SCAN=false)")
 
+    # Cambios de fecha en licitaciones sincronizadas con un calendario (HU-16).
+    # Sin Google Calendar configurado no hay nada sincronizado que revisar.
+    milestone_refresh_task = None
+    if settings.run_milestone_refresh and app.state.calendar_providers:
+        milestone_scheduler = MilestoneRefreshScheduler(
+            refresh=build_milestone_refresh_runner(
+                app, MercadoPublicoTenderRefresher(ingestion_service)
+            ),
+            interval_seconds=settings.milestone_refresh_interval_seconds,
+        )
+        print("[Main] Iniciando revisión de cambios de fechas de hitos...")
+        milestone_refresh_task = asyncio.create_task(milestone_scheduler.start_loop())
+
     yield
 
     # `cancel()` solo *pide* la cancelación: marca la tarea y devuelve el control
@@ -123,7 +146,14 @@ async def lifespan(app: FastAPI):
     # resultado esperado aquí.
     tareas = [
         t
-        for t in (metadata_task, processing_task, scan_task, delivery_task, digest_task)
+        for t in (
+            metadata_task,
+            processing_task,
+            scan_task,
+            delivery_task,
+            digest_task,
+            milestone_refresh_task,
+        )
         if t
     ]
     for tarea in tareas:

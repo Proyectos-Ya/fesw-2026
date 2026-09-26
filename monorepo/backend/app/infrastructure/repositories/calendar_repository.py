@@ -22,6 +22,7 @@ from app.infrastructure.repositories.calendar_model import (
     CalendarEventLinkModel,
     CalendarOAuthStateModel,
 )
+from app.infrastructure.repositories.tender_milestone_model import TenderMilestoneModel
 
 
 class CalendarConnectionRepository(ICalendarConnectionRepository):
@@ -160,6 +161,28 @@ class CalendarEventLinkRepository(ICalendarEventLinkRepository):
                 col(CalendarEventLinkModel.milestone_id).in_(milestone_ids),
                 CalendarEventLinkModel.provider == provider.value,
             )
+        )
+        return [self._to_entity(m) for m in result.all()]
+
+    async def list_linked_tender_ids(self) -> list[UUID]:
+        result = await self.session.exec(
+            select(TenderMilestoneModel.tender_id)
+            .join(
+                CalendarEventLinkModel,
+                col(CalendarEventLinkModel.milestone_id) == col(TenderMilestoneModel.id),
+            )
+            .distinct()
+        )
+        return list(result.all())
+
+    async def list_by_tender(self, tender_id: UUID) -> list[CalendarEventLink]:
+        result = await self.session.exec(
+            select(CalendarEventLinkModel)
+            .join(
+                TenderMilestoneModel,
+                col(CalendarEventLinkModel.milestone_id) == col(TenderMilestoneModel.id),
+            )
+            .where(TenderMilestoneModel.tender_id == tender_id)
         )
         return [self._to_entity(m) for m in result.all()]
 

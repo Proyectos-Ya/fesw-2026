@@ -148,6 +148,10 @@ from app.application.use_cases.calendar.calendar_connections import (
     DisconnectCalendarUseCase,
     GetCalendarConnectionsUseCase,
 )
+from app.application.services.tender_refresher import ITenderRefresher
+from app.application.use_cases.calendar.refresh_synced_tender_dates import (
+    RefreshSyncedTenderDatesUseCase,
+)
 from app.application.use_cases.calendar.sync_milestones import (
     SyncMilestonesToCalendarUseCase,
 )
@@ -883,6 +887,42 @@ def build_company_lookup_service() -> ICompanyLookupService | None:
         api_key=settings.company_lookup_api_key or "",
         base_url=settings.company_lookup_url,
     )
+
+
+def build_milestone_refresh_runner(
+    app: FastAPI, refresher: ITenderRefresher
+) -> Callable[[], Awaitable[int]]:
+    """Arma la función que ejecuta `MilestoneRefreshScheduler` (HU-16).
+
+    Como los runners de alertas, abre su propia sesión en cada vuelta: vive
+    fuera del ciclo de petición de FastAPI.
+    """
+
+    async def refresh() -> int:
+        async with async_session_maker() as session:
+            tenders = TenderRepository(session)
+            milestones = TenderMilestoneRepository(session)
+            event_links = CalendarEventLinkRepository(session)
+            sync = SyncMilestonesToCalendarUseCase(
+                tenders=tenders,
+                milestones=milestones,
+                connections=CalendarConnectionRepository(session, app.state.token_cipher),
+                event_links=event_links,
+                providers=app.state.calendar_providers,
+                app_base_url=settings.app_base_url,
+            )
+            return await RefreshSyncedTenderDatesUseCase(
+                tenders=tenders,
+                refresher=refresher,
+                milestones=milestones,
+                event_links=event_links,
+                sync=sync,
+                notifications=NotificationRepository(session),
+                deliveries=NotificationDeliveryRepository(session),
+                preferences=NotificationPreferenceRepository(session),
+            ).execute()
+
+    return refresh
 
 
 def build_notification_runners(

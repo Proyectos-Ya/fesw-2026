@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import JSON, Column, Index, UniqueConstraint
@@ -23,7 +24,7 @@ class NotificationPreferenceModel(SQLModel, table=True):
 
 
 class NotificationModel(SQLModel, table=True):
-    """Aviso in-app de una licitación compatible."""
+    """Aviso in-app sobre una licitación: compatibilidad o fecha modificada."""
 
     __tablename__ = "notification"  # type: ignore
 
@@ -31,8 +32,11 @@ class NotificationModel(SQLModel, table=True):
         # Doble función: evita mostrar el mismo aviso dos veces y, sobre todo,
         # es el registro de "ya notifiqué esta licitación a este usuario" que
         # consulta el escaneo. Sin esta constraint, cada ciclo del scheduler
-        # volvería a avisar de lo mismo.
-        UniqueConstraint("user_id", "tender_id", name="uq_notification_user_tender"),
+        # volvería a avisar de lo mismo. Incluye `kind` para que un aviso de
+        # fecha modificada (HU-16) conviva con el de compatibilidad.
+        UniqueConstraint(
+            "user_id", "tender_id", "kind", name="uq_notification_user_tender_kind"
+        ),
         # El contador de la campanita filtra por usuario y no leídos.
         Index("ix_notification_user_read", "user_id", "read_at"),
     )
@@ -40,7 +44,15 @@ class NotificationModel(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True)
     tender_id: UUID = Field(foreign_key="tender.id", index=True)
-    score: float  # Score congelado al momento de generar el aviso
+    kind: str = Field(
+        default="match",
+        max_length=20,
+        sa_column_kwargs={"server_default": "match"},
+    )
+    # Score congelado al momento de generar el aviso. Solo en avisos `match`.
+    score: float | None = Field(default=None)
+    # Detalle de las fechas movidas, en avisos `date_changed`.
+    payload: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     read_at: datetime | None = Field(default=None)
     created_at: datetime
 

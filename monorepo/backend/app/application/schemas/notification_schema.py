@@ -5,6 +5,7 @@ elige en pantalla; la base y el dominio siguen guardando la escala 0..1 de
 `final_score`. La conversión ocurre solo en este borde.
 """
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -33,10 +34,19 @@ class UpdateNotificationPreferencesRequest(BaseModel):
     reactivate_email: bool = False
 
 
+class DateChangeResponse(BaseModel):
+    label: str
+    previous_at: UtcDateTime
+    new_at: UtcDateTime
+
+
 class NotificationResponse(BaseModel):
     id: UUID
     tender_id: UUID
-    score_pct: int
+    kind: Literal["match", "date_changed"] = "match"
+    # Solo los avisos de compatibilidad tienen puntaje.
+    score_pct: int | None = None
+    date_changes: list[DateChangeResponse] = Field(default_factory=list)
     read_at: UtcDateTime | None = None
     created_at: UtcDateTime
     # `True` también cuando la licitación desapareció de la base: en ambos casos

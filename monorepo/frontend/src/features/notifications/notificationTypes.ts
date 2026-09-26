@@ -4,11 +4,23 @@ export type DeliveryMode = "immediate" | "daily_digest";
 export type DeliveryStatus = "pending" | "sent" | "failed_permanent";
 export type DeliveryKind = "immediate" | "digest";
 
+/** `match`: licitación compatible. `date_changed`: Mercado Público movió una fecha (HU-16). */
+export type NotificationKind = "match" | "date_changed";
+
+export interface NotificationDateChange {
+  label: string;
+  /** ISO-8601 UTC con sufijo `Z`. */
+  previous_at: string;
+  new_at: string;
+}
+
 export interface NotificationItem {
   id: string;
   tender_id: string;
-  /** Compatibilidad ya convertida a porcentaje por el backend. */
-  score_pct: number;
+  kind: NotificationKind;
+  /** Compatibilidad ya convertida a porcentaje por el backend. Solo en avisos `match`. */
+  score_pct: number | null;
+  date_changes: NotificationDateChange[];
   read_at: string | null;
   created_at: string;
   /** También es `true` si la licitación desapareció de la base. */

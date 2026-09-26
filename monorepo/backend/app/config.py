@@ -211,6 +211,10 @@ class Settings(BaseSettings):
     # Llave Fernet para cifrar los tokens en la base. Admite varias separadas
     # por coma para rotarla: la primera cifra y todas descifran.
     token_encryption_key: str | None = None
+    # Revisa en Mercado Público si cambiaron las fechas de las licitaciones que
+    # alguien tiene en su calendario. Solo corre con Google Calendar configurado.
+    run_milestone_refresh: bool = True
+    milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue

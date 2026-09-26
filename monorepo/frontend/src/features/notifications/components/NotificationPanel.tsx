@@ -5,6 +5,7 @@ import { Badge } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { formatClosingDate, formatDateTime } from "@/features/matches/utils/format";
+import { formatMilestoneDate } from "@/features/tender-milestones/utils/milestoneFormat";
 import { useNotifications } from "../hooks/useNotifications";
 import type { NotificationItem } from "../notificationTypes";
 
@@ -25,6 +26,7 @@ function NotificationCard({
   onOpen: (id: string) => void;
 }) {
   const sinLeer = item.read_at === null;
+  const esCambioDeFecha = item.kind === "date_changed";
 
   return (
     <li>
@@ -44,7 +46,7 @@ function NotificationCard({
           }`}
         >
           <Icon
-            name="bell"
+            name={esCambioDeFecha ? "calendar-clock" : "bell"}
             size={18}
             color={sinLeer ? "var(--primary)" : "var(--text-subtle)"}
           />
@@ -59,17 +61,31 @@ function NotificationCard({
             >
               {item.tender?.name ?? "Licitación no disponible"}
             </span>
-            <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
+            {esCambioDeFecha ? (
+              <Badge tone="warning">Fecha modificada</Badge>
+            ) : (
+              item.score_pct !== null && (
+                <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
+              )
+            )}
             {/* El criterio pide avisar cuando la licitación de una alerta ya cerró. */}
             {item.is_closed && <Badge tone="neutral">Cerrada</Badge>}
           </span>
 
+          {esCambioDeFecha ? (
+            item.date_changes.map((cambio) => (
+              <span key={cambio.label} className="text-xs text-text-body">
+                {`${cambio.label}: ${formatMilestoneDate(cambio.previous_at, true)} → ${formatMilestoneDate(cambio.new_at, true)}`}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-text-subtle">
+              {item.tender?.buyer_name ?? "Organismo no informado"}
+              {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
+            </span>
+          )}
           <span className="text-xs text-text-subtle">
-            {item.tender?.buyer_name ?? "Organismo no informado"}
-            {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
-          </span>
-          <span className="text-xs text-text-subtle">
-            Detectada el {formatDateTime(item.created_at)}
+            {esCambioDeFecha ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
           </span>
         </span>
 
@@ -93,7 +109,8 @@ export function NotificationPanel() {
         <div>
           <h1 className="font-display text-2xl font-bold text-text-strong">Alertas</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Licitaciones nuevas que superan tu umbral de compatibilidad.
+            Licitaciones nuevas que superan tu umbral de compatibilidad y cambios de fecha
+            en las licitaciones de tu calendario.
           </p>
         </div>
         <div className="flex items-center gap-2">

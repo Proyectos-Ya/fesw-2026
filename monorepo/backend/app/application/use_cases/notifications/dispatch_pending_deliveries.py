@@ -13,6 +13,10 @@ from app.application.repositories.user_repository import IUserRepository
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.email_templates import (
     AlertItem,
+    DateChangeItem,
+    build_date_change_html_body,
+    build_date_change_subject,
+    build_date_change_text_body,
     build_html_body,
     build_subject,
     build_text_body,
@@ -54,33 +58,61 @@ class DispatchPendingDeliveriesUseCase:
         self.email_service = email_service
         self.base_url = base_url
 
-    async def _build_items(self, delivery: NotificationDelivery) -> list[AlertItem]:
+    async def _build_message(
+        self, delivery: NotificationDelivery, to: str
+    ) -> EmailMessage | None:
+        """El correo de la entrega, o None si ya no queda nada que informar."""
         notificaciones = await self.notification_repo.list_by_ids(
             delivery.notification_ids
         )
         if not notificaciones:
-            return []
+            return None
 
         # Corte obligatorio: `get_tenders` sin ids traería la base entera.
         tender_ids = [n.tender_id for n in notificaciones]
         tenders = await self.tender_repo.get_tenders(TenderFilters(ids=tender_ids))
         tender_por_id = {t.id: t for t in tenders}
 
-        items: list[AlertItem] = []
-        for notificacion in notificaciones:
-            tender = tender_por_id.get(notificacion.tender_id)
-            if tender is None:
-                continue
-            items.append(
-                AlertItem(
-                    tender_id=tender.id,
-                    title=tender.name,
-                    buyer_name=tender.buyer_name,
-                    closing_at=tender.closing_at,
-                    score=notificacion.score,
-                )
+        # Una entrega de "Fecha modificada" (HU-16) solo lleva avisos de ese tipo.
+        cambios = [
+            DateChangeItem(
+                tender_id=tender.id,
+                title=tender.name,
+                changes=[(c.label, c.previous_at, c.new_at) for c in n.date_changes],
             )
-        return items
+            for n in notificaciones
+            if n.kind == "date_changed" and (tender := tender_por_id.get(n.tender_id))
+        ]
+        if cambios:
+            return EmailMessage(
+                to=to,
+                subject=build_date_change_subject(cambios),
+                text_body=build_date_change_text_body(cambios, self.base_url),
+                html_body=build_date_change_html_body(cambios, self.base_url),
+            )
+
+        items = [
+            AlertItem(
+                tender_id=tender.id,
+                title=tender.name,
+                buyer_name=tender.buyer_name,
+                closing_at=tender.closing_at,
+                score=n.score,
+            )
+            for n in notificaciones
+            if n.kind == "match"
+            and n.score is not None
+            and (tender := tender_por_id.get(n.tender_id))
+        ]
+        if not items:
+            return None
+        es_resumen = delivery.kind == "digest"
+        return EmailMessage(
+            to=to,
+            subject=build_subject(items, es_resumen),
+            text_body=build_text_body(items, self.base_url, es_resumen),
+            html_body=build_html_body(items, self.base_url, es_resumen),
+        )
 
     async def _desactivar_correo(
         self, preference: NotificationPreference, motivo: str, ahora: datetime
@@ -116,8 +148,8 @@ class DispatchPendingDeliveriesUseCase:
                 await self.delivery_repo.save(delivery)
                 continue
 
-            items = await self._build_items(delivery)
-            if not items:
+            mensaje = await self._build_message(delivery, user.email)
+            if mensaje is None:
                 # Las licitaciones desaparecieron de la base: no hay correo que
                 # mandar y reintentar no las va a traer de vuelta.
                 delivery.mark_failed_permanent(
@@ -125,14 +157,6 @@ class DispatchPendingDeliveriesUseCase:
                 )
                 await self.delivery_repo.save(delivery)
                 continue
-
-            es_resumen = delivery.kind == "digest"
-            mensaje = EmailMessage(
-                to=user.email,
-                subject=build_subject(items, es_resumen),
-                text_body=build_text_body(items, self.base_url, es_resumen),
-                html_body=build_html_body(items, self.base_url, es_resumen),
-            )
 
             try:
                 await self.email_service.send(mensaje)

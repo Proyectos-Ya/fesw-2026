@@ -559,13 +559,31 @@ class InMemoryNotificationRepository(INotificationRepository):
 
     async def get_notified_tender_ids(self, user_id: UUID) -> set[UUID]:
         return {
-            n.tender_id for n in self.notifications.values() if n.user_id == user_id
+            n.tender_id
+            for n in self.notifications.values()
+            if n.user_id == user_id and n.kind == "match"
         }
 
     async def save_bulk(self, notifications: list[Notification]) -> list[Notification]:
         for n in notifications:
             self.notifications[n.id] = n
         return notifications
+
+    async def save_date_change(self, notification: Notification) -> Notification:
+        previo = next(
+            (
+                n
+                for n in self.notifications.values()
+                if n.user_id == notification.user_id
+                and n.tender_id == notification.tender_id
+                and n.kind == "date_changed"
+            ),
+            None,
+        )
+        if previo is not None:
+            notification = notification.model_copy(update={"id": previo.id, "read_at": None})
+        self.notifications[notification.id] = notification
+        return notification
 
     async def save(self, notification: Notification) -> Notification:
         self.notifications[notification.id] = notification

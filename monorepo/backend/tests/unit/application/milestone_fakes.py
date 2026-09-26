@@ -27,7 +27,7 @@ from app.domain.entities.calendar import (
     CalendarOAuthState,
     CalendarProvider,
 )
-from app.domain.entities.tender_milestone import TenderMilestone
+from app.domain.entities.tender_milestone import MilestoneSource, TenderMilestone
 from app.domain.errors.calendar_errors import (
     CalendarAuthExpired,
     CalendarEventNotFound,
@@ -61,10 +61,27 @@ class InMemoryTenderMilestoneRepository(ITenderMilestoneRepository):
             if milestone_id in self.items and self.items[milestone_id].user_id == user_id:
                 del self.items[milestone_id]
 
+    async def list_by_tender_and_source(
+        self, tender_id: UUID, source: MilestoneSource
+    ) -> list[TenderMilestone]:
+        return [m for m in self.items.values() if m.tender_id == tender_id and m.source is source]
+
 
 class InMemoryCalendarEventLinkRepository(ICalendarEventLinkRepository):
-    def __init__(self) -> None:
+    def __init__(self, milestones: InMemoryTenderMilestoneRepository | None = None) -> None:
         self.items: dict[tuple[UUID, CalendarProvider], CalendarEventLink] = {}
+        # Los enlaces no guardan la licitación: se llega a ella por el hito.
+        self._milestones = milestones or InMemoryTenderMilestoneRepository()
+
+    def _tender_de(self, link: CalendarEventLink) -> UUID | None:
+        hito = self._milestones.items.get(link.milestone_id)
+        return hito.tender_id if hito else None
+
+    async def list_linked_tender_ids(self) -> list[UUID]:
+        return list({t for link in self.items.values() if (t := self._tender_de(link))})
+
+    async def list_by_tender(self, tender_id: UUID) -> list[CalendarEventLink]:
+        return [link for link in self.items.values() if self._tender_de(link) == tender_id]
 
     async def list_by_milestones(
         self, milestone_ids: list[UUID], provider: CalendarProvider

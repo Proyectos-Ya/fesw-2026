@@ -495,6 +495,23 @@ class TenderIngestionService(ITenderIngestionService):
             if settings.mercadopublico_detail_delay:
                 await asyncio.sleep(settings.mercadopublico_detail_delay)
 
+    async def refresh_tender(self, code: str) -> TenderIngestaDTO | None:
+        """Vuelve a traer una licitación ya ingerida y la actualiza (HU-16).
+
+        Pasa por el mismo caso de uso que la ingesta, así SQL y el payload de
+        Qdrant quedan alineados. Si Mercado Público no trae las dos fechas
+        oficiales no se toca nada: el parser las reemplazaría por "ahora" y eso
+        se leería como un cambio de fecha.
+        """
+        detalle = await self.client.get_tender_detail(code)
+        fechas = (detalle or {}).get("fechas") or {}
+        if not detalle or not fechas.get("fecha_publicacion") or not fechas.get("fecha_cierre"):
+            return None
+        dto = self._parse_to_dto(detalle)
+        async with AsyncSession(self.engine) as session:
+            await self._construir_use_case(session).execute(dto)
+        return dto
+
     def _fuera_de_region(self, region_name: str) -> bool:
         """Si TARGET_REGION está puesto y esta licitación no es de ahí."""
         if not settings.target_region:

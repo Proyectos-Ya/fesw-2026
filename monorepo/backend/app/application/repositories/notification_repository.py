@@ -58,14 +58,24 @@ class INotificationRepository(ABC):
 
     @abstractmethod
     async def get_notified_tender_ids(self, user_id: UUID) -> set[UUID]:
-        """Licitaciones de las que ya se avisó a este usuario.
+        """Licitaciones de las que ya se avisó compatibilidad a este usuario.
 
-        Es lo que impide que cada escaneo repita los mismos avisos.
+        Es lo que impide que cada escaneo repita los mismos avisos. Solo cuenta
+        los avisos `match`: un "Fecha modificada" no es un aviso de compatibilidad.
         """
         pass
 
     @abstractmethod
     async def save_bulk(self, notifications: list[Notification]) -> list[Notification]:
+        pass
+
+    @abstractmethod
+    async def save_date_change(self, notification: Notification) -> Notification:
+        """Crea o reemplaza el aviso de "Fecha modificada" de esa licitación.
+
+        Hay uno por usuario y licitación: un nuevo cambio lo actualiza y lo
+        vuelve a marcar como no leído, en vez de acumular avisos.
+        """
         pass
 
     @abstractmethod

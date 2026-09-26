@@ -194,3 +194,33 @@ class TestNoRepetir:
 
         assert segunda == 0
         assert len(escenario.entregas_de(user_id)) == 1
+
+
+class TestFechaModificada:
+    async def test_el_resumen_diario_no_incluye_los_avisos_de_fecha_modificada(self):
+        from datetime import datetime
+
+        from app.domain.entities.notification import MilestoneDateChange
+
+        escenario = Escenario()
+        user_id = await escenario.con_preferencia()
+        [compatible] = await escenario.con_avisos(user_id, 1)
+        await escenario.notifications.save_date_change(
+            Notification(
+                user_id=user_id,
+                tender_id=uuid4(),
+                kind="date_changed",
+                date_changes=[
+                    MilestoneDateChange(
+                        label="Cierre",
+                        previous_at=datetime(2026, 10, 20),
+                        new_at=datetime(2026, 10, 27),
+                    )
+                ],
+            )
+        )
+
+        await escenario.use_case.execute()
+
+        [entrega] = escenario.entregas_de(user_id)
+        assert entrega.notification_ids == [compatible.id]

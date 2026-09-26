@@ -39,3 +39,11 @@ class ICalendarEventLinkRepository(ABC):
     @abstractmethod
     async def save(self, link: CalendarEventLink) -> None:
         """Crea o actualiza el enlace del hito con ese proveedor."""
+
+    @abstractmethod
+    async def list_linked_tender_ids(self) -> list[UUID]:
+        """Licitaciones con al menos un hito en algún calendario externo."""
+
+    @abstractmethod
+    async def list_by_tender(self, tender_id: UUID) -> list[CalendarEventLink]:
+        """Enlaces de todos los usuarios para los hitos de esa licitación."""

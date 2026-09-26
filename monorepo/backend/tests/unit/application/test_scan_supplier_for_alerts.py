@@ -175,3 +175,34 @@ class TestScanSupplierForAlerts:
 
         assert await use_case.execute(uuid4()) == []
         assert delivery_repo.deliveries == {}
+
+
+class TestConAvisosDeFechaModificada:
+    """HU-16: un aviso de "Fecha modificada" no cuenta como licitación ya avisada."""
+
+    async def test_un_cambio_de_fecha_no_impide_avisar_la_compatibilidad(self):
+        from datetime import datetime
+
+        from app.domain.entities.notification import MilestoneDateChange
+
+        user_id = uuid4()
+        tender_id = uuid4()
+        use_case, _, notification_repo, _ = build_use_case([match(0.9, tender_id)])
+        await notification_repo.save_date_change(
+            Notification(
+                user_id=user_id,
+                tender_id=tender_id,
+                kind="date_changed",
+                date_changes=[
+                    MilestoneDateChange(
+                        label="Cierre de recepción de ofertas",
+                        previous_at=datetime(2026, 10, 20, 18, 0),
+                        new_at=datetime(2026, 10, 27, 18, 0),
+                    )
+                ],
+            )
+        )
+
+        nuevos = await use_case.execute(user_id)
+
+        assert [n.tender_id for n in nuevos] == [tender_id]

@@ -74,6 +74,17 @@ class TenderMilestoneRepository(ITenderMilestoneRepository):
             await self.session.rollback()
             raise
 
+    async def list_by_tender_and_source(
+        self, tender_id: UUID, source: MilestoneSource
+    ) -> list[TenderMilestone]:
+        result = await self.session.exec(
+            select(TenderMilestoneModel).where(
+                TenderMilestoneModel.tender_id == tender_id,
+                TenderMilestoneModel.source == source.value,
+            )
+        )
+        return [self._to_entity(m) for m in result.all()]
+
     async def delete_many(self, user_id: UUID, milestone_ids: list[UUID]) -> None:
         if not milestone_ids:
             return

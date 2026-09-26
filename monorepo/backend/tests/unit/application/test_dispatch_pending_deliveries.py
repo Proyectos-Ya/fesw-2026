@@ -225,3 +225,49 @@ class TestCasosBorde:
         assert enviados == 0
         # Reintentar no traería de vuelta la licitación.
         assert escenario.entrega.status == "failed_permanent"
+
+
+class TestFechaModificada:
+    """HU-16: el correo de "Fecha modificada" usa su propia plantilla."""
+
+    def _escenario(self) -> "Escenario":
+        from app.domain.entities.notification import MilestoneDateChange
+
+        escenario = Escenario()
+        aviso = Notification(
+            user_id=escenario.user.id,
+            tender_id=escenario.tender_id,
+            kind="date_changed",
+            date_changes=[
+                MilestoneDateChange(
+                    label="Cierre de recepción de ofertas",
+                    previous_at=datetime(2026, 10, 20, 18, 0),  # 15:00 Chile
+                    new_at=datetime(2026, 10, 27, 18, 0),
+                )
+            ],
+        )
+        escenario.notification_repo.notifications = {aviso.id: aviso}
+        escenario.entrega.notification_ids = [aviso.id]
+        return escenario
+
+    async def test_envia_el_aviso_de_fecha_modificada(self):
+        escenario = self._escenario()
+
+        enviados = await escenario.use_case().execute(now=AHORA)
+
+        assert enviados == 1
+        mensaje = escenario.email_service.sent[0]
+        assert mensaje.subject == "Fecha modificada: Servicio de mantención de áreas verdes"
+        assert "Cierre de recepción de ofertas" in mensaje.text_body
+        assert "20-10-2026 15:00" in mensaje.text_body
+        assert "27-10-2026 15:00" in mensaje.text_body
+        assert f"{BASE_URL}/matches/{escenario.tender_id}" in mensaje.html_body
+        assert "%" not in mensaje.text_body
+
+    async def test_escapa_el_titulo_en_el_html(self):
+        escenario = self._escenario()
+        escenario.tender_repo.tenders[escenario.tender_id].name = "<script>x</script>"
+
+        await escenario.use_case().execute(now=AHORA)
+
+        assert "<script>" not in escenario.email_service.sent[0].html_body

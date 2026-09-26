@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.application.schemas.notification_schema import (
+    DateChangeResponse,
     MarkAllReadResponse,
     NotificationDeliveryResponse,
     NotificationPreferenceResponse,
@@ -21,7 +22,8 @@ from app.application.use_cases.notifications.manage_notifications import (
     MarkNotificationReadUseCase,
     UpdateNotificationPreferencesUseCase,
 )
-from app.domain.entities.notification import NotificationPreference
+from app.domain.entities.notification import Notification, NotificationPreference
+from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.notification_errors import NotificationNotFound
 
@@ -176,15 +178,7 @@ def create_notification_router(
             current_user.id, only_unread=only_unread, limit=limit
         )
         return [
-            NotificationResponse(
-                id=a.notification.id,
-                tender_id=a.notification.tender_id,
-                score_pct=round(a.notification.score * 100),
-                read_at=a.notification.read_at,
-                created_at=a.notification.created_at,
-                is_closed=a.is_closed,
-                tender=a.tender,
-            )
+            _notification_response(a.notification, is_closed=a.is_closed, tender=a.tender)
             for a in avisos
         ]
 
@@ -202,15 +196,27 @@ def create_notification_router(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
-        return NotificationResponse(
-            id=aviso.id,
-            tender_id=aviso.tender_id,
-            score_pct=round(aviso.score * 100),
-            read_at=aviso.read_at,
-            created_at=aviso.created_at,
-            # Marcar leído no consulta la licitación: el panel ya trae ese dato
-            # y esta respuesta solo confirma el cambio de estado.
-            is_closed=False,
-        )
+        # Marcar leído no consulta la licitación: el panel ya trae ese dato y
+        # esta respuesta solo confirma el cambio de estado.
+        return _notification_response(aviso, is_closed=False)
 
     return router
+
+
+def _notification_response(
+    aviso: Notification, is_closed: bool, tender: Tender | None = None
+) -> NotificationResponse:
+    return NotificationResponse(
+        id=aviso.id,
+        tender_id=aviso.tender_id,
+        kind=aviso.kind,
+        score_pct=round(aviso.score * 100) if aviso.score is not None else None,
+        date_changes=[
+            DateChangeResponse(label=c.label, previous_at=c.previous_at, new_at=c.new_at)
+            for c in aviso.date_changes
+        ],
+        read_at=aviso.read_at,
+        created_at=aviso.created_at,
+        is_closed=is_closed,
+        tender=tender,
+    )

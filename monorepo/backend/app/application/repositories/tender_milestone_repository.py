@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from app.domain.entities.tender_milestone import TenderMilestone
+from app.domain.entities.tender_milestone import MilestoneSource, TenderMilestone
 
 
 class ITenderMilestoneRepository(ABC):
@@ -19,3 +19,9 @@ class ITenderMilestoneRepository(ABC):
 
     @abstractmethod
     async def delete_many(self, user_id: UUID, milestone_ids: list[UUID]) -> None: ...
+
+    @abstractmethod
+    async def list_by_tender_and_source(
+        self, tender_id: UUID, source: MilestoneSource
+    ) -> list[TenderMilestone]:
+        """De todos los usuarios: lo usa el refresco de fechas oficiales."""
