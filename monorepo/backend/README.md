@@ -488,8 +488,10 @@ Tres bucles `asyncio` arrancan con la API, igual que los de ingesta
 | Entrega | 30 s | Vacía la cola de correos pendientes y reintenta los que fallaron |
 | Resumen | Diario, `NOTIFICATION_DIGEST_HOUR` (hora de Chile) | Agrupa en un correo los avisos de quienes eligieron resumen diario |
 
-La tabla `notification` tiene una constraint única `(user_id, tender_id)`: es el registro
-de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos avisos.
+La tabla `notification` tiene una constraint única `(user_id, tender_id, kind)`: es el
+registro de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos
+avisos. El escaneo solo mira los avisos `kind = 'match'`; los `date_changed` son los de
+"Fecha modificada" de la HU-16 (ver la sección siguiente).
 
 La cola de correos vive en `notification_delivery`. Si el servidor de correo no responde,
 la fila queda en `pending` con un backoff exponencial (2, 4, 8… minutos, con tope de 60) y
@@ -605,6 +607,38 @@ proveedor real: Mailpit acepta cualquier destinatario por diseño y jamás devue
 rechazo definitivo. Apuntando el `.env` a Brevo o SendGrid se comprueba sin desplegar
 nada, y las cuentas demo ya usan direcciones `@demo.invalid` —un TLD reservado que nunca
 resuelve—, así que el rebote es inmediato y genuino.
+
+---
+
+## Hitos y sincronización con Google Calendar (HU-16)
+
+La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que
+Gemini extrae de las bases que el usuario sube al asistente. Los elegidos se sincronizan
+con su Google Calendar y, si Mercado Público mueve una fecha, el evento se actualiza solo y
+llega un aviso **Fecha modificada** (en la app y por correo).
+
+La guía completa —cómo crear el cliente OAuth en Google Cloud, la llave de cifrado, los
+endpoints, las migraciones y cómo comprobar cada criterio a mano— está en
+[`monorepo/TESTING-HU16.md`](../TESTING-HU16.md). Lo mínimo para activarlo:
+
+| Variable | Qué es |
+|---|---|
+| `GOOGLE_CALENDAR_CLIENT_ID` / `GOOGLE_CALENDAR_CLIENT_SECRET` | Cliente OAuth web; redirect `APP_BASE_URL` + `/calendario/callback/google` |
+| `TOKEN_ENCRYPTION_KEY` | Llave Fernet con que se cifran los tokens en la base |
+| `RUN_MILESTONE_REFRESH` / `MILESTONE_REFRESH_INTERVAL_SECONDS` | Bucle que revisa cambios de fecha (por defecto cada 6 h) |
+
+Sin `GOOGLE_CALENDAR_CLIENT_ID` la sincronización queda apagada y el resto funciona igual.
+Con el ID puesto, el secreto y la llave son obligatorios: sin ellos la API no arranca.
+
+El bucle de cambios de fecha se suma a los de ingesta y alertas, con la misma premisa de
+**una sola instancia**:
+
+| Bucle | Cada cuánto | Qué hace |
+|---|---|---|
+| Cambios de fecha | `MILESTONE_REFRESH_INTERVAL_SECONDS` (6 h) | Refresca en Mercado Público las licitaciones abiertas con hitos sincronizados; si cambió la publicación o el cierre, actualiza el evento y avisa |
+
+El correo de "Fecha modificada" sale por la cola de las alertas, así que necesita
+`RUN_NOTIFICATION_SCAN=true`.
 
 ---
 
