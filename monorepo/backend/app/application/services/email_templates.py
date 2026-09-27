@@ -103,3 +103,83 @@ def build_html_body(items: list[AlertItem], base_url: str, is_digest: bool) -> s
         "preferencias de notificaciones</a>.</p>"
         "</div>"
     )
+
+
+_ETIQUETA_ROL: dict[str, str] = {
+    "admin": "Administrador",
+    "member": "Miembro",
+    "viewer": "Lector",
+}
+
+
+def _nombre_rol(role: object) -> str:
+    valor = getattr(role, "value", str(role)).lower()
+    return _ETIQUETA_ROL.get(valor, "Representante")
+
+
+def invitation_url(base_url: str, token: str) -> str:
+    """Enlace directo al panel principal con el token de invitación."""
+    from urllib.parse import quote
+
+    return f"{base_url.rstrip('/')}/?invitation_token={quote(token)}"
+
+
+def build_invitation_subject(supplier_name: str) -> str:
+    return f"Invitación para unirte al equipo de {supplier_name} en ProyectosYA"
+
+
+def build_invitation_text_body(
+    supplier_name: str,
+    inviter_name: str,
+    role: object,
+    base_url: str,
+    token: str,
+) -> str:
+    rol_legible = _nombre_rol(role)
+    url = invitation_url(base_url, token)
+    lineas = [
+        "Hola,",
+        "",
+        f"{inviter_name} te ha invitado a unirte al espacio de trabajo de "
+        f'"{supplier_name}" en ProyectosYA con el rol de {rol_legible}.',
+        "",
+        "Para revisar y aceptar o rechazar esta invitación, ingresa a tu cuenta en:",
+        f"  {url}",
+        "",
+        "Si no esperabas esta invitación, puedes ignorar este mensaje o rechazarla desde la plataforma.",
+    ]
+    return "\n".join(lineas)
+
+
+def build_invitation_html_body(
+    supplier_name: str,
+    inviter_name: str,
+    role: object,
+    base_url: str,
+    token: str,
+) -> str:
+    rol_legible = escape(_nombre_rol(role))
+    empresa_segura = escape(supplier_name)
+    invitador_seguro = escape(inviter_name)
+    url_segura = escape(invitation_url(base_url, token))
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        'max-width:600px;margin:0 auto;padding:24px">'
+        '<div style="border:1px solid #e5e0d8;border-radius:8px;padding:20px">'
+        f'<h2 style="margin:0 0 12px;font-size:18px">Invitación a {empresa_segura}</h2>'
+        f'<p style="margin:0 0 12px;font-size:15px;line-height:1.5">'
+        f"<strong>{invitador_seguro}</strong> te ha invitado a formar parte del equipo de "
+        f"<strong>{empresa_segura}</strong> en ProyectosYA con el rol de "
+        f"<strong>{rol_legible}</strong>.</p>"
+        f'<p style="margin:0 0 16px;font-size:14px;color:#6b6259">'
+        "Al aceptar, podrás colaborar en las licitaciones de esta organización sin perder "
+        "tus membresías actuales.</p>"
+        f'<a href="{url_segura}" style="display:inline-block;background:#0f766e;'
+        "color:#ffffff;padding:10px 18px;border-radius:6px;"
+        'text-decoration:none;font-size:14px;font-weight:600">Revisar invitación</a>'
+        "</div>"
+        '<p style="color:#6b6259;font-size:12px;margin-top:12px">'
+        "Si no reconoces esta invitación, puedes rechazarla desde tu panel de inicio en ProyectosYA.</p>"
+        "</div>"
+    )
+

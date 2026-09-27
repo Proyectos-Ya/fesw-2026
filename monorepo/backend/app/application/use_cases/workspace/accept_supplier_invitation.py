@@ -6,13 +6,13 @@ from app.application.repositories.supplier_member_repository import (
 )
 from app.domain.entities.supplier_invitation import InvitationStatus
 from app.domain.entities.supplier_member import (
-    MemberRole,
     MemberStatus,
     SupplierMember,
 )
 from app.domain.entities.user import User
 from app.domain.errors.membership_errors import (
     InvitationAlreadyProcessed,
+    InvitationCancelledOrInvalid,
     InvitationEmailMismatch,
     InvitationExpired,
     InvitationNotFound,
@@ -37,6 +37,14 @@ class AcceptSupplierInvitationUseCase:
         invitation = await self.invitation_repo.get_by_token(token)
         if not invitation:
             raise InvitationNotFound("La invitación no existe o es inválida.")
+
+        if invitation.status in (
+            InvitationStatus.CANCELLED,
+            InvitationStatus.REJECTED,
+        ):
+            raise InvitationCancelledOrInvalid(
+                "Esta invitación fue cancelada o rechazada y ya no es válida."
+            )
 
         if invitation.status == InvitationStatus.ACCEPTED:
             raise InvitationAlreadyProcessed("Esta invitación ya fue aceptada previamente.")

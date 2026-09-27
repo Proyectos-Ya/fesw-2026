@@ -47,6 +47,7 @@ def create_router(
     get_ask_tender_assistant_use_case: Callable | None = None,
     get_tender_chat_history_use_case: Callable | None = None,
     get_create_tender_chat_session_use_case: Callable | None = None,
+    get_email_service: Callable | None = None,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
@@ -71,6 +72,8 @@ def create_router(
             get_company_lookup_service=get_company_lookup_service,
             get_current_user=get_current_user,
             get_supplier_member_repo=get_supplier_member_repo,
+            get_current_workspace_context=get_optional_workspace_context
+            or get_current_workspace_context,
         )
     )
     root.include_router(
@@ -80,6 +83,8 @@ def create_router(
             get_supplier_member_repo=get_supplier_member_repo,
             get_supplier_invitation_repo=get_supplier_invitation_repo,
             get_supplier_repo=get_supplier_repo,
+            get_user_repo=get_user_repo,
+            get_email_service=get_email_service,
         )
     )
     root.include_router(
