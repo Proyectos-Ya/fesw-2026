@@ -25,6 +25,7 @@ describe("PendingInvitationsList", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: mockAccept,
+      rejectPendingInvitation: vi.fn(),
     });
 
     const { container } = render(<PendingInvitationsList />);
@@ -58,6 +59,7 @@ describe("PendingInvitationsList", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: mockAccept,
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<PendingInvitationsList />);

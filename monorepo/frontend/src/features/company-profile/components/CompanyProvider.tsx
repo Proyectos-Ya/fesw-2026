@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { ApiError } from "@/features/shared/api/client";
+import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 import { getMySupplier, type Supplier } from "../services/supplierService";
 
 export type CompanyState =
@@ -31,6 +32,8 @@ const CompanyContext = createContext<CompanyContextValue | null>(null);
  * toda la app (sidebar, home, página de empresa).
  */
 export function CompanyProvider({ children }: { children: React.ReactNode }) {
+  const { activeWorkspace } = useWorkspace();
+  const activeSupplierId = activeWorkspace?.active_supplier_id;
   const [company, setCompany] = useState<CompanyState>({ status: "loading" });
 
   const refresh = useCallback(async () => {
@@ -48,7 +51,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, activeSupplierId]);
 
   const setSupplier = useCallback((supplier: Supplier) => {
     setCompany({ status: "with-company", supplier });
