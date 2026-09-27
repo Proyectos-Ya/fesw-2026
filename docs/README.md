@@ -29,6 +29,7 @@ Registros de decisiones técnicas significativas o difíciles de revertir (ADR -
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:
+* [alembic-migraciones.md](./guides/alembic-migraciones.md): Manual operativo de migraciones de base de datos con Alembic, buenas prácticas y troubleshooting completo.
 * [scripts-utilitarios.md](./guides/scripts-utilitarios.md): Catálogo de scripts de mantenimiento, vaciado de licitaciones y reseteo de cuentas/empresas.
 * [testing-hdu08.md](./guides/testing-hdu08.md): Guía paso a paso para el recorrido y prueba manual de la HdU 08 (alertas de licitaciones).
 

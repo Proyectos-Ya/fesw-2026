@@ -67,12 +67,13 @@ docker compose up -d
 ## Base de Datos y Datos de Prueba
 
 ### Migraciones con Alembic
-El esquema se gestiona **únicamente con Alembic** (ver [AGENTS.md](../../AGENTS.md)):
+El esquema se gestiona **únicamente con Alembic** (ver [AGENTS.md](../../AGENTS.md) y la [Guía Operativa de Alembic](../../docs/guides/alembic-migraciones.md)):
 ```bash
 alembic upgrade head
 alembic revision --autogenerate -m "descripcion"
 ```
 * **Cabezas múltiples**: Antes de abrir un PR, ejecuta `alembic heads`. Debe devolver una sola línea. Si hay conflicto entre ramas, repunta `down_revision` a la cabeza de `develop` (ver [SKILL.md](../../SKILL.md) §1).
+* **Guía Completa y Troubleshooting**: Consulta la [Guía Operativa de Migraciones con Alembic](../../docs/guides/alembic-migraciones.md) para resolver cabezas múltiples, revisiones huérfanas, drift o errores de `EsquemaSinMigrar`.
 
 ### Cargar Datos desde el Dump
 Para sembrar licitaciones vigentes de prueba en PostgreSQL y Qdrant:

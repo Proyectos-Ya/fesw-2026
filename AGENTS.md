@@ -150,7 +150,9 @@ alembic upgrade head
 ```
 
 Revisar siempre el archivo generado antes de commitear: el autogenerado no
-detecta renombres ni cambios de tipo con datos.
+detecta renombres ni cambios de tipo con datos. Para el manual operativo completo
+y recetas de resolución de incidentes, consultar la
+[Guía Operativa de Migraciones con Alembic](./docs/guides/alembic-migraciones.md).
 
 ### Integraciones
 
