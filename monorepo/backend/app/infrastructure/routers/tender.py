@@ -36,6 +36,7 @@ from app.application.use_cases.tender.search_tenders import (
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.saved_tender import SavedTender
+from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
@@ -66,21 +67,22 @@ def _resolve_region_ids(regions: list[str] | None) -> list[int] | None:
     """
     if not regions:
         return None
-
-    ids: list[int] = []
-    for nombre in regions:
-        region_id = region_id_by_name(nombre)
+    ids = []
+    for name in regions:
+        region_id = region_id_by_name(name)
         if region_id is None:
-            raise InvalidSearchCriteria(f"Región desconocida: {nombre!r}.")
+            raise InvalidSearchCriteria(f"Región desconocida: {name!r}.")
         ids.append(region_id)
     return ids
 
 
 class DeepAnalysisRequest(BaseModel):
+    """Cuerpo de la petición para generar o actualizar un análisis profundo."""
+
     prompt_instruction: str | None = Field(
         default=None,
         max_length=1000,
-        description="Instrucciones adicionales para personalizar el análisis de compatibilidad (máx. 1000 caracteres).",
+        description="Instrucción adicional para personalizar el análisis.",
     )
     force_regenerate: bool = Field(
         default=False,
@@ -119,6 +121,7 @@ def create_tender_router(
     get_search_tenders_use_case: Callable,
     get_tender_detail_use_case: Callable,
     get_score_tender_on_demand_use_case: Callable,
+    get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -129,6 +132,9 @@ def create_tender_router(
         tags=["Tenders"],
         dependencies=[Depends(get_current_user)],
     )
+
+    dummy_workspace = lambda: None
+    actual_get_workspace = get_current_workspace_context or dummy_workspace
 
     # `/search` va antes que cualquier ruta con parámetro de path: declarada
     # después de un `/{tender_id}`, FastAPI intentaría interpretar "search" como
@@ -147,6 +153,9 @@ def create_tender_router(
     async def search_tenders(
         current_user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[SearchTendersUseCase, Depends(get_search_tenders_use_case)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         q: Annotated[
             str | None,
             Query(
@@ -188,30 +197,16 @@ def create_tender_router(
             Query(
                 ge=1,
                 le=MAX_RESULT_LIMIT,
-                description="Cuántas licitaciones devolver. Pedir pocas y paginar "
-                "contra el backend cuesta un embedding por página; pedir muchas y "
-                "repartirlas en el cliente cuesta uno solo.",
+                description=f"Tope de resultados por petición. Por defecto {DEFAULT_RESULT_LIMIT}, máximo {MAX_RESULT_LIMIT}.",
             ),
         ] = DEFAULT_RESULT_LIMIT,
-        offset: Annotated[
-            int,
-            Query(ge=0, description="Para pedir el bloque siguiente si se truncó."),
-        ] = 0,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ):
-        """
-        Busca licitaciones combinando matching semántico con filtros absolutos.
-
-        Los filtros se aplican **dentro** de la búsqueda, no sobre el resultado,
-        así que acotan el corpus completo y no solo lo que ya se había traído.
-
-        Cero coincidencias es una respuesta válida: devuelve 200 con `items`
-        vacío y `total` en 0, no un 404.
-        """
+        """Búsqueda manual de licitaciones con filtros por ubicación, estado, fechas y montos."""
         try:
-            # Dentro del try: `_resolve_region_ids` también levanta
-            # InvalidSearchCriteria y debe traducirse a 422, no escaparse como 500.
+            region_ids = _resolve_region_ids(regions)
             criteria = TenderFilterCriteria(
-                region_ids=_resolve_region_ids(regions),
+                region_ids=region_ids,
                 province_id=province_id,
                 commune_id=commune_id,
                 status_codes=status_codes,
@@ -222,8 +217,12 @@ def create_tender_router(
                 min_amount=min_amount,
                 max_amount=max_amount,
             )
+            supplier_id = (
+                workspace_context.active_supplier_id if workspace_context else None
+            )
             return await use_case.execute(
                 user_id=current_user.id,
+                supplier_id=supplier_id,
                 q=q,
                 criteria=criteria,
                 limit=limit,
@@ -258,26 +257,21 @@ def create_tender_router(
         request: Request,
         current_user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         force_refresh: bool = False,
     ):
-        """Licitaciones recomendadas para la empresa del usuario autenticado.
-
-        Antes recibía un `profile_id` por query y lo usaba tal cual como
-        `user_id`, sin mirar la sesión: era el único de los siete endpoints de
-        este router que no usaba `current_user.id`. Con el UUID de otra empresa
-        se obtenía su lista completa de recomendaciones con sus puntajes —en una
-        plataforma de compras públicas, inteligencia competitiva— y con
-        `force_refresh=true` se le reescribía además su caché de matching.
-
-        El parámetro se elimina en vez de validarse: FastAPI ignora los query
-        params que no declara, así que un cliente que siga enviándolo no se
-        rompe, y no queda ninguna identidad que suplantar.
-        """
+        """Licitaciones recomendadas para la empresa del usuario autenticado."""
         try:
-            # Se pasa el request para que el caso de uso pueda abortar el
-            # pipeline si el cliente ya cerró la conexión.
+            supplier_id = (
+                workspace_context.active_supplier_id if workspace_context else None
+            )
             return await use_case.execute(
-                user_id=current_user.id, force_refresh=force_refresh, request=request
+                user_id=current_user.id,
+                supplier_id=supplier_id,
+                force_refresh=force_refresh,
+                request=request,
             )
         except SupplierNotFoundForUser as e:
             raise HTTPException(

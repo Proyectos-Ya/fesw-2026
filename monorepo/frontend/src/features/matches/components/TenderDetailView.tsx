@@ -89,7 +89,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   // El puntaje vive aparte del estado de carga: el usuario puede calcularlo o
   // recalcularlo sin volver a pedir la licitación entera.
   const [score, setScore] = useState<number | null>(null);
@@ -171,7 +170,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         }
 
         // Cargar el análisis de compatibilidad si ya existe
-        setAnalysisLoading(true);
         try {
           const ana = await getDeepAnalysisOnly(tenderId);
           if (!cancelled) {
@@ -179,10 +177,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           }
         } catch (err) {
           console.error("Error al cargar análisis de compatibilidad:", err);
-        } finally {
-          if (!cancelled) {
-            setAnalysisLoading(false);
-          }
         }
       } catch (err) {
         if (cancelled) return;

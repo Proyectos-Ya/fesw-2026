@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { useProfileWizard } from "../hooks/useProfileWizard";
 import { WizardProgress } from "@/features/shared/components/WizardProgress";
@@ -63,7 +62,6 @@ function errorMessage(err: unknown): string {
 type SubmitState = "idle" | "creating" | "verifying" | "success";
 
 export function ProfileWizard() {
-  const router = useRouter();
   const { user } = useAuth();
   const { setSupplier } = useCompany();
   const {
@@ -135,7 +133,7 @@ export function ProfileWizard() {
     return (
       <div className="mx-auto w-full max-w-2xl">
         <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
-          <SuccessView onRedirect={() => router.push("/")} />
+          <SuccessView onRedirect={() => { window.location.href = "/"; }} />
         </div>
       </div>
     );

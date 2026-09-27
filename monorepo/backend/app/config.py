@@ -396,5 +396,17 @@ class Settings(BaseSettings):
 
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
 
+    @property
+    def auth_cookie_secure(self) -> bool:
+        return not self.is_dev
+
+    @property
+    def auth_cookie_samesite(self) -> str:
+        return "lax"
+
+    @property
+    def access_token_expire_minutes(self) -> int:
+        return 60 * 24 * 30  # 30 días
+
 
 settings = Settings()  # type: ignore

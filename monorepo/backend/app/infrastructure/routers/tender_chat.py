@@ -27,6 +27,10 @@ from app.domain.entities.user import User
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
     TenderAssistantUnavailableError,
+    TenderAssistantAIProviderError,
+    TenderAssistantResponseError,
+    TenderChatQueryInvalidError,
+    TenderChatStorageError,
     UnsupportedDocumentTypeError,
     DocumentNotFoundError,
     MaxDocumentsExceededError,
@@ -126,7 +130,12 @@ def create_tender_chat_router(
             )
             return _to_session_response(session)
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+            import logging
+            logging.getLogger(__name__).error(f"Error creando sesión de chat: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo iniciar una nueva sesión de conversación. Inténtalo nuevamente.",
+            )
 
     # 2. Cargar archivo adjunto al chat
     @router.post("/documents", status_code=status.HTTP_201_CREATED, response_model=TenderChatDocumentResponse)
@@ -154,7 +163,12 @@ def create_tender_chat_router(
         ) as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+            import logging
+            logging.getLogger(__name__).error(f"Error subiendo documento adjunto: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al subir o procesar el documento adjunto. Inténtalo nuevamente.",
+            )
 
     # 3. Listar documentos adjuntos del chat
     @router.get("/documents", response_model=List[TenderChatDocumentResponse])
@@ -163,8 +177,16 @@ def create_tender_chat_router(
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_list_docs_use_case),
     ):
-        docs = await use_case.execute(tender_id=tender_id, user_id=current_user.id)
-        return [_to_doc_response(d) for d in docs]
+        try:
+            docs = await use_case.execute(tender_id=tender_id, user_id=current_user.id)
+            return [_to_doc_response(d) for d in docs]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error listando documentos de la licitación {tender_id}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudieron cargar los documentos adjuntos de la licitación.",
+            )
 
     # 4. Eliminar documento adjunto del chat
     @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -179,6 +201,13 @@ def create_tender_chat_router(
             return None
         except DocumentNotFoundError as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error eliminando documento {document_id}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo eliminar el documento adjunto.",
+            )
 
     # 5. Realizar consulta al asistente virtual
     @router.post("/ask", response_model=TenderChatMessageResponse)
@@ -189,6 +218,9 @@ def create_tender_chat_router(
         use_case = Depends(get_ask_assistant_use_case),
     ):
         try:
+            if not body.question or not body.question.strip():
+                raise TenderChatQueryInvalidError("La consulta no puede estar vacía.")
+
             msg = await use_case.execute(
                 tender_id=tender_id,
                 user_id=current_user.id,
@@ -202,10 +234,32 @@ def create_tender_chat_router(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         except (InvalidPromptInstruction, OutOfScopeQueryError) as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        except TenderAssistantUnavailableError as e:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-        except ValueError as e:
+        except TenderChatQueryInvalidError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Consulta inválida.")
+        except TenderAssistantAIProviderError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(e) or "No se pudo conectar al proveedor de IA. Inténtalo nuevamente en unos minutos.",
+            )
+        except TenderAssistantResponseError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="El asistente no pudo procesar la respuesta del modelo de IA. Por favor intenta reformular tu pregunta.",
+            )
+        except TenderAssistantUnavailableError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(e) or "El asistente virtual se encuentra temporalmente fuera de servicio.",
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error inesperado en ask_assistant: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Ocurrió un problema inesperado al consultar el asistente. Inténtalo nuevamente.",
+            )
 
     # 6. Obtener historial del chat
     @router.get("/history", response_model=List[TenderChatMessageResponse])
@@ -226,10 +280,18 @@ def create_tender_chat_router(
             return [_to_msg_response(m) for m in messages]
         except ChatSessionNotFoundError as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        except ChatHistoryLoadError as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        except (ChatHistoryLoadError, TenderChatStorageError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo cargar el historial de la conversación. Por favor reintente más tarde.",
+            )
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+            import logging
+            logging.getLogger(__name__).error(f"Error inesperado al cargar historial de chat: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo cargar el historial de la conversación. Por favor reintente más tarde.",
+            )
 
     return router
 
