@@ -18,7 +18,7 @@ Consulta esta tabla para saber qué documento crear y qué referencia consultar 
 | Vas a empezar una HdU o cambio no trivial | **Plan Técnico** | `docs/plans/<issue>-<slug>.md` | [plan-tecnico.md](./references/plan-tecnico.md) |
 | Se toma una decisión técnica o de diseño importante | **ADR** | `docs/decisions/<NNNN>-<slug>.md` | [adr.md](./references/adr.md) |
 | Se cierra un sprint o ciclo de trabajo | **Changelog** | `docs/changelogs/sprint-<N>.md` | [changelog-sprint.md](./references/changelog-sprint.md) |
-| Creación de endpoint o ruta de API | **OpenAPI / Swagger** | Parámetros en el router FastAPI | [AGENTS.md](../../../AGENTS.md) |
+| Creación de endpoint o ruta de API | **OpenAPI / Swagger** | Parámetros en el router FastAPI | [api-openapi.md](./references/api-openapi.md) |
 | Actualización de reglas operativas de agentes | **Reglas de Agentes** | `AGENTS.md` / `SKILL.md` | [AGENTS.md](../../../AGENTS.md) |
 
 ---
