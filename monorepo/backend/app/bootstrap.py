@@ -194,6 +194,12 @@ from app.application.use_cases.milestones.extract_tender_milestones import (
 from app.application.use_cases.milestones.get_tender_milestones import (
     GetTenderMilestonesUseCase,
 )
+from app.application.use_cases.milestones.send_milestone_reminders import (
+    SendMilestoneRemindersUseCase,
+)
+from app.application.use_cases.milestones.set_milestone_reminder import (
+    SetMilestoneReminderUseCase,
+)
 from app.application.use_cases.quotation import QuotationUseCase
 from app.infrastructure.repositories.calendar_repository import (
     CalendarEventLinkRepository,
@@ -695,6 +701,12 @@ def get_tender_milestones_use_case(
     )
 
 
+def get_set_milestone_reminder_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SetMilestoneReminderUseCase:
+    return SetMilestoneReminderUseCase(TenderMilestoneRepository(session))
+
+
 def get_extract_tender_milestones_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
@@ -976,8 +988,9 @@ def build_notification_runners(
     Callable[[], Awaitable[int]],
     Callable[[], Awaitable[int]],
     Callable[[], Awaitable[int]],
+    Callable[[], Awaitable[int]],
 ]:
-    """Arma las tres funciones que ejecuta `NotificationScheduler`.
+    """Arma las cuatro funciones que ejecuta `NotificationScheduler`.
 
     Los bucles viven fuera del ciclo de petición de FastAPI, así que no pueden
     apoyarse en `Depends(get_session)`: cada ejecución abre y cierra su propia
@@ -1051,7 +1064,18 @@ def build_notification_runners(
             )
             return await use_case.execute()
 
-    return scan_all, dispatch_pending, build_digest
+    async def send_milestone_reminders() -> int:
+        async with async_session_maker() as session:
+            use_case = SendMilestoneRemindersUseCase(
+                tenders=TenderRepository(session),
+                milestones=TenderMilestoneRepository(session),
+                notifications=NotificationRepository(session),
+                deliveries=NotificationDeliveryRepository(session),
+                preferences=NotificationPreferenceRepository(session),
+            )
+            return await use_case.execute()
+
+    return scan_all, dispatch_pending, build_digest, send_milestone_reminders
 
 
 def bootstrap(app: FastAPI) -> None:
@@ -1175,6 +1199,7 @@ def bootstrap(app: FastAPI) -> None:
             get_current_user,
             get_tender_milestones_use_case,
             get_extract_tender_milestones_use_case,
+            get_set_milestone_reminder_use_case,
         )
     )
     app.include_router(

@@ -271,3 +271,35 @@ class TestFechaModificada:
         await escenario.use_case().execute(now=AHORA)
 
         assert "<script>" not in escenario.email_service.sent[0].html_body
+
+
+class TestRecordatorioDeHito:
+    """HU-16, criterio 10: el correo de recordatorio usa su propia plantilla."""
+
+    async def test_envia_el_recordatorio_con_el_hito_y_su_fecha(self):
+        from app.domain.entities.notification import MilestoneReminder
+
+        escenario = Escenario()
+        aviso = Notification(
+            user_id=escenario.user.id,
+            tender_id=escenario.tender_id,
+            kind="milestone_reminder",
+            milestone_reminders=[
+                MilestoneReminder(
+                    milestone_id=uuid4(),
+                    title="Visita técnica obligatoria",
+                    due_at=datetime(2026, 10, 20, 18, 0),  # 15:00 en Chile
+                )
+            ],
+        )
+        escenario.notification_repo.notifications = {aviso.id: aviso}
+        escenario.entrega.notification_ids = [aviso.id]
+
+        enviados = await escenario.use_case().execute(now=AHORA)
+
+        assert enviados == 1
+        mensaje = escenario.email_service.sent[0]
+        assert "Visita técnica obligatoria" in mensaje.subject
+        assert "20-10-2026 15:00" in mensaje.text_body
+        assert f"{BASE_URL}/matches/{escenario.tender_id}" in mensaje.html_body
+        assert "%" not in mensaje.text_body

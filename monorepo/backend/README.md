@@ -602,7 +602,9 @@ resuelve—, así que el rebote es inmediato y genuino.
 La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que
 Gemini extrae de las bases que el usuario sube al asistente. Los elegidos se sincronizan
 con su Google Calendar y, si Mercado Público mueve una fecha, el evento se actualiza solo y
-llega un aviso **Fecha modificada** (en la app y por correo).
+llega un aviso **Fecha modificada** (en la app y por correo). Los hitos a 5 días o menos se
+destacan en la tabla, y cada uno admite un **recordatorio** propio —1, 3 o 7 días antes—
+que avisa en la app y por correo sin depender de haber sincronizado el calendario.
 
 La guía completa —cómo crear el cliente OAuth en Google Cloud, la llave de cifrado, los
 endpoints, las migraciones y cómo comprobar cada criterio a mano— está en
@@ -617,15 +619,17 @@ endpoints, las migraciones y cómo comprobar cada criterio a mano— está en
 Sin `GOOGLE_CALENDAR_CLIENT_ID` la sincronización queda apagada y el resto funciona igual.
 Con el ID puesto, el secreto y la llave son obligatorios: sin ellos la API no arranca.
 
-El bucle de cambios de fecha se suma a los de ingesta y alertas, con la misma premisa de
+Los bucles de la HU-16 se suman a los de ingesta y alertas, con la misma premisa de
 **una sola instancia**:
 
 | Bucle | Cada cuánto | Qué hace |
 |---|---|---|
 | Cambios de fecha | `MILESTONE_REFRESH_INTERVAL_SECONDS` (6 h) | Refresca en Mercado Público las licitaciones abiertas con hitos sincronizados; si cambió la publicación o el cierre, actualiza el evento y avisa |
+| Recordatorios | fijo, 1 h (`REMINDER_LOOP_SECONDS`) | Busca los hitos cuya anticipación ya se cumplió y deja el aviso; la anticipación se elige en días, así que revisar cada hora alcanza |
 
-El correo de "Fecha modificada" sale por la cola de las alertas, así que necesita
-`RUN_NOTIFICATION_SCAN=true`.
+Los correos de "Fecha modificada" y de los recordatorios salen por la cola de las alertas,
+así que necesitan `RUN_NOTIFICATION_SCAN=true` — que además enciende el bucle de
+recordatorios.
 
 ---
 

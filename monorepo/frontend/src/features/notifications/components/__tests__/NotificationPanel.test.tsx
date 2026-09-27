@@ -49,6 +49,7 @@ function aviso(overrides: Partial<NotificationItem> = {}): NotificationItem {
     kind: "match",
     score_pct: 84,
     date_changes: [],
+    milestone_reminders: [],
     read_at: null,
     created_at: "2026-08-26T12:00:00Z",
     is_closed: false,
@@ -179,6 +180,38 @@ describe("NotificationPanel", () => {
       render(<NotificationPanel />);
 
       const enlace = await screen.findByRole("link", { name: /Fecha modificada/ });
+      expect(enlace).toHaveAttribute("href", "/matches/t1");
+    });
+  });
+
+  describe("recordatorio de un hito (HU-16)", () => {
+    const recordatorio = aviso({
+      id: "n3",
+      kind: "milestone_reminder",
+      score_pct: null,
+      milestone_reminders: [
+        { milestone_id: "m1", title: "Visita técnica obligatoria", due_at: "2026-10-20T18:00:00Z" },
+      ],
+    });
+
+    it("muestra el hito y cuándo vence, en hora de Chile", async () => {
+      getNotifications.mockResolvedValue([recordatorio]);
+
+      render(<NotificationPanel />);
+
+      expect(await screen.findByText("Recordatorio")).toBeInTheDocument();
+      expect(
+        screen.getByText("Visita técnica obligatoria: 20 oct 2026, 15:00"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/%$/)).not.toBeInTheDocument();
+    });
+
+    it("enlaza a la ficha de la licitación", async () => {
+      getNotifications.mockResolvedValue([recordatorio]);
+
+      render(<NotificationPanel />);
+
+      const enlace = await screen.findByRole("link", { name: /Recordatorio/ });
       expect(enlace).toHaveAttribute("href", "/matches/t1");
     });
   });

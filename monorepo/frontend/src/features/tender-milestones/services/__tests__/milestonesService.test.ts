@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "@/features/shared/api/client";
-import { extractTenderMilestones, getTenderMilestones } from "../milestonesService";
+import {
+  extractTenderMilestones,
+  getTenderMilestones,
+  setMilestoneReminder,
+} from "../milestonesService";
 
 vi.mock("@/features/shared/api/client", () => ({
   apiFetch: vi.fn(),
@@ -33,5 +37,23 @@ describe("milestonesService", () => {
     await getTenderMilestones("a/b");
 
     expect(apiFetch).toHaveBeenCalledWith("/tenders/a%2Fb/milestones");
+  });
+
+  it("activa el recordatorio de un hito con la anticipación elegida", async () => {
+    await setMilestoneReminder("t-1", "h-1", 3);
+
+    expect(apiFetch).toHaveBeenCalledWith("/tenders/t-1/milestones/h-1/reminder", {
+      method: "PATCH",
+      body: JSON.stringify({ days_before: 3 }),
+    });
+  });
+
+  it("lo apaga mandando null", async () => {
+    await setMilestoneReminder("t-1", "h-1", null);
+
+    expect(apiFetch).toHaveBeenCalledWith("/tenders/t-1/milestones/h-1/reminder", {
+      method: "PATCH",
+      body: JSON.stringify({ days_before: null }),
+    });
   });
 });

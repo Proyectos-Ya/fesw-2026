@@ -15,7 +15,8 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
 2. Adjuntar las bases (PDF, XLSX o PNG) en el **asistente** de la licitación y pulsar
    **Extraer hitos de las bases**. La IA agrega visitas técnicas, consultas, entregas,
    adjudicación, etc., cada uno con el párrafo de las bases de donde salió.
-3. Los plazos se destacan en rojo (3 días o menos) o amarillo (7 días o menos).
+3. Los plazos se destacan en rojo (3 días o menos) o amarillo (**5 días o menos**, que es el
+   umbral que pide el criterio 9).
 4. Elegir los hitos y pulsar **Sincronizar con Google Calendar**:
    - si algún hito no tiene hora exacta, se pide confirmar una (propone 09:00);
    - la primera vez, lleva a Google a autorizar el acceso y, al volver, termina la
@@ -23,10 +24,15 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
    - los hitos sincronizados quedan marcados **En Google Calendar**.
 5. Si Mercado Público mueve la publicación o el cierre, el evento se actualiza solo y llega
    un aviso **Fecha modificada** en `/alertas` y por correo.
+6. En la columna **Recordatorio** de cada hito se elige la anticipación: *Sin recordatorio*,
+   *1 día antes*, *3 días antes* o *1 semana antes*. Al cumplirse, llega un aviso
+   **Recordatorio** en `/alertas` y —si el usuario tiene el correo activado— un correo
+   inmediato. Los hitos vencidos no ofrecen la opción.
 
 Cada evento lleva el título del hito y de la licitación, la fecha y hora en hora de Chile,
-el enlace de vuelta a la ficha (en la descripción y como enlace del evento) y recordatorios
-1 día y 1 hora antes. Volver a sincronizar actualiza el mismo evento; si el usuario lo borró
+el enlace de vuelta a la ficha (en la descripción y como enlace del evento) y los avisos
+propios de Google 1 día y 1 hora antes (distintos del recordatorio del punto 6, que lo manda
+ProyectosYA y no depende de haber sincronizado). Volver a sincronizar actualiza el mismo evento; si el usuario lo borró
 en Google, se vuelve a crear.
 
 ## Configuración
@@ -90,6 +96,8 @@ simple no relee las variables).
 | Hitos y urgencia | `app/application/use_cases/milestones/` |
 | OAuth, conexión y sincronización | `app/application/use_cases/calendar/`, `app/infrastructure/services/calendar/google_calendar_client.py` |
 | Cambios de fecha (criterio 4) | `refresh_synced_tender_dates.py` + `MilestoneRefreshScheduler` |
+| Urgencia y umbral de 5 días (criterio 9) | `app/domain/entities/tender_milestone.py` (`_DIAS_PROXIMO`) |
+| Recordatorios (criterio 10) | `set_milestone_reminder.py`, `send_milestone_reminders.py` + `NotificationScheduler.start_reminder_loop` |
 | Frontend | `src/features/tender-milestones/`, ruta `/calendario/callback/[provider]` |
 
 - **Hitos oficiales**: publicación y cierre se toman de la licitación y se guardan al
@@ -112,8 +120,15 @@ simple no relee las variables).
   vinculado, y se deja un aviso `date_changed` con correo inmediato (aunque el usuario use
   resumen diario). Un nuevo cambio reemplaza el aviso y lo marca sin leer.
 
-> El correo de "Fecha modificada" lo despacha el bucle de entrega de las alertas (HdU 08),
-> que solo corre con `RUN_NOTIFICATION_SCAN=true`. El aviso en `/alertas` aparece igual.
+- **Recordatorios**: la anticipación se guarda en el hito (`reminder_days_before`). Cada hora
+  un bucle busca los hitos cuya ventana ya empezó (`due_at - días <= ahora < due_at`) y que
+  no se avisaron todavía, deja un aviso `milestone_reminder` —uno por licitación, con la
+  lista de hitos— y encola el correo si el usuario lo tiene activado. `reminder_sent_at`
+  evita el reenvío; cambiar la anticipación lo reabre.
+
+> Los correos de "Fecha modificada" y de los recordatorios los despacha el bucle de entrega
+> de las alertas (HdU 08), que solo corre con `RUN_NOTIFICATION_SCAN=true` — esa variable
+> enciende también el bucle de recordatorios. Los avisos en `/alertas` aparecen igual.
 
 ## API y migraciones
 
@@ -122,6 +137,7 @@ simple no relee las variables).
 | `GET` | `/tenders/{id}/milestones` | Hitos con urgencia y calendarios donde están sincronizados |
 | `POST` | `/tenders/{id}/milestones/extract` | Extrae con IA desde los documentos del asistente |
 | `POST` | `/tenders/{id}/milestones/sync` | Sincroniza `{provider, milestone_ids, default_time?}`; devuelve el resultado por hito |
+| `PATCH` | `/tenders/{id}/milestones/{hito}/reminder` | Activa el recordatorio con `{days_before: 1\|3\|7}`, o lo apaga con `null` |
 | `GET` | `/calendar/connections` | Estado de la conexión (nunca devuelve tokens) |
 | `POST` | `/calendar/{provider}/authorize` | Guarda la sincronización pedida y devuelve la URL de Google |
 | `POST` | `/calendar/{provider}/callback` | Valida el `state`, intercambia el código y guarda la conexión |
@@ -131,7 +147,7 @@ Errores: 401 sin sesión · 404 licitación o hitos ajenos · 409 hay que (re)co
 calendario · 422 falta la hora por defecto o el cuerpo es inválido · 502 Google no
 respondió · 503 IA o calendario no disponibles/configurados.
 
-Migraciones, ambas compatibles hacia atrás y en una sola cabeza:
+Migraciones, todas compatibles hacia atrás y en una sola cabeza:
 
 - `b16c4e1a7d20` (después de `a227c0150001`): tablas `tender_milestone`,
   `calendar_connection`, `calendar_oauth_state` y `calendar_event_link`.
@@ -139,6 +155,8 @@ Migraciones, ambas compatibles hacia atrás y en una sola cabeza:
   nullable y el unique pasa a `(user_id, tender_id, kind)`. El escaneo y el resumen diario
   de HdU 08 siguen mirando solo los avisos `match`. El downgrade borra los avisos
   `date_changed`, que no tienen score.
+- `d27a9c3f1b84`: `tender_milestone` gana `reminder_days_before` y `reminder_sent_at`, ambas
+  nullable, más el índice parcial que usa el bucle de recordatorios.
 
 ## Seguridad (criterio 8)
 
@@ -164,6 +182,8 @@ Migraciones, ambas compatibles hacia atrás y en una sola cabeza:
 | 6 | Falla del proveedor → mensaje y reintento manual | `test_sync_milestones.py` (fallo parcial, refresh revocado), `SyncErrorAlert.test.tsx`, `MilestonesSection.test.tsx` | Revocar el acceso en Google (abajo) |
 | 7 | Sin hora → confirmar hora por defecto | `test_sync_milestones.py`, `DefaultTimeDialog.test.tsx`, `MilestonesSection.test.tsx` | Sincronizar un hito "Sin hora exacta" |
 | 8 | Tokens cifrados y nunca compartidos | `test_fernet_token_cipher.py`, `test_milestone_calendar_repositories.py` (columna ≠ texto plano), `test_calendar_router.py` (sin tokens en la respuesta) | `SELECT access_token_encrypted FROM calendar_connection` |
+| 9 | Hito a 5 días o menos se destaca | `test_tender_milestone.py` (bordes de `MilestoneUrgency`), `test_get_tender_milestones.py`, `MilestonesSection.test.tsx` | Ver abajo |
+| 10 | Recordatorio configurable, en la app y por correo | `test_send_milestone_reminders.py`, `test_set_milestone_reminder.py`, `test_milestones_router.py::TestRecordatorio`, `test_milestone_calendar_repositories.py::TestRecordatoriosDeHitos`, `test_dispatch_pending_deliveries.py`, `MilestonesSection.test.tsx`, `NotificationPanel.test.tsx` | Ver abajo |
 
 ### Criterio 4 a mano
 
@@ -190,6 +210,34 @@ marcada y el frontend lleva a autorizar de nuevo. La caída de Google (5xx, time
 cubre con los tests: muestra "La sincronización no pudo completarse" con **Reintentar**,
 que reenvía solo los hitos fallidos.
 
+### Criterio 9 a mano
+
+Correr el cierre de una licitación abierta contra la base local y recargar su detalle:
+
+```sql
+UPDATE tender SET closing_at = now() + interval '4 days' WHERE code = '<código>';
+```
+
+El plazo queda **amarillo** ("En 4 días"). Con `interval '2 days'` pasa a **rojo**; con
+`interval '8 days'` queda neutro. El borde exacto es 5 días: `interval '6 days'` ya no se
+destaca.
+
+### Criterio 10 a mano
+
+1. En `.env`: `RUN_NOTIFICATION_SCAN=true`; recrear el contenedor `api`.
+2. En el detalle de la licitación, elegir **1 día antes** en la columna *Recordatorio* de un
+   hito. El selector queda con ese valor y sobrevive a recargar la página.
+3. Para no esperar, adelantar el vencimiento del hito dentro de la ventana:
+   ```sql
+   UPDATE tender_milestone SET due_at = now() + interval '12 hours'
+   WHERE id = '<id del hito>';
+   ```
+4. El bucle corre cada hora; para verlo en el momento, reiniciar `api` (`docker compose
+   restart api`) o bajar el intervalo. Al pasar: aparece **Recordatorio** en `/alertas` con
+   el hito y su fecha, y el correo llega a Mailpit (http://localhost:54324).
+5. Comprobar que no se repite: en la vuelta siguiente el hito ya tiene `reminder_sent_at` y
+   no se vuelve a avisar. Cambiar la anticipación en el selector lo reabre.
+
 ## Verificación reproducible
 
 Backend (sin Python 3.12 local, en un contenedor desde `monorepo/backend`, en Git Bash).
@@ -201,7 +249,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/app" -w /app -e POSTGRES_PASSW
 
 Con un Postgres disponible se agregan `tests/integration/test_milestone_calendar_repositories.py`
 y `tests/integration/test_migraciones.py`; `alembic heads` debe mostrar solo
-`c16d5f2a8b31`.
+`d27a9c3f1b84`.
 
 Frontend:
 

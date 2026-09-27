@@ -406,3 +406,132 @@ class TestAvisoDeFechaModificada:
         assert segundo.read_at is None
         assert segundo.date_changes[0].new_at == datetime(2026, 10, 29)
         assert await repo.count_unread(user_id) == 1
+
+
+class TestRecordatoriosDeHitos:
+    """Criterio 10: anticipación por hito y búsqueda de los que toca avisar."""
+
+    AHORA = datetime(2026, 10, 1, 12, 0)
+
+    async def test_activa_y_apaga_el_recordatorio(self, db_session: AsyncSession):
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = TenderMilestoneRepository(db_session)
+        hito = _hito(user_id, tender_id, 10)
+        await repo.save_many([hito])
+
+        activado = await repo.set_reminder(user_id, hito.id, 3)
+        assert activado is not None and activado.reminder_days_before == 3
+        assert (await repo.list_for_tender(user_id, tender_id))[0].reminder_days_before == 3
+
+        apagado = await repo.set_reminder(user_id, hito.id, None)
+        assert apagado is not None and apagado.reminder_days_before is None
+
+    async def test_no_toca_el_hito_de_otro_usuario(self, db_session: AsyncSession):
+        user_id = await _usuario(db_session)
+        otro = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = TenderMilestoneRepository(db_session)
+        ajeno = _hito(otro, tender_id, 10)
+        await repo.save_many([ajeno])
+
+        assert await repo.set_reminder(user_id, ajeno.id, 3) is None
+        assert (await repo.list_by_ids(otro, [ajeno.id]))[0].reminder_days_before is None
+
+    async def test_cambiar_la_anticipacion_reabre_el_aviso(self, db_session: AsyncSession):
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = TenderMilestoneRepository(db_session)
+        # Ya se avisó con 1 día: sin reabrir, un cambio a 7 no volvería a avisar.
+        hito = _hito(user_id, tender_id, 5, reminder_days_before=1, reminder_sent_at=self.AHORA)
+        await repo.save_many([hito])
+
+        vuelto = await repo.set_reminder(user_id, hito.id, 7)
+
+        assert vuelto is not None and vuelto.reminder_sent_at is None
+        assert await repo.list_pending_reminders(self.AHORA) == [vuelto]
+
+    async def test_solo_devuelve_los_que_entraron_en_su_ventana(self, db_session: AsyncSession):
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = TenderMilestoneRepository(db_session)
+        dentro = _hito(user_id, tender_id, 2, reminder_days_before=3)
+        lejano = _hito(user_id, tender_id, 20, reminder_days_before=3)
+        sin_recordatorio = _hito(user_id, tender_id, 1)
+        ya_avisado = _hito(
+            user_id, tender_id, 2, reminder_days_before=3, reminder_sent_at=self.AHORA
+        )
+        vencido = _hito(user_id, tender_id, -1, reminder_days_before=3)
+        await repo.save_many([dentro, lejano, sin_recordatorio, ya_avisado, vencido])
+
+        pendientes = await repo.list_pending_reminders(self.AHORA)
+
+        assert [h.id for h in pendientes] == [dentro.id]
+
+
+class TestAvisoDeRecordatorio:
+    async def test_se_guarda_aparte_del_de_fecha_modificada(self, db_session: AsyncSession):
+        from app.domain.entities.notification import MilestoneReminder, Notification
+        from app.infrastructure.repositories.notification_repository import (
+            NotificationRepository,
+        )
+
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = NotificationRepository(db_session)
+        recordatorio = MilestoneReminder(
+            milestone_id=uuid4(),
+            title="Visita técnica obligatoria",
+            due_at=datetime(2026, 10, 20, 18, 0),
+        )
+
+        aviso = await repo.save_milestone_reminder(
+            Notification(
+                user_id=user_id,
+                tender_id=tender_id,
+                kind="milestone_reminder",
+                milestone_reminders=[recordatorio],
+            )
+        )
+
+        leido = await repo.get(aviso.id)
+        assert leido is not None
+        assert leido.kind == "milestone_reminder"
+        assert leido.milestone_reminders == [recordatorio]
+        assert leido.date_changes == []
+        assert await repo.count_unread(user_id) == 1
+
+    async def test_un_segundo_hito_reemplaza_el_aviso_y_lo_marca_no_leido(
+        self, db_session: AsyncSession
+    ):
+        from app.domain.entities.notification import MilestoneReminder, Notification
+        from app.infrastructure.repositories.notification_repository import (
+            NotificationRepository,
+        )
+
+        user_id = await _usuario(db_session)
+        tender_id = await _licitacion(db_session)
+        repo = NotificationRepository(db_session)
+
+        def _aviso(titulo: str) -> Notification:
+            return Notification(
+                user_id=user_id,
+                tender_id=tender_id,
+                kind="milestone_reminder",
+                milestone_reminders=[
+                    MilestoneReminder(
+                        milestone_id=uuid4(),
+                        title=titulo,
+                        due_at=datetime(2026, 10, 20, 18, 0),
+                    )
+                ],
+            )
+
+        primero = await repo.save_milestone_reminder(_aviso("Visita técnica"))
+        await repo.mark_all_read(user_id)
+        segundo = await repo.save_milestone_reminder(_aviso("Cierre de postulación"))
+
+        assert segundo.id == primero.id
+        assert segundo.read_at is None
+        assert [r.title for r in segundo.milestone_reminders] == ["Cierre de postulación"]
+        assert await repo.count_unread(user_id) == 1

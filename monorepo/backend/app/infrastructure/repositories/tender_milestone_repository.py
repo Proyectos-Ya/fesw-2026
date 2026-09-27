@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -13,6 +14,7 @@ from app.domain.entities.tender_milestone import (
     TenderMilestone,
 )
 from app.infrastructure.repositories.tender_milestone_model import TenderMilestoneModel
+from app.shared.datetime_utils import utc_now_naive
 
 
 class TenderMilestoneRepository(ITenderMilestoneRepository):
@@ -33,6 +35,8 @@ class TenderMilestoneRepository(ITenderMilestoneRepository):
             source_excerpt=model.source_excerpt,
             due_at=model.due_at,
             has_time=model.has_time,
+            reminder_days_before=model.reminder_days_before,
+            reminder_sent_at=model.reminder_sent_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -73,6 +77,45 @@ class TenderMilestoneRepository(ITenderMilestoneRepository):
         except Exception:
             await self.session.rollback()
             raise
+
+    async def list_pending_reminders(self, now: datetime) -> list[TenderMilestone]:
+        """Hitos con recordatorio activo cuya ventana de aviso ya empezó.
+
+        El filtro fino (la ventana depende de `reminder_days_before` de cada
+        fila) lo hace el dominio; acá solo se acota con el índice para no traer
+        la tabla entera.
+        """
+        result = await self.session.exec(
+            select(TenderMilestoneModel).where(
+                col(TenderMilestoneModel.reminder_days_before).is_not(None),
+                col(TenderMilestoneModel.reminder_sent_at).is_(None),
+                col(TenderMilestoneModel.due_at) > now,
+            )
+        )
+        hitos = [self._to_entity(m) for m in result.all()]
+        return [h for h in hitos if h.recordatorio_pendiente(now)]
+
+    async def set_reminder(
+        self, user_id: UUID, milestone_id: UUID, days_before: int | None
+    ) -> TenderMilestone | None:
+        """Activa o apaga el recordatorio. Devuelve None si el hito no es del usuario."""
+        result = await self.session.exec(
+            select(TenderMilestoneModel).where(
+                TenderMilestoneModel.id == milestone_id,
+                TenderMilestoneModel.user_id == user_id,
+            )
+        )
+        model = result.first()
+        if model is None:
+            return None
+        model.reminder_days_before = days_before
+        # Cambiar la anticipación reabre la posibilidad de avisar.
+        model.reminder_sent_at = None
+        model.updated_at = utc_now_naive()
+        guardado = self._to_entity(model)
+        self.session.add(model)
+        await self.session.commit()
+        return guardado
 
     async def list_by_tender_and_source(
         self, tender_id: UUID, source: MilestoneSource

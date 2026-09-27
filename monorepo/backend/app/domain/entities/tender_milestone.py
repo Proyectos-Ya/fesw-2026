@@ -10,7 +10,11 @@ from app.shared.datetime_utils import CHILE_TZ, UtcDateTime, to_utc_naive, utc_n
 
 _UN_DIA = timedelta(days=1)
 _DIAS_CRITICO = 3
-_DIAS_PROXIMO = 7
+# El criterio 9 de la HU-16 pide destacar el hito cuando le quedan 5 días o menos.
+_DIAS_PROXIMO = 5
+
+# Anticipaciones que el usuario puede elegir para el recordatorio de un hito.
+REMINDER_DAYS_OPTIONS = (1, 3, 7)
 
 
 class MilestoneKind(StrEnum):
@@ -61,11 +65,28 @@ class TenderMilestone(BaseModel):
     source_excerpt: Annotated[str | None, _recortar(1000)] = None
     due_at: UtcDateTime
     has_time: bool
+    # Días de anticipación del recordatorio. Nulo = el usuario no lo activó.
+    reminder_days_before: int | None = Field(default=None, ge=1, le=365)
+    reminder_sent_at: UtcDateTime | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
+    def recordatorio_pendiente(self, now: datetime) -> bool:
+        """Si toca avisar de este hito ahora (criterio 10).
+
+        Solo dentro de la ventana que va desde la anticipación elegida hasta el
+        vencimiento: un hito ya vencido no se recuerda, y `reminder_sent_at`
+        impide repetirlo en la vuelta siguiente del loop.
+        """
+        if self.reminder_days_before is None or self.reminder_sent_at is not None:
+            return False
+        return self.due_at - timedelta(days=self.reminder_days_before) <= now < self.due_at
+
+    def con_recordatorio_enviado(self, now: datetime) -> "TenderMilestone":
+        return self.model_copy(update={"reminder_sent_at": now, "updated_at": now})
+
     def urgencia(self, now: datetime) -> MilestoneUrgency:
-        """Mismos umbrales que `daysUntilClosing` del frontend."""
+        """Vencido, crítico (3 días o menos) o próximo (5 días o menos, criterio 9)."""
         restante = self.due_at - now
         if restante < timedelta(0):
             return MilestoneUrgency.VENCIDO

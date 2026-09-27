@@ -4,14 +4,25 @@ export type DeliveryMode = "immediate" | "daily_digest";
 export type DeliveryStatus = "pending" | "sent" | "failed_permanent";
 export type DeliveryKind = "immediate" | "digest";
 
-/** `match`: licitación compatible. `date_changed`: Mercado Público movió una fecha (HU-16). */
-export type NotificationKind = "match" | "date_changed";
+/**
+ * `match`: licitación compatible. `date_changed`: Mercado Público movió una
+ * fecha (HU-16). `milestone_reminder`: se cumplió la anticipación que el
+ * usuario pidió para un hito (HU-16).
+ */
+export type NotificationKind = "match" | "date_changed" | "milestone_reminder";
 
 export interface NotificationDateChange {
   label: string;
   /** ISO-8601 UTC con sufijo `Z`. */
   previous_at: string;
   new_at: string;
+}
+
+export interface NotificationMilestoneReminder {
+  milestone_id: string;
+  title: string;
+  /** ISO-8601 UTC con sufijo `Z`. */
+  due_at: string;
 }
 
 export interface NotificationItem {
@@ -21,6 +32,7 @@ export interface NotificationItem {
   /** Compatibilidad ya convertida a porcentaje por el backend. Solo en avisos `match`. */
   score_pct: number | null;
   date_changes: NotificationDateChange[];
+  milestone_reminders: NotificationMilestoneReminder[];
   read_at: string | null;
   created_at: string;
   /** También es `true` si la licitación desapareció de la base. */

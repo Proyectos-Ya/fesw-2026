@@ -79,6 +79,14 @@ class INotificationRepository(ABC):
         pass
 
     @abstractmethod
+    async def save_milestone_reminder(self, notification: Notification) -> Notification:
+        """Crea o reemplaza el recordatorio de hitos de esa licitación.
+
+        Misma regla que `save_date_change`: uno por usuario y licitación.
+        """
+        pass
+
+    @abstractmethod
     async def save(self, notification: Notification) -> Notification:
         pass
 

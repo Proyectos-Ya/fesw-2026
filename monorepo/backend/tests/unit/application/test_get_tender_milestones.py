@@ -82,7 +82,8 @@ async def test_informa_urgencia_y_proveedores_sincronizados(escenario):
         kind=MilestoneKind.VISITA_TECNICA,
         title="Visita técnica",
         source=MilestoneSource.IA_DOCUMENTO,
-        due_at=AHORA + timedelta(days=6),
+        # 4 días: dentro de los "5 días o menos" que el criterio 9 manda destacar.
+        due_at=AHORA + timedelta(days=4),
         has_time=True,
     )
     await hitos.save_many([visita])

@@ -28,6 +28,24 @@ export interface TenderMilestone {
   has_time: boolean;
   urgency: MilestoneUrgency;
   synced_providers: CalendarProvider[];
+  /** Días de anticipación del recordatorio; `null` = sin recordatorio. */
+  reminder_days_before: ReminderDaysBefore | null;
+}
+
+/** Las anticipaciones que ofrece la interfaz; el backend valida las mismas. */
+export const REMINDER_DAYS_OPTIONS = [1, 3, 7] as const;
+
+export type ReminderDaysBefore = (typeof REMINDER_DAYS_OPTIONS)[number];
+
+export const REMINDER_LABELS: Record<ReminderDaysBefore, string> = {
+  1: "1 día antes",
+  3: "3 días antes",
+  7: "1 semana antes",
+};
+
+export interface MilestoneReminderResponse {
+  milestone_id: string;
+  reminder_days_before: ReminderDaysBefore | null;
 }
 
 export interface MilestoneList {

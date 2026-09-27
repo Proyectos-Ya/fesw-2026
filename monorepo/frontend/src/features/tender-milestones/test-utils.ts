@@ -12,6 +12,7 @@ export function buildMilestone(overrides: Partial<TenderMilestone> = {}): Tender
     has_time: true,
     urgency: "normal",
     synced_providers: [],
+    reminder_days_before: null,
     ...overrides,
   };
 }

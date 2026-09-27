@@ -23,7 +23,8 @@ from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 DeliveryMode = Literal["immediate", "daily_digest"]
 # `match`: licitación compatible (HdU 08). `date_changed`: Mercado Público movió
 # una fecha de una licitación con hitos en el calendario del usuario (HU-16).
-NotificationKind = Literal["match", "date_changed"]
+# `milestone_reminder`: se acerca un hito con recordatorio activado (HU-16).
+NotificationKind = Literal["match", "date_changed", "milestone_reminder"]
 DeliveryKind = Literal["immediate", "digest"]
 DeliveryStatus = Literal["pending", "sent", "failed_permanent"]
 
@@ -74,6 +75,14 @@ class MilestoneDateChange(BaseModel):
     new_at: UtcDateTime
 
 
+class MilestoneReminder(BaseModel):
+    """Un hito próximo del que el usuario pidió que le recordaran."""
+
+    milestone_id: UUID
+    title: str
+    due_at: UtcDateTime
+
+
 class Notification(BaseModel):
     """Aviso in-app sobre una licitación.
 
@@ -90,6 +99,7 @@ class Notification(BaseModel):
     # explicando por qué se envió. Solo lo tienen los avisos `match`.
     score: float | None = None
     date_changes: list[MilestoneDateChange] = Field(default_factory=list)
+    milestone_reminders: list[MilestoneReminder] = Field(default_factory=list)
     read_at: UtcDateTime | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

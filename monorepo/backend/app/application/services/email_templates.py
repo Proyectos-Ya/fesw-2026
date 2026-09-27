@@ -45,6 +45,69 @@ def _hora_chile(valor: datetime) -> str:
     return valor.replace(tzinfo=UTC).astimezone(CHILE_TZ).strftime("%d-%m-%Y %H:%M")
 
 
+@dataclass(frozen=True)
+class MilestoneReminderItem:
+    """Una licitación con hitos próximos que el usuario pidió recordar (HU-16)."""
+
+    tender_id: UUID
+    title: str
+    # (hito, cuándo vence), en UTC naive.
+    milestones: list[tuple[str, datetime]]
+
+
+def build_reminder_subject(items: list[MilestoneReminderItem]) -> str:
+    total = sum(len(i.milestones) for i in items)
+    if total == 1:
+        return f"Recordatorio: {items[0].milestones[0][0]} — {items[0].title}"
+    return f"Recordatorio: {total} hitos próximos"
+
+
+_ENCABEZADO_RECORDATORIO = (
+    "Se acercan hitos de licitaciones para los que pediste un recordatorio:"
+)
+
+
+def build_reminder_text_body(items: list[MilestoneReminderItem], base_url: str) -> str:
+    lineas = [_ENCABEZADO_RECORDATORIO, ""]
+    for item in items:
+        lineas.append(f"* {item.title}")
+        for hito, vence in item.milestones:
+            lineas.append(f"  {hito}: {_hora_chile(vence)} (hora de Chile)")
+        lineas.append(f"  Ver detalle: {tender_url(base_url, item.tender_id)}")
+        lineas.append("")
+    return "\n".join(lineas)
+
+
+def build_reminder_html_body(items: list[MilestoneReminderItem], base_url: str) -> str:
+    tarjetas = []
+    for item in items:
+        url = tender_url(base_url, item.tender_id)
+        filas = "".join(
+            f'<p style="margin:0 0 4px;font-size:14px">{escape(hito)}: '
+            f"<strong>{_hora_chile(vence)}</strong></p>"
+            for hito, vence in item.milestones
+        )
+        tarjetas.append(
+            '<div style="border:1px solid #e5e0d8;border-radius:8px;'
+            'padding:16px;margin-bottom:12px">'
+            f'<h2 style="margin:0 0 8px;font-size:16px">{escape(item.title)}</h2>'
+            f"{filas}"
+            f'<a href="{escape(url)}" style="display:inline-block;margin-top:8px;'
+            "background:#0f766e;color:#ffffff;padding:8px 16px;border-radius:6px;"
+            'text-decoration:none;font-size:14px">Ver licitación</a>'
+            "</div>"
+        )
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        'max-width:600px;margin:0 auto;padding:24px">'
+        f'<p style="font-size:15px">{_ENCABEZADO_RECORDATORIO}</p>'
+        f"{''.join(tarjetas)}"
+        '<p style="color:#6b6259;font-size:13px">Horas en hora de Chile. Puedes desactivar '
+        "el recordatorio desde la ficha de la licitación.</p>"
+        "</div>"
+    )
+
+
 def build_date_change_subject(items: list[DateChangeItem]) -> str:
     if len(items) == 1:
         return f"Fecha modificada: {items[0].title}"

@@ -66,6 +66,21 @@ class InMemoryTenderMilestoneRepository(ITenderMilestoneRepository):
     ) -> list[TenderMilestone]:
         return [m for m in self.items.values() if m.tender_id == tender_id and m.source is source]
 
+    async def list_pending_reminders(self, now: datetime) -> list[TenderMilestone]:
+        return [m for m in self.items.values() if m.recordatorio_pendiente(now)]
+
+    async def set_reminder(
+        self, user_id: UUID, milestone_id: UUID, days_before: int | None
+    ) -> TenderMilestone | None:
+        hito = self.items.get(milestone_id)
+        if hito is None or hito.user_id != user_id:
+            return None
+        actualizado = hito.model_copy(
+            update={"reminder_days_before": days_before, "reminder_sent_at": None}
+        )
+        self.items[milestone_id] = actualizado
+        return actualizado
+
 
 class InMemoryCalendarEventLinkRepository(ICalendarEventLinkRepository):
     def __init__(self, milestones: InMemoryTenderMilestoneRepository | None = None) -> None:

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from uuid import UUID
 
 from app.domain.entities.tender_milestone import MilestoneSource, TenderMilestone
@@ -19,6 +20,16 @@ class ITenderMilestoneRepository(ABC):
 
     @abstractmethod
     async def delete_many(self, user_id: UUID, milestone_ids: list[UUID]) -> None: ...
+
+    @abstractmethod
+    async def list_pending_reminders(self, now: datetime) -> list[TenderMilestone]:
+        """De todos los usuarios: hitos a los que toca recordar ahora."""
+
+    @abstractmethod
+    async def set_reminder(
+        self, user_id: UUID, milestone_id: UUID, days_before: int | None
+    ) -> TenderMilestone | None:
+        """Activa o apaga el recordatorio. None si el hito no es del usuario."""
 
     @abstractmethod
     async def list_by_tender_and_source(

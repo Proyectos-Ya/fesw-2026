@@ -40,13 +40,20 @@ class DateChangeResponse(BaseModel):
     new_at: UtcDateTime
 
 
+class MilestoneReminderResponse(BaseModel):
+    milestone_id: UUID
+    title: str
+    due_at: UtcDateTime
+
+
 class NotificationResponse(BaseModel):
     id: UUID
     tender_id: UUID
-    kind: Literal["match", "date_changed"] = "match"
+    kind: Literal["match", "date_changed", "milestone_reminder"] = "match"
     # Solo los avisos de compatibilidad tienen puntaje.
     score_pct: int | None = None
     date_changes: list[DateChangeResponse] = Field(default_factory=list)
+    milestone_reminders: list[MilestoneReminderResponse] = Field(default_factory=list)
     read_at: UtcDateTime | None = None
     created_at: UtcDateTime
     # `True` también cuando la licitación desapareció de la base: en ambos casos

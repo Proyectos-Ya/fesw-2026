@@ -12,7 +12,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app import bootstrap
-from app.domain.entities.notification import Notification, NotificationDelivery
+from app.domain.entities.notification import (
+    MilestoneReminder,
+    Notification,
+    NotificationDelivery,
+)
 from app.domain.entities.tender import Tender
 from app.main import app
 from app.shared.datetime_utils import utc_now_naive
@@ -181,6 +185,38 @@ class TestListado:
         resp = await api.get("/notifications")
 
         assert resp.json()[0]["is_closed"] is True
+
+    async def test_expone_el_recordatorio_de_un_hito(
+        self, api: AsyncClient, dobles: Dobles
+    ):
+        # HU-16, criterio 10: el aviso del recordatorio se ve en la plataforma.
+        user_id = await login(api)
+        tender_id = uuid4()
+        futuro = utc_now_naive().replace(year=utc_now_naive().year + 1)
+        dobles.tenders.tenders[tender_id] = build_tender(tender_id, futuro)
+        await dobles.notifications.save(
+            Notification(
+                user_id=user_id,
+                tender_id=tender_id,
+                kind="milestone_reminder",
+                milestone_reminders=[
+                    MilestoneReminder(
+                        milestone_id=uuid4(),
+                        title="Visita técnica obligatoria",
+                        due_at=futuro,
+                    )
+                ],
+            )
+        )
+
+        resp = await api.get("/notifications")
+
+        aviso = resp.json()[0]
+        assert aviso["kind"] == "milestone_reminder"
+        assert aviso["score_pct"] is None
+        assert [r["title"] for r in aviso["milestone_reminders"]] == [
+            "Visita técnica obligatoria"
+        ]
 
     async def test_filtra_por_no_leidas(self, api: AsyncClient, dobles: Dobles):
         user_id = await login(api)

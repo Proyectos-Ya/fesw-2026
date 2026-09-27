@@ -96,12 +96,16 @@ async def lifespan(app: FastAPI):
     scan_task = None
     delivery_task = None
     digest_task = None
+    reminder_task = None
     if settings.run_notification_scan:
-        scan_all, dispatch_pending, build_digest = build_notification_runners(app)
+        scan_all, dispatch_pending, build_digest, send_reminders = (
+            build_notification_runners(app)
+        )
         notification_scheduler = NotificationScheduler(
             scan_all=scan_all,
             dispatch_pending=dispatch_pending,
             build_digest=build_digest,
+            send_milestone_reminders=send_reminders,
             scan_interval_seconds=settings.notification_scan_interval_seconds,
             digest_hour=settings.notification_digest_hour,
         )
@@ -111,6 +115,7 @@ async def lifespan(app: FastAPI):
             notification_scheduler.start_delivery_loop()
         )
         digest_task = asyncio.create_task(notification_scheduler.start_digest_loop())
+        reminder_task = asyncio.create_task(notification_scheduler.start_reminder_loop())
     else:
         print("[Main] Alertas desactivadas (RUN_NOTIFICATION_SCAN=false)")
 
@@ -149,7 +154,13 @@ async def lifespan(app: FastAPI):
     # resultado esperado aquí.
     tareas = [
         t
-        for t in (scan_task, delivery_task, digest_task, milestone_refresh_task)
+        for t in (
+            scan_task,
+            delivery_task,
+            digest_task,
+            reminder_task,
+            milestone_refresh_task,
+        )
         if t
     ]
     for tarea in tareas:

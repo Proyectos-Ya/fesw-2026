@@ -702,13 +702,19 @@ class InMemoryNotificationRepository(INotificationRepository):
         return notifications
 
     async def save_date_change(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "date_changed")
+
+    async def save_milestone_reminder(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "milestone_reminder")
+
+    async def _upsert_por_tipo(self, notification: Notification, kind: str) -> Notification:
         previo = next(
             (
                 n
                 for n in self.notifications.values()
                 if n.user_id == notification.user_id
                 and n.tender_id == notification.tender_id
-                and n.kind == "date_changed"
+                and n.kind == kind
             ),
             None,
         )

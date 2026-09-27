@@ -7,10 +7,14 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 
 import { useCalendarSync } from "../hooks/useCalendarSync";
+import { useMilestoneReminders } from "../hooks/useMilestoneReminders";
 import { useTenderMilestones } from "../hooks/useTenderMilestones";
 import {
   MILESTONE_KIND_LABELS,
   MILESTONE_SOURCE_LABELS,
+  REMINDER_DAYS_OPTIONS,
+  REMINDER_LABELS,
+  type ReminderDaysBefore,
   type TenderMilestone,
 } from "../types";
 import { formatMilestoneDate, urgencyBadge } from "../utils/milestoneFormat";
@@ -31,6 +35,7 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
   const milestones = state.status === "ready" ? state.data.milestones : NO_MILESTONES;
   const onSynced = useCallback(() => void refresh(), [refresh]);
   const calendar = useCalendarSync({ tenderId, milestones, onSynced });
+  const reminders = useMilestoneReminders(tenderId);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
   const toggle = (id: string) =>
@@ -87,6 +92,12 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
 
       {extractError && <ErrorAlert message={extractError} onRetry={() => void extract()} />}
 
+      {reminders.error && (
+        <p role="alert" className="text-xs font-medium text-danger">
+          {reminders.error}
+        </p>
+      )}
+
       {notice && (
         <p role="status" className="text-xs text-text-muted">
           {notice}
@@ -123,7 +134,8 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
                 <th scope="col" className="py-2 pr-4">Hito</th>
                 <th scope="col" className="py-2 pr-4">Fecha</th>
                 <th scope="col" className="py-2 pr-4">Plazo</th>
-                <th scope="col" className="py-2">Calendario</th>
+                <th scope="col" className="py-2 pr-4">Calendario</th>
+                <th scope="col" className="py-2">Recordatorio</th>
               </tr>
             </thead>
             <tbody>
@@ -135,6 +147,8 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
                   selectable={selectable}
                   selected={selected.has(milestone.id)}
                   onToggle={() => toggle(milestone.id)}
+                  reminder={reminders.reminderOf(milestone)}
+                  onReminderChange={(dias) => void reminders.change(milestone.id, dias)}
                 />
               ))}
             </tbody>
@@ -160,9 +174,19 @@ interface MilestoneRowProps {
   selectable: boolean;
   selected: boolean;
   onToggle: () => void;
+  reminder: ReminderDaysBefore | null;
+  onReminderChange: (daysBefore: ReminderDaysBefore | null) => void;
 }
 
-function MilestoneRow({ milestone, now, selectable, selected, onToggle }: MilestoneRowProps) {
+function MilestoneRow({
+  milestone,
+  now,
+  selectable,
+  selected,
+  onToggle,
+  reminder,
+  onReminderChange,
+}: MilestoneRowProps) {
   const urgency = urgencyBadge(milestone.urgency, milestone.due_at, now);
   const isPast = milestone.urgency === "vencido";
 
@@ -212,13 +236,39 @@ function MilestoneRow({ milestone, now, selectable, selected, onToggle }: Milest
           {urgency.label}
         </Badge>
       </td>
-      <td className="py-3">
+      <td className="py-3 pr-4">
         {milestone.synced_providers.includes("google") ? (
           <Badge tone="teal" iconLeft={<Icon name="calendar-check" size={12} />}>
             En Google Calendar
           </Badge>
         ) : (
           <span className="text-xs text-text-subtle">—</span>
+        )}
+      </td>
+      <td className="py-3">
+        {/* Un hito que ya pasó no tiene a qué avisar. */}
+        {isPast ? (
+          <span className="text-xs text-text-subtle">—</span>
+        ) : (
+          <select
+            aria-label={`Recordatorio de ${milestone.title}`}
+            value={reminder ?? ""}
+            onChange={(event) =>
+              onReminderChange(
+                event.target.value === ""
+                  ? null
+                  : (Number(event.target.value) as ReminderDaysBefore)
+              )
+            }
+            className="rounded-md border border-border-subtle bg-surface px-2 py-1 text-xs text-text-body"
+          >
+            <option value="">Sin recordatorio</option>
+            {REMINDER_DAYS_OPTIONS.map((dias) => (
+              <option key={dias} value={dias}>
+                {REMINDER_LABELS[dias]}
+              </option>
+            ))}
+          </select>
         )}
       </td>
     </tr>

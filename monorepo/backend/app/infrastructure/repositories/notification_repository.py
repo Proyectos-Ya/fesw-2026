@@ -17,6 +17,7 @@ from app.domain.entities.notification import (
     DeliveryMode,
     DeliveryStatus,
     MilestoneDateChange,
+    MilestoneReminder,
     Notification,
     NotificationDelivery,
     NotificationKind,
@@ -108,15 +109,24 @@ class NotificationRepository(INotificationRepository):
         self.session = session
 
     def _to_entity(self, model: NotificationModel) -> Notification:
-        tipo: NotificationKind = "date_changed" if model.kind == "date_changed" else "match"
-        cambios = (model.payload or {}).get("date_changes", [])
+        tipo: NotificationKind = (
+            model.kind
+            if model.kind in ("date_changed", "milestone_reminder")
+            else "match"
+        )  # type: ignore[assignment]
+        payload = model.payload or {}
         return Notification(
             id=model.id,
             user_id=model.user_id,
             tender_id=model.tender_id,
             kind=tipo,
             score=model.score,
-            date_changes=[_cambio_desde_json(c) for c in cambios],
+            date_changes=[
+                _cambio_desde_json(c) for c in payload.get("date_changes", [])
+            ],
+            milestone_reminders=[
+                _recordatorio_desde_json(r) for r in payload.get("milestone_reminders", [])
+            ],
             read_at=model.read_at,
             created_at=model.created_at,
         )
@@ -135,17 +145,35 @@ class NotificationRepository(INotificationRepository):
 
     @staticmethod
     def _payload(entity: Notification) -> dict[str, Any] | None:
-        if not entity.date_changes:
-            return None
         # La columna es JSON: las fechas viajan como ISO-8601 UTC.
-        return {"date_changes": [c.model_dump(mode="json") for c in entity.date_changes]}
+        payload: dict[str, Any] = {}
+        if entity.date_changes:
+            payload["date_changes"] = [c.model_dump(mode="json") for c in entity.date_changes]
+        if entity.milestone_reminders:
+            payload["milestone_reminders"] = [
+                r.model_dump(mode="json") for r in entity.milestone_reminders
+            ]
+        return payload or None
 
     async def save_date_change(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "date_changed")
+
+    async def save_milestone_reminder(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "milestone_reminder")
+
+    async def _upsert_por_tipo(
+        self, notification: Notification, kind: str
+    ) -> Notification:
+        """Una fila por usuario, licitación y tipo: el unique de la tabla lo exige.
+
+        Un aviso nuevo reemplaza el payload y vuelve a marcarlo sin leer, en vez
+        de acumular filas que el usuario ya vio.
+        """
         result = await self.session.exec(
             select(NotificationModel).where(
                 NotificationModel.user_id == notification.user_id,
                 NotificationModel.tender_id == notification.tender_id,
-                NotificationModel.kind == "date_changed",
+                NotificationModel.kind == kind,
             )
         )
         model = result.first()
@@ -321,6 +349,12 @@ class NotificationDeliveryRepository(INotificationDeliveryRepository):
             for valor in model.notification_ids or []:
                 ids.add(UUID(valor))
         return ids
+
+
+def _recordatorio_desde_json(valor: dict[str, Any]) -> MilestoneReminder:
+    """Igual que los cambios de fecha: el JSON trae ISO con "Z", el dominio usa UTC naive."""
+    recordatorio = MilestoneReminder.model_validate(valor)
+    return recordatorio.model_copy(update={"due_at": to_utc_naive(recordatorio.due_at)})
 
 
 def _cambio_desde_json(valor: dict[str, Any]) -> MilestoneDateChange:

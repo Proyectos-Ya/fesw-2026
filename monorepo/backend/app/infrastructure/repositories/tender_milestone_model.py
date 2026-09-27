@@ -9,6 +9,8 @@ class TenderMilestoneModel(SQLModel, table=True):
     __tablename__ = "tender_milestone"  # type: ignore
     __table_args__ = (
         Index("ix_tender_milestone_user_tender", "user_id", "tender_id"),
+        # El loop de recordatorios barre por estas dos columnas cada hora.
+        Index("ix_tender_milestone_recordatorio", "reminder_days_before", "reminder_sent_at"),
     )
 
     id: UUID = Field(primary_key=True)
@@ -22,5 +24,8 @@ class TenderMilestoneModel(SQLModel, table=True):
     source_excerpt: str | None = Field(default=None, max_length=1000)
     due_at: datetime
     has_time: bool
+    # Recordatorio del hito (HU-16, criterio 10). Nulo = el usuario no lo activó.
+    reminder_days_before: int | None = Field(default=None)
+    reminder_sent_at: datetime | None = Field(default=None)
     created_at: datetime
     updated_at: datetime

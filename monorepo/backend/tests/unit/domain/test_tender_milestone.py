@@ -36,14 +36,67 @@ class TestUrgencia:
             (timedelta(hours=2), MilestoneUrgency.CRITICO),
             (timedelta(days=3), MilestoneUrgency.CRITICO),
             (timedelta(days=3, minutes=1), MilestoneUrgency.PROXIMO),
-            (timedelta(days=7), MilestoneUrgency.PROXIMO),
-            (timedelta(days=7, minutes=1), MilestoneUrgency.NORMAL),
+            # El criterio 9 pide destacar desde "5 días o menos".
+            (timedelta(days=5), MilestoneUrgency.PROXIMO),
+            (timedelta(days=5, minutes=1), MilestoneUrgency.NORMAL),
         ],
     )
-    def test_usa_los_mismos_umbrales_que_el_frontend(
+    def test_destaca_los_hitos_a_cinco_dias_o_menos(
         self, falta: timedelta, esperado: MilestoneUrgency
     ):
         assert _hito(due_at=AHORA + falta).urgencia(AHORA) is esperado
+
+
+class TestRecordatorio:
+    """Criterio 10: recordatorio activable con anticipación configurable."""
+
+    def test_sin_anticipacion_configurada_no_hay_recordatorio(self):
+        assert _hito(reminder_days_before=None).recordatorio_pendiente(AHORA) is False
+
+    def test_todavia_falta_para_la_anticipacion_elegida(self):
+        # Vence en 10 días y pidió aviso 3 días antes: aún no toca.
+        hito = _hito(due_at=AHORA + timedelta(days=10), reminder_days_before=3)
+
+        assert hito.recordatorio_pendiente(AHORA) is False
+
+    def test_al_entrar_en_la_ventana_toca_avisar(self):
+        hito = _hito(due_at=AHORA + timedelta(days=3), reminder_days_before=3)
+
+        assert hito.recordatorio_pendiente(AHORA) is True
+
+    def test_dentro_de_la_ventana_sigue_tocando(self):
+        hito = _hito(due_at=AHORA + timedelta(days=1), reminder_days_before=3)
+
+        assert hito.recordatorio_pendiente(AHORA) is True
+
+    def test_un_hito_ya_vencido_no_se_recuerda(self):
+        hito = _hito(due_at=AHORA - timedelta(minutes=1), reminder_days_before=3)
+
+        assert hito.recordatorio_pendiente(AHORA) is False
+
+    def test_no_se_repite_si_ya_se_envio(self):
+        hito = _hito(
+            due_at=AHORA + timedelta(days=1),
+            reminder_days_before=3,
+            reminder_sent_at=AHORA - timedelta(hours=2),
+        )
+
+        assert hito.recordatorio_pendiente(AHORA) is False
+
+    def test_marcar_enviado_deja_constancia_y_apaga_el_pendiente(self):
+        hito = _hito(due_at=AHORA + timedelta(days=1), reminder_days_before=3)
+
+        enviado = hito.con_recordatorio_enviado(AHORA)
+
+        assert enviado.reminder_sent_at == AHORA
+        assert enviado.recordatorio_pendiente(AHORA) is False
+        # No muta el original.
+        assert hito.reminder_sent_at is None
+
+    @pytest.mark.parametrize("dias", [0, -1, 400])
+    def test_rechaza_anticipaciones_absurdas(self, dias: int):
+        with pytest.raises(ValidationError):
+            _hito(reminder_days_before=dias)
 
 
 class TestConHora:

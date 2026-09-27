@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.application.schemas.notification_schema import (
     DateChangeResponse,
+    MilestoneReminderResponse,
     MarkAllReadResponse,
     NotificationDeliveryResponse,
     NotificationPreferenceResponse,
@@ -214,6 +215,12 @@ def _notification_response(
         date_changes=[
             DateChangeResponse(label=c.label, previous_at=c.previous_at, new_at=c.new_at)
             for c in aviso.date_changes
+        ],
+        milestone_reminders=[
+            MilestoneReminderResponse(
+                milestone_id=r.milestone_id, title=r.title, due_at=r.due_at
+            )
+            for r in aviso.milestone_reminders
         ],
         read_at=aviso.read_at,
         created_at=aviso.created_at,

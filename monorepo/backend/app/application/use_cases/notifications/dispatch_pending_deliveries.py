@@ -14,10 +14,14 @@ from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.email_templates import (
     AlertItem,
     DateChangeItem,
+    MilestoneReminderItem,
     build_date_change_html_body,
     build_date_change_subject,
     build_date_change_text_body,
     build_html_body,
+    build_reminder_html_body,
+    build_reminder_subject,
+    build_reminder_text_body,
     build_subject,
     build_text_body,
 )
@@ -89,6 +93,25 @@ class DispatchPendingDeliveriesUseCase:
                 subject=build_date_change_subject(cambios),
                 text_body=build_date_change_text_body(cambios, self.base_url),
                 html_body=build_date_change_html_body(cambios, self.base_url),
+            )
+
+        # Igual que los cambios de fecha: una entrega de recordatorios solo lleva
+        # avisos de ese tipo, así que la plantilla se elige por el primero que haya.
+        recordatorios = [
+            MilestoneReminderItem(
+                tender_id=tender.id,
+                title=tender.name,
+                milestones=[(r.title, r.due_at) for r in n.milestone_reminders],
+            )
+            for n in notificaciones
+            if n.kind == "milestone_reminder" and (tender := tender_por_id.get(n.tender_id))
+        ]
+        if recordatorios:
+            return EmailMessage(
+                to=to,
+                subject=build_reminder_subject(recordatorios),
+                text_body=build_reminder_text_body(recordatorios, self.base_url),
+                html_body=build_reminder_html_body(recordatorios, self.base_url),
             )
 
         items = [

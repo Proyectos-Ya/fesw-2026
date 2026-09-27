@@ -11,6 +11,7 @@ import { MilestonesSection } from "../MilestonesSection";
 vi.mock("../../services/milestonesService", () => ({
   getTenderMilestones: vi.fn(),
   extractTenderMilestones: vi.fn(),
+  setMilestoneReminder: vi.fn(),
 }));
 
 vi.mock("../../services/calendarService", () => ({
@@ -33,6 +34,11 @@ describe("MilestonesSection", () => {
   beforeEach(() => {
     vi.mocked(service.getTenderMilestones).mockReset();
     vi.mocked(service.extractTenderMilestones).mockReset();
+    vi.mocked(service.setMilestoneReminder).mockReset();
+    vi.mocked(service.setMilestoneReminder).mockResolvedValue({
+      milestone_id: "m-1",
+      reminder_days_before: 3,
+    });
     vi.mocked(calendarService.getCalendarConnections).mockReset();
     vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([]);
     vi.mocked(calendarService.syncMilestones).mockReset();
@@ -275,6 +281,86 @@ describe("MilestonesSection", () => {
 
       expect(screen.getByRole("checkbox", { name: "Seleccionar Publicación" })).not.toBeChecked();
       expect(screen.getByRole("checkbox", { name: "Seleccionar Cierre" })).toBeChecked();
+    });
+  });
+
+  describe("recordatorios por hito", () => {
+    it("ofrece las anticipaciones y parte sin recordatorio", async () => {
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      const selector = await screen.findByRole("combobox", {
+        name: /recordatorio de cierre de recepción de ofertas/i,
+      });
+      expect(selector).toHaveValue("");
+      expect(
+        Array.from(selector.querySelectorAll("option")).map((o) => o.textContent),
+      ).toEqual(["Sin recordatorio", "1 día antes", "3 días antes", "1 semana antes"]);
+    });
+
+    it("activa el recordatorio elegido y lo refleja en la fila", async () => {
+      const user = userEvent.setup();
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+      const selector = await screen.findByRole("combobox", { name: /recordatorio de cierre/i });
+
+      await user.selectOptions(selector, "3");
+
+      await waitFor(() => expect(selector).toHaveValue("3"));
+      expect(service.setMilestoneReminder).toHaveBeenCalledWith("t-1", "m-1", 3);
+    });
+
+    it("lo apaga volviendo a 'Sin recordatorio'", async () => {
+      const user = userEvent.setup();
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(
+        buildMilestoneList({ milestones: [buildMilestone({ reminder_days_before: 7 })] }),
+      );
+      vi.mocked(service.setMilestoneReminder).mockResolvedValue({
+        milestone_id: "m-1",
+        reminder_days_before: null,
+      });
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+      const selector = await screen.findByRole("combobox", { name: /recordatorio de cierre/i });
+      expect(selector).toHaveValue("7");
+
+      await user.selectOptions(selector, "");
+
+      await waitFor(() => expect(selector).toHaveValue(""));
+      expect(service.setMilestoneReminder).toHaveBeenCalledWith("t-1", "m-1", null);
+    });
+
+    it("si el guardado falla vuelve al valor anterior y lo avisa", async () => {
+      const user = userEvent.setup();
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+      vi.mocked(service.setMilestoneReminder).mockRejectedValue(
+        new ApiError(500, "Error del servidor"),
+      );
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+      const selector = await screen.findByRole("combobox", { name: /recordatorio de cierre/i });
+
+      await user.selectOptions(selector, "1");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "No se pudo guardar el recordatorio.",
+      );
+      expect(selector).toHaveValue("");
+    });
+
+    it("un hito vencido ya no admite recordatorio", async () => {
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(
+        buildMilestoneList({
+          milestones: [buildMilestone({ urgency: "vencido", due_at: "2026-09-20T15:00:00Z" })],
+        }),
+      );
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      await waitFor(() => expect(filas()).toHaveLength(1));
+      expect(screen.queryByRole("combobox", { name: /recordatorio/i })).not.toBeInTheDocument();
     });
   });
 });

@@ -28,6 +28,10 @@ function NotificationCard({
 }) {
   const sinLeer = item.read_at === null;
   const esCambioDeFecha = item.kind === "date_changed";
+  const esRecordatorio = item.kind === "milestone_reminder";
+  // Los dos avisos de hitos comparten forma: ícono de calendario y una línea
+  // por hito, en vez del organismo y el puntaje del aviso de compatibilidad.
+  const esDeHitos = esCambioDeFecha || esRecordatorio;
 
   return (
     <li>
@@ -47,7 +51,7 @@ function NotificationCard({
           }`}
         >
           <Icon
-            name={esCambioDeFecha ? "calendar-clock" : "bell"}
+            name={esDeHitos ? "calendar-clock" : "bell"}
             size={18}
             color={sinLeer ? "var(--primary)" : "var(--text-subtle)"}
           />
@@ -62,31 +66,35 @@ function NotificationCard({
             >
               {item.tender?.name ?? "Licitación no disponible"}
             </span>
-            {esCambioDeFecha ? (
-              <Badge tone="warning">Fecha modificada</Badge>
-            ) : (
-              item.score_pct !== null && (
-                <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
-              )
+            {esCambioDeFecha && <Badge tone="warning">Fecha modificada</Badge>}
+            {esRecordatorio && <Badge tone="info">Recordatorio</Badge>}
+            {!esDeHitos && item.score_pct !== null && (
+              <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
             )}
             {/* El criterio pide avisar cuando la licitación de una alerta ya cerró. */}
             {item.is_closed && <Badge tone="neutral">Cerrada</Badge>}
           </span>
 
-          {esCambioDeFecha ? (
+          {esCambioDeFecha &&
             item.date_changes.map((cambio) => (
               <span key={cambio.label} className="text-xs text-text-body">
                 {`${cambio.label}: ${formatMilestoneDate(cambio.previous_at, true)} → ${formatMilestoneDate(cambio.new_at, true)}`}
               </span>
-            ))
-          ) : (
+            ))}
+          {esRecordatorio &&
+            item.milestone_reminders.map((hito) => (
+              <span key={hito.milestone_id} className="text-xs text-text-body">
+                {`${hito.title}: ${formatMilestoneDate(hito.due_at, true)}`}
+              </span>
+            ))}
+          {!esDeHitos && (
             <span className="text-xs text-text-subtle">
               {item.tender?.buyer_name ?? "Organismo no informado"}
               {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
             </span>
           )}
           <span className="text-xs text-text-subtle">
-            {esCambioDeFecha ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
+            {esDeHitos ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
           </span>
         </span>
 
