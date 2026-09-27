@@ -155,7 +155,6 @@ export function InviteMemberModal({
               >
                 <option value="member">Miembro (Visualización y postulación)</option>
                 <option value="admin">Administrador (Gestión total y miembros)</option>
-                <option value="viewer">Lector (Solo lectura)</option>
               </select>
             </div>
 

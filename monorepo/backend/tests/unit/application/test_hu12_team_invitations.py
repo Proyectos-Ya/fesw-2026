@@ -326,10 +326,23 @@ async def test_ca4_recipient_can_reject_pending_invitation(repos):
     with pytest.raises(InvitationAlreadyProcessed):
         await reject_uc.execute(token=inv.token, current_user=guest)
 
+    # Admin puede confirmar lectura / descartar una invitación rechazada
+    cancel_uc = CancelSupplierInvitationUseCase(
+        invitation_repo=invitations,
+        member_repo=repos[2],
+        supplier_repo=suppliers,
+    )
+    dismissed = await cancel_uc.execute(
+        invitation_id=inv.id, actor_user_id=admin.id
+    )
+    assert dismissed.status == InvitationStatus.CANCELLED
+
 
 def test_ca2_invitation_email_templates_escape_html_and_include_link():
     subject = build_invitation_subject("Constructora <Andes> SpA")
     assert "Constructora <Andes> SpA" in subject
+    assert "Chiripa" in subject
+    assert "ProyectosYA" not in subject
 
     url = invitation_url("https://proyectosya.cl/", "tok_abc123")
     assert url == "https://proyectosya.cl/?invitation_token=tok_abc123"
@@ -343,6 +356,8 @@ def test_ca2_invitation_email_templates_escape_html_and_include_link():
     )
     assert "Constructora <Andes> SpA" in text_body
     assert "Administrador" in text_body
+    assert "Chiripa" in text_body
+    assert "ProyectosYA" not in text_body
     assert url in text_body
 
     html_body = build_invitation_html_body(
@@ -355,4 +370,6 @@ def test_ca2_invitation_email_templates_escape_html_and_include_link():
     assert "Constructora &lt;Andes&gt; SpA" in html_body
     assert "Juan &lt;Admin&gt;" in html_body
     assert "Administrador" in html_body
+    assert "Chiripa" in html_body
+    assert "ProyectosYA" not in html_body
     assert url in html_body

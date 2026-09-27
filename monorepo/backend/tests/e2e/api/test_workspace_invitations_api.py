@@ -381,10 +381,35 @@ async def test_hu12_cancel_and_reject_invitation_flows(api: AsyncClient):
     assert reject_resp.status_code == 200
     assert reject_resp.json()["status"] == "rejected"
 
-    # Ya no aparece en /invitations/me
+    # Ya no aparece en /invitations/me del invitado
     me_after_reject = await api.get(
         "/workspaces/invitations/me", headers=headers_guest2
     )
     assert me_after_reject.status_code == 200
     assert me_after_reject.json() == []
+
+    # Admin aún la ve en /workspaces/{supplier_id}/invitations con estado "rejected"
+    admin_invs = await api.get(
+        f"/workspaces/{supplier_id}/invitations",
+        headers=headers_admin,
+    )
+    assert admin_invs.status_code == 200
+    assert len(admin_invs.json()) == 1
+    assert admin_invs.json()[0]["id"] == inv2["id"]
+    assert admin_invs.json()[0]["status"] == "rejected"
+
+    # Admin confirma lectura / descarta la invitación rechazada
+    dismiss_resp = await api.delete(
+        f"/workspaces/invitations/{inv2['id']}",
+        headers=headers_admin,
+    )
+    assert dismiss_resp.status_code == 200
+    assert dismiss_resp.json()["status"] == "cancelled"
+
+    admin_invs_after = await api.get(
+        f"/workspaces/{supplier_id}/invitations",
+        headers=headers_admin,
+    )
+    assert admin_invs_after.status_code == 200
+    assert admin_invs_after.json() == []
 

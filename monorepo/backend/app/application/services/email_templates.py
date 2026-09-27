@@ -108,13 +108,12 @@ def build_html_body(items: list[AlertItem], base_url: str, is_digest: bool) -> s
 _ETIQUETA_ROL: dict[str, str] = {
     "admin": "Administrador",
     "member": "Miembro",
-    "viewer": "Lector",
 }
 
 
 def _nombre_rol(role: object) -> str:
     valor = getattr(role, "value", str(role)).lower()
-    return _ETIQUETA_ROL.get(valor, "Representante")
+    return _ETIQUETA_ROL.get(valor, "Miembro")
 
 
 def invitation_url(base_url: str, token: str) -> str:
@@ -125,7 +124,7 @@ def invitation_url(base_url: str, token: str) -> str:
 
 
 def build_invitation_subject(supplier_name: str) -> str:
-    return f"Invitación para unirte al equipo de {supplier_name} en ProyectosYA"
+    return f"Invitación para unirte al equipo de {supplier_name} en Chiripa"
 
 
 def build_invitation_text_body(
@@ -141,7 +140,7 @@ def build_invitation_text_body(
         "Hola,",
         "",
         f"{inviter_name} te ha invitado a unirte al espacio de trabajo de "
-        f'"{supplier_name}" en ProyectosYA con el rol de {rol_legible}.',
+        f'"{supplier_name}" en Chiripa con el rol de {rol_legible}.',
         "",
         "Para revisar y aceptar o rechazar esta invitación, ingresa a tu cuenta en:",
         f"  {url}",
@@ -169,17 +168,17 @@ def build_invitation_html_body(
         f'<h2 style="margin:0 0 12px;font-size:18px">Invitación a {empresa_segura}</h2>'
         f'<p style="margin:0 0 12px;font-size:15px;line-height:1.5">'
         f"<strong>{invitador_seguro}</strong> te ha invitado a formar parte del equipo de "
-        f"<strong>{empresa_segura}</strong> en ProyectosYA con el rol de "
+        f"<strong>{empresa_segura}</strong> en Chiripa con el rol de "
         f"<strong>{rol_legible}</strong>.</p>"
         f'<p style="margin:0 0 16px;font-size:14px;color:#6b6259">'
         "Al aceptar, podrás colaborar en las licitaciones de esta organización sin perder "
         "tus membresías actuales.</p>"
         f'<a href="{url_segura}" style="display:inline-block;background:#0f766e;'
         "color:#ffffff;padding:10px 18px;border-radius:6px;"
-        'text-decoration:none;font-size:14px;font-weight:600">Revisar invitación</a>'
+        'text-decoration:none;font-size:14px;font-weight:600">Revisar invitación en Chiripa</a>'
         "</div>"
         '<p style="color:#6b6259;font-size:12px;margin-top:12px">'
-        "Si no reconoces esta invitación, puedes rechazarla desde tu panel de inicio en ProyectosYA.</p>"
+        "Si no reconoces esta invitación, puedes rechazarla desde tu panel de inicio en Chiripa.</p>"
         "</div>"
     )
 

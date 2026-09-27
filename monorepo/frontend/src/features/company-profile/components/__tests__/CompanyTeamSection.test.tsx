@@ -40,7 +40,7 @@ describe("CompanyTeamSection", () => {
     vi.clearAllMocks();
   });
 
-  it("no renderiza nada cuando el usuario no es administrador (CA1)", () => {
+  it("permite a un miembro ver los miembros actuales del equipo pero oculta el formulario y las invitaciones pendientes", async () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       ...baseWorkspaceContext,
       isAdmin: false,
@@ -50,16 +50,72 @@ describe("CompanyTeamSection", () => {
         is_admin: false,
       },
     });
+    vi.mocked(workspaceService.listWorkspaceMembers).mockResolvedValueOnce([
+      {
+        id: "m-1",
+        user_id: "u-admin",
+        supplier_id: "sup-1",
+        email: "admin@norte.cl",
+        full_name: "Ana Administradora",
+        role: "admin",
+        status: "active",
+        joined_at: "2026-09-01T10:00:00Z",
+      },
+      {
+        id: "m-2",
+        user_id: "u-rep",
+        supplier_id: "sup-1",
+        email: "rep@norte.cl",
+        full_name: "Roberto Representante",
+        role: "member",
+        status: "active",
+        joined_at: "2026-09-05T10:00:00Z",
+      },
+    ]);
 
-    const { container } = render(
+    render(
       <CompanyTeamSection
         supplierId="sup-1"
         supplierName="Constructora Norte SpA"
       />,
     );
 
-    expect(container.firstChild).toBeNull();
-    expect(workspaceService.listWorkspaceMembers).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Ana Administradora"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Roberto Representante")).toBeInTheDocument();
+    expect(workspaceService.listWorkspaceMembers).toHaveBeenCalledWith("sup-1");
+    expect(workspaceService.listWorkspaceInvitations).not.toHaveBeenCalled();
+
+    expect(
+      screen.queryByLabelText(/correo electrónico del invitado/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/invitaciones pendientes/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("solo muestra los roles Miembro y Administrador en el menú desplegable", async () => {
+    vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue(
+      baseWorkspaceContext,
+    );
+    vi.mocked(workspaceService.listWorkspaceMembers).mockResolvedValueOnce([]);
+    vi.mocked(workspaceService.listWorkspaceInvitations).mockResolvedValueOnce([]);
+
+    render(
+      <CompanyTeamSection
+        supplierId="sup-1"
+        supplierName="Constructora Norte SpA"
+      />,
+    );
+
+    const roleSelect = await screen.findByLabelText(/rol asignado/i);
+    const options = within(roleSelect).getAllByRole("option");
+    expect(options.map((opt) => opt.textContent)).toEqual([
+      "Miembro",
+      "Administrador",
+    ]);
+    expect(within(roleSelect).queryByText(/lector/i)).not.toBeInTheDocument();
   });
 
   it("muestra miembros actuales, invitaciones pendientes y formulario para el administrador (CA1)", async () => {
@@ -274,5 +330,63 @@ describe("CompanyTeamSection", () => {
     expect(
       screen.getByText(/invitación cancelada correctamente/i),
     ).toBeInTheDocument();
+  });
+
+  it("muestra invitaciones rechazadas indicando que el usuario rechazó la invitación y permite confirmar lectura para quitarlas de la lista", async () => {
+    vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue(
+      baseWorkspaceContext,
+    );
+    vi.mocked(workspaceService.listWorkspaceMembers).mockResolvedValueOnce([]);
+    vi.mocked(workspaceService.listWorkspaceInvitations).mockResolvedValueOnce([
+      {
+        id: "inv-rej-1",
+        supplier_id: "sup-1",
+        invited_by: "u-admin",
+        email: "rechazado@norte.cl",
+        role: "member",
+        token: "tok-rej",
+        status: "rejected",
+        expires_at: "2026-10-01T00:00:00Z",
+        created_at: "2026-09-10T10:00:00Z",
+      },
+    ]);
+    vi.mocked(workspaceService.cancelInvitation).mockResolvedValueOnce({
+      id: "inv-rej-1",
+      supplier_id: "sup-1",
+      invited_by: "u-admin",
+      email: "rechazado@norte.cl",
+      role: "member",
+      token: "tok-rej",
+      status: "cancelled",
+      expires_at: "2026-10-01T00:00:00Z",
+      created_at: "2026-09-10T10:00:00Z",
+    });
+
+    render(
+      <CompanyTeamSection
+        supplierId="sup-1"
+        supplierName="Constructora Norte SpA"
+      />,
+    );
+
+    expect(await screen.findByText("rechazado@norte.cl")).toBeInTheDocument();
+    expect(
+      screen.getByText(/el usuario rechazó la invitación/i),
+    ).toBeInTheDocument();
+
+    const ackBtn = screen.getByRole("button", {
+      name: /confirmar lectura de rechazado@norte\.cl/i,
+    });
+    fireEvent.click(ackBtn);
+
+    await waitFor(() => {
+      expect(workspaceService.cancelInvitation).toHaveBeenCalledWith(
+        "inv-rej-1",
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("rechazado@norte.cl")).not.toBeInTheDocument();
+    });
   });
 });

@@ -24,8 +24,7 @@ interface CompanyTeamSectionProps {
 
 function formatRoleLabel(role: MemberRole): string {
   if (role === "admin") return "Administrador";
-  if (role === "member") return "Miembro";
-  return "Lector";
+  return "Miembro";
 }
 
 export function CompanyTeamSection({
@@ -48,21 +47,29 @@ export function CompanyTeamSection({
   const [invitationToCancel, setInvitationToCancel] =
     useState<SupplierInvitation | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
   const loadTeamData = useCallback(async () => {
-    if (!isAdmin || !supplierId) return;
+    if (!supplierId) return;
     setIsLoadingTeam(true);
     try {
-      const [membersRes, invitationsRes] = await Promise.allSettled([
-        listWorkspaceMembers(supplierId),
-        listWorkspaceInvitations(supplierId),
-      ]);
-      if (membersRes.status === "fulfilled") {
-        setMembers(membersRes.value);
+      if (isAdmin) {
+        const [membersRes, invitationsRes] = await Promise.allSettled([
+          listWorkspaceMembers(supplierId),
+          listWorkspaceInvitations(supplierId),
+        ]);
+        if (membersRes.status === "fulfilled") {
+          setMembers(membersRes.value);
+        }
+        if (invitationsRes.status === "fulfilled") {
+          setPendingInvitations(invitationsRes.value);
+        }
+      } else {
+        const membersList = await listWorkspaceMembers(supplierId);
+        setMembers(membersList);
       }
-      if (invitationsRes.status === "fulfilled") {
-        setPendingInvitations(invitationsRes.value);
-      }
+    } catch {
+      // Silencia error de carga inicial para no romper la vista de empresa
     } finally {
       setIsLoadingTeam(false);
     }
@@ -71,10 +78,6 @@ export function CompanyTeamSection({
   useEffect(() => {
     void loadTeamData();
   }, [loadTeamData]);
-
-  if (!isAdmin) {
-    return null;
-  }
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +142,27 @@ export function CompanyTeamSection({
     }
   };
 
+  const handleAcknowledgeRejected = async (invitation: SupplierInvitation) => {
+    setAcknowledgingId(invitation.id);
+    setFormError(null);
+    setFeedbackMessage(null);
+
+    try {
+      await cancelInvitation(invitation.id);
+      setPendingInvitations((prev) =>
+        prev.filter((item) => item.id !== invitation.id),
+      );
+    } catch (err: unknown) {
+      if (err instanceof ApiError || err instanceof Error) {
+        setFormError(err.message);
+      } else {
+        setFormError("No se pudo confirmar la lectura de la invitación.");
+      }
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
+
   return (
     <section className="mt-8 rounded-lg bg-white p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
@@ -147,94 +171,93 @@ export function CompanyTeamSection({
             Equipo de la empresa
           </h2>
           <p className="text-sm text-text-muted mt-1">
-            Gestiona los representantes activos y las invitaciones pendientes de{" "}
-            <span className="font-semibold text-text-strong">
-              {supplierName}
-            </span>
-            .
+            {isAdmin
+              ? `Gestiona los representantes activos y las invitaciones pendientes de ${supplierName}.`
+              : `Integrantes activos de ${supplierName}.`}
           </p>
         </div>
       </div>
 
-      {/* Formulario de invitación (CA1, CA2, CA3) */}
-      <form
-        onSubmit={(e) => void handleInviteSubmit(e)}
-        className="rounded-lg border border-border-subtle bg-surface-base/50 p-4 flex flex-col gap-4"
-        noValidate
-      >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-end">
-          <div className="sm:col-span-6">
-            <label
-              htmlFor="invite-member-email"
-              className="block text-xs font-bold uppercase tracking-caps text-text-subtle mb-1.5"
+      {/* Formulario de invitación exclusivo para Administradores (CA1, CA2, CA3) */}
+      {isAdmin && (
+        <form
+          onSubmit={(e) => void handleInviteSubmit(e)}
+          className="rounded-lg border border-border-subtle bg-surface-base/50 p-4 flex flex-col gap-4"
+          noValidate
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-end">
+            <div className="sm:col-span-6">
+              <label
+                htmlFor="invite-member-email"
+                className="block text-xs font-bold uppercase tracking-caps text-text-subtle mb-1.5"
+              >
+                Correo electrónico del invitado
+              </label>
+              <input
+                id="invite-member-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="representante@empresa.cl"
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2 text-sm text-text-strong placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+              />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label
+                htmlFor="invite-member-role"
+                className="block text-xs font-bold uppercase tracking-caps text-text-subtle mb-1.5"
+              >
+                Rol asignado
+              </label>
+              <select
+                id="invite-member-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as MemberRole)}
+                disabled={isSubmitting}
+                className="w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+              >
+                <option value="member">Miembro</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+
+            <div className="sm:col-span-3">
+              <Button
+                type="submit"
+                variant="primary"
+                isLoading={isSubmitting}
+                className="w-full font-bold"
+              >
+                Enviar invitación
+              </Button>
+            </div>
+          </div>
+
+          {formError && (
+            <div
+              role="alert"
+              className="flex items-center gap-2 rounded-lg bg-danger-soft/40 border border-danger/20 p-3 text-xs font-medium text-danger"
             >
-              Correo electrónico del invitado
-            </label>
-            <input
-              id="invite-member-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="representante@empresa.cl"
-              disabled={isSubmitting}
-              className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2 text-sm text-text-strong placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-            />
-          </div>
+              <Icon name="circle-alert" size={16} />
+              <span>{formError}</span>
+            </div>
+          )}
 
-          <div className="sm:col-span-3">
-            <label
-              htmlFor="invite-member-role"
-              className="block text-xs font-bold uppercase tracking-caps text-text-subtle mb-1.5"
+          {feedbackMessage && (
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-medium text-emerald-700"
             >
-              Rol asignado
-            </label>
-            <select
-              id="invite-member-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as MemberRole)}
-              disabled={isSubmitting}
-              className="w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-            >
-              <option value="member">Miembro</option>
-              <option value="admin">Administrador</option>
-              <option value="viewer">Lector</option>
-            </select>
-          </div>
+              <Icon name="circle-check" size={16} />
+              <span>{feedbackMessage}</span>
+            </div>
+          )}
+        </form>
+      )}
 
-          <div className="sm:col-span-3">
-            <Button
-              type="submit"
-              variant="primary"
-              isLoading={isSubmitting}
-              className="w-full font-bold"
-            >
-              Enviar invitación
-            </Button>
-          </div>
-        </div>
-
-        {formError && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 rounded-lg bg-danger-soft/40 border border-danger/20 p-3 text-xs font-medium text-danger"
-          >
-            <Icon name="circle-alert" size={16} />
-            <span>{formError}</span>
-          </div>
-        )}
-
-        {feedbackMessage && (
-          <div
-            role="status"
-            className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-medium text-emerald-700"
-          >
-            <Icon name="circle-check" size={16} />
-            <span>{feedbackMessage}</span>
-          </div>
-        )}
-      </form>
-
-      {/* Tabla de miembros actuales (CA1) */}
+      {/* Tabla de miembros actuales (visible para Administradores y Miembros) */}
       <div>
         <h3 className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-3">
           Miembros actuales ({members.length})
@@ -283,61 +306,87 @@ export function CompanyTeamSection({
         )}
       </div>
 
-      {/* Tabla de invitaciones pendientes (CA1, CA2, CA7) */}
-      <div>
-        <h3 className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-3">
-          Invitaciones pendientes ({pendingInvitations.length})
-        </h3>
-        {pendingInvitations.length === 0 ? (
-          <p className="text-sm text-text-subtle">
-            No hay invitaciones pendientes en este momento.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border-subtle">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-warm-100/60 text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
-                <tr>
-                  <th className="px-4 py-2.5">Correo invitado</th>
-                  <th className="px-4 py-2.5">Rol</th>
-                  <th className="px-4 py-2.5">Estado</th>
-                  <th className="px-4 py-2.5 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {pendingInvitations.map((inv) => (
-                  <tr key={inv.id}>
-                    <td className="px-4 py-3 font-medium text-text-strong">
-                      {inv.email}
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">
-                      {formatRoleLabel(inv.role)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                        Pendiente
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        aria-label={`Cancelar invitación de ${inv.email}`}
-                        onClick={() => setInvitationToCancel(inv)}
-                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger-soft/40 transition-colors cursor-pointer"
-                      >
-                        <Icon name="x" size={14} />
-                        <span>Cancelar</span>
-                      </button>
-                    </td>
+      {/* Tabla de invitaciones pendientes y rechazadas (exclusiva para Administradores) */}
+      {isAdmin && (
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-3">
+            Invitaciones pendientes ({pendingInvitations.length})
+          </h3>
+          {pendingInvitations.length === 0 ? (
+            <p className="text-sm text-text-subtle">
+              No hay invitaciones pendientes en este momento.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border-subtle">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-warm-100/60 text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
+                  <tr>
+                    <th className="px-4 py-2.5">Correo invitado</th>
+                    <th className="px-4 py-2.5">Rol</th>
+                    <th className="px-4 py-2.5">Estado</th>
+                    <th className="px-4 py-2.5 text-right">Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {pendingInvitations.map((inv) => {
+                    const isRejected = inv.status === "rejected";
+                    return (
+                      <tr key={inv.id}>
+                        <td className="px-4 py-3 font-medium text-text-strong">
+                          {inv.email}
+                        </td>
+                        <td className="px-4 py-3 text-text-muted">
+                          {formatRoleLabel(inv.role)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isRejected ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft/60 px-2.5 py-0.5 text-xs font-semibold text-danger">
+                              El usuario rechazó la invitación
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                              Pendiente
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {isRejected ? (
+                            <button
+                              type="button"
+                              aria-label={`Confirmar lectura de ${inv.email}`}
+                              disabled={acknowledgingId === inv.id}
+                              onClick={() =>
+                                void handleAcknowledgeRejected(inv)
+                              }
+                              className="inline-flex items-center gap-1 rounded-md bg-warm-100 px-2.5 py-1 text-xs font-semibold text-text-strong hover:bg-warm-200 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <Icon name="check" size={14} />
+                              <span>Confirmar lectura</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`Cancelar invitación de ${inv.email}`}
+                              onClick={() => setInvitationToCancel(inv)}
+                              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger-soft/40 transition-colors cursor-pointer"
+                            >
+                              <Icon name="x" size={14} />
+                              <span>Cancelar</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Diálogo de confirmación de cancelación (CA7) */}
-      {invitationToCancel && (
+      {isAdmin && invitationToCancel && (
         <div
           role="dialog"
           aria-modal="true"

@@ -545,10 +545,12 @@ def create_workspace_router(
                 detail="Solo los administradores pueden ver las invitaciones pendientes.",
             )
 
-        invitations = await invitation_repo.list_by_supplier_id(
-            supplier_id, status=InvitationStatus.PENDING
-        )
-        return [inv for inv in invitations if inv.is_pending()]
+        invitations = await invitation_repo.list_by_supplier_id(supplier_id)
+        return [
+            inv
+            for inv in invitations
+            if inv.is_pending() or inv.status == InvitationStatus.REJECTED
+        ]
 
     # 10. Conmutar espacio de trabajo activo (CA-3, CA-4)
     @router.post(

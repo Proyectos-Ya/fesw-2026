@@ -57,9 +57,12 @@ class CancelSupplierInvitationUseCase:
                 "Solo los administradores pueden cancelar invitaciones."
             )
 
-        if invitation.status != InvitationStatus.PENDING:
+        if invitation.status not in (
+            InvitationStatus.PENDING,
+            InvitationStatus.REJECTED,
+        ):
             raise InvitationAlreadyProcessed(
-                "Solo se pueden cancelar invitaciones que estén pendientes."
+                "Solo se pueden cancelar o descartar invitaciones pendientes o rechazadas."
             )
 
         invitation.status = InvitationStatus.CANCELLED
