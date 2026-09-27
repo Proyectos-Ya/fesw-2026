@@ -18,6 +18,7 @@ from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisMode
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     ComunaModel,
+    IngestionRunModel,
     RegionModel,
     TenderItemModel,
     TenderModel,
@@ -534,6 +535,20 @@ class TenderRepository(ITenderRepository):
             select(TenderModel.created_at)
             .order_by(col(TenderModel.created_at).desc())
             .limit(1)
+        )
+        result = await self.session.exec(statement)
+        return result.first()
+
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        """Fin de la última corrida terminada con datos (`ok` o `partial`).
+
+        Las corridas en curso o colgadas (`finished_at` nulo) y las que no
+        procesaron nada no cuentan. `ingestion_run` tiene una fila por corrida,
+        así que el MAX sin índice propio es barato.
+        """
+        statement = select(func.max(col(IngestionRunModel.finished_at))).where(
+            col(IngestionRunModel.finished_at).is_not(None),
+            col(IngestionRunModel.processed) > 0,
         )
         result = await self.session.exec(statement)
         return result.first()

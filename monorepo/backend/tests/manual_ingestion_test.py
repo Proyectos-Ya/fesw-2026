@@ -41,7 +41,7 @@ async def run_test():
         print("[Seeder] Base de datos sembrada y lista.")
 
         # 5. Instanciar tus servicios e inyectar las dependencias reales
-        client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
+        client = MercadoPublicoClient(api_keys=settings.mercado_publico_tickets)
         embedding_service = BgeM3EmbeddingService(model_name=settings.embedding_model)
         tender_vector_repo = QdrantTenderRepository(
             client=AsyncQdrantClient(url=settings.qdrant_url),

@@ -75,4 +75,5 @@ const construirConfig = (fase: string): NextConfig => ({
   },
 });
 
-export default (fase: string) => construirConfig(fase);
+const nextConfig = (fase: string) => construirConfig(fase);
+export default nextConfig;

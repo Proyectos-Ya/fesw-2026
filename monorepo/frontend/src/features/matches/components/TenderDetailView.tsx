@@ -27,6 +27,7 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
+import { QuotationEditor } from "@/features/quotations/QuotationEditor";
 import {
   daysUntilClosing,
   formatCLP,
@@ -88,7 +89,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [analysis, setAnalysis] = useState<DeepAnalysis | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   // El puntaje vive aparte del estado de carga: el usuario puede calcularlo o
   // recalcularlo sin volver a pedir la licitación entera.
   const [score, setScore] = useState<number | null>(null);
@@ -170,7 +170,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         }
 
         // Cargar el análisis de compatibilidad si ya existe
-        setAnalysisLoading(true);
         try {
           const ana = await getDeepAnalysisOnly(tenderId);
           if (!cancelled) {
@@ -178,10 +177,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           }
         } catch (err) {
           console.error("Error al cargar análisis de compatibilidad:", err);
-        } finally {
-          if (!cancelled) {
-            setAnalysisLoading(false);
-          }
         }
       } catch (err) {
         if (cancelled) return;
@@ -470,6 +465,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       </header>
 
       {/* AI Compatibility Analysis CTA Card */}
+      <QuotationEditor tenderId={tenderId} tenderCode={tender.code} tenderItems={tender.items} />
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">

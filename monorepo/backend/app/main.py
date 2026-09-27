@@ -17,13 +17,6 @@ from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.notifications.notification_scheduler import (
     NotificationScheduler,
 )
-from app.infrastructure.services.tenders.mercado_publico_client import (
-    MercadoPublicoClient,
-)
-from app.infrastructure.services.tenders.tender_ingestion_service import (
-    TenderIngestionService,
-)
-from app.infrastructure.services.tenders.tender_scheduler import TenderScheduler
 
 
 @asynccontextmanager
@@ -41,17 +34,26 @@ async def lifespan(app: FastAPI):
     await verificar_esquema_migrado()
 
     # api_key va en None contra el Qdrant del compose local, que no autentica.
-    app.state.qdrant_client = QdrantClient(
-        url=settings.qdrant_url, api_key=settings.qdrant_api_key
-    )
-    app.state.qdrant_async_client = AsyncQdrantClient(
-        url=settings.qdrant_url, api_key=settings.qdrant_api_key
-    )
+    try:
+        app.state.qdrant_client = QdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
+        )
+        app.state.qdrant_async_client = AsyncQdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=30.0
+        )
+        existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
+    except Exception as e:
+        if settings.is_dev:
+            print(f"[Main] Qdrant no disponible ({e}), usando cliente en memoria para desarrollo.")
+            app.state.qdrant_client = QdrantClient(location=":memory:")
+            app.state.qdrant_async_client = AsyncQdrantClient(location=":memory:")
+            existing = set()
+        else:
+            raise
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
 
-    existing = {c.name for c in app.state.qdrant_client.get_collections().collections}
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
             collection_name="suppliers",
@@ -69,28 +71,12 @@ async def lifespan(app: FastAPI):
         vector_size=settings.embedding_vector_size,
     ).ensure_collection()
 
-    client = MercadoPublicoClient(api_key=settings.mercado_publico_api_key)
-    ingestion_service = TenderIngestionService(
-        engine=engine,
-        client=client,
-        embedding_service=app.state.embedding_service,
-        qdrant_client=app.state.qdrant_async_client,
-    )
-    scheduler = TenderScheduler(ingestion_service=ingestion_service)
-    metadata_task = None
-    processing_task = None
-    if settings.run_auto_ingestion:
-        print("[Main] Iniciando tareas en segundo plano de ingesta de licitaciones...")
-        metadata_task = asyncio.create_task(scheduler.start_metadata_loop())
-        processing_task = asyncio.create_task(scheduler.start_processing_loop())
-    else:
-        print(
-            "[Main] Ingesta automática desactivada (RUN_AUTO_INGESTION=false). Usando modo offline / mock local."
-        )
+    # La ingesta de licitaciones NO corre acá. Vivía en este lifespan como dos
+    # bucles (`TenderScheduler`), y competía por la cola y la cuota del ticket con
+    # el cron `scripts/sync_diaria.py`, que es quien la hace ahora.
 
-    # Alertas de licitaciones (HdU 08). Van aparte de la ingesta: el corpus
-    # puede venir de un dump y aun así hay que avisar de lo que ya está en la
-    # base, así que este bucle no depende de RUN_AUTO_INGESTION.
+    # Alertas de licitaciones (HdU 08). Leen lo que ya está en la base, venga del
+    # cron o de un dump local.
     scan_task = None
     delivery_task = None
     digest_task = None
@@ -123,7 +109,7 @@ async def lifespan(app: FastAPI):
     # resultado esperado aquí.
     tareas = [
         t
-        for t in (metadata_task, processing_task, scan_task, delivery_task, digest_task)
+        for t in (scan_task, delivery_task, digest_task)
         if t
     ]
     for tarea in tareas:

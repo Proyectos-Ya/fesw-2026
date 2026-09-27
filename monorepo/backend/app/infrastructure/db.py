@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
@@ -26,14 +26,24 @@ def _connect_args() -> dict[str, object]:
     }
 
 
-engine = create_async_engine(
-    settings.database_url,
-    # En producción, echo=True escribe cada sentencia SQL con sus parámetros en
-    # los logs: volumen enorme y datos en claro.
-    echo=settings.is_dev,
-    pool_pre_ping=True,
-    connect_args=_connect_args(),
-)
+def crear_engine(*, echo: bool = False) -> AsyncEngine:
+    """Engine contra `DATABASE_URL`, con los ajustes que exige el pooler.
+
+    Los scripts (el cron, la carga inicial, los backfills) tienen que crear su
+    engine con esto y no con `create_async_engine` a secas: en Railway pasan por
+    el mismo pooler que la API, y sin `_connect_args` fallan a mitad de corrida.
+    """
+    return create_async_engine(
+        settings.database_url,
+        echo=echo,
+        pool_pre_ping=True,
+        connect_args=_connect_args(),
+    )
+
+
+# En producción, echo=True escribe cada sentencia SQL con sus parámetros en los
+# logs: volumen enorme y datos en claro.
+engine = crear_engine(echo=settings.is_dev)
 
 async_session_maker = async_sessionmaker(
     bind=engine,

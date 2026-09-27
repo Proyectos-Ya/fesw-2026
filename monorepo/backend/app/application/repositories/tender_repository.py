@@ -132,3 +132,11 @@ class ITenderRepository(ABC):
     async def get_latest_tender_created_at(self) -> datetime | None:
         """Retrieve the timestamp of the most recently created tender."""
         ...
+
+    @abstractmethod
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        """Fin de la última corrida de ingesta terminada que procesó algo.
+
+        None si no hay ninguna registrada (p. ej. solo corre el scheduler en proceso).
+        """
+        ...
