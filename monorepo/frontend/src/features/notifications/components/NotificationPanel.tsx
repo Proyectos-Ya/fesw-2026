@@ -6,6 +6,7 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { formatClosingDate, formatDateTime } from "@/features/matches/utils/format";
 import { formatMilestoneDate } from "@/features/tender-milestones/utils/milestoneFormat";
+import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
 import { useNotifications } from "../hooks/useNotifications";
 import type { NotificationItem } from "../notificationTypes";
 
@@ -109,8 +110,8 @@ export function NotificationPanel() {
         <div>
           <h1 className="font-display text-2xl font-bold text-text-strong">Alertas</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Licitaciones nuevas que superan tu umbral de compatibilidad y cambios de fecha
-            en las licitaciones de tu calendario.
+            Licitaciones nuevas que superan tu umbral de compatibilidad, invitaciones
+            recibidas y cambios de fecha en las licitaciones de tu calendario.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -128,6 +129,8 @@ export function NotificationPanel() {
           )}
         </div>
       </header>
+
+      <PendingInvitationsList />
 
       {state.kind === "loading" && (
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center text-sm text-text-muted">

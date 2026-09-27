@@ -10,6 +10,9 @@ import { useCompany } from "@/features/company-profile/components/CompanyProvide
 import { useAuth } from "@/features/auth/AuthContext";
 import { useUnreadCount } from "@/features/notifications/hooks/useNotifications";
 
+import { WorkspaceSelector } from "@/features/workspaces/components/WorkspaceSelector";
+import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
+
 interface NavItemProps {
   icon: string;
   label: string;
@@ -49,46 +52,6 @@ function NavItem({ icon, label, href, active, badge }: NavItemProps) {
   );
 }
 
-function CompanyFooter() {
-  const { company } = useCompany();
-
-  if (company.status === "loading" || company.status === "error") return null;
-
-  if (company.status === "without-company") {
-    return (
-      <Link
-        href="/empresa/crear"
-        className="mt-auto pt-4 border-t border-border-subtle flex items-center gap-3 group text-text-muted hover:text-primary transition-colors"
-      >
-        <div className="flex size-10 items-center justify-center rounded-full bg-primary-soft">
-          <Icon name="building-2" size={20} color="var(--primary)" />
-        </div>
-        <div className="text-sm font-bold">Crear tu empresa</div>
-      </Link>
-    );
-  }
-
-  const { supplier } = company;
-  return (
-    <Link
-      href="/empresa"
-      className="mt-auto pt-4 border-t border-border-subtle flex items-center gap-3 group hover:bg-warm-100 rounded-md transition-colors p-1 -m-1"
-      title="Ver mi empresa"
-    >
-      <Avatar name={supplier.legal_name} size="md" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-bold text-text-strong truncate">
-          {supplier.legal_name}
-        </div>
-        <div className="text-xs text-text-subtle truncate">{supplier.rut}</div>
-      </div>
-      <span className="p-1.5 rounded-md text-text-subtle group-hover:text-primary transition-colors">
-        <Icon name="building-2" size={18} />
-      </span>
-    </Link>
-  );
-}
-
 const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = [
   { icon: "sparkles", label: "Inicio", href: "/" },
   { icon: "search", label: "Buscar", href: "/buscar" },
@@ -114,18 +77,22 @@ export function Sidebar() {
   const pathname = usePathname() ?? "/";
   const { user, logout } = useAuth();
   const { company } = useCompany();
+  const { activeWorkspace, invitations } = useWorkspace();
   const unreadCount = useUnreadCount();
+
+  const totalNotifications = unreadCount + (invitations?.length ?? 0);
 
   const currentUser = {
     name: user?.full_name ?? "Usuario",
     company:
-      company.status === "with-company"
+      activeWorkspace?.active_supplier_name ||
+      (company.status === "with-company"
         ? company.supplier.legal_name
-        : "Sin empresa",
+        : "Sin empresa"),
   };
 
   const navItems =
-    company.status === "with-company"
+    company.status === "with-company" || activeWorkspace !== null
       ? [...NAV_ITEMS, COMPANY_NAV_ITEM]
       : NAV_ITEMS;
 
@@ -136,7 +103,7 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 flex-none bg-white border-r border-border-subtle flex flex-col p-4 gap-1 sticky top-0 h-screen shadow-xs">
-      <div className="px-2 py-4 mb-2">
+      <div className="px-2 py-3 mb-1">
         <Link href="/" className="inline-block">
           <Image
             src="/logo-color-light.svg"
@@ -148,6 +115,10 @@ export function Sidebar() {
         </Link>
       </div>
 
+      <div className="mb-3 px-1">
+        <WorkspaceSelector />
+      </div>
+
       <nav className="flex flex-col gap-1" aria-label="Navegación principal">
         {navItems.map((item) => (
           <NavItem
@@ -156,8 +127,8 @@ export function Sidebar() {
             label={item.label}
             href={item.href}
             active={isActive(pathname, item.href)}
-            // Solo Alertas lleva contador; el resto no tiene nada que contar.
-            badge={item.href === "/alertas" ? unreadCount : undefined}
+            // Alertas lleva contador de avisos no leídos + invitaciones pendientes
+            badge={item.href === "/alertas" ? totalNotifications : undefined}
           />
         ))}
       </nav>

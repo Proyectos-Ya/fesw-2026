@@ -103,8 +103,13 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
 from app.config import settings
-from app.infrastructure.auth.dependencies import build_get_current_user
+from app.infrastructure.auth.dependencies import (
+    build_get_current_user,
+    build_get_current_workspace_context,
+    build_get_optional_workspace_context,
+)
 from app.infrastructure.db import async_session_maker, get_session
+
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -122,6 +127,18 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
+)
+from app.application.repositories.supplier_invitation_repository import (
+    ISupplierInvitationRepository,
+)
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
+from app.infrastructure.repositories.sql_supplier_invitation_repository import (
+    SqlSupplierInvitationRepository,
+)
+from app.infrastructure.repositories.sql_supplier_member_repository import (
+    SqlSupplierMemberRepository,
 )
 from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
@@ -191,6 +208,7 @@ from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
 )
 from app.infrastructure.routers.router import create_router
+
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
@@ -230,6 +248,19 @@ def get_supplier_repo(
 ) -> ISupplierRepository:
     # Crea el repositorio concreto con la sesión de BD por petición
     return SupplierRepository(session)
+
+
+def get_supplier_member_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ISupplierMemberRepository:
+    return SqlSupplierMemberRepository(session)
+
+
+def get_supplier_invitation_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ISupplierInvitationRepository:
+    return SqlSupplierInvitationRepository(session)
+
 
 
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
@@ -297,6 +328,7 @@ def get_rank_tenders_use_case(
         ITenderVectorRepository, Depends(get_tender_vector_repo)
     ],
     scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
@@ -306,6 +338,19 @@ def get_rank_tenders_use_case(
         scorer=scorer,
         matching_result_repo=MatchingResultRepository(session),
         model_version=settings.embedding_model,
+        embedding_service=embedding_service,
+    )
+
+
+def get_score_tender_on_demand_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+) -> ScoreTenderOnDemandUseCase:
+    return ScoreTenderOnDemandUseCase(
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        scorer=scorer,
     )
 
 
@@ -1077,6 +1122,17 @@ def bootstrap(app: FastAPI) -> None:
         get_identity_directory=get_identity_directory,
     )
 
+    get_current_workspace_context = build_get_current_workspace_context(
+        get_current_user=get_current_user,
+        get_member_repo=get_supplier_member_repo,
+        get_supplier_repo=get_supplier_repo,
+    )
+    get_optional_workspace_context = build_get_optional_workspace_context(
+        get_current_user=get_current_user,
+        get_member_repo=get_supplier_member_repo,
+        get_supplier_repo=get_supplier_repo,
+    )
+
     router = create_router(
         get_rank_tenders_use_case=get_rank_tenders_use_case,
         get_smart_question_use_case=get_smart_question_use_case,
@@ -1087,6 +1143,10 @@ def bootstrap(app: FastAPI) -> None:
         get_company_lookup_service=get_company_lookup_service,
         get_user_repo=get_user_repo,
         get_current_user=get_current_user,
+        get_supplier_member_repo=get_supplier_member_repo,
+        get_supplier_invitation_repo=get_supplier_invitation_repo,
+        get_current_workspace_context=get_current_workspace_context,
+        get_optional_workspace_context=get_optional_workspace_context,
         get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
         get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
         get_save_tender_use_case=get_save_tender_use_case,

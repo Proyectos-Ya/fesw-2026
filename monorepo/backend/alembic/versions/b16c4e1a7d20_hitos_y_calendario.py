@@ -6,7 +6,11 @@ import sqlmodel
 from alembic import op
 
 revision = "b16c4e1a7d20"
-down_revision = "a227c0150001"
+# Repuntada a la cabeza de develop al integrar la rama: si quedara colgando de
+# a227c0150001, el merge dejaría dos cabezas y `alembic upgrade head` abortaría
+# en el deploy. Es seguro repuntar porque esta migración todavía no se aplicó en
+# ningún entorno compartido (ver AGENTS.md, "Cabezas múltiples").
+down_revision = "f1e2d3c4b5a6"
 branch_labels = None
 depends_on = None
 

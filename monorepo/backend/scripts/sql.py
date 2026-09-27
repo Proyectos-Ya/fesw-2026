@@ -24,7 +24,7 @@ def _dsn() -> str:
 
 
 async def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     p.add_argument("sql", nargs="?", help="sentencia a ejecutar")
     p.add_argument("-f", "--archivo", help="leer la sentencia de un archivo")
     args = p.parse_args()
