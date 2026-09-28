@@ -111,3 +111,35 @@ Cuando se desea reiniciar por completo el catálogo de licitaciones (sin necesid
 * **`load_postgres_robust.py`**: Carga el Excel de licitaciones (`project-data/chiripa_tenders.xlsx`) en PostgreSQL, desplazando automáticamente las fechas de cierre hacia el futuro para que se mantengan vigentes en desarrollo.
 * **`load_dataset.py`**: Toma las licitaciones en PostgreSQL, calcula sus embeddings vectoriales con BGE-M3 e indexa los vectores en la colección `tenders` de Qdrant.
 * **`evaluate_matching_profiles.py`** y **`run_calibrated_benchmark.py`**: Scripts de benchmark y evaluación cuantitativa de la precisión del motor de matching semántico.
+
+---
+
+## 5. Herramientas de Desarrollo
+
+A diferencia de los anteriores, estos scripts no tocan datos: ayudan durante el
+desarrollo y son los mismos que corre el CI.
+
+### A. Diagnóstico de Cabezas de Alembic: `migraciones.py`
+
+* **Ruta**: `monorepo/backend/scripts/migraciones.py`
+* **Propósito**: Resolver el choque de cabezas múltiples (Problema A de la
+  [guía de migraciones](./alembic-migraciones.md)). Compara el grafo de
+  `alembic/versions/` con lo que tu rama agrega respecto de `develop` y decide
+  **cuál de las dos soluciones** corresponde: repuntar el `down_revision`, si la
+  migración solo existe en tu rama, o `alembic merge heads`, si ya está aplicada
+  en algún entorno. Nombra el archivo y la revisión de destino.
+* **Comportamiento seguro**:
+  * **No abre conexión a la base** ni ejecuta `env.py`: solo lee archivos y
+    consulta a git. No necesita variables de entorno.
+  * **`--arreglar` no commitea ni empuja nada**: reescribe una línea y te deja
+    revisarla.
+  * **Se abstiene cuando no está seguro**: con más de dos cabezas, con dos
+    migraciones propias, o si no puede comparar contra la rama base, no propone
+    repuntar y manda a resolverlo a mano.
+* **Uso**:
+  ```bash
+  # Desde monorepo/backend, con el entorno virtual activo:
+  python -m scripts.migraciones                    # diagnostica
+  python -m scripts.migraciones --arreglar         # y lo corrige si es seguro
+  python -m scripts.migraciones --base origin/main # comparar contra otra rama
+  ```

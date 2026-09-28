@@ -76,6 +76,30 @@ alembic heads
 
 ---
 
+## 2.b Qué verifica el CI
+
+El job **Migraciones (Alembic + Postgres)** de `.github/workflows/ci.yml` levanta
+un Postgres 17 vacío y corre los mismos pasos de esta sección. No es un chequeo
+nuevo: es esta guía, aplicada sola en cada PR.
+
+| Paso del job | Qué atrapa | Sección de esta guía |
+|---|---|---|
+| `python -m scripts.migraciones` | Cabezas múltiples, diciendo qué archivo repuntar | Problema A |
+| `alembic upgrade head` | Que las migraciones apliquen de verdad sobre una base vacía | Paso 4 |
+| `alembic check` | Un modelo cambiado sin su migración | Problema E |
+| `alembic downgrade -1` y volver | Un `downgrade()` roto, que es la única vía de retroceso | Paso 4 |
+
+Corre sin `needs`, o sea desde el primer segundo del pipeline y sin esperar a los
+builds: las migraciones se aplican en el `preDeployCommand` de Railway, así que
+su veredicto es el que protege el despliegue.
+
+> [!TIP]
+> Los cuatro pasos se pueden correr en local tal cual, y conviene hacerlo antes
+> de abrir el PR: fallan en segundos y el mensaje es el mismo que verás en
+> GitHub.
+
+---
+
 ## 3. Catálogo de Problemas y Recetas de Solución (Troubleshooting)
 
 ### Problema A: Cabezas Múltiples (*Multiple Heads*)
@@ -87,6 +111,25 @@ alembic heads
   ```
 * **Causa:**
   Dos ramas de trabajo (por ejemplo, tu rama y `develop`) crearon migraciones paralelas partiendo de la misma revisión base (`down_revision`).
+
+#### Atajo: deja que el script decida cuál de las dos soluciones aplica
+
+Antes de resolverlo a mano, corre esto desde `monorepo/backend`:
+
+```bash
+python -m scripts.migraciones
+```
+
+Mira qué migraciones son nuevas en tu rama y te dice cuál de las dos soluciones
+de abajo corresponde, con el archivo concreto y la revisión de destino. Si es el
+caso de la Solución 1, `--arreglar` reescribe el `down_revision` por ti (no
+commitea nada). No necesita base de datos ni variables de entorno, y **es el
+mismo comando que corre el CI**, así que lo que veas en local es lo que verás en
+el PR.
+
+Las dos soluciones siguen documentadas abajo: el script las automatiza, no las
+reemplaza. Si tu caso es raro —más de dos cabezas, o dos migraciones tuyas— te
+va a mandar de vuelta acá.
 
 #### Solución 1: Si tu migración aún es local (Recomendado)
 Si tu cambio aún está en tu rama local y nadie más lo ha aplicado en una base de datos remota o compartida, mantén el historial lineal:
