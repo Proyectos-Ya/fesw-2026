@@ -1,7 +1,7 @@
 # Plan Técnico: Gestión y Revocación de Acceso de Miembros del Equipo (HU-13)
 
 **Issue asociada**: Refs #255  
-**Estado**: En Progreso  
+**Estado**: Completado  
 **Fecha**: 2026-09-28  
 
 ---
