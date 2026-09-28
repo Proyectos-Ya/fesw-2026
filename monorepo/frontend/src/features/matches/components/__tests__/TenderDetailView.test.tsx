@@ -46,6 +46,12 @@ vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   unsaveTenderApi: vi.fn(),
 }));
 
+// El diálogo tiene sus propios tests; acá solo importa que la ficha lo abra.
+vi.mock("@/features/tender-sharing/components/ShareDialog", () => ({
+  ShareDialog: ({ open, tenderId }: { open: boolean; tenderId: string }) =>
+    open ? <div role="dialog" aria-label={`Compartir ${tenderId}`} /> : null,
+}));
+
 const mockMatch: MatchingResult = {
   id: "match-50",
   supplier_id: "sup-1",
@@ -111,6 +117,17 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
 
     // Rollback: el botón vuelve a estar desmarcado
     expect(screen.getByRole("button", { name: "Guardar licitación" })).toBeInTheDocument();
+  });
+
+  it("el botón Compartir abre el diálogo de la licitación (HdU 19)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByText("Servicios de Seguridad y Redes");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Compartir licitación" }));
+
+    expect(screen.getByRole("dialog", { name: "Compartir tender-50" })).toBeInTheDocument();
   });
 
   it("aplica rollback al estado previo y muestra alerta ante fallo al quitar licitación guardada", async () => {

@@ -38,6 +38,31 @@ describe("apiFetch", () => {
     );
     await expect(apiFetch("/auth/me")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("expone el code del backend para distinguir errores con el mismo status", async () => {
+    // Un enlace caducado y uno revocado son los dos 410 (HdU 19).
+    mockFetchOnce(
+      new Response(
+        JSON.stringify({ detail: "El enlace fue revocado.", code: "share_link_revoked" }),
+        { status: 410, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await expect(apiFetch("/shared/abc")).rejects.toThrowError(
+      expect.objectContaining({ status: 410, code: "share_link_revoked" }),
+    );
+  });
+
+  it("deja code sin definir cuando el backend no lo manda", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No autorizado" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const error = await apiFetch("/auth/me").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBeUndefined();
+  });
 });
 
 describe("apiFetch — origen de la API", () => {

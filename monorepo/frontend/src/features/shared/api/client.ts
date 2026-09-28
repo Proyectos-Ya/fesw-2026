@@ -43,6 +43,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Código estable que manda el backend cuando un status no alcanza para distinguir el caso. */
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -101,20 +103,18 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     let detail = response.statusText;
+    let code: string | undefined;
     try {
       const body: unknown = await response.json();
-      if (
-        body &&
-        typeof body === "object" &&
-        "detail" in body &&
-        typeof (body as { detail: unknown }).detail === "string"
-      ) {
-        detail = (body as { detail: string }).detail;
+      if (body && typeof body === "object") {
+        const campos = body as { detail?: unknown; code?: unknown };
+        if (typeof campos.detail === "string") detail = campos.detail;
+        if (typeof campos.code === "string") code = campos.code;
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el statusText.
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
