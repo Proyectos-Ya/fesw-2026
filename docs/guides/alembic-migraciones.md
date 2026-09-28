@@ -182,12 +182,31 @@ alembic upgrade head
    alembic upgrade head
    ```
 
-> [!WARNING]
-> Si la base quedó **adelantada** —porque venías de una rama con migraciones que
-> esta no tiene—, los objetos de esas migraciones siguen físicamente creados.
-> Haz `stamp` directamente a la cabeza de tu rama y **no corras `upgrade head`
-> después**: intentaría crear tablas o índices que ya existen y fallaría con
-> `relation ... already exists`. Lo mismo al volver a la rama original.
+#### Antes de usar `stamp`: mira en qué estado está tu base
+
+`stamp` **no ejecuta SQL**: solo escribe en `alembic_version` "estoy en esta
+revisión". Por eso es inofensivo cuando la base ya contiene físicamente todo lo
+que la rama espera, y peligroso cuando no. Para saber en cuál de los dos casos
+estás:
+
+```bash
+alembic current && alembic heads
+```
+
+- Si `current` devuelve una revisión que **no aparece** en el historial de esta
+  rama, la base está **adelantada**: vienes de una rama con migraciones que esta
+  no tiene, y sus tablas siguen creadas.
+- Si `current` aparece en el historial pero **no es la cabeza**, la base está
+  **atrasada**: hay migraciones de esta rama sin aplicar.
+
+| Situación | Qué hacer | Qué NO hacer |
+|---|---|---|
+| **Adelantada** y solo pasas de visita por la rama | `alembic stamp head` | `upgrade head`: intentaría crear tablas que ya existen y falla con `relation ... already exists` |
+| **Atrasada**: la rama migró y tú no aplicaste | `alembic upgrade head` | `stamp head`: marcaría esas migraciones como aplicadas **sin crear nada**. Alembic dirá que estás al día y la app fallará luego con `column ... does not exist`, que es mucho más difícil de diagnosticar |
+| Vas a **crear migraciones** o correr `--autogenerate` en la otra rama | `downgrade` antes de cambiarte (ver abajo) | Dejar objetos de más: `--autogenerate` los ve en la base, no los encuentra en los modelos y **propone borrarlos** |
+
+Al volver a la rama original se aplica la misma tabla, normalmente con la base
+adelantada otra vez: `stamp head`, no `upgrade head`.
 
 #### Cómo evitarlo: revierte **antes** de cambiar de rama
 
@@ -197,15 +216,29 @@ problema aparece justo después de un `git checkout`.
 
 ```bash
 # todavía en la rama que aplicó la migración
-alembic downgrade <revision_comun_con_la_otra_rama>
+alembic downgrade -1        # si agregaste una sola migración
 git checkout otra-rama
 ```
 
-Si ya te cambiaste, vuelve a la rama anterior, baja ahí, y cambia después.
+Si agregaste **más de una**, `-1` no alcanza. La revisión de destino es la que
+figura en el `down_revision` de tu primera migración, o sea la cabeza de
+`develop` cuando empezaste:
 
-Como las migraciones del proyecto son aditivas, una base adelantada rara vez
-estorba: las columnas y tablas de más quedan sin usar. Lo único que rompe es el
-registro de `alembic_version`, que es lo que arregla el `stamp` de arriba.
+```bash
+grep down_revision alembic/versions/<tu_primera_migracion>.py
+alembic downgrade <esa_revision>
+```
+
+Si ya te cambiaste, no puedes bajarla desde la rama nueva: el archivo se fue con
+la otra. Vuelve, baja ahí, y cambia después.
+
+```bash
+git checkout tu-rama
+alembic downgrade -1
+git checkout otra-rama
+```
+
+Y al retomar tu rama, `alembic upgrade head` la deja al día.
 
 ---
 
