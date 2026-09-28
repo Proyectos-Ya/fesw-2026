@@ -20,5 +20,6 @@ class SupplierMemberModel(SQLModel, table=True):
     supplier_id: UUID = Field(foreign_key="supplier.id", index=True)
     role: str = Field(default="member", index=True)
     status: str = Field(default="active", index=True)
+    last_access_at: datetime | None = Field(default=None, nullable=True)
     created_at: datetime
     updated_at: datetime

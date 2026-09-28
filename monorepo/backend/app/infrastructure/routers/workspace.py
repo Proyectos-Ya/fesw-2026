@@ -52,6 +52,9 @@ from app.application.use_cases.workspace.get_invitation_details import (
 from app.application.use_cases.workspace.reject_supplier_invitation import (
     RejectSupplierInvitationUseCase,
 )
+from app.application.use_cases.workspace.revoke_supplier_member import (
+    RevokeSupplierMemberUseCase,
+)
 from app.application.use_cases.workspace.switch_workspace import (
     SwitchWorkspaceUseCase,
 )
@@ -68,12 +71,14 @@ from app.domain.entities.supplier_member import (
 )
 from app.domain.entities.user import User
 from app.domain.errors.membership_errors import (
+    CannotRevokeOwnMembership,
     InvitationAlreadyPending,
     InvitationAlreadyProcessed,
     InvitationCancelledOrInvalid,
     InvitationEmailMismatch,
     InvitationExpired,
     InvitationNotFound,
+    MembershipNotFound,
     UnauthorizedWorkspaceAction,
     UserAlreadyMember,
 )
@@ -246,9 +251,7 @@ def create_workspace_router(
             InvitationCancelledOrInvalid,
             InvitationAlreadyProcessed,
         ) as e:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail=str(e)
-            ) from e
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(e)) from e
         except SupplierNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -282,6 +285,7 @@ def create_workspace_router(
                 supplier_id=member.supplier_id,
                 role=member.role,
                 status=member.status,
+                last_access_at=member.last_access_at,
                 created_at=member.created_at,
             )
         except InvitationNotFound as e:
@@ -481,6 +485,7 @@ def create_workspace_router(
                     email=email,
                     role=m.role,
                     status=m.status,
+                    last_access_at=m.last_access_at or m.updated_at or m.created_at,
                     created_at=m.created_at,
                 )
             )
@@ -503,11 +508,68 @@ def create_workspace_router(
                     email=owner_obj.email if owner_obj else "",
                     role=MemberRole.ADMIN,
                     status=MemberStatus.ACTIVE,
+                    last_access_at=supplier.updated_at or supplier.created_at,
                     created_at=supplier.created_at,
                 ),
             )
 
         return details
+
+    # 8b. Revocar acceso de un miembro del equipo (solo Admin) (HU-13: CA2, CA4, CA5)
+    @router.delete(
+        "/{supplier_id}/members/{member_id}",
+        response_model=WorkspaceMemberSummarySchema,
+        summary="Revocar el acceso de un miembro del equipo (solo administrador)",
+        responses={
+            400: {"description": "Un administrador no puede revocar su propio acceso"},
+            403: {"description": "Solo los administradores pueden revocar miembros"},
+            404: {"description": "Espacio de trabajo o miembro no encontrado"},
+        },
+    )
+    async def revoke_workspace_member(
+        supplier_id: UUID,
+        member_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
+        supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    ):
+        """Inactiva la membresía de un representante en la empresa indicada.
+
+        Solo los usuarios con rol administrador en la empresa pueden ejecutar
+        esta acción, y se impide que un administrador revoque su propia cuenta.
+        """
+        try:
+            revoked = await RevokeSupplierMemberUseCase(
+                member_repo=member_repo,
+                supplier_repo=supplier_repo,
+            ).execute(
+                supplier_id=supplier_id,
+                member_id=member_id,
+                actor_user_id=current_user.id,
+            )
+            return WorkspaceMemberSummarySchema(
+                id=revoked.id,
+                user_id=revoked.user_id,
+                supplier_id=revoked.supplier_id,
+                role=revoked.role,
+                status=revoked.status,
+                last_access_at=revoked.last_access_at,
+                created_at=revoked.created_at,
+            )
+        except (SupplierNotFound, MembershipNotFound) as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except UnauthorizedWorkspaceAction as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
+        except CannotRevokeOwnMembership as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
 
     # 9. Listar invitaciones pendientes de una empresa (solo Admin) (CA1, CA2)
     @router.get(
@@ -593,6 +655,21 @@ def create_workspace_router(
                 status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
             ) from e
 
+    # 10b. Limpiar espacio de trabajo activo de la sesión (HU-13: CA3)
+    @router.post(
+        "/clear-active",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Limpiar la cookie de espacio de trabajo activo de la sesión",
+    )
+    async def clear_active_workspace(
+        _current_user: Annotated[User, Depends(get_current_user)],
+    ) -> Response:
+        """Elimina la cookie `active_workspace_id` para restablecer el contexto al volver al inicio."""
+        res = Response(status_code=status.HTTP_204_NO_CONTENT)
+        res.delete_cookie(key="active_workspace_id", path="/")
+        return res
+
     # 11. Obtener contexto activo actual
     @router.get(
         "/current",
@@ -600,10 +677,18 @@ def create_workspace_router(
         summary="Obtener el contexto activo de espacio de trabajo y permisos del usuario",
     )
     async def get_current_workspace(
+        response: Response,
         context: Annotated[WorkspaceContext, Depends(get_current_workspace_context)],
     ):
+        response.set_cookie(
+            key="active_workspace_id",
+            value=str(context.active_supplier_id),
+            path="/",
+            httponly=True,
+            secure=bool(settings.auth_cookie_secure),
+            samesite=settings.auth_cookie_samesite,
+            max_age=settings.access_token_expire_minutes * 60,
+        )
         return context
 
     return router
-
-

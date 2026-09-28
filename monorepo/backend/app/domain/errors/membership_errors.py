@@ -17,6 +17,14 @@ class UnauthorizedWorkspaceAction(MembershipError):
         super().__init__(message)
 
 
+class CannotRevokeOwnMembership(MembershipError):
+    def __init__(
+        self,
+        message: str = "No puedes revocar tu propio acceso como administrador",
+    ):
+        super().__init__(message)
+
+
 class InvitationError(Exception):
     """Excepción base para errores de invitaciones."""
 
@@ -58,4 +66,3 @@ class InvitationEmailMismatch(InvitationError):
         message: str = "El correo de la invitación no coincide con el usuario autenticado",
     ):
         super().__init__(message)
-

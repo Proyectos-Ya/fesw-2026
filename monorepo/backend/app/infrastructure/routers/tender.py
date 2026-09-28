@@ -133,7 +133,9 @@ def create_tender_router(
         dependencies=[Depends(get_current_user)],
     )
 
-    dummy_workspace = lambda: None
+    def dummy_workspace() -> None:
+        return None
+
     actual_get_workspace = get_current_workspace_context or dummy_workspace
 
     # `/search` va antes que cualquier ruta con parámetro de path: declarada
@@ -152,10 +154,10 @@ def create_tender_router(
     )
     async def search_tenders(
         current_user: Annotated[User, Depends(get_current_user)],
-        use_case: Annotated[SearchTendersUseCase, Depends(get_search_tenders_use_case)],
         workspace_context: Annotated[
             WorkspaceContext | None, Depends(actual_get_workspace)
         ],
+        use_case: Annotated[SearchTendersUseCase, Depends(get_search_tenders_use_case)],
         q: Annotated[
             str | None,
             Query(
@@ -256,10 +258,10 @@ def create_tender_router(
     async def get_recommended_tenders(
         request: Request,
         current_user: Annotated[User, Depends(get_current_user)],
-        use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         workspace_context: Annotated[
             WorkspaceContext | None, Depends(actual_get_workspace)
         ],
+        use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
         force_refresh: bool = False,
     ):
         """Licitaciones recomendadas para la empresa del usuario autenticado."""
@@ -397,9 +399,7 @@ def create_tender_router(
                 "description": "Instrucción de prompt inválida o detección de prompt injection"
             },
             404: {"description": "Licitación, proveedor o análisis no encontrado"},
-            409: {
-                "description": "La licitación ya cerró y no tiene análisis generado"
-            },
+            409: {"description": "La licitación ya cerró y no tiene análisis generado"},
             422: {"description": "Error de validación de entradas"},
             502: {
                 "description": "Error de comunicación con el servicio de IA (Gemini) "
