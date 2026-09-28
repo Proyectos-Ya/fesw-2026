@@ -129,8 +129,11 @@ responsabilidades separadas y no intercambiables.
   `preDeployCommand` y el código mergeado no llega a producción.
 
   **Regla estricta antes de abrir PR (ver [SKILL.md](./SKILL.md) §1)**:
-  Ejecutar `alembic heads`. Debe devolver **una sola línea**. Si devuelve más de
-  una cabeza, resolverlo antes de mergear:
+  Ejecutar `python -m scripts.migraciones`, que además de detectar el conflicto
+  dice cuál de los dos caminos de abajo corresponde y con `--arreglar` aplica el
+  primero. El CI corre ese mismo comando. Si prefieres verlo crudo, `alembic
+  heads` debe devolver **una sola línea**. Si devuelve más de una cabeza,
+  resolverlo antes de mergear:
   - **Todavía no se aplicó en ninguna parte** (lo habitual: sigue solo en tu
     rama local): repuntar el `down_revision` de tu archivo de migración para que
     apunte a la cabeza actual de `develop`. Es seguro porque nadie la ha
@@ -139,8 +142,12 @@ responsabilidades separadas y no intercambiables.
     alguien la corrió contra una base compartida): `alembic merge heads -m "merge heads"`.
     Editar el `down_revision` de una migración que otros ya aplicaron rompe su historial.
 
-  Este conflicto ha ocurrido repetidamente (30-ago-2026 y 2-sep-2026) al mergear ramas
-  largas en secuencia; validarlo en el checklist de pre-commit previene caídas de despliegue.
+  Este conflicto ha ocurrido repetidamente al mergear ramas largas en secuencia:
+  `git log --grep=encadenar` muestra cinco re-encadenados, dos de ellos sobre la
+  misma migración porque la cabeza se movió mientras el PR seguía abierto. El job
+  de CI lo bloquea antes del merge, pero la causa de fondo es la rama larga: si
+  el cambio de esquema es compatible hacia atrás, conviene mergearlo en un PR
+  propio y temprano, en vez de arrastrarlo dentro de la feature.
 
 Crear una migración (desde `monorepo/backend`, con el entorno virtual activo):
 
