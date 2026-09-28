@@ -28,6 +28,7 @@ import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { ExportActions } from "@/features/tender-export/components/ExportActions";
 import { ShareDialog } from "@/features/tender-sharing/components/ShareDialog";
 import {
   daysUntilClosing,
@@ -472,6 +473,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
                 </span>
               </>
             )}
+          </div>
+
+          <div className="mt-4">
+            <ExportActions tenderId={tenderId} />
           </div>
         </div>
       </header>

@@ -60,17 +60,10 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de Chiripa.
- * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
- * que vienen como `{ detail: string }`.
- *
- * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
- * agrega esta función.
+ * Envía la petición con el token y el timeout, y convierte cualquier respuesta
+ * no exitosa en `ApiError`. Lo comparten `apiFetch` y `apiDownload`.
  */
-export async function apiFetch<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
+async function send(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -117,10 +110,70 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail, code);
   }
 
+  return response;
+}
+
+/**
+ * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`.
+ *
+ * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
+ * agrega esta función.
+ */
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await send(path, options);
+
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
   if (response.status === 204) {
     return undefined as T;
   }
 
   return response.json() as Promise<T>;
+}
+
+export type DownloadResult =
+  | { kind: "file"; blob: Blob; filename: string | null }
+  /** 202: el backend aceptó el pedido pero el archivo todavía no está (HdU 19). */
+  | { kind: "accepted"; body: unknown };
+
+function filenameFrom(disposition: string | null): string | null {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : null;
+}
+
+/** Como `apiFetch`, pero para endpoints que devuelven un archivo. */
+export async function apiDownload(
+  path: string,
+  options?: RequestInit,
+): Promise<DownloadResult> {
+  const response = await send(path, options);
+
+  if (response.status === 202) {
+    return { kind: "accepted", body: (await response.json()) as unknown };
+  }
+
+  return {
+    kind: "file",
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")),
+  };
+}
+
+/**
+ * Guarda un archivo recibido del backend, con el mismo truco de ancla que la
+ * descarga del CSV de cotizaciones.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

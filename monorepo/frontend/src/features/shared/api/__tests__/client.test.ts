@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError, registrarProveedorDeToken } from "../client";
+import { apiDownload, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
@@ -145,5 +145,74 @@ describe("apiFetch — token de sesión", () => {
 
     expect(cabeceras(fetchMock)["Content-Type"]).toBeUndefined();
     expect(cabeceras(fetchMock).Authorization).toBe("Bearer jwt-de-supabase");
+  });
+});
+
+describe("apiDownload", () => {
+  it("con 200 entrega el archivo y el nombre de Content-Disposition", async () => {
+    mockFetchOnce(
+      new Response("%PDF", {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": 'attachment; filename="licitacion-COT26.pdf"',
+        },
+      }),
+    );
+
+    const resultado = await apiDownload("/tenders/t-1/exports", { method: "POST" });
+
+    expect(resultado.kind).toBe("file");
+    if (resultado.kind !== "file") return;
+    expect(resultado.filename).toBe("licitacion-COT26.pdf");
+    await expect(resultado.blob.text()).resolves.toBe("%PDF");
+  });
+
+  it("sin Content-Disposition deja el nombre en null", async () => {
+    mockFetchOnce(new Response("x", { status: 200 }));
+
+    const resultado = await apiDownload("/exports/j-1/file");
+
+    expect(resultado).toMatchObject({ kind: "file", filename: null });
+  });
+
+  it("con 202 devuelve el cuerpo JSON: el archivo sigue generándose", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ job_id: "j-1", status: "processing" }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const resultado = await apiDownload("/tenders/t-1/exports", { method: "POST" });
+
+    expect(resultado).toEqual({
+      kind: "accepted",
+      body: { job_id: "j-1", status: "processing" },
+    });
+  });
+
+  it("normaliza los errores igual que apiFetch", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "El archivo venció.", code: "export_expired" }), {
+        status: 410,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(apiDownload("/exports/j-1/file")).rejects.toThrowError(
+      expect.objectContaining({ status: 410, code: "export_expired", message: "El archivo venció." }),
+    );
+  });
+
+  it("adjunta el token de sesión", async () => {
+    registrarProveedorDeToken(async () => "tok-123");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("x", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiDownload("/exports/j-1/file");
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");
   });
 });
