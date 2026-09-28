@@ -4,7 +4,7 @@ Recorrido completo para revisar la funcionalidad en tu máquina, desde el clone 
 reporte. No hace falta que conozcas el proyecto.
 
 Si algo del entorno falla, el detalle técnico está en
-[`backend/README.md`](backend/README.md); esta guía enlaza a la sección que corresponda.
+[`backend/README.md`](../../monorepo/backend/README.md); esta guía enlaza a la sección que corresponda.
 
 ---
 
