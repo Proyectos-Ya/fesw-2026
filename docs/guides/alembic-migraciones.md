@@ -182,6 +182,31 @@ alembic upgrade head
    alembic upgrade head
    ```
 
+> [!WARNING]
+> Si la base quedó **adelantada** —porque venías de una rama con migraciones que
+> esta no tiene—, los objetos de esas migraciones siguen físicamente creados.
+> Haz `stamp` directamente a la cabeza de tu rama y **no corras `upgrade head`
+> después**: intentaría crear tablas o índices que ya existen y fallaría con
+> `relation ... already exists`. Lo mismo al volver a la rama original.
+
+#### Cómo evitarlo: revierte **antes** de cambiar de rama
+
+Para deshacer una migración, Alembic necesita su archivo. Si cambias de rama
+primero, el archivo desaparece con ella y ya no puedes bajarla: por eso el
+problema aparece justo después de un `git checkout`.
+
+```bash
+# todavía en la rama que aplicó la migración
+alembic downgrade <revision_comun_con_la_otra_rama>
+git checkout otra-rama
+```
+
+Si ya te cambiaste, vuelve a la rama anterior, baja ahí, y cambia después.
+
+Como las migraciones del proyecto son aditivas, una base adelantada rara vez
+estorba: las columnas y tablas de más quedan sin usar. Lo único que rompe es el
+registro de `alembic_version`, que es lo que arregla el `stamp` de arriba.
+
 ---
 
 ### Problema C: Error `EsquemaSinMigrar` al arrancar la API
