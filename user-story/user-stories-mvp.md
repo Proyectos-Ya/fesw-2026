@@ -1,5 +1,9 @@
 # Historias de Usuario — MVP (PMV) ProyectosYA
 
+> **Documento histórico.** La fuente vigente de las historias de usuario y sus criterios
+> de aceptación son las GitHub Issues del repositorio. ProyectosYA es el nombre anterior
+> de Chiripa.
+
 Este documento contiene las historias de usuario planificadas para el **Prototipo Mínimo Viable (PMV)** de ProyectosYA, según la última planificación detallada en el documento de diseño `E2_ProyectosYa_VF.pdf`.
 
 El alcance del PMV se concentra en el núcleo de procesamiento inteligente, matching semántico y retroalimentación interactiva del perfil de la empresa, sumando un total de **19 Story Points (SP)**.

@@ -36,9 +36,26 @@ class InvitationAlreadyProcessed(InvitationError):
         super().__init__(message)
 
 
+class InvitationAlreadyPending(InvitationError):
+    def __init__(
+        self,
+        message: str = "Ya existe una invitación pendiente en curso para este correo electrónico",
+    ):
+        super().__init__(message)
+
+
+class InvitationCancelledOrInvalid(InvitationAlreadyProcessed):
+    def __init__(
+        self,
+        message: str = "La invitación fue cancelada o ya no es válida",
+    ):
+        super().__init__(message)
+
+
 class InvitationEmailMismatch(InvitationError):
     def __init__(
         self,
         message: str = "El correo de la invitación no coincide con el usuario autenticado",
     ):
         super().__init__(message)
+
