@@ -206,6 +206,10 @@ class Settings(BaseSettings):
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
 
+    # HdU 19, criterios 8 y 9: si un PDF o Excel tarda más que esto, se responde
+    # de inmediato y se avisa por correo cuando esté listo.
+    export_inline_timeout_seconds: float = Field(default=10.0, gt=0)
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.
