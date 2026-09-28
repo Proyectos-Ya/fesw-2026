@@ -150,6 +150,22 @@ from app.application.use_cases.quotation import QuotationUseCase
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
+from app.application.repositories.tender_share_link_repository import (
+    ITenderShareLinkRepository,
+)
+from app.application.use_cases.sharing.tender_sharing import (
+    CreateShareLinkUseCase,
+    GetSharedTenderUseCase,
+    ListShareLinksUseCase,
+    RevokeShareLinkUseCase,
+)
+from app.infrastructure.repositories.tender_share_link_repository import (
+    TenderShareLinkRepository,
+)
+from app.infrastructure.routers.sharing import (
+    create_public_sharing_router,
+    create_sharing_router,
+)
 
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
@@ -303,6 +319,49 @@ def get_quotation_use_case(
         QuotationRepository(session),
         SupplierRepository(session),
         TenderRepository(session),
+    )
+
+
+def get_tender_share_link_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ITenderShareLinkRepository:
+    return TenderShareLinkRepository(session)
+
+
+# Enlaces compartidos (HdU 19). Dependen de los proveedores de repositorio y no
+# de la sesión directa, para que los tests E2E puedan sustituirlos.
+def get_create_share_link_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+) -> CreateShareLinkUseCase:
+    return CreateShareLinkUseCase(links=links, tenders=tenders, base_url=settings.app_base_url)
+
+
+def get_list_share_links_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+) -> ListShareLinksUseCase:
+    return ListShareLinksUseCase(links=links)
+
+
+def get_revoke_share_link_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+) -> RevokeShareLinkUseCase:
+    return RevokeShareLinkUseCase(links=links)
+
+
+def get_shared_tender_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+    suppliers: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    matching_results: Annotated[
+        IMatchingResultRepository, Depends(get_matching_result_repo)
+    ],
+) -> GetSharedTenderUseCase:
+    return GetSharedTenderUseCase(
+        links=links,
+        tenders=tenders,
+        suppliers=suppliers,
+        matching_results=matching_results,
     )
 
 
@@ -956,3 +1015,13 @@ def bootstrap(app: FastAPI) -> None:
     )
     app.include_router(router)
     app.include_router(create_quotation_router(get_current_user, get_quotation_use_case))
+    app.include_router(
+        create_sharing_router(
+            get_current_workspace_context,
+            get_create_share_link_use_case,
+            get_list_share_links_use_case,
+            get_revoke_share_link_use_case,
+        )
+    )
+    # Sin sesión a propósito: es lo que abre un tercero (criterio 2).
+    app.include_router(create_public_sharing_router(get_shared_tender_use_case))
