@@ -72,7 +72,7 @@ class SwitchWorkspaceUseCase:
         now = utc_now_naive()
         member.last_access_at = now
         member.updated_at = now
-        member = await self.member_repo.update(member)
+        await self.member_repo.update(member)
 
         active_perms = [p for p in all_perms if member.has_permission(p)]
 

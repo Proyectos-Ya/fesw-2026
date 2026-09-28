@@ -215,7 +215,7 @@ def build_get_current_workspace_context(
         ):
             member.last_access_at = now
             member.updated_at = now
-            member = await member_repo.update(member)
+            await member_repo.update(member)
 
         perms = [
             p
