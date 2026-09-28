@@ -953,6 +953,8 @@ def bootstrap(app: FastAPI) -> None:
         get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
         get_tender_chat_history_use_case=get_tender_chat_history_use_case,
         get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
+        get_email_service=get_email_service,
     )
     app.include_router(router)
     app.include_router(create_quotation_router(get_current_user, get_quotation_use_case))
+
