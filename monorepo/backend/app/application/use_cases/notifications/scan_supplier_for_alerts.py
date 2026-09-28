@@ -59,7 +59,8 @@ class ScanSupplierForAlertsUseCase:
                 score=match.final_score,
             )
             for match in matches
-            if match.final_score >= preference.threshold
+            if match.final_score is not None
+            and match.final_score >= preference.threshold
             and match.tender_id not in ya_avisadas
         ]
         if not nuevos:

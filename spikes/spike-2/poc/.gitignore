@@ -1,0 +1,5 @@
+# Salidas de una corrida. Las cifras se pegan en el .md del spike, no acá:
+# los logs de Railway expiran a los 30 días y un JSONL versionado envejece sin
+# que nadie lo note, mientras que el informe queda fechado y con sus reservas.
+*.jsonl
+*.csv

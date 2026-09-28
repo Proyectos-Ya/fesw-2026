@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { step1Schema, type Step1Data } from "../../profileSchema";
+import { formatRut, step1Schema, type Step1Data } from "../../profileSchema";
 import { checkRutExists } from "../../services/supplierService";
 import { Input } from "@/features/shared/components/Input";
 import { WizardNavigation } from "../WizardNavigation";
@@ -23,10 +23,14 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
     formState: { errors },
   } = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
-    defaultValues,
+    defaultValues: {
+      ...defaultValues,
+      rut: defaultValues.rut ? formatRut(defaultValues.rut) : defaultValues.rut,
+    },
     mode: "onTouched",
   });
   const [isCheckingRut, setIsCheckingRut] = useState(false);
+  const rutField = register("rut");
 
   const handleNext = async (data: Step1Data) => {
     setIsCheckingRut(true);
@@ -85,7 +89,12 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
           placeholder="Ej: 76.123.456-7"
           hint="Formato: XX.XXX.XXX-X"
           error={errors.rut?.message}
-          {...register("rut")}
+          maxLength={12}
+          {...rutField}
+          onChange={(e) => {
+            e.target.value = formatRut(e.target.value);
+            return rutField.onChange(e);
+          }}
         />
       </div>
 

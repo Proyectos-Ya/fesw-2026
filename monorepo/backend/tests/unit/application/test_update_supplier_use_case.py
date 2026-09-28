@@ -20,7 +20,7 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
 )
 
-VALID_RUT = "76086428-5"
+VALID_RUT = "76.086.428-5"
 
 
 @pytest.fixture
@@ -201,3 +201,84 @@ async def test_embedding_failure_does_not_block_non_matching_change(
 
     assert updated.num_employees == 25
     assert len(vector_repo.upserts) == 0
+
+
+# ---------------------------------------------------------------------------
+# Qdrant o el commit fallan a mitad de una edición de matching
+#
+# La fila y el vector tienen que moverse juntos: si el vector nuevo no llega a
+# Qdrant, la edición no se confirma; y si el commit falla después de escribirlo,
+# Qdrant vuelve al vector anterior para no quedar describiendo un perfil que
+# en SQL nunca existió.
+# ---------------------------------------------------------------------------
+
+PREVIOUS_VECTOR = [0.1] * 1024
+NEW_VECTOR = [0.9] * 1024
+
+
+async def test_qdrant_failure_keeps_previous_profile(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si Qdrant no acepta el vector nuevo, la edición no queda confirmada."""
+    owner_id = uuid4()
+    seeded = await _seed_supplier(supplier_repo, owner_id)
+    await vector_repo.upsert(seeded.id, PREVIOUS_VECTOR)
+    vector_repo.fail_on_upsert = ConnectionError("Qdrant no responde")
+    use_case = UpdateSupplierUseCase(
+        supplier_repo, vector_repo, FakeEmbeddingService(NEW_VECTOR)
+    )
+
+    with pytest.raises(ConnectionError):
+        await use_case.execute(
+            owner_id, UpdateSupplierSchema(description="Montaje industrial")
+        )
+
+    stored = await supplier_repo.get_by_user_id(owner_id)
+    assert stored is not None
+    assert stored.description == "Obras civiles"
+    assert vector_repo.vectors[seeded.id] == PREVIOUS_VECTOR
+
+
+async def test_commit_failure_restores_previous_vector(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Si el commit falla tras indexar, Qdrant vuelve al vector anterior."""
+    owner_id = uuid4()
+    seeded = await _seed_supplier(supplier_repo, owner_id)
+    await vector_repo.upsert(seeded.id, PREVIOUS_VECTOR)
+    supplier_repo.fail_on_commit = RuntimeError("se cayó la conexión a Postgres")
+    use_case = UpdateSupplierUseCase(
+        supplier_repo, vector_repo, FakeEmbeddingService(NEW_VECTOR)
+    )
+
+    with pytest.raises(RuntimeError):
+        await use_case.execute(
+            owner_id, UpdateSupplierSchema(description="Montaje industrial")
+        )
+
+    stored = await supplier_repo.get_by_user_id(owner_id)
+    assert stored is not None
+    assert stored.description == "Obras civiles"
+    assert vector_repo.vectors[seeded.id] == PREVIOUS_VECTOR
+
+
+async def test_commit_failure_without_previous_vector_removes_new_one(
+    supplier_repo: InMemorySupplierRepository,
+    vector_repo: FakeSupplierVectorRepository,
+) -> None:
+    """Sin vector previo que restaurar, el vector recién escrito se borra."""
+    owner_id = uuid4()
+    seeded = await _seed_supplier(supplier_repo, owner_id)
+    supplier_repo.fail_on_commit = RuntimeError("se cayó la conexión a Postgres")
+    use_case = UpdateSupplierUseCase(
+        supplier_repo, vector_repo, FakeEmbeddingService(NEW_VECTOR)
+    )
+
+    with pytest.raises(RuntimeError):
+        await use_case.execute(
+            owner_id, UpdateSupplierSchema(description="Montaje industrial")
+        )
+
+    assert seeded.id not in vector_repo.vectors

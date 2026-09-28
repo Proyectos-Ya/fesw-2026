@@ -9,30 +9,13 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { loginSchema, type LoginData } from "../authSchema";
 import { iniciarSesionConCorreo } from "../services/authService";
+import { mensajeDeErrorAuth } from "../authErrors";
 import { useAuth } from "../AuthContext";
 import { RETURN_URL_PARAM, sanitizeReturnUrl } from "../returnUrl";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
 import { GoogleButton } from "./GoogleButton";
-
-/**
- * Traduce los errores de Supabase Auth a algo accionable.
- *
- * El caso que importa es "Email not confirmed": con la confirmación de correo
- * encendida, GoTrue rechaza el inicio de sesión hasta que se abra el enlace, y
- * el mensaje en inglés no le dice a nadie qué hacer.
- */
-function mensajeDeError(err: unknown): string {
-  const mensaje = err instanceof Error ? err.message : "";
-  if (/email not confirmed/i.test(mensaje)) {
-    return "Todavía no confirmas tu correo. Revisa tu bandeja de entrada y abre el enlace que te enviamos.";
-  }
-  if (/invalid login credentials/i.test(mensaje)) {
-    return "Correo o contraseña incorrectos.";
-  }
-  return mensaje || "Ocurrió un error inesperado. Inténtalo de nuevo.";
-}
 
 /**
  * Errores que llegan por la URL, no del formulario.
@@ -80,7 +63,7 @@ function LoginFormInner() {
       // descarta destinos externos.
       router.push(sanitizeReturnUrl(params.get(RETURN_URL_PARAM)) ?? "/");
     } catch (err) {
-      setError(mensajeDeError(err));
+      setError(mensajeDeErrorAuth(err, "Ocurrió un error inesperado. Inténtalo de nuevo."));
     } finally {
       setIsSubmitting(false);
     }

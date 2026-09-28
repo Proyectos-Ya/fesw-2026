@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerSchema, type RegisterData } from "../authSchema";
 import { registrarse } from "../services/authService";
+import { mensajeDeErrorAuth } from "../authErrors";
 import { Input } from "@/features/shared/components/Input";
 import { Button } from "@/features/shared/components/Button";
 import { AuthBrandPanel } from "./AuthBrandPanel";
@@ -35,11 +36,7 @@ export function RegisterForm() {
       // le daría un "Email not confirmed" que no explica nada.
       router.push(`/verificar?email=${encodeURIComponent(data.email)}`);
     } catch (err) {
-      setError(
-        err instanceof Error && err.message
-          ? err.message
-          : "Ocurrió un error inesperado. Inténtalo de nuevo.",
-      );
+      setError(mensajeDeErrorAuth(err, "Ocurrió un error inesperado. Inténtalo de nuevo."));
     } finally {
       setIsSubmitting(false);
     }

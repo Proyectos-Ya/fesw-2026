@@ -42,9 +42,12 @@ function Section({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1">
+    // `min-w-0`: las celdas de una grilla no se encogen por debajo de su
+    // contenido salvo que se diga, así que sin esto un valor largo sin espacios
+    // —un correo, una URL— desborda la tarjeta en vez de partirse.
+    <div className="flex min-w-0 flex-col gap-1">
       <span className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">{label}</span>
-      <span className="text-sm font-medium text-text-strong">{value || "—"}</span>
+      <span className="text-sm font-medium text-text-strong break-words">{value || "—"}</span>
     </div>
   );
 }
@@ -131,7 +134,9 @@ export function Step4Summary({
             )}
             <div className="border-t border-border-subtle pt-4">
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Descripción</span>
-              <p className="text-sm leading-relaxed text-text-body mt-1">{data.description}</p>
+              <p className="text-sm leading-relaxed text-text-body mt-1 break-words whitespace-pre-wrap">
+                {data.description}
+              </p>
             </div>
           </div>
         </Section>

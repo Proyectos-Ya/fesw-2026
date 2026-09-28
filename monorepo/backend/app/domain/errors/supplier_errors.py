@@ -24,6 +24,16 @@ class UserAlreadyHasSupplier(Exception):
         self.user_id = user_id
 
 
+class SupplierProfileIndexingUnavailable(Exception):
+    """El perfil no se pudo indexar a tiempo. No se guardó nada: se puede reintentar."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No pudimos procesar el perfil de tu empresa a tiempo. "
+            "Inténtalo nuevamente en unos segundos."
+        )
+
+
 class SupplierNotFoundForUser(Exception):
     def __init__(self, user_id: UUID):
         super().__init__(

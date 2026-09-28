@@ -9,9 +9,12 @@ from tests.support.api_auth import preparar_auth
 from tests.unit.application.fakes import (
     FakeEmbeddingService,
     FakeSupplierVectorRepository,
+    InMemorySupplierInvitationRepository,
+    InMemorySupplierMemberRepository,
     InMemorySupplierRepository,
     InMemoryUserRepository,
 )
+
 
 
 @pytest_asyncio.fixture
@@ -25,10 +28,14 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     """
     users = InMemoryUserRepository()
     suppliers = InMemorySupplierRepository()
+    members = InMemorySupplierMemberRepository(supplier_repo=suppliers)
+    invitations = InMemorySupplierInvitationRepository()
     vectors = FakeSupplierVectorRepository()
 
     app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
     app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
+    app.dependency_overrides[bootstrap.get_supplier_member_repo] = lambda: members
+    app.dependency_overrides[bootstrap.get_supplier_invitation_repo] = lambda: invitations
     app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: vectors
     app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
         FakeEmbeddingService()
@@ -43,3 +50,4 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+

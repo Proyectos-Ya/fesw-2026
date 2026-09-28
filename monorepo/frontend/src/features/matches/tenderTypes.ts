@@ -35,9 +35,11 @@ export interface MatchingResult {
   id: string;
   supplier_id: string;
   tender_id: string;
-  similarity_score: number;
+  /** Nulo en los cálculos a pedido: no pasan por la búsqueda vectorial. */
+  similarity_score: number | null;
   reranker_score: number | null;
-  final_score: number;
+  /** Nulo mientras nadie haya calculado la compatibilidad de esta licitación. */
+  final_score: number | null;
   model_version: string;
   calculated_at: string;
   tender: Tender | null;
@@ -53,6 +55,14 @@ export interface DeepAnalysis {
   prompt_instruction: string | null;
   created_at: string;
   updated_at: string;
+  /** El perfil o la licitación cambiaron después de escribirse este análisis. */
+  is_outdated?: boolean;
+}
+
+/** Respuesta de un cálculo de compatibilidad pedido por el usuario. */
+export interface TenderScore {
+  score_pct: number;
+  calculated_at: string;
 }
 
 export type { TenderSearchParams, TenderSearchResult } from "@/features/search/types";

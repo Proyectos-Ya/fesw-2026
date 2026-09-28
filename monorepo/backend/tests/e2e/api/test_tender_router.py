@@ -5,6 +5,9 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 
+from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
+    DeepAnalysisResult,
+)
 from app.bootstrap import (
     get_list_saved_tenders_use_case,
     get_rank_tenders_use_case,
@@ -21,7 +24,11 @@ from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
     SupplierVectorNotFound,
 )
-from app.domain.errors.tender_errors import TenderNotFound
+from app.domain.errors.tender_errors import (
+    TenderClosedForAnalysis,
+    TenderClosedForScoring,
+    TenderNotFound,
+)
 from app.main import app
 from tests.support.api_auth import autenticar
 
@@ -171,7 +178,7 @@ async def test_analyze_tender_compatibility_success(api: AsyncClient) -> None:
     )
 
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = mock_analysis
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
     # Registrar la dependencia mockeada en la app de FastAPI
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
@@ -329,7 +336,7 @@ async def test_analyze_tender_compatibility_only_if_exists_not_found(
     """Valida que retorne código 404 si only_if_exists es True y no hay análisis generado previamente."""
     tender_id = uuid4()
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = None
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=None)
 
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
 
@@ -377,7 +384,7 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     )
 
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = mock_analysis
+    mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
     from app.bootstrap import get_get_or_create_deep_analysis_use_case
 
@@ -403,6 +410,131 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     assert data["compatibility_score"] == 75.0
     assert data["recommendation"] == "Postular"
     mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_informa_desactualizado(
+    api: AsyncClient,
+) -> None:
+    """La ficha necesita saber que lo guardado se escribió con datos anteriores."""
+    tender_id = uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    mock_analysis = DeepAnalysis(
+        tender_id=tender_id,
+        supplier_id=uuid4(),
+        compatibility_score=75.0,
+        recommendation="Postular",
+        justification="Escrita con el perfil anterior.",
+        created_at=now,
+        updated_at=now,
+    )
+
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = DeepAnalysisResult(
+        analysis=mock_analysis, is_outdated=True
+    )
+
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="outdated@example.com", full_name="Out Dated")
+
+    response = await api.post(
+        f"/tenders/{tender_id}/analysis", json={"only_if_exists": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_outdated"] is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_tender_compatibility_licitacion_cerrada(
+    api: AsyncClient,
+) -> None:
+    """Una licitación cerrada sin análisis no se genera: 409, no 404."""
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderClosedForAnalysis(tender_id)
+
+    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+
+    app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="cerrada@example.com", full_name="Licitación Cerrada")
+
+    response = await api.post(f"/tenders/{tender_id}/analysis", json={})
+
+    assert response.status_code == 409
+    assert "cerró" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Pruebas del cálculo de compatibilidad a pedido
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_score_tender_devuelve_el_porcentaje(api: AsyncClient) -> None:
+    """El usuario pide el cálculo de una licitación que no está entre sus matches."""
+    tender_id = uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=None,
+        final_score=0.6234,
+        model_version="bge-m3-v1",
+        source="on_demand",
+        calculated_at=now,
+    )
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score@example.com", full_name="Score Pedido")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 200
+    assert response.json()["score_pct"] == 62
+    mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_score_tender_rechaza_una_licitacion_cerrada(api: AsyncClient) -> None:
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderClosedForScoring(tender_id)
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score_cerrada@example.com", full_name="Score Cerrada")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_score_tender_licitacion_inexistente(api: AsyncClient) -> None:
+    tender_id = uuid4()
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = TenderNotFound(tender_id)
+
+    from app.bootstrap import get_score_tender_on_demand_use_case
+
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="score_404@example.com", full_name="Score 404")
+
+    response = await api.post(f"/tenders/{tender_id}/score")
+
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

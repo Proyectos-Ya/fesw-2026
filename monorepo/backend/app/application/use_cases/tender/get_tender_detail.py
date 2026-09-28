@@ -11,8 +11,6 @@ from app.application.repositories.tender_repository import (
 )
 from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import TenderNotFound
-from app.shared.constants import ACTIVE_TENDER_STATUSES
-from app.shared.datetime_utils import utc_now_naive
 
 
 @dataclass
@@ -59,9 +57,6 @@ class GetTenderDetailUseCase:
             if match is not None:
                 final_score = match.final_score
 
-        ahora = utc_now_naive()
-        cerrada = (
-            tender.closing_at <= ahora
-            or tender.status_code not in ACTIVE_TENDER_STATUSES
+        return TenderDetail(
+            tender=tender, final_score=final_score, is_closed=tender.esta_cerrada()
         )
-        return TenderDetail(tender=tender, final_score=final_score, is_closed=cerrada)

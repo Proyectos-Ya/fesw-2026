@@ -15,6 +15,10 @@ class DeepAnalysisModel(SQLModel, table=True):
     recommendation: str
     justification: str
     prompt_instruction: str | None = Field(default=None)
+    # Estado de la licitación y del proveedor en el momento de generar. Nulos
+    # en los análisis anteriores a esta columna.
+    tender_updated_at: datetime | None = Field(default=None)
+    supplier_updated_at: datetime | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
 

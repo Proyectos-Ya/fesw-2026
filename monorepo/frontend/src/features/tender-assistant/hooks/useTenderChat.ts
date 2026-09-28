@@ -8,6 +8,7 @@ import {
   askTenderAssistant,
   createTenderChatSession,
 } from "../services/tenderAssistantService";
+import { formatTenderAssistantError } from "../services/tenderErrorUtils";
 
 export const HISTORY_LOAD_ERROR_MESSAGE =
   "No se pudo cargar el historial de la conversación. Por favor reintente más tarde o inicie un nuevo chat.";
@@ -62,7 +63,7 @@ export function useTenderChat(tenderId: string) {
         setMessages([]);
         return newSession;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Error al iniciar un nuevo chat";
+        const msg = formatTenderAssistantError(err, "Error al iniciar un nuevo chat.");
         setError(msg);
         throw err;
       } finally {
@@ -112,7 +113,7 @@ export function useTenderChat(tenderId: string) {
       setMessages((prev) => [...prev, assistantMsg]);
       return assistantMsg;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al consultar el asistente";
+      const msg = formatTenderAssistantError(err, "Error al consultar el asistente.");
       setError(msg);
       throw err;
     } finally {

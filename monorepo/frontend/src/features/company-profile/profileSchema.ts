@@ -21,6 +21,23 @@ export function isValidRut(rut: string): boolean {
   return checkDigit === expected;
 }
 
+/**
+ * Da formato XX.XXX.XXX-X a lo que el usuario va escribiendo en el campo RUT.
+ * Descarta todo lo que no sea dígito (la K solo vale como dígito verificador)
+ * y corta en 8 dígitos de cuerpo más el verificador.
+ */
+export function formatRut(value: string): string {
+  const upper = value.toUpperCase();
+  const digits = upper.replace(/[^\dK]/g, "");
+  // La K solo se conserva si es el último carácter escrito.
+  const cleaned = (digits.slice(0, -1).replace(/K/g, "") + digits.slice(-1)).slice(0, 9);
+  if (cleaned.length < 2) return cleaned;
+
+  const body = cleaned.slice(0, -1);
+  const checkDigit = cleaned.slice(-1);
+  return `${body.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}-${checkDigit}`;
+}
+
 export const step1Schema = z.object({
   legal_name: z
     .string()

@@ -35,6 +35,17 @@ def is_valid_rut(rut: str) -> bool:
     return check_digit == expected
 
 
+def format_rut(rut: str) -> str:
+    """Devuelve el RUT en formato canónico XX.XXX.XXX-X.
+
+    Se guarda siempre así para que la búsqueda de duplicados, que compara el
+    texto exacto, no dependa de cómo lo escribió el cliente.
+    """
+    cleaned = rut.strip().replace(".", "").replace("-", "").upper()
+    body, check_digit = cleaned[:-1], cleaned[-1]
+    return f"{int(body):,}".replace(",", ".") + f"-{check_digit}"
+
+
 class Supplier(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID | None = None  # ID del usuario propietario de esta cuenta proveedor
@@ -56,7 +67,7 @@ class Supplier(BaseModel):
     @field_validator("rut")
     @classmethod
     def validate_rut(cls, value: str) -> str:
-        """Valida que el RUT tenga formato y dígito verificador correcto."""
-        if not is_valid_rut(value):
+        """Valida el dígito verificador y deja el RUT en formato canónico."""
+        if not is_valid_rut(value.strip()):
             raise ValueError("RUT format is invalid")
-        return value
+        return format_rut(value)

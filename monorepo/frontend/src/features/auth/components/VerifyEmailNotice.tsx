@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/features/shared/components/Button";
 
 import { reenviarConfirmacion } from "../services/authService";
+import { mensajeDeErrorAuth } from "../authErrors";
 import { AuthBrandPanel } from "./AuthBrandPanel";
 
 /**
@@ -44,11 +45,7 @@ function VerifyEmailNoticeInner() {
       setRestante(ESPERA_ENTRE_REENVIOS);
     } catch (err) {
       setEstado("error");
-      setError(
-        err instanceof Error && err.message
-          ? err.message
-          : "No se pudo reenviar el correo. Inténtalo de nuevo.",
-      );
+      setError(mensajeDeErrorAuth(err, "No se pudo reenviar el correo. Inténtalo de nuevo."));
     }
   };
 

@@ -57,3 +57,4 @@ qdrant_bin/
 **/qdrant_bin/
 .qdrant-initialized
 **/.qdrant-initialized
+

@@ -9,10 +9,14 @@ class ISupplierVectorRepository(ABC):
     Define el contrato para almacenar y eliminar representaciones
     vectoriales de proveedores. La implementación concreta decide
     qué motor de base de datos vectorial utilizar (ej: Qdrant).
+
+    Los métodos son asíncronos: se llaman desde handlers de FastAPI, y una
+    llamada de red síncrona ahí bloquea el event loop del proceso entero, no
+    solo la petición que la hace.
     """
 
     @abstractmethod
-    def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+    async def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
         """
         Crea o actualiza el vector de un proveedor en la base vectorial.
 
@@ -23,7 +27,7 @@ class ISupplierVectorRepository(ABC):
         ...
 
     @abstractmethod
-    def delete(self, supplier_id: UUID) -> None:
+    async def delete(self, supplier_id: UUID) -> None:
         """
         Elimina el vector asociado a un proveedor.
 
@@ -34,7 +38,7 @@ class ISupplierVectorRepository(ABC):
         ...
 
     @abstractmethod
-    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+    async def get_vector(self, supplier_id: UUID) -> list[float] | None:
         """
         Obtiene el vector (embedding) de un proveedor dado su ID.
 

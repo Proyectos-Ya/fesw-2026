@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../AuthContext";
 
 /**
@@ -9,7 +8,6 @@ import { useAuth } from "../AuthContext";
  * sesión activa, lo redirige al home en vez de mostrar el formulario.
  */
 export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const { isLoading, isAuthenticated } = useAuth();
 
   useEffect(() => {

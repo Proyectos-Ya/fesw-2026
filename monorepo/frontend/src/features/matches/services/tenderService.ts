@@ -1,5 +1,5 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { MatchingResult, DeepAnalysis } from "../tenderTypes";
+import type { MatchingResult, DeepAnalysis, TenderScore } from "../tenderTypes";
 import type { TenderDetail } from "@/features/notifications/notificationTypes";
 import { ApiError } from "@/features/shared/api/client";
 
@@ -18,6 +18,19 @@ export function getRecommendedTenders(
   const params = new URLSearchParams({ profile_id: userId });
   if (options.forceRefresh) params.set("force_refresh", "true");
   return apiFetch<MatchingResult[]>(`/tenders/recommended?${params.toString()}`);
+}
+
+/**
+ * Backend route: POST /tenders/{tender_id}/score
+ *
+ * Calcula la compatibilidad de una licitación que no está entre las
+ * recomendadas. Es una operación explícita del usuario: el ranking solo puntúa
+ * su top-N y nada se calcula por el solo hecho de abrir la ficha.
+ */
+export function calculateTenderScore(tenderId: string): Promise<TenderScore> {
+  return apiFetch<TenderScore>(`/tenders/${encodeURIComponent(tenderId)}/score`, {
+    method: "POST",
+  });
 }
 
 /**

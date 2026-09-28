@@ -137,6 +137,37 @@ def canonical_region_name(region_id: int) -> str:
     return CHILE_REGIONS.get(region_id, UNKNOWN_REGION_NAME)
 
 
+# Nombres con que el wizard muestra cada región
+# (`frontend/src/features/company-profile/data/regions.ts`). No coinciden con los
+# canónicos ("Metropolitana" vs. "Metropolitana de Santiago"), y el `ChipSelect`
+# compara strings exactos: un borrador de perfil que prellena el wizard tiene que
+# hablar este vocabulario o la región llega sin marcar.
+FRONT_REGION_NAMES: dict[int, str] = {
+    15: "Arica y Parinacota",
+    1: "Tarapacá",
+    2: "Antofagasta",
+    3: "Atacama",
+    4: "Coquimbo",
+    5: "Valparaíso",
+    13: "Metropolitana",
+    6: "O'Higgins",
+    7: "Maule",
+    16: "Ñuble",
+    8: "Biobío",
+    9: "La Araucanía",
+    14: "Los Ríos",
+    10: "Los Lagos",
+    11: "Aysén",
+    12: "Magallanes",
+}
+
+
+def to_front_region_name(raw_name: str | None) -> str | None:
+    """Traduce una región escrita de cualquier forma al nombre del wizard."""
+    region_id = normalize_region_name(raw_name)
+    return FRONT_REGION_NAMES.get(region_id) if region_id is not None else None
+
+
 def are_regions_matching(
     target_region: str | None,
     allowed_regions: Sequence[str] | None,

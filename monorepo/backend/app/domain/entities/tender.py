@@ -1,7 +1,9 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 __all__ = ["utc_now_naive"]
@@ -81,3 +83,17 @@ class Tender(BaseModel):
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     items: list[TenderItem] = Field(default_factory=list)
+
+    def esta_cerrada(self, ahora: datetime | None = None) -> bool:
+        """Si ya no se puede postular: venció el plazo o el estado no es activo.
+
+        Vive en la entidad porque son varios los que preguntan lo mismo —la
+        ficha, el cálculo de compatibilidad y el análisis IA— y con el criterio
+        copiado en cada uno bastaba con cambiar uno para que la ficha dijera
+        "abierta" mientras el botón se negaba a calcular.
+        """
+        momento = ahora or utc_now_naive()
+        return (
+            self.closing_at <= momento
+            or self.status_code not in ACTIVE_TENDER_STATUSES
+        )

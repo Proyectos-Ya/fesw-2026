@@ -1,4 +1,5 @@
 from app.application.repositories.supplier_repository import ISupplierRepository
+from app.domain.entities.supplier import format_rut, is_valid_rut
 
 
 class CheckRutExistsUseCase:
@@ -13,4 +14,8 @@ class CheckRutExistsUseCase:
         self.repo = repo
 
     async def execute(self, rut: str) -> bool:
-        return await self.repo.get_by_rut(rut) is not None
+        # Un RUT inválido no puede estar registrado; el válido se busca en el
+        # mismo formato canónico con el que se guarda.
+        if not is_valid_rut(rut.strip()):
+            return False
+        return await self.repo.get_by_rut(format_rut(rut)) is not None

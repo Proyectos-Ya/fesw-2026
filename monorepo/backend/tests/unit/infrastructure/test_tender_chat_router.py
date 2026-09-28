@@ -471,3 +471,72 @@ async def test_ask_assistant_returns_enriched_response_with_discrepancies_and_wa
     assert data["has_sufficient_info"] is False
 
 
+@pytest.mark.asyncio
+async def test_ask_assistant_ai_provider_error(app, mock_use_cases):
+    from app.domain.errors.tender_chat_errors import TenderAssistantAIProviderError
+    tender_id = uuid4()
+
+    class FailingAskUseCase:
+        async def execute(self, tender_id, user_id, question, session_id=None):
+            raise TenderAssistantAIProviderError()
+
+    mock_use_cases.ask_assistant = FailingAskUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            f"/tenders/{tender_id}/assistant/ask", json={"question": "¿Cuáles son las bases?"}
+        )
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "proveedor de IA" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_response_error(app, mock_use_cases):
+    from app.domain.errors.tender_chat_errors import TenderAssistantResponseError
+    tender_id = uuid4()
+
+    class FailingAskUseCase:
+        async def execute(self, tender_id, user_id, question, session_id=None):
+            raise TenderAssistantResponseError()
+
+    mock_use_cases.ask_assistant = FailingAskUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            f"/tenders/{tender_id}/assistant/ask", json={"question": "¿Cuáles son las bases?"}
+        )
+
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    assert "respuesta del modelo de IA" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_empty_query(app, mock_use_cases):
+    tender_id = uuid4()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            f"/tenders/{tender_id}/assistant/ask", json={"question": "   "}
+        )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "vacía" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_list_documents_error_handling(app, mock_use_cases):
+    tender_id = uuid4()
+
+    class FailingListUseCase:
+        async def execute(self, tender_id, user_id):
+            raise RuntimeError("Database connection failure")
+
+    mock_use_cases.list_docs = FailingListUseCase()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/tenders/{tender_id}/assistant/documents")
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.json()["detail"] == "No se pudieron cargar los documentos adjuntos de la licitación."
+
+

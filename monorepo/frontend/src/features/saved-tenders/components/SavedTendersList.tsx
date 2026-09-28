@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/features/auth/AuthContext";
+import { loginUrlWithReturn } from "@/features/auth/returnUrl";
+import { ApiError } from "@/features/shared/api/client";
 import { Icon } from "@/features/shared/components/Icon";
 import { Button } from "@/features/shared/components/Button";
 import { TenderCard } from "@/features/matches/components/TenderCard";
@@ -28,6 +30,12 @@ export function SavedTendersList() {
       const data = await fetchSavedTenders();
       setMatches(data);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.replace(
+          loginUrlWithReturn(window.location.pathname, window.location.search),
+        );
+        return;
+      }
       console.error(err);
       setError("No pudimos cargar tus licitaciones guardadas.");
     } finally {
@@ -140,14 +148,25 @@ export function SavedTendersList() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {matches.map((m) => (
-            <TenderCard
-              key={m.id}
-              match={m}
-              isSaved={true}
-              onToggleSave={handleToggleSave}
-            />
-          ))}
+          {matches.map((m) =>
+            // Sin puntaje calculado se pasa la licitación suelta: `TenderCard`
+            // oculta el medidor, que es más honesto que dibujar un 0%.
+            m.final_score !== null ? (
+              <TenderCard
+                key={m.id}
+                match={m}
+                isSaved={true}
+                onToggleSave={handleToggleSave}
+              />
+            ) : (
+              <TenderCard
+                key={m.id}
+                tender={m.tender ?? undefined}
+                isSaved={true}
+                onToggleSave={handleToggleSave}
+              />
+            )
+          )}
         </div>
       )}
     </section>

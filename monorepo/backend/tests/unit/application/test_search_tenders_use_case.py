@@ -185,6 +185,9 @@ class FakeTenderRepo(ITenderRepository):
     async def get_latest_tender_created_at(self) -> datetime | None:
         return None
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return None
+
 
 async def _build(
     *,
@@ -202,7 +205,7 @@ async def _build(
         supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
         await supplier_repo.save(supplier)
         if con_vector:
-            supplier_vector_repo.upsert(supplier.id, vector_proveedor or [0.7] * 1024)
+            await supplier_vector_repo.upsert(supplier.id, vector_proveedor or [0.7] * 1024)
 
     vector_repo = FakeTenderVectorRepo()
     tender_repo = FakeTenderRepo()

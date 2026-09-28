@@ -45,23 +45,10 @@ class ITenderIngestionService(ABC):
         pass
 
     @abstractmethod
-    async def ultima_sincronizacion(self) -> datetime | None:
-        """Cuándo se registró metadata por última vez, o None si no hay ninguna.
-
-        Sirve para decidir si conviene descargar al arrancar. Es una aproximación:
-        una sincronización que no encuentra licitaciones nuevas no mueve esta
-        fecha, así que puede quedar más vieja de lo que fue la última corrida. El
-        error va hacia el lado seguro —se descarga de más, nunca de menos—, y
-        evita tener que mantener una tabla de estado solo para esto.
-        """
-        pass
-
-    @abstractmethod
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
 
-        Reemplaza a `ultima_sincronizacion` para decidir la ventana. Solo cuentan
-        las corridas que alcanzaron a listar su ventana entera.
+        Solo cuentan las corridas que alcanzaron a listar su ventana entera.
         """
         pass
 
@@ -81,6 +68,20 @@ class ITenderIngestionService(ABC):
         failed: int = 0,
     ) -> None:
         """Cierra la corrida. Solo `ok` mueve el cursor."""
+        pass
+
+    @abstractmethod
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        """Pasa a `failed` las corridas en `running` que empezaron antes del corte.
+
+        Una corrida cuyo proceso murió —un Remove en Railway, un OOM— queda en
+        `running` para siempre. Devuelve cuántas cerró.
+        """
+        pass
+
+    @abstractmethod
+    async def hay_corrida_en_curso(self) -> bool:
+        """Si alguna corrida figura en `running`."""
         pass
 
     @abstractmethod

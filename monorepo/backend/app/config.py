@@ -20,6 +20,13 @@ _URL_POR_PROVEEDOR = {
     "huggingface": "https://router.huggingface.co",
 }
 
+# Host oficial de cada fuente de datos de empresas por RUT.
+_URL_POR_FUENTE_DE_EMPRESAS = {
+    "none": "",
+    "sre": "https://sre.cl",
+    "web-empresario": "https://api-sii-chile.webempresario.com",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -113,6 +120,12 @@ class Settings(BaseSettings):
     # oficial del proveedor elegido.
     embedding_api_base_url: str | None = None
 
+    # Tope para el embedding al crear una empresa. Tiene que quedar por debajo de
+    # los 60 s en que el frontend corta la petición: con los reintentos del
+    # servicio de embeddings el backend podía seguir hasta ~186 s y crear la
+    # empresa cuando el usuario ya había visto el error y reintentado.
+    supplier_embedding_deadline_seconds: float = 45.0
+
     # Mismo esquema para el reranker, que en local es ONNX (~1,3 GB de RAM).
     reranker_provider: Literal["local", "pinecone"] = "local"
     pinecone_api_key: str | None = None
@@ -122,14 +135,19 @@ class Settings(BaseSettings):
     pinecone_api_version: str = "2025-04"
 
     # --- Mercado Público ---
+    # La cuota (10.000 peticiones al día) es del **ticket**, no de la máquina ni
+    # del proyecto. Con varios tickets se suman, y por eso hay dos variables:
+    # `MERCADO_PUBLICO_API_KEY` es el ticket de siempre y sigue siendo
+    # obligatorio, y `MERCADO_PUBLICO_API_KEYS` —separados por coma— reemplaza la
+    # lista completa cuando hay más de uno. Ver `mercado_publico_tickets`.
     mercado_publico_api_key: str
+    mercado_publico_api_keys: str | None = None
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
     mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
-    # Ingesta automática al arrancar y región a la que acotarla (None = todas).
-    run_auto_ingestion: bool = True
+    # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
     # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
@@ -137,6 +155,17 @@ class Settings(BaseSettings):
     # tras "Municipalidad de". Más cobertura, algo más de riesgo de falso
     # positivo -- apagada por defecto hasta decidir si vale la pena el riesgo.
     enable_comuna_generic_heuristic: bool = True
+
+    # --- Importación del perfil por RUT (HdU 16) ---
+    # Fuente de terceros con las actividades económicas del SII, para sugerir
+    # rubros y palabras clave en el wizard. Una sola a la vez; las dos devuelven
+    # el mismo borrador (SRE no entrega regiones). "none" apaga la importación y
+    # el wizard sigue funcionando a mano. Ver spikes/spike-1/1.1-onboarding.md.
+    company_lookup_provider: Literal["none", "sre", "web-empresario"] = "none"
+    # Web Empresario la manda como `X-Api-Key`; SRE, como `token` en el cuerpo.
+    company_lookup_api_key: str | None = None
+    # Solo para apuntar a otro host. Vacío usa el oficial de la fuente elegida.
+    company_lookup_base_url: str | None = None
 
     # --- Matching ---
     # Escape para entornos sin RAM suficiente para el reranker ONNX.
@@ -172,7 +201,7 @@ class Settings(BaseSettings):
     # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
     # lo que el usuario abre desde su bandeja.
     app_base_url: str = "http://localhost:3000"
-    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    # Permite apagar los bucles de alertas sin tocar código.
     run_notification_scan: bool = True
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
@@ -221,6 +250,25 @@ class Settings(BaseSettings):
         return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
     @property
+    def mercado_publico_tickets(self) -> list[str]:
+        """Los tickets disponibles, en el orden en que se van a gastar.
+
+        El cliente rota al siguiente cuando uno agota su cuota diaria, así que el
+        orden importa poco salvo para saber cuál se quema primero.
+
+        Nunca devuelve una lista vacía: `mercado_publico_api_key` es obligatorio,
+        así que en el peor caso hay uno. Eso ahorra un validador y, sobre todo,
+        evita que el cliente tenga que defenderse de un caso que no puede pasar.
+        """
+        if self.mercado_publico_api_keys:
+            tickets = [
+                t.strip() for t in self.mercado_publico_api_keys.split(",") if t.strip()
+            ]
+            if tickets:
+                return tickets
+        return [self.mercado_publico_api_key]
+
+    @property
     def cors_origins_list(self) -> list[str]:
         """Orígenes de CORS como lista, desde la cadena separada por comas."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -252,7 +300,13 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    @field_validator("embedding_api_key", "pinecone_api_key", "postgres_password", mode="after")
+    @field_validator(
+        "embedding_api_key",
+        "pinecone_api_key",
+        "postgres_password",
+        "company_lookup_api_key",
+        mode="after",
+    )
     @classmethod
     def _credencial_vacia_es_ausente(cls, valor: str | None) -> str | None:
         if valor is None:
@@ -294,6 +348,11 @@ class Settings(BaseSettings):
             faltantes.append(
                 f"PINECONE_API_KEY (RERANKER_PROVIDER={self.reranker_provider})"
             )
+        if self.company_lookup_provider != "none" and not self.company_lookup_api_key:
+            faltantes.append(
+                "COMPANY_LOOKUP_API_KEY "
+                f"(COMPANY_LOOKUP_PROVIDER={self.company_lookup_provider})"
+            )
         if faltantes:
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
@@ -320,6 +379,13 @@ class Settings(BaseSettings):
         return _URL_POR_PROVEEDOR[self.embedding_provider]
 
     @property
+    def company_lookup_url(self) -> str:
+        """Host de la fuente de datos de empresas, con el override por delante."""
+        if self.company_lookup_base_url:
+            return self.company_lookup_base_url.rstrip("/")
+        return _URL_POR_FUENTE_DE_EMPRESAS[self.company_lookup_provider]
+
+    @property
     def qdrant_url(self) -> str:
         """URL del servicio, con el override por delante del host y el puerto."""
         if self.qdrant_url_override:
@@ -329,6 +395,18 @@ class Settings(BaseSettings):
             return self.qdrant_url_override.rstrip("/")
 
         return f"http://{self.qdrant_host}:{self.qdrant_http_port}"
+
+    @property
+    def auth_cookie_secure(self) -> bool:
+        return not self.is_dev
+
+    @property
+    def auth_cookie_samesite(self) -> str:
+        return "lax"
+
+    @property
+    def access_token_expire_minutes(self) -> int:
+        return 60 * 24 * 30  # 30 días
 
 
 settings = Settings()  # type: ignore

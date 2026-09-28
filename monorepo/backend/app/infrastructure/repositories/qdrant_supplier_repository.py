@@ -1,7 +1,7 @@
 from typing import cast
 from uuid import UUID
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointIdsList, PointStruct
 
 from app.application.repositories.supplier_vector_repository import (
@@ -16,15 +16,19 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
     Usa Qdrant como motor de búsqueda vectorial. Todos los detalles
     específicos de Qdrant (colección, formato de puntos, payload)
     están encapsulados aquí — ninguna otra capa los conoce.
+
+    Usa el cliente asíncrono, igual que `QdrantTenderRepository`. Con el
+    síncrono cada escritura o lectura detenía el event loop mientras esperaba
+    la red, y con él todas las demás peticiones del servidor.
     """
 
     # Nombre de la colección en Qdrant — detalle interno de infraestructura
     _COLLECTION_NAME = "suppliers"
 
-    def __init__(self, client: QdrantClient) -> None:
+    def __init__(self, client: AsyncQdrantClient) -> None:
         self._client = client
 
-    def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
+    async def upsert(self, supplier_id: UUID, embedding: list[float]) -> None:
         """
         Crea o actualiza el punto vectorial del proveedor en Qdrant.
 
@@ -36,25 +40,25 @@ class QdrantSupplierRepository(ISupplierVectorRepository):
             payload={"supplier_id": str(supplier_id)},
         )
 
-        self._client.upsert(
+        await self._client.upsert(
             collection_name=self._COLLECTION_NAME,
             points=[point],
         )
 
-    def delete(self, supplier_id: UUID) -> None:
+    async def delete(self, supplier_id: UUID) -> None:
         """
         Elimina el punto vectorial del proveedor de Qdrant.
         """
-        self._client.delete(
+        await self._client.delete(
             collection_name=self._COLLECTION_NAME,
             points_selector=PointIdsList(points=[str(supplier_id)]),
         )
 
-    def get_vector(self, supplier_id: UUID) -> list[float] | None:
+    async def get_vector(self, supplier_id: UUID) -> list[float] | None:
         """
         Obtiene el vector (embedding) de un proveedor desde Qdrant.
         """
-        records = self._client.retrieve(
+        records = await self._client.retrieve(
             collection_name=self._COLLECTION_NAME,
             ids=[str(supplier_id)],
             with_vectors=True,

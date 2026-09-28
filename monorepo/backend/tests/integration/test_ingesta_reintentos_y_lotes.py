@@ -215,6 +215,36 @@ class TestNoPerderLicitaciones:
         assert fila.is_processed is False
         assert fila.attempts == 1
 
+    async def test_un_error_sin_mensaje_deja_al_menos_su_tipo(self, entorno):
+        """Un timeout de red tiene `str(e) == ""`.
+
+        En la segunda corrida en `dev test` quedaron 46 filas con `last_error`
+        vacío, imposibles de diagnosticar.
+        """
+        await _encolar(entorno, ["MUDA-1"])
+
+        await _servicio(
+            entorno, ClienteFalso({"MUDA-1": TimeoutError()})
+        ).process_unprocessed_tenders()
+
+        fila = await _metadata(entorno, "MUDA-1")
+        assert fila.last_error is not None
+        assert "TimeoutError" in fila.last_error
+
+    async def test_al_procesarse_bien_se_borra_el_error_anterior(self, entorno):
+        """Si no, una licitación ya ingerida parece fallida al mirar la cola."""
+        await _encolar(entorno, ["INTERMITENTE-1"])
+        error = ErrorTransitorioMercadoPublico("HTTP 504")
+        await _servicio(
+            entorno, ClienteFalso({"INTERMITENTE-1": error})
+        ).process_unprocessed_tenders()
+
+        await _servicio(entorno, ClienteFalso()).process_unprocessed_tenders()
+
+        fila = await _metadata(entorno, "INTERMITENTE-1")
+        assert fila.is_processed is True
+        assert fila.last_error is None
+
     async def test_sin_cuota_no_se_marca_nada_ni_se_cuenta_el_intento(self, entorno):
         """La cuota agotada no es culpa de la licitación: no la penaliza."""
         await _encolar(entorno, ["SIN-CUOTA"])

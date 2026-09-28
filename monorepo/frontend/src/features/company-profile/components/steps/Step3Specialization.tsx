@@ -7,15 +7,23 @@ import { Textarea } from "@/features/shared/components/Textarea";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { WizardNavigation } from "../WizardNavigation";
+import { KeywordSuggestions } from "../KeywordSuggestions";
 import { SECTORS } from "../../data/sectors";
 
 interface Step3Props {
   defaultValues: Partial<Step3Data>;
+  /** Palabras clave importadas desde el RUT, ofrecidas como sugerencias. */
+  suggestedKeywords?: string[];
   onNext: (data: Step3Data) => void;
   onBack: () => void;
 }
 
-export function Step3Specialization({ defaultValues, onNext, onBack }: Step3Props) {
+export function Step3Specialization({
+  defaultValues,
+  suggestedKeywords = [],
+  onNext,
+  onBack,
+}: Step3Props) {
   const {
     register,
     handleSubmit,
@@ -64,14 +72,21 @@ export function Step3Specialization({ defaultValues, onNext, onBack }: Step3Prop
           name="keywords"
           control={control}
           render={({ field }) => (
-            <TagInput
-              label="Palabras clave de experiencia"
-              tags={field.value}
-              onChange={field.onChange}
-              placeholder="Ej: luminarias LED, pavimentación, redes húmedas..."
-              hint="Presiona Enter o coma para añadir. Mejoran la precisión del match."
-              error={errors.keywords?.message}
-            />
+            <div className="flex flex-col gap-3">
+              <TagInput
+                label="Palabras clave de experiencia"
+                tags={field.value}
+                onChange={field.onChange}
+                placeholder="Ej: luminarias LED, pavimentación, redes húmedas..."
+                hint="Presiona Enter o coma para añadir. Mejoran la precisión del match."
+                error={errors.keywords?.message}
+              />
+              <KeywordSuggestions
+                suggestions={suggestedKeywords}
+                selected={field.value}
+                onAdd={(keywords) => field.onChange([...field.value, ...keywords])}
+              />
+            </div>
           )}
         />
 
