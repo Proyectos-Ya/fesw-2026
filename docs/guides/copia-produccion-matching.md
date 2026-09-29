@@ -28,27 +28,15 @@ Todo lo que incluye es información pública de Mercado Público.
 Con Supabase local (`supabase start`), el `.venv` del backend activo y
 `alembic upgrade head` aplicado.
 
-**Recrear el volumen de Qdrant.** `docker-compose.yml` usa la misma versión que
-producción (1.19.0). Los volúmenes locales se crearon con la 1.17, y Qdrant migra
-su almacenamiento de a una versión menor: con el volumen viejo, la 1.19 puede no
-arrancar. Borrarlo elimina también la colección `suppliers`, que se regenera al
-completar el perfil. Desde `monorepo/`:
-
-```bash
-docker compose rm -sf qdrant
-```
-
-```bash
-docker volume ls | grep qdrant_data
-```
-
-```bash
-docker volume rm <nombre-del-volumen>
-```
+**Levantar Qdrant.** Desde `monorepo/`:
 
 ```bash
 docker compose up -d qdrant
 ```
+
+`docker-compose.yml` usa la misma versión que producción (1.19.0). Si tenías
+levantada una versión anterior, este comando recrea el contenedor con la nueva y
+conserva el volumen: no hay que borrar nada.
 
 ---
 

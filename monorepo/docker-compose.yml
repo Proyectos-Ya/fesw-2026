@@ -87,9 +87,7 @@ services:
   # ------------------------------------------------------------
   qdrant:
     # Misma versión que el clúster de Qdrant Cloud de producción (1.19.0), para
-    # que lo probado en local se comporte igual que en producción. Al subirla,
-    # recrear el volumen: Qdrant migra su almacenamiento de a una versión menor.
-    # Ver docs/guides/copia-produccion-matching.md.
+    # que lo probado en local se comporte igual que en producción.
     image: qdrant/qdrant:v1.19.0
     container_name: proyectosya_qdrant
     restart: unless-stopped
