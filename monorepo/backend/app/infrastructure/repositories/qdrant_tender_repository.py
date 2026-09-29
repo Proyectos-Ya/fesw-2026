@@ -12,6 +12,8 @@ from qdrant_client.http.models import (
     PointIdsList,
     PointStruct,
     Range,
+    SetPayload,
+    SetPayloadOperation,
     VectorParams,
 )
 
@@ -34,6 +36,10 @@ class QdrantTenderRepository(ITenderVectorRepository):
     # Ids por petición de borrado. La purga inicial puede traer cientos de
     # miles; en lotes, cada cuerpo de petición queda acotado.
     _DELETE_BATCH_SIZE = 1_000
+
+    # Operaciones por petición en `set_payloads`. Cada una lleva su propio
+    # payload, así que el cuerpo crece más rápido que en un borrado por ids.
+    _SET_PAYLOAD_BATCH_SIZE = 100
 
     # Campos del payload por los que se pre-filtra, con el tipo que Qdrant usa
     # para indexarlos. El tipo importa: un rango sobre un campo indexado como
@@ -117,6 +123,25 @@ class QdrantTenderRepository(ITenderVectorRepository):
             payload=payload,
             points=[str(tender_id)],
         )
+
+    async def set_payloads(self, payloads: dict[UUID, dict]) -> None:
+        """Un `batch_update_points` por lote, en vez de un viaje por punto.
+
+        Cada punto recibe su propio payload (el cierre es distinto en cada
+        licitación), así que no sirve un único `set_payload` con varios ids.
+        """
+        items = list(payloads.items())
+        for i in range(0, len(items), self._SET_PAYLOAD_BATCH_SIZE):
+            lote = items[i : i + self._SET_PAYLOAD_BATCH_SIZE]
+            await self._client.batch_update_points(
+                collection_name=self._COLLECTION_NAME,
+                update_operations=[
+                    SetPayloadOperation(
+                        set_payload=SetPayload(payload=payload, points=[str(tender_id)])
+                    )
+                    for tender_id, payload in lote
+                ],
+            )
 
     async def delete(self, tender_id: UUID) -> None:
         """

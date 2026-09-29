@@ -236,6 +236,53 @@ async def test_delete_many_sin_ids_no_llama_a_qdrant(
 
 
 @pytest.mark.anyio
+async def test_set_payloads_manda_un_lote_por_peticion(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """El cron de estados actualiza cientos de puntos por corrida: de a uno,
+    cada punto es un viaje de red a Qdrant Cloud."""
+    a, b = uuid4(), uuid4()
+
+    await repository.set_payloads(
+        {a: {"status_code": "publicada"}, b: {"closing_at": 123}}
+    )
+
+    client.batch_update_points.assert_called_once()
+    client.set_payload.assert_not_called()
+    kwargs = client.batch_update_points.call_args.kwargs
+    assert kwargs["collection_name"] == COLLECTION
+    operaciones = [op.set_payload for op in kwargs["update_operations"]]
+    assert [(op.points, op.payload) for op in operaciones] == [
+        ([str(a)], {"status_code": "publicada"}),
+        ([str(b)], {"closing_at": 123}),
+    ]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_parte_en_lotes(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    payloads = {uuid4(): {"status_code": "publicada"} for _ in range(250)}
+
+    await repository.set_payloads(payloads)
+
+    tamanos = [
+        len(c.kwargs["update_operations"])
+        for c in client.batch_update_points.call_args_list
+    ]
+    assert tamanos == [100, 100, 50]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_vacio_no_llama_a_qdrant(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    await repository.set_payloads({})
+
+    client.batch_update_points.assert_not_called()
+
+
+@pytest.mark.anyio
 async def test_delete_by_status_not_in_filtra_por_must_not(
     repository: QdrantTenderRepository, client: AsyncMock
 ) -> None:

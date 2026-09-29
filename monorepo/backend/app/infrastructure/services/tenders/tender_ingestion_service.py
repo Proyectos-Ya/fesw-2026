@@ -14,9 +14,11 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
+from app.domain.models.cambio_estado import CambioDeEstado
 from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
@@ -26,6 +28,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderMetadataModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
     ErrorTransitorioMercadoPublico,
@@ -67,6 +70,20 @@ class ResultadoListado:
     nuevas: int = 0
     listadas: int = 0
     completo: bool = False
+
+
+@dataclass
+class ListadoCambios:
+    """Lo que devolvió el listado de cambios, ya traducido.
+
+    `listadas` cuenta los ítems crudos, incluidos los ilegibles: es lo que se
+    compara contra el tope de la corrida para saber si quedaron sin mirar.
+    """
+
+    cambios: list[CambioDeEstado]
+    listadas: int
+    ilegibles: int
+    completo: bool
 
 
 @dataclass
@@ -128,7 +145,7 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
     return cierre is not None and cierre <= ahora_utc_naive
 
 
-class TenderIngestionService(ITenderIngestionService):
+class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
     def __init__(
         self,
         engine: AsyncEngine,
@@ -273,6 +290,75 @@ class TenderIngestionService(ITenderIngestionService):
             resultado = await session.exec(stmt)  # type: ignore[call-overload]
             nuevos += len(resultado.all())
         return nuevos
+
+    async def listar_cambios(
+        self, ventana: timedelta, limite: int
+    ) -> ListadoCambios:
+        """Lo que cambió en la API en las últimas `ventana`, sin filtro de estado.
+
+        Ventana de **cambios** (`ttl_cambio_ms`), siempre contada hacia atrás
+        desde ahora: no admite cursor. Sin filtro de estado porque justamente
+        interesan las que pasaron a desierta, cancelada o cerrada.
+        """
+        hasta = utc_now_naive()
+        listado = await self.client.get_tenders(
+            hasta - ventana, hasta, limite, por_publicacion=False, estado=None
+        )
+        cambios = [
+            cambio
+            for cambio in (cambio_desde_item(item) for item in listado.items)
+            if cambio is not None
+        ]
+        return ListadoCambios(
+            cambios=cambios,
+            listadas=len(listado.items),
+            ilegibles=len(listado.items) - len(cambios),
+            completo=listado.completo,
+        )
+
+    async def reencolar(self, codigos: list[str]) -> int:
+        """Devuelve esos códigos a la cola, procesados o no.
+
+        Es el `_insertar_metadata` al revés: `ON CONFLICT DO UPDATE` en vez de
+        `DO NOTHING`. Reinicia `attempts` y `last_error` porque la licitación
+        vuelve por un cambio en la API, no por el error de antes. Un código sin
+        fila (cargado desde un dump) se inserta.
+        """
+        # Sin repetidos: un ON CONFLICT DO UPDATE no puede tocar dos veces la
+        # misma fila en una sentencia, y Postgres lo rechaza.
+        unicos = sorted(set(codigos))
+        if not unicos:
+            return 0
+
+        ahora = utc_now_naive()
+        reencoladas = 0
+        async with AsyncSession(self.engine) as session:
+            for lote in _lotes(unicos, LOTE_METADATA):
+                insercion = pg_insert(TenderMetadataModel).values(
+                    [
+                        {
+                            "id": uuid.uuid4(),
+                            "code": code,
+                            "is_processed": False,
+                            "created_at": ahora,
+                            "updated_at": ahora,
+                        }
+                        for code in lote
+                    ]
+                )
+                stmt = insercion.on_conflict_do_update(
+                    index_elements=["code"],
+                    set_={
+                        "is_processed": False,
+                        "attempts": 0,
+                        "last_error": None,
+                        "updated_at": ahora,
+                    },
+                ).returning(TenderMetadataModel.code)
+                resultado = await session.exec(stmt)  # type: ignore[call-overload]
+                reencoladas += len(resultado.all())
+            await session.commit()
+        return reencoladas
 
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.

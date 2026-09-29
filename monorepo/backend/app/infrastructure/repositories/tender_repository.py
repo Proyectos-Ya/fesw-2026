@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import DateTime, Integer, String, column, delete, func, or_, update
+from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
@@ -12,9 +13,13 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
+from app.application.repositories.tender_status_sync_repository import (
+    ITenderStatusSyncRepository,
+)
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.domain.entities.deep_analysis import VALID_RECOMMENDATIONS, DeepAnalysis
 from app.domain.entities.tender import Tender, TenderItem, utc_now_naive
+from app.domain.models.cambio_estado import CambioDeEstado, LicitacionConocida
 from app.infrastructure.repositories.deep_analysis_model import DeepAnalysisModel
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
@@ -32,8 +37,13 @@ from app.shared.constants import (
     TENDER_STATUS_CODE_BY_ID,
 )
 
+# Filas por sentencia en el cron de estados. Cada fila del VALUES lleva 3
+# parámetros; mil deja lejos el techo de 65.535 de Postgres y mantiene cortas
+# las transacciones.
+_LOTE_ESTADOS = 1000
 
-class TenderRepository(ITenderRepository):
+
+class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
     """Concrete repository implementing ITenderRepository with SQLModel."""
 
     def __init__(self, session: AsyncSession):
@@ -374,6 +384,70 @@ class TenderRepository(ITenderRepository):
         )
         await self.session.exec(statement)  # type: ignore[call-overload]
         await self.session.commit()
+
+    async def get_known_by_codes(
+        self, codes: list[str]
+    ) -> dict[str, LicitacionConocida]:
+        """Una consulta por lote de códigos, no una por licitación."""
+        conocidas: dict[str, LicitacionConocida] = {}
+        for inicio in range(0, len(codes), _LOTE_ESTADOS):
+            lote = codes[inicio : inicio + _LOTE_ESTADOS]
+            statement = select(
+                TenderModel.id,
+                TenderModel.code,
+                TenderModel.status_id,
+                TenderModel.last_change_at,
+            ).where(col(TenderModel.code).in_(lote))
+            result = await self.session.exec(statement)  # type: ignore[call-overload]
+            for tender_id, code, status_id, last_change_at in result.all():
+                conocidas[code] = LicitacionConocida(
+                    id=tender_id,
+                    code=code,
+                    status_id=status_id,
+                    last_change_at=last_change_at,
+                )
+        return conocidas
+
+    async def overwrite_statuses(self, cambios: list[CambioDeEstado]) -> int:
+        """`UPDATE ... FROM (VALUES ...)`, una sentencia por lote.
+
+        La comparación la hace Postgres (`IS DISTINCT FROM`) en la misma
+        sentencia: solo se escriben las filas donde estado o cierre difieren, y
+        así `updated_at` no se mueve sin motivo. `last_change_at` no se toca: es
+        cuándo el ingest bajó el detalle, y de eso depende el reencolado.
+        """
+        cambiadas = 0
+        ahora = utc_now_naive()
+        for inicio in range(0, len(cambios), _LOTE_ESTADOS):
+            lote = cambios[inicio : inicio + _LOTE_ESTADOS]
+            nuevos = sql_values(
+                column("code", String),
+                column("status_id", Integer),
+                column("closing_at", DateTime),
+                name="nuevos",
+            ).data([(c.code, c.status_id, c.closing_at) for c in lote])
+            statement = (
+                update(TenderModel)
+                .where(col(TenderModel.code) == nuevos.c.code)
+                .where(
+                    or_(
+                        col(TenderModel.status_id).is_distinct_from(nuevos.c.status_id),
+                        col(TenderModel.closing_at).is_distinct_from(
+                            nuevos.c.closing_at
+                        ),
+                    )
+                )
+                .values(
+                    status_id=nuevos.c.status_id,
+                    closing_at=nuevos.c.closing_at,
+                    updated_at=ahora,
+                )
+                .returning(TenderModel.id)
+            )
+            result = await self.session.exec(statement)  # type: ignore[call-overload]
+            cambiadas += len(result.all())
+        await self.session.commit()
+        return cambiadas
 
     async def get_or_create_buyer(
         self,
