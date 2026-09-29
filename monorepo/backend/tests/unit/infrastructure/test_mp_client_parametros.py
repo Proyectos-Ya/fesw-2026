@@ -57,8 +57,9 @@ class TestVentanaDePublicacion:
     async def test_por_publicacion_manda_el_rango_en_iso_8601(self):
         params = await _pedir(por_publicacion=True)
 
-        assert params["publicado_desde"] == "2026-08-01T00:00:00Z"
-        assert params["publicado_hasta"] == "2026-08-31T00:00:00Z"
+        # En hora de Chile (UTC-4 en agosto), como la API compara.
+        assert params["publicado_desde"] == "2026-07-31T20:00:00Z"
+        assert params["publicado_hasta"] == "2026-08-30T20:00:00Z"
 
     @respx.mock
     @pytest.mark.asyncio

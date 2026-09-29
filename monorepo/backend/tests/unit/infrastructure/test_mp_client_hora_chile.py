@@ -64,3 +64,41 @@ class TestVentanaDeCambios:
         params = await _params(hasta - timedelta(hours=6), hasta)
 
         assert params["ttl_cambio_ms"] == str(9 * 3600 * 1000)
+
+
+class TestVentanaDePublicacion:
+    """Sin esto, el cron nocturno pierde lo publicado justo después de correr.
+
+    Con la ventana `[ahora - 24 h, ahora]` en UTC leída como hora de Chile, cada
+    corrida cubre en realidad hasta `ahora` pero arranca 3 h más tarde de lo
+    pedido, y la siguiente arranca en el `ahora` de esta: lo publicado en las
+    ~3 h posteriores a cada corrida no cae en ninguna de las dos.
+    """
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_los_bordes_van_en_hora_de_chile_en_verano(self):
+        params = await _params(
+            HASTA_SEPT - timedelta(hours=24), HASTA_SEPT, por_publicacion=True
+        )
+
+        assert params["publicado_desde"] == "2026-09-28T12:48:00Z"
+        assert params["publicado_hasta"] == "2026-09-29T12:48:00Z"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_los_bordes_van_en_hora_de_chile_en_invierno(self):
+        params = await _params(
+            HASTA_JULIO - timedelta(hours=1), HASTA_JULIO, por_publicacion=True
+        )
+
+        assert params["publicado_desde"] == "2026-07-15T10:00:00Z"
+        assert params["publicado_hasta"] == "2026-07-15T11:00:00Z"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_una_fecha_con_zona_se_convierte_igual(self):
+        hasta = HASTA_SEPT.replace(tzinfo=UTC)
+        params = await _params(hasta - timedelta(hours=1), hasta, por_publicacion=True)
+
+        assert params["publicado_hasta"] == "2026-09-29T12:48:00Z"

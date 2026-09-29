@@ -40,14 +40,19 @@ class ListadoLicitaciones:
 
 # Cliente HTTP de Mercado Público (ChileCompra V2) para interactuar con la API
 def _iso_8601(momento: datetime) -> str:
-    """Formato que documenta la guía para los rangos de fecha: 2026-04-01T12:00:00Z.
+    """Formato que documenta la guía para los rangos: 2026-04-01T12:00:00Z.
 
-    Se normaliza a UTC antes de formatear: mandar una hora local con el sufijo Z
-    desplazaría la ventana varias horas sin que nada avisara.
+    **La hora va en hora de Chile, aunque lleve Z.** La API guarda y compara
+    hora de pared de Chile con etiqueta UTC (medido el 2026-09-29: la última
+    hora real en UTC devolvía 0 publicadas; la misma ventana corrida 3 h hacia
+    atrás, 498). Mandar UTC de verdad desplazaba la ventana 3-4 h, y el cron
+    nocturno perdía lo publicado en las horas posteriores a cada corrida.
+
+    Un naive se asume UTC, como toda fecha del sistema.
     """
-    if momento.tzinfo is not None:
-        momento = momento.astimezone(UTC)
-    return momento.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    return momento.astimezone(CHILE_TZ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # La API acepta `tamano_pagina` entre **10 y 50** (medido el 2026-09-10: un 1

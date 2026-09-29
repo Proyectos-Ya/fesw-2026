@@ -126,8 +126,9 @@ class TestMismaVentanaQueLaIngesta:
         await _cliente().contar(DESDE, HASTA, por_publicacion=True)
 
         params = dict(httpx.URL(str(ruta.calls.last.request.url)).params)
-        assert params["publicado_desde"] == "2026-08-01T00:00:00Z"
-        assert params["publicado_hasta"] == "2026-08-02T00:00:00Z"
+        # En hora de Chile (UTC-4 en agosto), como la API compara.
+        assert params["publicado_desde"] == "2026-07-31T20:00:00Z"
+        assert params["publicado_hasta"] == "2026-08-01T20:00:00Z"
         assert "ttl_cambio_ms" not in params
 
     @respx.mock
