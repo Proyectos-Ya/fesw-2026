@@ -20,8 +20,8 @@ export function SearchDashboard() {
     setProvinceId,
     communeId,
     setCommuneId,
-    availability,
-    setAvailability,
+    statuses,
+    setStatuses,
     closingFrom,
     closingTo,
     setClosingDateRange,
@@ -118,8 +118,8 @@ export function SearchDashboard() {
         onProvinceChange={setProvinceId}
         communeId={communeId}
         onCommuneChange={setCommuneId}
-        availability={availability}
-        onAvailabilityChange={setAvailability}
+        statuses={statuses}
+        onStatusesChange={setStatuses}
         closingFrom={closingFrom}
         closingTo={closingTo}
         onClosingDateRangeChange={setClosingDateRange}

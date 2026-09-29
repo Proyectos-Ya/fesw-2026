@@ -144,43 +144,103 @@ describe("useTenderSearch", () => {
     );
   });
 
-  it("actualiza la URL al seleccionar disponibilidad", () => {
+  it("por defecto busca solo vigentes y no inventa un rango de cierre", async () => {
+    const { result } = renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalled();
+    });
+    const params = vi.mocked(searchService.searchTenders).mock.calls[0][0];
+    expect(params?.status_codes).toEqual(["publicada"]);
+    expect(params?.closing_from).toBeUndefined();
+    expect(params?.closing_to).toBeUndefined();
+    expect(result.current.statuses).toEqual(["publicada"]);
+    expect(result.current.activeFilterCount).toBe(0);
+  });
+
+  it("actualiza la URL al seleccionar estados", () => {
     const { result } = renderHook(() => useTenderSearch());
 
     act(() => {
-      result.current.setAvailability("vigentes");
+      result.current.setStatuses(["publicada", "cerrada"]);
     });
 
     expect(replaceMock).toHaveBeenCalledWith(
-      "/buscar?availability=vigentes",
+      "/buscar?status=publicada&status=cerrada",
       { scroll: false },
     );
   });
 
-  it("envía closing_from cuando availability es vigentes", async () => {
+  it("no escribe el estado en la URL cuando vuelve al valor por defecto", () => {
+    mockSearchParams = new URLSearchParams("status=cerrada");
+    const { result } = renderHook(() => useTenderSearch());
+
+    act(() => {
+      result.current.setStatuses(["publicada"]);
+    });
+
+    expect(replaceMock).toHaveBeenCalledWith("/buscar", { scroll: false });
+  });
+
+  it("envía los estados de la URL y los cuenta como filtro activo", async () => {
+    mockSearchParams = new URLSearchParams("status=cerrada&status=desierta");
+    const { result } = renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalledWith(
+        expect.objectContaining({ status_codes: ["cerrada", "desierta"] }),
+      );
+    });
+    expect(result.current.statuses).toEqual(["cerrada", "desierta"]);
+    expect(result.current.activeFilterCount).toBe(1);
+  });
+
+  it("ignora estados desconocidos de la URL", async () => {
+    mockSearchParams = new URLSearchParams("status=abierta");
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalledWith(
+        expect.objectContaining({ status_codes: ["publicada"] }),
+      );
+    });
+  });
+
+  it("interpreta la disponibilidad cerradas de enlaces anteriores", async () => {
+    mockSearchParams = new URLSearchParams("availability=cerradas");
+    renderHook(() => useTenderSearch());
+
+    await waitFor(() => {
+      expect(searchService.searchTenders).toHaveBeenCalled();
+    });
+    const params = vi.mocked(searchService.searchTenders).mock.calls[0][0];
+    expect(params?.status_codes).toEqual(["cerrada", "desierta", "cancelada"]);
+    expect(params?.closing_to).toBeUndefined();
+  });
+
+  it("interpreta la disponibilidad vigentes de enlaces anteriores", async () => {
     mockSearchParams = new URLSearchParams("availability=vigentes");
     renderHook(() => useTenderSearch());
 
     await waitFor(() => {
       expect(searchService.searchTenders).toHaveBeenCalledWith(
-        expect.objectContaining({
-          closing_from: expect.any(String),
-        }),
+        expect.objectContaining({ status_codes: ["publicada"] }),
       );
     });
   });
 
-  it("envía closing_to cuando availability es cerradas", async () => {
+  it("al cambiar otro filtro reemplaza la disponibilidad antigua por estados", () => {
     mockSearchParams = new URLSearchParams("availability=cerradas");
-    renderHook(() => useTenderSearch());
+    const { result } = renderHook(() => useTenderSearch());
 
-    await waitFor(() => {
-      expect(searchService.searchTenders).toHaveBeenCalledWith(
-        expect.objectContaining({
-          closing_to: expect.any(String),
-        }),
-      );
+    act(() => {
+      result.current.setRegions(["Valparaíso"]);
     });
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/buscar?regions=Valpara%C3%ADso&status=cerrada&status=desierta&status=cancelada",
+      { scroll: false },
+    );
   });
 
   it("limpia todos los filtros y remueve sessionStorage al llamar a clearFilters", () => {
