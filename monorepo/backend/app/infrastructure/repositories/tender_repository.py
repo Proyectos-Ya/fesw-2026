@@ -8,6 +8,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -25,6 +26,7 @@ from app.infrastructure.repositories.tender_model import (
     TenderStatusModel,
 )
 from app.shared.constants import (
+    ACTIVE_TENDER_STATUSES,
     CERRADA_STATUS_ID,
     PUBLICADA_STATUS_ID,
     TENDER_STATUS_CODE_BY_ID,
@@ -202,13 +204,20 @@ class TenderRepository(ITenderRepository):
         limit: int,
         offset: int = 0,
         q: str | None = None,
+        closing_order: ClosingOrder = ClosingOrder.ASC,
     ) -> tuple[list[Tender], int]:
         """Búsqueda de licitaciones por filtros y opcionalmente por texto léxico (FTS 'spanish').
 
         Si `q` está presente, filtra y ordena por relevancia de texto morfológico
-        usando Full-Text Search ('spanish') en PostgreSQL.
-        Sin `q`, ordena por fecha de cierre ascendente.
+        usando Full-Text Search ('spanish') en PostgreSQL, y desempata por fecha
+        de cierre. Sin `q`, ordena solo por fecha de cierre. El sentido del
+        cierre lo decide `closing_order`.
         """
+        por_cierre = (
+            col(TenderModel.closing_at).desc()
+            if closing_order == ClosingOrder.DESC
+            else col(TenderModel.closing_at).asc()
+        )
         conditions = self._search_conditions(criteria, q=q)
 
         # Región, provincia y comuna viven en la institución compradora (la
@@ -273,17 +282,13 @@ class TenderRepository(ITenderRepository):
             page_query = (
                 page_query.order_by(
                     func.ts_rank(ts_vector, ts_query).desc(),
-                    col(TenderModel.closing_at).asc(),
+                    por_cierre,
                 )
                 .limit(limit)
                 .offset(offset)
             )
         else:
-            page_query = (
-                page_query.order_by(col(TenderModel.closing_at).asc())
-                .limit(limit)
-                .offset(offset)
-            )
+            page_query = page_query.order_by(por_cierre).limit(limit).offset(offset)
 
         result = await self.session.exec(page_query)
         return [self._to_entity(m) for m in result.all()], total
@@ -332,6 +337,23 @@ class TenderRepository(ITenderRepository):
         statement = select(TenderModel.id).where(
             col(TenderModel.closing_at) < utc_now_naive(),
             col(TenderModel.status_id) == PUBLICADA_STATUS_ID,
+        )
+        result = await self.session.exec(statement)  # type: ignore[call-overload]
+        return list(result.all())
+
+    async def get_inactive_ids(self) -> list[uuid.UUID]:
+        """Todo lo que no tiene un estado activo, incluidos ids sin mapeo.
+
+        Se compara por `status_id` (la columna de `tender`) contra los ids cuyo
+        código es activo, igual que `get_expired_published_ids`.
+        """
+        activos = [
+            status_id
+            for status_id, code in TENDER_STATUS_CODE_BY_ID.items()
+            if code in ACTIVE_TENDER_STATUSES
+        ]
+        statement = select(TenderModel.id).where(
+            col(TenderModel.status_id).not_in(activos)
         )
         result = await self.session.exec(statement)  # type: ignore[call-overload]
         return list(result.all())

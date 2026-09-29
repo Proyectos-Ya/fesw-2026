@@ -49,6 +49,26 @@ class ITenderVectorRepository(ABC):
         ...
 
     @abstractmethod
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina varios puntos de una vez.
+
+        Es la operación del barrido diario (~4.600 cierres por día) y de la
+        purga inicial: de a uno serían miles de viajes. Borrar un id que no
+        existe no es un error, así que repetirla es seguro.
+        """
+        ...
+
+    @abstractmethod
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        """Elimina todo punto cuyo `status_code` no esté entre los dados.
+
+        El índice guarda solo licitaciones activas. Este barrido, resuelto por
+        el propio Qdrant, limpia lo que quedó de antes de esa regla o de una
+        escritura a medias, sin tener que listar ids.
+        """
+        ...
+
+    @abstractmethod
     async def search_by_vector(
         self,
         vector: list[float],

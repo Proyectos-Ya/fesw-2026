@@ -5,6 +5,7 @@ from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -16,8 +17,9 @@ from app.application.schemas.tender_schema import (
     TenderSearchResult,
 )
 from app.application.services.embedding_service import IEmbeddingService
-from app.domain.entities.tender import Tender
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.errors.tender_errors import InvalidSearchCriteria
+from app.shared.constants import ACTIVE_TENDER_STATUSES, TENDER_STATUS_CODE_BY_ID
 from app.shared.search_sanitizer import sanitize_search_query
 
 # Tope de resultados por petición. Con la semántica no existe un corte natural:
@@ -33,20 +35,33 @@ DEFAULT_RESULT_LIMIT = 100
 # licitación pesa ~1,5 KB con sus ítems.
 MAX_RESULT_LIMIT = 500
 
+# Estados por los que se puede filtrar: los que tienen un `id_estado` medido.
+# `proveedor_seleccionado` y `oc_emitida` no lo tienen (ver constants.py), así
+# que en SQL no hay con qué compararlos y aceptarlos devolvería cero en silencio.
+FILTERABLE_STATUS_CODES = frozenset(TENDER_STATUS_CODE_BY_ID.values())
+
 
 class SearchTendersUseCase:
-    """Búsqueda manual de licitaciones: semántica con filtros absolutos.
+    """Búsqueda manual de licitaciones con filtros absolutos.
 
-    Los filtros se aplican **dentro** de la búsqueda vectorial, no sobre el
-    resultado. El orden lo da la similitud con un vector, y de dónde sale ese
-    vector es lo único que distingue los dos modos:
+    Hay dos caminos, y el que se usa lo deciden el texto y el **estado**
+    seleccionado:
 
-    - con texto: se embebe la consulta del usuario
-    - sin texto: se usa el vector del propio proveedor, de modo que los filtros
-      acotan y la afinidad con la empresa ordena
+    - **Qdrant**, ordenado por afinidad con el vector de la empresa: solo sin
+      texto y cuando la selección de estado es únicamente activa (`publicada`).
+      El índice vectorial guarda solo vigentes, así que es el único caso en que
+      contiene todo lo que se pidió.
+    - **Postgres** para todo lo demás: con texto (búsqueda léxica, ordenada por
+      relevancia de texto), sin filtro de estado (que significa "todos") o con
+      cualquier estado no activo. Sin texto, ordena por cierre: lo más próximo
+      a cerrar si son vigentes, lo que cerró más recientemente si entran
+      cerradas.
+
+    En los dos, los filtros se aplican **dentro** de la búsqueda, no sobre el
+    resultado.
 
     Si el proveedor todavía no tiene vector —recién registrado, perfil sin
-    completar— no hay con qué ordenar por relevancia y se cae al camino SQL,
+    completar— no hay con qué ordenar por afinidad y se cae al camino SQL,
     ordenado por fecha de cierre. Es un respaldo para no dejar sin buscador a
     quien acaba de llegar, no un modo paralelo.
 
@@ -90,6 +105,9 @@ class SearchTendersUseCase:
             limit if limit is not None else self.result_limit, self.max_result_limit
         )
 
+        solo_activas = self._solo_estados_activos(criteria)
+        orden = ClosingOrder.ASC if solo_activas else ClosingOrder.DESC
+
         has_text_query = bool(q and q.strip())
         if has_text_query:
             sanitized_q = sanitize_search_query(q)
@@ -99,22 +117,18 @@ class SearchTendersUseCase:
                     total=0,
                     is_truncated=False,
                 )
+            return await self._search_in_sql(
+                criteria, effective_limit, offset, orden, q=sanitized_q
+            )
 
-            items, total = await self.tender_repo.search_tenders(
-                criteria=criteria,
-                limit=effective_limit,
-                offset=offset,
-                q=sanitized_q,
-            )
-            return TenderSearchResult(
-                items=items,
-                total=total,
-                is_truncated=total > offset + len(items),
-            )
+        # Qdrant solo guarda vigentes: con cualquier otro estado en juego, lo
+        # que falta del índice haría que el resultado saliera incompleto.
+        if not solo_activas:
+            return await self._search_in_sql(criteria, effective_limit, offset, orden)
 
         vector = await self._resolve_vector(user_id, "", supplier_id=supplier_id)
         if vector is None:
-            return await self._search_without_ranking(criteria, effective_limit, offset)
+            return await self._search_in_sql(criteria, effective_limit, offset, orden)
 
         hits = await self.tender_vector_repo.search_by_vector(
             vector=vector,
@@ -144,6 +158,16 @@ class SearchTendersUseCase:
             is_truncated=total > offset + len(tenders_ordenadas),
         )
 
+    @staticmethod
+    def _solo_estados_activos(criteria: TenderFilterCriteria) -> bool:
+        """Si la selección de estado cabe entera en el índice vectorial.
+
+        Sin selección no: el contrato de la API es que sin estado entra todo.
+        """
+        return bool(criteria.status_codes) and set(criteria.status_codes) <= (
+            ACTIVE_TENDER_STATUSES
+        )
+
     def _validate(
         self, criteria: TenderFilterCriteria, limit: int | None, offset: int
     ) -> None:
@@ -159,6 +183,13 @@ class SearchTendersUseCase:
 
         if limit is not None and limit < 1:
             raise InvalidSearchCriteria("El límite debe ser al menos 1.")
+
+        desconocidos = set(criteria.status_codes or []) - FILTERABLE_STATUS_CODES
+        if desconocidos:
+            raise InvalidSearchCriteria(
+                f"Estado desconocido: {', '.join(sorted(desconocidos))}. "
+                f"Los válidos son: {', '.join(sorted(FILTERABLE_STATUS_CODES))}."
+            )
 
         rangos_de_fecha = (
             ("cierre", criteria.closing_from, criteria.closing_to),
@@ -195,44 +226,28 @@ class SearchTendersUseCase:
             vectors = await self.embedding_service.embed([query_text])
             return vectors[0]
 
-        supplier = None
-        if supplier_id is not None:
-            supplier = await self.supplier_repo.get_by_id(supplier_id)
-        if supplier is None:
-            supplier = await self.supplier_repo.get_by_user_id(user_id)
-
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if supplier is None:
             return None
         return await self.supplier_vector_repo.get_vector(supplier.id)
 
-    async def _search_without_ranking(
-        self, criteria: TenderFilterCriteria, limit: int, offset: int
+    async def _search_in_sql(
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int,
+        closing_order: ClosingOrder,
+        q: str | None = None,
     ) -> TenderSearchResult:
-        """Sin vector no hay relevancia que calcular: se ordena por fecha de cierre."""
         items, total = await self.tender_repo.search_tenders(
-            criteria=criteria, limit=limit, offset=offset
+            criteria=criteria,
+            limit=limit,
+            offset=offset,
+            q=q,
+            closing_order=closing_order,
         )
         return TenderSearchResult(
             items=items,
             total=total,
             is_truncated=total > offset + len(items),
         )
-
-    async def _hydrate(self, hits: list[tuple[UUID, float]]) -> list[Tender]:
-        """Trae las licitaciones desde SQL conservando el orden del ranking.
-
-        Qdrant devuelve `(id, score)` y `get_tenders` no garantiza orden, así que
-        reordenar acá es obligatorio: perder el orden dejaría la lista sin
-        ordenar por relevancia sin que nada fallara.
-
-        Los ids sin fila en SQL se omiten. Ese desbalance existe y está
-        documentado (`rank_tenders`, paso 3.3.1); en una búsqueda se prefiere una
-        lista más corta a una con huecos.
-        """
-        if not hits:
-            return []
-
-        ids = [tender_id for tender_id, _ in hits]
-        tenders = await self.tender_repo.get_tenders(TenderFilters(ids=ids))
-        by_id = {t.id: t for t in tenders}
-        return [by_id[tender_id] for tender_id in ids if tender_id in by_id]

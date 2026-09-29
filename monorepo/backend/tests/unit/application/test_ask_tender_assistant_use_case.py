@@ -704,3 +704,33 @@ async def test_ask_tender_assistant_resilient_to_tender_repo_exception(repo):
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_usa_el_perfil_de_la_empresa_activa(repo, ai_service):
+    from app.domain.entities.supplier import Supplier
+    from tests.unit.application.fakes import InMemorySupplierRepository
+
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    await supplier_repo.save(
+        Supplier(user_id=user_id, rut="76.086.428-5", legal_name="Propia SpA")
+    )
+    activa = await supplier_repo.save(
+        Supplier(user_id=uuid4(), rut="77.654.321-7", legal_name="Activa Ltda")
+    )
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo, ai_service=ai_service, supplier_repo=supplier_repo
+    )
+
+    await use_case.execute(
+        tender_id=uuid4(),
+        user_id=user_id,
+        question="¿Somos compatibles con los requisitos?",
+        supplier_id=activa.id,
+    )
+
+    supplier_ctx = ai_service.called_supplier_contexts[0]
+    assert supplier_ctx is not None
+    assert "Activa Ltda" in supplier_ctx
+    assert "Propia SpA" not in supplier_ctx

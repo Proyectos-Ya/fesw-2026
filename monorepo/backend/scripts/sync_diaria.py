@@ -15,7 +15,8 @@ vuelve a mirar.
 Qué hace, en orden
 ------------------
 0. **Cierra las corridas colgadas** y se niega si hay otra en curso (ver abajo).
-1. **Marca las vencidas.** Cuota cero: `closing_at` ya está en Postgres. Va
+1. **Cierra las vencidas** en Postgres y **borra su punto** de Qdrant, que
+   guarda solo activas. Cuota cero: `closing_at` ya está en Postgres. Va
    primero porque es lo que libera cupos del pre-filtrado, y porque conviene que
    ocurra aunque la API esté caída.
 2. **Lista lo publicado en la ventana que dice el cursor** y encola lo que falte.
@@ -135,10 +136,9 @@ async def con_timeout(corutina: Coroutine[Any, Any, int], segundos: float) -> in
 async def _marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int:
     """Pasa a `cerrada` lo que venció y sigue figurando publicado.
 
-    Se marcan y **no se borran** del índice: el buscador expone un filtro por
-    estado que acepta `cerrada`, y borrando el punto esa búsqueda devolvería cero
-    para siempre. El cupo del pre-filtrado se libera igual, porque ese filtra por
-    `status_code` del payload.
+    En Postgres cambia el estado; en Qdrant se **borra** el punto, porque el
+    índice guarda solo activas y el buscador resuelve las cerradas en Postgres.
+    Además barre por payload cualquier punto que no esté activo.
     """
     async with AsyncSession(engine) as session:
         caso = MarkExpiredTendersUseCase(

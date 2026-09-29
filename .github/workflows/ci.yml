@@ -70,14 +70,94 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12.14'
+
+      # Sin `pip install`: `compileall` compila a bytecode y no importa ningún
+      # módulo, así que las dependencias no cambian su resultado. Que
+      # requirements.txt sea instalable lo sigue verificando
+      # `test-unit-backend`, que instala requirements-test.txt (y ese hace
+      # `-r requirements.txt`).
+      - name: Verificar sintaxis de Python
+        run: python -m compileall app/
+
+  # ============================================================
+  # MIGRACIONES: corre sin `needs` a propósito.
+  #
+  # Es el check que protege el despliegue —las migraciones se aplican en el
+  # `preDeployCommand` de Railway, antes de levantar la versión nueva—, así que
+  # no tiene por qué esperar a que compile el frontend para dar su veredicto.
+  #
+  # Reemplaza al workflow `alembic.yml`, que solo contaba cabezas. Contar
+  # cabezas lee archivos y nunca abre conexión, así que se le escapaban las
+  # colisiones que solo aparecen al aplicar (dos ramas creando el mismo nombre
+  # de índice) y la deriva entre modelos y migraciones. Cada paso de abajo
+  # corresponde a una sección de docs/guides/alembic-migraciones.md.
+  # ============================================================
+  migraciones:
+    name: Migraciones (Alembic + Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: monorepo/backend
+
+    services:
+      # Postgres 17 para igualar producción: supabase/config.toml declara
+      # `major_version = 17`. Fijado por digest, igual que las acciones.
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: proyectosya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # `alembic/env.py` importa `app.config`, así que construir `Settings` tiene
+      # que funcionar: además de la base pide Supabase, Mercado Público y Gemini.
+      # Los valores son los mismos rellenos de `pytest_env_defaults.py`,
+      # deliberadamente reconocibles como de prueba: ninguno sirve para hablar
+      # con un servicio real.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/proyectosya
+      POSTGRES_PASSWORD: postgres
+      MERCADO_PUBLICO_API_KEY: test-mercado-publico-key
+      GEMINI_API_KEY: test-gemini-key
+      GEMINI_MODEL: gemini-test
+      SUPABASE_URL: https://supabase-de-pruebas.local
+
+    steps:
+      # `fetch-depth: 0` porque el diagnóstico compara contra la rama base para
+      # distinguir una migración nueva de una que ya vive en develop.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.14'
           cache: 'pip'
           cache-dependency-path: monorepo/backend/requirements.txt
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Verificar sintaxis de Python
-        run: python -m compileall app/
+      # Primero el fallo más común, y el único que sabe explicarse solo.
+      - name: "Cabezas de Alembic (guia: Problema A)"
+        run: python -m scripts.migraciones --base origin/${{ github.base_ref || github.ref_name }}
+
+      - name: Aplicar las migraciones desde cero
+        run: alembic upgrade head
+
+      - name: "Deriva entre modelos y migraciones (guia: Problema E)"
+        run: alembic check
+
+      - name: "Ida y vuelta del downgrade (guia: seccion 2, paso 4)"
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
 
   # ============================================================
   # FASE 2: TESTING EN PARALELO (Requiere que ambos builds pasen)
@@ -110,7 +190,7 @@ jobs:
         run: pnpm run test
 
   test-unit-backend:
-    name: Tests Unitarios Backend y Alembic
+    name: Tests Unitarios Backend
     needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     defaults:
@@ -129,15 +209,6 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements-test.txt
-
-      - name: Chequeo de una sola cabeza de Alembic
-        run: |
-          n=$(alembic heads | grep -c '(head)')
-          if [ "$n" -ne 1 ]; then
-            echo "::error::Hay $n cabezas de Alembic. Resolver antes de mergear (ver AGENTS.md, seccion 3)."
-            alembic heads
-            exit 1
-          fi
 
       - name: Pruebas unitarias de dominio y aplicacion (pytest)
         run: pytest tests/unit/ -v -m "not integration and not network"
@@ -204,7 +275,7 @@ jobs:
   # Agregar aquí un job que despliegue a Railway provocaría un doble deploy.
   deploy-vercel:
     name: Deploy Frontend (Vercel)
-    needs: [test-unit-frontend, test-unit-backend, test-e2e]
+    needs: [test-unit-frontend, test-unit-backend, test-e2e, migraciones]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     runs-on: ubuntu-latest
@@ -249,7 +320,7 @@ jobs:
   # ============================================================
   metrics-summary:
     name: Informe de Impacto
-    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, deploy-vercel]
+    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, migraciones, deploy-vercel]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -274,7 +345,7 @@ jobs:
           echo "| Build Backend | Sintaxis Python 3.12 (compileall app/) | ${{ needs.build-backend.result == 'success' && '[OK] Compilado' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests Unitarios Frontend | Vitest (Hooks, Componentes y Servicios) | ${{ needs.test-unit-frontend.result == 'success' && '[OK] Exitoso' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests Unitarios Backend | Pytest (Dominio, Casos de Uso y Routers) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Exitoso' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integridad Base de Datos | Alembic (1 sola cabeza garantizada) | ${{ needs.test-unit-backend.result == 'success' && '[OK] Lineal' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integridad Base de Datos | Alembic (cabezas, aplicacion, deriva y downgrade) | ${{ needs.migraciones.result == 'success' && '[OK] Verificada' || '[FALLO]' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests E2E de Humo | Playwright con Chromium Headless | ${{ needs.test-e2e.result == 'success' && '[OK] Pasaron' || (needs.test-e2e.result == 'skipped' && '[OMITIDO]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Despliegue Backend | Railway (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | Auto-deploy de Railway con Wait for CI (ver panel de Railway) |" >> $GITHUB_STEP_SUMMARY
           echo "| Despliegue Frontend | Vercel (${{ github.ref == 'refs/heads/main' && 'Produccion' || 'Staging' }}) | ${{ needs.deploy-vercel.result == 'success' && '[OK] Desplegado' || (needs.deploy-vercel.result == 'skipped' && '[NO APLICA EN PR]' || '[FALLO]') }} |" >> $GITHUB_STEP_SUMMARY

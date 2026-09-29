@@ -136,6 +136,9 @@ def create_tender_router(
     dummy_workspace = lambda: None
     actual_get_workspace = get_current_workspace_context or dummy_workspace
 
+    def _empresa_activa(workspace_context: WorkspaceContext | None) -> UUID | None:
+        return workspace_context.active_supplier_id if workspace_context else None
+
     # `/search` va antes que cualquier ruta con parámetro de path: declarada
     # después de un `/{tender_id}`, FastAPI intentaría interpretar "search" como
     # UUID. Hoy no hay conflicto, pero lo habrá al agregar el detalle (HdU 17).
@@ -160,8 +163,9 @@ def create_tender_router(
             str | None,
             Query(
                 max_length=200,
-                description="Texto libre. Se busca por significado, no por "
-                "coincidencia literal. Vacío ordena por afinidad con la empresa.",
+                description="Texto libre. Se busca por coincidencia de palabras "
+                "(con sus variantes en español) en nombre y descripción. Vacío, "
+                "y con solo estados vigentes, ordena por afinidad con la empresa.",
             ),
         ] = None,
         regions: Annotated[
@@ -184,7 +188,13 @@ def create_tender_router(
         ] = None,
         status_codes: Annotated[
             list[str] | None,
-            Query(description="Estados: publicada, cerrada, desierta, adjudicada..."),
+            Query(
+                description="Estados: publicada, cerrada, desierta o cancelada. "
+                "Sin estado entran todos. Solo `publicada` sin texto ordena por "
+                "afinidad con la empresa; con cualquier otro estado se ordena por "
+                "fecha de cierre, la más reciente primero. Un estado desconocido "
+                "responde 422."
+            ),
         ] = None,
         closing_from: Annotated[datetime | None, Query()] = None,
         closing_to: Annotated[datetime | None, Query()] = None,
@@ -217,9 +227,7 @@ def create_tender_router(
                 min_amount=min_amount,
                 max_amount=max_amount,
             )
-            supplier_id = (
-                workspace_context.active_supplier_id if workspace_context else None
-            )
+            supplier_id = _empresa_activa(workspace_context)
             return await use_case.execute(
                 user_id=current_user.id,
                 supplier_id=supplier_id,
@@ -264,9 +272,7 @@ def create_tender_router(
     ):
         """Licitaciones recomendadas para la empresa del usuario autenticado."""
         try:
-            supplier_id = (
-                workspace_context.active_supplier_id if workspace_context else None
-            )
+            supplier_id = _empresa_activa(workspace_context)
             return await use_case.execute(
                 user_id=current_user.id,
                 supplier_id=supplier_id,
@@ -359,6 +365,9 @@ def create_tender_router(
             ScoreTenderOnDemandUseCase,
             Depends(get_score_tender_on_demand_use_case),
         ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
     ):
         """Calcula la compatibilidad de una licitación que el usuario eligió.
 
@@ -368,7 +377,9 @@ def create_tender_router(
         """
         try:
             resultado = await use_case.execute(
-                user_id=current_user.id, tender_id=tender_id
+                user_id=current_user.id,
+                tender_id=tender_id,
+                supplier_id=_empresa_activa(workspace_context),
             )
         except (SupplierNotFoundForUser, TenderNotFound) as e:
             raise HTTPException(
@@ -414,6 +425,9 @@ def create_tender_router(
             GetOrCreateDeepAnalysisUseCase,
             Depends(get_get_or_create_deep_analysis_use_case),
         ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         request_body: DeepAnalysisRequest | None = None,
         # current_user: User = Depends(get_current_user),
         # use_case: GetOrCreateDeepAnalysisUseCase = Depends(
@@ -436,6 +450,7 @@ def create_tender_router(
                 force_regenerate=force_regenerate,
                 prompt_instruction=prompt_instruction,
                 only_if_exists=only_if_exists,
+                supplier_id=_empresa_activa(workspace_context),
             )
             if resultado.analysis is None:
                 raise HTTPException(
@@ -480,6 +495,9 @@ def create_tender_router(
         use_case: Annotated[
             GetTenderDetailUseCase, Depends(get_tender_detail_use_case)
         ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
     ):
         """Ficha de una licitación, incluidas las ya cerradas.
 
@@ -490,7 +508,9 @@ def create_tender_router(
         """
         try:
             detalle = await use_case.execute(
-                user_id=current_user.id, tender_id=tender_id
+                user_id=current_user.id,
+                tender_id=tender_id,
+                supplier_id=_empresa_activa(workspace_context),
             )
         except TenderNotFound as e:
             raise HTTPException(
