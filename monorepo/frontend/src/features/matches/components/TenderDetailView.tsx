@@ -309,7 +309,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
   const { match } = state;
   const tender = match.tender as Tender;
-  const closing = daysUntilClosing(tender.closing_at);
+  const closing = daysUntilClosing(tender.closing_at, tender.status_code);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
   // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
