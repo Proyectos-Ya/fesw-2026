@@ -32,7 +32,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
 )
 from app.shared.constants import ACTIVE_TENDER_STATUSES
-from app.shared.datetime_utils import to_utc_naive, utc_now_naive
+from app.shared.datetime_utils import fecha_mp_a_utc, leer_fecha_mp, utc_now_naive
 from app.shared.ingestion_window import calcular_ventana
 from app.shared.regions import to_region_id
 
@@ -116,30 +116,15 @@ def _lotes(elementos: list, tamano: int):
 def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bool:
     """Si el plazo de cotización ya pasó. Ante la duda, False: se conserva.
 
-    La conversión de zona la hace `to_utc_naive` y no un `replace(tzinfo=None)`:
-    `replace` **descarta** el offset en vez de convertir, así que un cierre con
-    `-04:00` —la hora de Chile— se comparaba contra UTC con cuatro horas de
-    error, y descartaba licitaciones que seguían abiertas. Con sufijo `Z` el
-    error no se notaba, porque ahí la hora de pared ya es UTC.
+    La lectura la hace `fecha_mp_a_utc`, el parser compartido con el cron de
+    estados: toda fecha de Mercado Público es hora de Chile, aunque venga con
+    "Z" (verificado el 2026-09-28). Antes se tomaba la Z como UTC, lo que habría
+    descartado con 3-4 h de error licitaciones que seguían abiertas.
 
     Descartar una licitación viva es peor que ingerir una ya cerrada: lo segundo
     lo corrige el barrido de vencidas, lo primero no lo nota nadie.
     """
-    if not fecha_cierre:
-        return False
-
-    texto = fecha_cierre.replace("Z", "+00:00")
-    try:
-        if " " in texto and "T" not in texto:
-            # Formato sin zona que la API no documenta, pero que se vio en la
-            # práctica. `to_utc_naive` lo interpreta en hora de Chile.
-            parseada = datetime.strptime(texto, "%Y-%m-%d %H:%M")
-        else:
-            parseada = datetime.fromisoformat(texto)
-    except (ValueError, TypeError):
-        return False
-
-    cierre = to_utc_naive(parseada)
+    cierre = fecha_mp_a_utc(fecha_cierre)
     return cierre is not None and cierre <= ahora_utc_naive
 
 
@@ -650,14 +635,10 @@ class TenderIngestionService(ITenderIngestionService):
         estado = detail.get("estado", {}) or {}
 
         def parse_date(date_str) -> datetime:
-            if not date_str:
-                return datetime.now(UTC).replace(tzinfo=None)
-            try:
-                return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
-                    tzinfo=None
-                )
-            except Exception:
-                return datetime.now(UTC).replace(tzinfo=None)
+            # Naive en hora de Chile: el DTO la pasa a UTC (`normalize_to_utc`).
+            # Mismo lector que el listado y el cron de estados.
+            leida = leer_fecha_mp(date_str)
+            return leida if leida else datetime.now(UTC).replace(tzinfo=None)
 
         return TenderIngestaDTO(
             CodigoExterno=str(detail.get("codigo")),
