@@ -58,6 +58,9 @@ class FakeTenderRepository(ITenderRepository):
     async def get_expired_published_ids(self) -> list[UUID]:
         return []
 
+    async def get_inactive_ids(self) -> list[UUID]:
+        return []
+
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
         self.cerradas.extend(tender_ids)
 
@@ -293,7 +296,8 @@ async def test_una_desierta_no_se_indexa_como_publicada():
     `id_estado = 6` es "desierta" en Compra Ágil v2, pero el mapa heredado de la
     API de Licitaciones lo traducía a "publicada". La licitación quedaba
     marcada como abierta y entraba en recomendaciones, ficha y alertas. Ahora el
-    estado sale de `estado.codigo`, así que no hay traducción que equivocar.
+    estado sale de `estado.codigo`, y además una licitación no activa no entra
+    al índice vectorial.
     """
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
@@ -304,9 +308,31 @@ async def test_una_desierta_no_se_indexa_como_publicada():
 
     await use_case.execute(_make_dto(status_code=6, estado_codigo="desierta"))
 
-    _, _, payload = vector_repo.upserts[0]
-    assert payload["status_code"] == "desierta"
-    assert payload["status_code"] not in ACTIVE_TENDER_STATUSES
+    assert all(
+        p["status_code"] in ACTIVE_TENDER_STATUSES for _, _, p in vector_repo.upserts
+    )
+
+
+async def test_una_licitacion_que_llega_cerrada_se_guarda_sin_vector() -> None:
+    """Qdrant guarda solo activas. Guardarla en SQL basta para la ficha y para
+    el buscador, que resuelve las cerradas en Postgres; y no paga inferencia."""
+    repo = FakeTenderRepository()
+    vector_repo = FakeTenderVectorRepository()
+    embedding = FakeEmbeddingService()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=embedding,
+        tender_vector_repo=vector_repo,
+    )
+
+    resultado = await use_case.execute(
+        _make_dto(status_code=3, estado_codigo="cerrada")
+    )
+
+    assert resultado["status"] == "success"
+    assert len(repo.saved) == 1
+    assert vector_repo.upserts == []
+    assert embedding.calls == []
 
 
 async def test_una_licitacion_sin_cambios_no_toca_qdrant() -> None:

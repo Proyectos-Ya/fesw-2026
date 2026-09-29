@@ -196,6 +196,60 @@ async def test_delete_con_point_ids_list(
     mock_pil.assert_called_once_with(points=[str(tender_id)])
 
 
+@pytest.mark.anyio
+async def test_delete_many_borra_en_una_sola_llamada(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Son ~4.600 cierres al día: de a uno serían miles de viajes."""
+    ids = [uuid4() for _ in range(3)]
+
+    await repository.delete_many(ids)
+
+    client.delete.assert_called_once()
+    selector = client.delete.call_args.kwargs["points_selector"]
+    assert selector.points == [str(i) for i in ids]
+
+
+@pytest.mark.anyio
+async def test_delete_many_parte_en_lotes_las_listas_grandes(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """La purga inicial puede traer cientos de miles de ids: no caben en un
+    solo cuerpo de petición razonable."""
+    ids = [uuid4() for _ in range(2_500)]
+
+    await repository.delete_many(ids)
+
+    tamanos = [
+        len(c.kwargs["points_selector"].points) for c in client.delete.call_args_list
+    ]
+    assert tamanos == [1_000, 1_000, 500]
+
+
+@pytest.mark.anyio
+async def test_delete_many_sin_ids_no_llama_a_qdrant(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    await repository.delete_many([])
+
+    client.delete.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_delete_by_status_not_in_filtra_por_must_not(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Borra todo lo que no esté en los estados a conservar, en el servidor."""
+    await repository.delete_by_status_not_in({"publicada"})
+
+    client.delete.assert_called_once()
+    selector = client.delete.call_args.kwargs["points_selector"]
+    (condicion,) = selector.filter.must_not
+    assert condicion.key == "status_code"
+    assert condicion.match.any == ["publicada"]
+    assert selector.filter.must is None
+
+
 # ---------------------------------------------------------------------------
 # search_by_vector: una sola operación para los tres usos
 #

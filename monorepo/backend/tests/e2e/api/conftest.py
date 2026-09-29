@@ -7,6 +7,7 @@ from app import bootstrap
 from app.main import app
 from tests.support.api_auth import preparar_auth
 from tests.unit.application.fakes import (
+    FakeEmailService,
     FakeEmbeddingService,
     FakeSupplierVectorRepository,
     InMemorySupplierInvitationRepository,
@@ -14,7 +15,6 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
     InMemoryUserRepository,
 )
-
 
 
 @pytest_asyncio.fixture
@@ -31,6 +31,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     members = InMemorySupplierMemberRepository(supplier_repo=suppliers)
     invitations = InMemorySupplierInvitationRepository()
     vectors = FakeSupplierVectorRepository()
+    emails = FakeEmailService()
 
     app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
     app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
@@ -40,6 +41,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
         FakeEmbeddingService()
     )
+    app.dependency_overrides[bootstrap.get_email_service] = lambda: emails
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -47,6 +49,8 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         # Se cuelga el repositorio del cliente para los tests que necesitan
         # tocar el estado directamente (desactivar una cuenta, por ejemplo).
         ac.usuarios = users
+        ac.proveedores = suppliers
+        ac.correos = emails
         yield ac
 
     app.dependency_overrides.clear()

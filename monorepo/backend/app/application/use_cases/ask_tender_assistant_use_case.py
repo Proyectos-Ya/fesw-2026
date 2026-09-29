@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
@@ -78,6 +79,7 @@ class AskTenderAssistantUseCase:
         user_id: UUID,
         question: str,
         session_id: Optional[UUID] = None,
+        supplier_id: UUID | None = None,
     ) -> TenderChatMessage:
         # 1. Validar pregunta no vacía
         cleaned_question = question.strip() if question else ""
@@ -173,7 +175,9 @@ class AskTenderAssistantUseCase:
         supplier_context_str: Optional[str] = None
         if self.supplier_repo:
             try:
-                supplier = await self.supplier_repo.get_by_user_id(user_id)
+                supplier = await resolver_empresa(
+                    self.supplier_repo, user_id, supplier_id
+                )
                 if supplier:
                     supplier_context_str = (
                         "=== ANTECEDENTES Y PERFIL DE LA EMPRESA QUE CONSULTA ===\n"

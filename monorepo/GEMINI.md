@@ -1,9 +1,15 @@
 # Project Context
 This is a web application utilizing a Claude design template. 
-The template files are located in the `/frontend/templates` directory.
+The template files are located in the `frontend/templates` directory.
+
+# Repo rules
+Follow all rules in these files (architecture, tests, documentation, git):
+
+@../AGENTS.md
+
+@../SKILL.md
 
 # Core Instructions
-- Read AGENTS.md and follow all repo rules when developping.
 - When editing UI components, ensure you match the styling paradigms found in the template files.
 - Do not modify core template layouts unless explicitly asked. 
 - Do not modify any backend files unless explicitly asked.

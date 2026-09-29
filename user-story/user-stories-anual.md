@@ -1,5 +1,9 @@
 # Plan Anual — Historias de Usuario ProyectosYA
 
+> **Documento histórico.** La fuente vigente de las historias de usuario y sus criterios
+> de aceptación son las GitHub Issues del repositorio. ProyectosYA es el nombre anterior
+> de Chiripa.
+
 Este documento contiene la lista completa de las **19 Historias de Usuario (HdU)** planificadas para el desarrollo anual de ProyectosYA, clasificadas por su prioridad según la última especificación del diseño técnico `E2_ProyectosYa_VF.pdf`.
 
 ---

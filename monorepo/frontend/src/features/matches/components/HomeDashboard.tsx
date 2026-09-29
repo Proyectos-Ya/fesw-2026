@@ -18,6 +18,7 @@ import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
 import { answerSmartQuestion } from "../services/questionService";
+import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
 import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 
@@ -150,6 +151,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
         <section className="mx-auto w-full max-w-3xl">
           <PageHeader />
           <RecentWorkspacesBar />
+          <PendingInvitationsList />
           <EmptyGreen />
         </section>
       );
@@ -158,6 +160,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
         <RecentWorkspacesBar />
+        <PendingInvitationsList />
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
             <Icon name="sparkles" size={22} color="var(--primary)" />
@@ -186,6 +189,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
         <RecentWorkspacesBar />
+        <PendingInvitationsList />
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button variant="primary" className="mt-4" onClick={() => setRetryNonce((n) => n + 1)}>
@@ -202,6 +206,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
       <RecentWorkspacesBar />
+      <PendingInvitationsList />
       <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
       {showCard && pendingQuestions[0] && (
         <div className="mb-6">

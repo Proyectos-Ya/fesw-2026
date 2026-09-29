@@ -580,3 +580,19 @@ async def test_un_analisis_sin_marcas_ignora_la_fecha_de_la_licitacion():
     )
 
     assert resultado.is_outdated is False
+
+
+@pytest.mark.asyncio
+async def test_analiza_para_la_empresa_activa_y_no_la_propia():
+    esc = await armar()
+    activa = await esc.use_case.supplier_repo.save(
+        Supplier(rut="77.654.321-7", legal_name="Activa Ltda", user_id=uuid4())
+    )
+
+    resultado = await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, supplier_id=activa.id
+    )
+
+    assert resultado.analysis is not None
+    assert resultado.analysis.supplier_id == activa.id
+    assert esc.ai_service.calls[0][1] == activa.id

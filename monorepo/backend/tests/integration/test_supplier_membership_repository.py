@@ -1,6 +1,8 @@
 from datetime import timedelta
 from uuid import uuid4
+
 import pytest
+from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.domain.entities.supplier_invitation import (
@@ -140,3 +142,98 @@ async def test_supplier_invitation_crud(db_session: AsyncSession):
     updated = await repo.update(invitation)
     assert updated.status == InvitationStatus.ACCEPTED
     assert updated.accepted_at is not None
+
+
+# ---------------------------------------------------------------------------
+# El esquema de membresías tiene que ser el que creó la migración (PENDIENTES
+# 3.29). Esta base se arma desde los modelos, así que estos tests fallan si un
+# modelo deja de declarar lo que la migración `f1e2d3c4b5a6` aplicó.
+# ---------------------------------------------------------------------------
+
+
+async def _membresia_e_invitacion(session: AsyncSession):
+    user_id, supplier_id = await seed_user_and_supplier(session)
+    await SqlSupplierMemberRepository(session).save(
+        SupplierMember(
+            user_id=user_id,
+            supplier_id=supplier_id,
+            role=MemberRole.ADMIN,
+            status=MemberStatus.ACTIVE,
+        )
+    )
+    await SqlSupplierInvitationRepository(session).save(
+        SupplierInvitation(
+            supplier_id=supplier_id,
+            email="socio@alpha.cl",
+            role=MemberRole.MEMBER,
+            invited_by_user_id=user_id,
+            token=f"token_{uuid4().hex}",
+            status=InvitationStatus.PENDING,
+            expires_at=utc_now_naive() + timedelta(days=7),
+        )
+    )
+    return user_id, supplier_id
+
+
+async def _contar(session: AsyncSession, tabla: str, columna: str, valor) -> int:
+    resultado = await session.execute(
+        text(f"SELECT count(*) FROM {tabla} WHERE {columna} = :v"), {"v": valor}
+    )
+    return int(resultado.scalar_one())
+
+
+@pytest.mark.asyncio
+async def test_borrar_una_empresa_arrastra_sus_membresias_e_invitaciones(
+    db_session: AsyncSession,
+):
+    _, supplier_id = await _membresia_e_invitacion(db_session)
+
+    await db_session.execute(text("DELETE FROM supplier WHERE id = :id"), {"id": supplier_id})
+    await db_session.commit()
+
+    assert await _contar(db_session, "supplier_members", "supplier_id", supplier_id) == 0
+    assert await _contar(db_session, "supplier_invitations", "supplier_id", supplier_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_borrar_un_usuario_arrastra_sus_membresias_e_invitaciones_enviadas(
+    db_session: AsyncSession,
+):
+    user_id, supplier_id = await _membresia_e_invitacion(db_session)
+    # La empresa no cuelga del usuario en este caso: se la desvincula para que el
+    # borrado solo pase por las tablas de membresías.
+    await db_session.execute(
+        text("UPDATE supplier SET user_id = NULL WHERE id = :id"), {"id": supplier_id}
+    )
+
+    await db_session.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+    await db_session.commit()
+
+    assert await _contar(db_session, "supplier_members", "user_id", user_id) == 0
+    assert (
+        await _contar(db_session, "supplier_invitations", "invited_by_user_id", user_id)
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_la_base_pone_rol_y_estado_por_defecto(db_session: AsyncSession):
+    user_id, supplier_id = await seed_user_and_supplier(db_session)
+
+    await db_session.execute(
+        text(
+            "INSERT INTO supplier_members (id, user_id, supplier_id, created_at, updated_at)"
+            " VALUES (:id, :u, :s, now(), now())"
+        ),
+        {"id": uuid4(), "u": user_id, "s": supplier_id},
+    )
+    await db_session.commit()
+
+    fila = (
+        await db_session.execute(
+            text("SELECT role, status FROM supplier_members WHERE user_id = :u"),
+            {"u": user_id},
+        )
+    ).one()
+    assert (fila.role, fila.status) == ("member", "active")
+

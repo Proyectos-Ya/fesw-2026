@@ -3,9 +3,10 @@
 import React, { useState } from "react";
 import { Icon } from "@/features/shared/components/Icon";
 import {
-  type AvailabilityFilter,
-  AVAILABILITY_OPTIONS,
+  DEFAULT_STATUS_CODES,
   SEARCH_REGIONS,
+  TENDER_STATUS_OPTIONS,
+  type TenderStatusCode,
 } from "../data/searchConstants";
 import type { CommuneOption, ProvinceOption } from "../types";
 import { useLocationCatalog } from "../hooks/useLocationCatalog";
@@ -19,8 +20,8 @@ interface SearchFiltersProps {
   onCommuneChange?: (communeId?: number) => void;
   provinces?: ProvinceOption[];
   communes?: CommuneOption[];
-  availability: AvailabilityFilter;
-  onAvailabilityChange: (availability: AvailabilityFilter) => void;
+  statuses: TenderStatusCode[];
+  onStatusesChange: (statuses: TenderStatusCode[]) => void;
   closingFrom?: string;
   closingTo?: string;
   onClosingDateRangeChange?: (from?: string, to?: string) => void;
@@ -40,8 +41,8 @@ export function SearchFilters({
   onCommuneChange,
   provinces: customProvinces,
   communes: customCommunes,
-  availability,
-  onAvailabilityChange,
+  statuses,
+  onStatusesChange,
   closingFrom,
   closingTo,
   onClosingDateRangeChange,
@@ -143,13 +144,20 @@ export function SearchFilters({
     onCommuneChange?.(undefined);
   };
 
-  const handleAvailabilityToggle = (value: "vigentes" | "cerradas") => {
-    if (availability === value) {
-      onAvailabilityChange(null);
-    } else {
-      onAvailabilityChange(value);
+  // Siempre queda al menos un estado: sin ninguno no habría qué buscar, y
+  // "todos" se expresa marcándolos todos.
+  const handleStatusToggle = (value: TenderStatusCode) => {
+    if (!statuses.includes(value)) {
+      onStatusesChange([...statuses, value]);
+      return;
     }
+    if (statuses.length === 1) return;
+    onStatusesChange(statuses.filter((code) => code !== value));
   };
+
+  const isDefaultStatuses =
+    statuses.length === DEFAULT_STATUS_CODES.length &&
+    DEFAULT_STATUS_CODES.every((code) => statuses.includes(code));
 
   const handleApplyDates = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,7 +184,7 @@ export function SearchFilters({
     regions.length +
     (provinceId !== undefined ? 1 : 0) +
     (communeId !== undefined ? 1 : 0) +
-    (availability !== null ? 1 : 0) +
+    (isDefaultStatuses ? 0 : 1) +
     (closingFrom ? 1 : 0) +
     (closingTo ? 1 : 0) +
     (minAmount !== undefined ? 1 : 0) +
@@ -366,19 +374,20 @@ export function SearchFilters({
             </div>
           </div>
 
-          {/* Estado de postulación / Disponibilidad */}
+          {/* Estado de la licitación */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-caps text-text-subtle mb-2">
               Estado de postulación
             </label>
             <div className="flex flex-wrap gap-2">
-              {AVAILABILITY_OPTIONS.map((option) => {
-                const isSelected = availability === option.value;
+              {TENDER_STATUS_OPTIONS.map((option) => {
+                const isSelected = statuses.includes(option.value);
                 return (
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => handleAvailabilityToggle(option.value)}
+                    aria-pressed={isSelected}
+                    onClick={() => handleStatusToggle(option.value)}
                     className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer border ${
                       isSelected
                         ? "bg-primary text-white border-primary shadow-xs"

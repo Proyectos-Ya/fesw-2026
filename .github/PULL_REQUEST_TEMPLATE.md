@@ -10,6 +10,11 @@ Closes #
 
 <!-- Dos o tres líneas. Qué hace ahora el sistema que antes no hacía. -->
 
+Plan técnico: `docs/plans/NNN-...`
+
+<!-- Si el cambio tuvo plan técnico o ADR, enlázalo aquí. Si no aplica, borra la línea.
+     Cuándo corresponde cada uno: AGENTS.md §2, "Estrategia de documentación". -->
+
 ## Criterios de aceptación y cómo se probaron
 
 <!-- Una fila por criterio, copiado literal de la issue.

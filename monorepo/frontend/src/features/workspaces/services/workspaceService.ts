@@ -3,10 +3,12 @@ import type {
   AcceptInvitationPayload,
   CreateInvitationPayload,
   InvitationDetails,
+  RejectInvitationPayload,
   SupplierInvitation,
   SwitchWorkspacePayload,
   UserWorkspaceSummary,
   WorkspaceContext,
+  WorkspaceMemberDetail,
 } from "../types";
 
 export async function listWorkspaces(): Promise<UserWorkspaceSummary[]> {
@@ -54,5 +56,41 @@ export async function acceptInvitation(
       method: "POST",
       body: JSON.stringify(payload),
     },
+  );
+}
+
+export async function rejectInvitation(
+  payload: RejectInvitationPayload,
+): Promise<SupplierInvitation> {
+  return apiFetch<SupplierInvitation>("/workspaces/invitations/reject", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelInvitation(
+  invitationId: string,
+): Promise<SupplierInvitation> {
+  return apiFetch<SupplierInvitation>(
+    `/workspaces/invitations/${encodeURIComponent(invitationId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function listWorkspaceMembers(
+  supplierId: string,
+): Promise<WorkspaceMemberDetail[]> {
+  return apiFetch<WorkspaceMemberDetail[]>(
+    `/workspaces/${encodeURIComponent(supplierId)}/members`,
+  );
+}
+
+export async function listWorkspaceInvitations(
+  supplierId: string,
+): Promise<SupplierInvitation[]> {
+  return apiFetch<SupplierInvitation[]>(
+    `/workspaces/${encodeURIComponent(supplierId)}/invitations`,
   );
 }

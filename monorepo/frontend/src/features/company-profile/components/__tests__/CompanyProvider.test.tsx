@@ -1,9 +1,10 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompanyProvider, useCompany } from "../CompanyProvider";
 import { ApiError } from "@/features/shared/api/client";
 import type { Supplier } from "../../services/supplierService";
+import * as WorkspaceContextModule from "@/features/workspaces/WorkspaceContext";
 
 const getMySupplierMock = vi.fn();
 
@@ -26,6 +27,7 @@ function ShowCompany() {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("CompanyProvider", () => {
@@ -63,6 +65,68 @@ describe("CompanyProvider", () => {
     );
 
     expect(await screen.findByText("error")).toBeInTheDocument();
+  });
+
+  it("refresca la empresa cuando cambia active_supplier_id en el WorkspaceContext (CA6)", async () => {
+    getMySupplierMock
+      .mockRejectedValueOnce(new ApiError(404, "Sin empresa"))
+      .mockResolvedValueOnce(SUPPLIER);
+
+    const spy = vi.spyOn(WorkspaceContextModule, "useWorkspace");
+    spy.mockReturnValue({
+      workspaces: [],
+      recentWorkspaces: [],
+      activeWorkspace: null,
+      invitations: [],
+      isLoading: false,
+      isAdmin: false,
+      hasPermission: () => false,
+      switchActiveWorkspace: async () => {},
+      refreshWorkspaces: async () => {},
+      refreshInvitations: async () => {},
+      acceptPendingInvitation: async () => {},
+      rejectPendingInvitation: async () => {},
+    });
+
+    const { rerender } = render(
+      <CompanyProvider>
+        <ShowCompany />
+      </CompanyProvider>,
+    );
+
+    expect(await screen.findByText("without-company")).toBeInTheDocument();
+
+    spy.mockReturnValue({
+      workspaces: [],
+      recentWorkspaces: [],
+      activeWorkspace: {
+        user_id: "u-1",
+        active_supplier_id: "supplier-1",
+        active_supplier_name: "Constructora Norte SpA",
+        role: "member",
+        permissions: ["view_matches"],
+        is_admin: false,
+      },
+      invitations: [],
+      isLoading: false,
+      isAdmin: false,
+      hasPermission: () => false,
+      switchActiveWorkspace: async () => {},
+      refreshWorkspaces: async () => {},
+      refreshInvitations: async () => {},
+      acceptPendingInvitation: async () => {},
+      rejectPendingInvitation: async () => {},
+    });
+
+    rerender(
+      <CompanyProvider>
+        <ShowCompany />
+      </CompanyProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Constructora Norte SpA")).toBeInTheDocument();
+    });
   });
 
   it("useCompany lanza error si se usa fuera del provider", () => {
