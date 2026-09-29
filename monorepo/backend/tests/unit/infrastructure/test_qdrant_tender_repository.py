@@ -252,10 +252,28 @@ async def test_set_payloads_manda_un_lote_por_peticion(
     kwargs = client.batch_update_points.call_args.kwargs
     assert kwargs["collection_name"] == COLLECTION
     operaciones = [op.set_payload for op in kwargs["update_operations"]]
-    assert [(op.points, op.payload) for op in operaciones] == [
-        ([str(a)], {"status_code": "publicada"}),
-        ([str(b)], {"closing_at": 123}),
+    assert [op.payload for op in operaciones] == [
+        {"status_code": "publicada"},
+        {"closing_at": 123},
     ]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_apunta_por_filtro_y_no_por_id(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Por id, un punto que no existe hace que Qdrant responda 404 y corte el
+    lote a la mitad (verificado contra Qdrant 1.17.1). Una licitación activa sin
+    punto —una escritura a medias— botaría la corrida entera. Por filtro de id,
+    un punto ausente simplemente no calza."""
+    a = uuid4()
+
+    await repository.set_payloads({a: {"status_code": "publicada"}})
+
+    op = client.batch_update_points.call_args.kwargs["update_operations"][0]
+    assert op.set_payload.points is None
+    condicion = op.set_payload.filter.must[0]
+    assert condicion.has_id == [str(a)]
 
 
 @pytest.mark.anyio

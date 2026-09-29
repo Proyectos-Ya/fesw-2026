@@ -7,6 +7,7 @@ from qdrant_client.http.models import (
     FieldCondition,
     Filter,
     FilterSelector,
+    HasIdCondition,
     MatchAny,
     MatchValue,
     PointIdsList,
@@ -129,6 +130,12 @@ class QdrantTenderRepository(ITenderVectorRepository):
 
         Cada punto recibe su propio payload (el cierre es distinto en cada
         licitación), así que no sirve un único `set_payload` con varios ids.
+
+        Cada operación apunta por **filtro de id** y no por id. Por id, un punto
+        inexistente hace que Qdrant responda 404 y corte el lote a la mitad
+        (verificado contra 1.17.1); una licitación activa sin punto —una
+        escritura a medias— botaría la corrida entera. Por filtro, simplemente
+        no calza, y no se crea un punto sin vector.
         """
         items = list(payloads.items())
         for i in range(0, len(items), self._SET_PAYLOAD_BATCH_SIZE):
@@ -137,7 +144,12 @@ class QdrantTenderRepository(ITenderVectorRepository):
                 collection_name=self._COLLECTION_NAME,
                 update_operations=[
                     SetPayloadOperation(
-                        set_payload=SetPayload(payload=payload, points=[str(tender_id)])
+                        set_payload=SetPayload(
+                            payload=payload,
+                            filter=Filter(
+                                must=[HasIdCondition(has_id=[str(tender_id)])]
+                            ),
+                        )
                     )
                     for tender_id, payload in lote
                 ],
