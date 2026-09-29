@@ -49,6 +49,12 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
     async def delete(self, tender_id) -> None:
         pass
 
+    async def delete_many(self, tender_ids) -> None:
+        pass
+
+    async def delete_by_status_not_in(self, status_codes) -> None:
+        pass
+
     async def search_by_vector(self, vector, limit, offset=0, criteria=None):
         self.searched_vectors.append(vector)
         return self.search_results

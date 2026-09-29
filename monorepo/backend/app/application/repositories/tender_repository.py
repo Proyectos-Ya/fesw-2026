@@ -100,6 +100,15 @@ class ITenderRepository(ABC):
         ...
 
     @abstractmethod
+    async def get_inactive_ids(self) -> list[UUID]:
+        """Ids de las licitaciones cuyo estado no es activo.
+
+        Lo usa la purga única del índice vectorial: es Postgres, y no el
+        payload de Qdrant, quien sabe el estado real de cada una.
+        """
+        ...
+
+    @abstractmethod
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
         """Pasa esas licitaciones al estado `cerrada`, en una sola sentencia."""
         ...

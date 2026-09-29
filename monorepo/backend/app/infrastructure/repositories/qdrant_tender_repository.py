@@ -6,6 +6,7 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
+    FilterSelector,
     MatchAny,
     MatchValue,
     PointIdsList,
@@ -29,6 +30,10 @@ class QdrantTenderRepository(ITenderVectorRepository):
 
     _COLLECTION_NAME = "tenders"
     _VECTOR_NAME = "tender"
+
+    # Ids por petición de borrado. La purga inicial puede traer cientos de
+    # miles; en lotes, cada cuerpo de petición queda acotado.
+    _DELETE_BATCH_SIZE = 1_000
 
     # Campos del payload por los que se pre-filtra, con el tipo que Qdrant usa
     # para indexarlos. El tipo importa: un rango sobre un campo indexado como
@@ -120,6 +125,31 @@ class QdrantTenderRepository(ITenderVectorRepository):
         await self._client.delete(
             collection_name=self._COLLECTION_NAME,
             points_selector=PointIdsList(points=[str(tender_id)]),
+        )
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina los puntos en lotes de `_DELETE_BATCH_SIZE`."""
+        for i in range(0, len(tender_ids), self._DELETE_BATCH_SIZE):
+            lote = tender_ids[i : i + self._DELETE_BATCH_SIZE]
+            await self._client.delete(
+                collection_name=self._COLLECTION_NAME,
+                points_selector=PointIdsList(points=[str(t) for t in lote]),
+            )
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        """Borra por filtro en el servidor: todo lo que no tenga esos estados."""
+        await self._client.delete(
+            collection_name=self._COLLECTION_NAME,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must_not=[
+                        FieldCondition(
+                            key="status_code",
+                            match=MatchAny(any=sorted(status_codes)),
+                        )
+                    ]
+                )
+            ),
         )
 
     async def search_by_vector(

@@ -319,6 +319,9 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
     def __init__(self) -> None:
         self.payloads: dict[UUID, dict] = {}
         self.upserts: list[tuple[UUID, list[float], dict]] = []
+        self.deleted: list[UUID] = []
+        # Cada barrido anota qué estados se conservaron.
+        self.status_sweeps: list[set[str]] = []
 
     async def ensure_collection(self) -> None:
         pass
@@ -332,9 +335,17 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
 
     async def delete(self, tender_id: UUID) -> None:
+        self.deleted.append(tender_id)
         self.upserts = [
             (tid, emb, p) for tid, emb, p in self.upserts if tid != tender_id
         ]
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        self.status_sweeps.append(set(status_codes))
 
     async def search_by_vector(
         self,
@@ -553,6 +564,9 @@ class InMemoryTenderRepository(ITenderRepository):
         self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def get_inactive_ids(self) -> list[UUID]:
         return []
 
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
