@@ -154,9 +154,13 @@ jobs:
       - name: "Deriva entre modelos y migraciones (guia: Problema E)"
         run: alembic check
 
+      # No usa `downgrade -1`: si la cabeza es un `merge heads` tiene dos padres
+      # y Alembic aborta con "Ambiguous walk". Bajar hasta el primer padre quita
+      # el merge y deja ambos padres aplicados; en una cabeza normal es lo mismo.
       - name: "Ida y vuelta del downgrade (guia: seccion 2, paso 4)"
         run: |
-          alembic downgrade -1
+          PREV=$(python -c "from alembic.config import Config; from alembic.script import ScriptDirectory; s = ScriptDirectory.from_config(Config('alembic.ini')); d = s.get_revision(s.get_current_head()).down_revision; print(d[0] if isinstance(d, tuple) else d)")
+          alembic downgrade "$PREV"
           alembic upgrade head
 
   # ============================================================
