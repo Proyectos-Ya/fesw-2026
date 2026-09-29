@@ -34,6 +34,7 @@ Manuales prácticos para el equipo de desarrollo:
 * [alembic-migraciones.md](./guides/alembic-migraciones.md): Manual operativo de migraciones de base de datos con Alembic, buenas prácticas y troubleshooting completo.
 * [scripts-utilitarios.md](./guides/scripts-utilitarios.md): Catálogo de scripts de mantenimiento, vaciado de licitaciones y reseteo de cuentas/empresas.
 * [testing-hdu08.md](./guides/testing-hdu08.md): Guía paso a paso para el recorrido y prueba manual de la HdU 08 (alertas de licitaciones).
+* [copia-produccion-matching.md](./guides/copia-produccion-matching.md): Cómo copiar el catálogo de licitaciones y los vectores de producción a un entorno local para probar el matching.
 
 ## 4. Registro de Cambios (`docs/changelogs/`)
 Al cierre de cada sprint se consolida el trabajo realizado en un changelog:
