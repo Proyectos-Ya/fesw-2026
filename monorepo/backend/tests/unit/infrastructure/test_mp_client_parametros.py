@@ -44,7 +44,9 @@ class TestComportamientoActual:
         """La sincronización diaria no debe cambiar de comportamiento."""
         params = await _pedir()
 
-        assert params["ttl_cambio_ms"] == str(30 * 24 * 3600 * 1000)
+        # 30 días + 4 h de desfase de Chile en agosto (UTC-4): la API mide el
+        # ttl contra hora de Chile (ver test_mp_client_hora_chile.py).
+        assert params["ttl_cambio_ms"] == str((30 * 24 + 4) * 3600 * 1000)
         assert "publicado_desde" not in params
         assert "estado" not in params
 

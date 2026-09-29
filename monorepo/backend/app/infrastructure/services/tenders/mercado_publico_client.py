@@ -1,9 +1,11 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import httpx
+
+from app.shared.datetime_utils import CHILE_TZ
 
 
 class ErrorTransitorioMercadoPublico(Exception):
@@ -60,6 +62,17 @@ TAMANO_PAGINA = 20
 VENTANA_POR_DEFECTO_MS = 86400000
 
 
+def _desfase_chile(momento: datetime) -> timedelta:
+    """Cuántas horas va Chile detrás de UTC en ese momento (3 o 4).
+
+    Un naive se asume UTC, como toda fecha del sistema.
+    """
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=UTC)
+    offset = momento.astimezone(CHILE_TZ).utcoffset() or timedelta(0)
+    return -offset
+
+
 def _params_ventana(
     from_date: datetime,
     to_date: datetime,
@@ -86,10 +99,16 @@ def _params_ventana(
         params["publicado_desde"] = _iso_8601(from_date)
         params["publicado_hasta"] = _iso_8601(to_date)
     else:
-        ventana_ms = int((to_date - from_date).total_seconds() * 1000)
-        if ventana_ms <= 0:
-            ventana_ms = VENTANA_POR_DEFECTO_MS
-        params["ttl_cambio_ms"] = ventana_ms
+        # La API resta el ttl a su "ahora" en UTC y lo compara contra fechas
+        # guardadas en hora de Chile, así que la ventana efectiva es el ttl menos
+        # el desfase de Chile (medido el 2026-09-29: 3,0 h devolvía 0 cambios y
+        # 3,1 h, los últimos seis minutos). Se suma para que la ventana pedida
+        # sea la que de verdad se recibe.
+        ventana = to_date - from_date
+        if ventana <= timedelta(0):
+            ventana = timedelta(milliseconds=VENTANA_POR_DEFECTO_MS)
+        ventana += _desfase_chile(to_date)
+        params["ttl_cambio_ms"] = int(ventana.total_seconds() * 1000)
     if estado:
         params["estado"] = estado
     return params
