@@ -138,6 +138,7 @@ def create_router(
             get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
             get_chat_history_use_case=get_tender_chat_history_use_case,
             get_create_chat_session_use_case=get_create_tender_chat_session_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
         )
     )
 

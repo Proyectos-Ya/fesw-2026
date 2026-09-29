@@ -16,6 +16,7 @@ from app.application.schemas.tender_schema import (
     TenderSearchResult,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.shared.search_sanitizer import sanitize_search_query
@@ -195,12 +196,7 @@ class SearchTendersUseCase:
             vectors = await self.embedding_service.embed([query_text])
             return vectors[0]
 
-        supplier = None
-        if supplier_id is not None:
-            supplier = await self.supplier_repo.get_by_id(supplier_id)
-        if supplier is None:
-            supplier = await self.supplier_repo.get_by_user_id(user_id)
-
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if supplier is None:
             return None
         return await self.supplier_vector_repo.get_vector(supplier.id)

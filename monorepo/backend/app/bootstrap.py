@@ -956,5 +956,11 @@ def bootstrap(app: FastAPI) -> None:
         get_email_service=get_email_service,
     )
     app.include_router(router)
-    app.include_router(create_quotation_router(get_current_user, get_quotation_use_case))
+    app.include_router(
+        create_quotation_router(
+            get_current_user,
+            get_quotation_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
 
