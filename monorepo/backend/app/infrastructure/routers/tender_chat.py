@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Annotated, Callable, List, Optional
 from uuid import UUID
 from fastapi import (
     APIRouter,
@@ -23,6 +23,7 @@ from app.domain.entities.tender_chat import (
     TenderChatDocument,
     TenderChatSession,
 )
+from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
@@ -51,8 +52,10 @@ def create_tender_chat_router(
     get_ask_assistant_use_case: Callable,
     get_chat_history_use_case: Callable,
     get_create_chat_session_use_case: Callable,
+    get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/tenders/{tender_id}/assistant", tags=["Tender Assistant"])
+    workspace_context_dep = get_current_workspace_context or (lambda: None)
 
     def _to_session_response(session: TenderChatSession) -> TenderChatSessionResponse:
         return TenderChatSessionResponse(
@@ -216,6 +219,9 @@ def create_tender_chat_router(
         body: AskQuestionRequest,
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_ask_assistant_use_case),
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
     ):
         try:
             if not body.question or not body.question.strip():
@@ -226,6 +232,9 @@ def create_tender_chat_router(
                 user_id=current_user.id,
                 question=body.question,
                 session_id=body.session_id,
+                supplier_id=(
+                    workspace_context.active_supplier_id if workspace_context else None
+                ),
             )
             return _to_msg_response(msg)
         except ChatSessionNotFoundError as e:

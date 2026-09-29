@@ -78,3 +78,18 @@ async def test_read_is_scoped_to_company():
     with pytest.raises(QuotationNotFound):
         await QuotationUseCase(repo, suppliers, tenders).get(uuid4(), tender_id)
     repo.get.assert_awaited_once_with(supplier_id, tender_id)
+
+
+@pytest.mark.asyncio
+async def test_company_is_the_active_one_when_given():
+    active_id, user_id, tender_id = uuid4(), uuid4(), uuid4()
+    repo, suppliers, tenders = AsyncMock(), AsyncMock(), AsyncMock()
+    suppliers.get_by_id.return_value = SimpleNamespace(id=active_id)
+    tenders.get_tenders.return_value = [SimpleNamespace(id=tender_id)]
+    data = QuotationInput(items=[material()])
+    await QuotationUseCase(repo, suppliers, tenders).save(
+        user_id, tender_id, data, supplier_id=active_id
+    )
+    suppliers.get_by_id.assert_awaited_once_with(active_id)
+    suppliers.get_by_user_id.assert_not_awaited()
+    repo.save.assert_awaited_once_with(active_id, tender_id, data)

@@ -16,6 +16,7 @@ import {
   getCurrentWorkspace,
   getMyInvitations,
   listWorkspaces,
+  rejectInvitation,
   switchWorkspace as switchWorkspaceApi,
 } from "./services/workspaceService";
 import type {
@@ -36,6 +37,7 @@ interface WorkspaceContextValue {
   refreshWorkspaces: () => Promise<void>;
   refreshInvitations: () => Promise<void>;
   acceptPendingInvitation: (token: string) => Promise<void>;
+  rejectPendingInvitation: (token: string) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -173,6 +175,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [refreshInvitations, refreshWorkspaces],
   );
 
+  const rejectPendingInvitation = useCallback(
+    async (token: string) => {
+      await rejectInvitation({ token });
+      await refreshInvitations();
+    },
+    [refreshInvitations],
+  );
+
   const recentWorkspaces = useMemo<UserWorkspaceSummary[]>(() => {
     if (workspaces.length === 0) return [];
     const map = new Map(workspaces.map((w) => [w.supplier_id, w]));
@@ -240,6 +250,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       refreshWorkspaces,
       refreshInvitations,
       acceptPendingInvitation,
+      rejectPendingInvitation,
     }),
     [
       workspaces,
@@ -252,6 +263,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       refreshWorkspaces,
       refreshInvitations,
       acceptPendingInvitation,
+      rejectPendingInvitation,
     ],
   );
 
@@ -274,6 +286,7 @@ const defaultWorkspaceContextValue: WorkspaceContextValue = {
   refreshWorkspaces: async () => {},
   refreshInvitations: async () => {},
   acceptPendingInvitation: async () => {},
+  rejectPendingInvitation: async () => {},
 };
 
 export function useWorkspace(): WorkspaceContextValue {

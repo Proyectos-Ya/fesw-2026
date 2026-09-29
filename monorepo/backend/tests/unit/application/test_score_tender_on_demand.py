@@ -182,3 +182,24 @@ async def test_no_toca_el_puntaje_de_una_recomendada() -> None:
     assert resultado.final_score == pytest.approx(0.91)
     filas = await matching_result_repo.get_by_supplier_id(supplier.id)
     assert [f.source for f in filas] == ["ranking"]
+
+
+@pytest.mark.asyncio
+async def test_usa_la_empresa_activa_y_no_la_propia() -> None:
+    use_case, supplier_repo, tender_repo, matching_result_repo, propia = (
+        await armar_caso()
+    )
+    activa = await supplier_repo.save(
+        Supplier(rut="77.654.321-7", legal_name="Activa Ltda", user_id=uuid4())
+    )
+    tender_id = uuid4()
+    tender_repo.tenders[tender_id] = crear_licitacion(tender_id)
+
+    resultado = await use_case.execute(
+        user_id=propia.user_id, tender_id=tender_id, supplier_id=activa.id
+    )
+
+    assert resultado.supplier_id == activa.id
+    assert not await matching_result_repo.get_by_proveedor_and_licitacion(
+        propia.id, tender_id
+    )

@@ -3,7 +3,10 @@ from app.application.repositories.supplier_invitation_repository import (
 )
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.schemas.workspace_schema import InvitationDetailsSchema
+from app.domain.entities.supplier_invitation import InvitationStatus
 from app.domain.errors.membership_errors import (
+    InvitationAlreadyProcessed,
+    InvitationCancelledOrInvalid,
     InvitationExpired,
     InvitationNotFound,
 )
@@ -23,6 +26,19 @@ class GetInvitationDetailsUseCase:
         invitation = await self.invitation_repo.get_by_token(token)
         if not invitation:
             raise InvitationNotFound("La invitación no existe o es inválida.")
+
+        if invitation.status in (
+            InvitationStatus.CANCELLED,
+            InvitationStatus.REJECTED,
+        ):
+            raise InvitationCancelledOrInvalid(
+                "Esta invitación fue cancelada y ya no es válida."
+            )
+
+        if invitation.status == InvitationStatus.ACCEPTED:
+            raise InvitationAlreadyProcessed(
+                "Esta invitación ya fue aceptada previamente."
+            )
 
         if invitation.is_expired():
             raise InvitationExpired("La invitación ha expirado.")
