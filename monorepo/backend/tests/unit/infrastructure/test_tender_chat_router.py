@@ -200,7 +200,7 @@ async def test_ask_assistant_endpoint_success(app, mock_use_cases, mock_user):
     msg_id = uuid4()
 
     class FakeAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             return TenderChatMessage(
                 id=msg_id,
                 session_id=session_id,
@@ -231,7 +231,7 @@ async def test_ask_assistant_when_out_of_service_returns_503(app, mock_use_cases
     tender_id = uuid4()
 
     class FailingAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             raise TenderAssistantUnavailableError()
 
     mock_use_cases.ask_assistant = FailingAskUseCase()
@@ -249,7 +249,7 @@ async def test_ask_assistant_prompt_injection_returns_400(app, mock_use_cases):
     tender_id = uuid4()
 
     class InjectionBlockedAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             raise InvalidPromptInstruction()
 
     mock_use_cases.ask_assistant = InjectionBlockedAskUseCase()
@@ -378,7 +378,7 @@ async def test_ask_assistant_with_session_id_success(app, mock_use_cases, mock_u
     msg_id = uuid4()
 
     class FakeAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             return TenderChatMessage(
                 id=msg_id,
                 session_id=session_id,
@@ -439,7 +439,7 @@ async def test_ask_assistant_returns_enriched_response_with_discrepancies_and_wa
     )
 
     class EnrichedAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             return TenderChatMessage(
                 id=msg_id,
                 session_id=session_id,
@@ -477,7 +477,7 @@ async def test_ask_assistant_ai_provider_error(app, mock_use_cases):
     tender_id = uuid4()
 
     class FailingAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             raise TenderAssistantAIProviderError()
 
     mock_use_cases.ask_assistant = FailingAskUseCase()
@@ -497,7 +497,7 @@ async def test_ask_assistant_response_error(app, mock_use_cases):
     tender_id = uuid4()
 
     class FailingAskUseCase:
-        async def execute(self, tender_id, user_id, question, session_id=None):
+        async def execute(self, tender_id, user_id, question, session_id=None, supplier_id=None):
             raise TenderAssistantResponseError()
 
     mock_use_cases.ask_assistant = FailingAskUseCase()

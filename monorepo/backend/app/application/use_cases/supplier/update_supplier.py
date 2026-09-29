@@ -10,6 +10,7 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.schemas.supplier_schema import UpdateSupplierSchema
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.create_supplier import _build_supplier_text
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -36,8 +37,13 @@ class UpdateSupplierUseCase:
         self.vector_repo = vector_repo
         self.embedding_service = embedding_service
 
-    async def execute(self, user_id: UUID, data: UpdateSupplierSchema) -> Supplier:
-        supplier = await self.repo.get_by_user_id(user_id)
+    async def execute(
+        self,
+        user_id: UUID,
+        data: UpdateSupplierSchema,
+        supplier_id: UUID | None = None,
+    ) -> Supplier:
+        supplier = await resolver_empresa(self.repo, user_id, supplier_id)
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
 

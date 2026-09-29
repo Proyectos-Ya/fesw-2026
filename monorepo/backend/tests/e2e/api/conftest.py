@@ -49,6 +49,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         # Se cuelga el repositorio del cliente para los tests que necesitan
         # tocar el estado directamente (desactivar una cuenta, por ejemplo).
         ac.usuarios = users
+        ac.proveedores = suppliers
         ac.correos = emails
         yield ac
 

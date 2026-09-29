@@ -187,6 +187,9 @@ def create_supplier_router(
         response_model=Supplier,
         responses={
             400: {"description": "Datos de empresa inválidos"},
+            403: {
+                "description": "Sin permiso para editar el perfil de la empresa activa"
+            },
             404: {"description": "El usuario no tiene una empresa asociada"},
         },
     )
@@ -198,13 +201,30 @@ def create_supplier_router(
             ISupplierVectorRepository, Depends(get_supplier_vector_repo)
         ],
         embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
     ):
-        # Edita la empresa del usuario autenticado; re-indexa el vector si
-        # cambian los campos que alimentan el matching
+        # Edita la empresa activa (o la propia, sin espacio de trabajo); re-indexa
+        # el vector si cambian los campos que alimentan el matching
+        if (
+            workspace_context is not None
+            and "edit_company_profile" not in workspace_context.permissions
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para editar el perfil de esta empresa",
+            )
         try:
             return await UpdateSupplierUseCase(
                 repo, vector_repo, embedding_service
-            ).execute(current_user.id, data)
+            ).execute(
+                current_user.id,
+                data,
+                supplier_id=(
+                    workspace_context.active_supplier_id if workspace_context else None
+                ),
+            )
         except SupplierNotFoundForUser as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
