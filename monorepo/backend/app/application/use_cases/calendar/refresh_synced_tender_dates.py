@@ -33,7 +33,11 @@ from app.domain.entities.notification import (
     NotificationPreference,
 )
 from app.domain.entities.tender import Tender
-from app.domain.entities.tender_milestone import MilestoneKind, MilestoneSource
+from app.domain.entities.tender_milestone import (
+    MilestoneKind,
+    MilestoneSource,
+    TenderMilestone,
+)
 from app.domain.errors.calendar_errors import CalendarError
 from app.domain.errors.milestone_errors import MilestoneNotFound
 from app.shared.datetime_utils import utc_now_naive
@@ -96,19 +100,22 @@ class RefreshSyncedTenderDatesUseCase:
                 continue
             if oficiales is None:
                 continue
-            cambios = _cambios(tender, oficiales)
+            hitos = await self.milestones.list_by_tender_and_source(
+                tender.id, MilestoneSource.MERCADO_PUBLICO
+            )
+            cambios = _cambios(tender, hitos, oficiales)
             if cambios:
-                await self._aplicar(tender, cambios)
+                await self._aplicar(tender, hitos, cambios)
                 cambiadas += 1
         return cambiadas
 
     async def _aplicar(
-        self, tender: Tender, cambios: dict[MilestoneKind, MilestoneDateChange]
+        self,
+        tender: Tender,
+        oficiales: list[TenderMilestone],
+        cambios: dict[MilestoneKind, MilestoneDateChange],
     ) -> None:
         ahora = self.now()
-        oficiales = await self.milestones.list_by_tender_and_source(
-            tender.id, MilestoneSource.MERCADO_PUBLICO
-        )
         movidos = [
             m.model_copy(update={"due_at": cambios[m.kind].new_at, "updated_at": ahora})
             for m in oficiales
@@ -169,11 +176,20 @@ class RefreshSyncedTenderDatesUseCase:
 
 
 def _cambios(
-    tender: Tender, oficiales: OfficialTenderDates
+    tender: Tender, hitos: list[TenderMilestone], oficiales: OfficialTenderDates
 ) -> dict[MilestoneKind, MilestoneDateChange]:
+    """Qué fechas oficiales difieren de lo que tienen los calendarios.
+
+    "Antes" sale del hito oficial y no de la licitación: el cron `sync_estados`
+    actualiza `closing_at` de la licitación cada hora, así que para cuando este
+    refresco la mira ya tiene la fecha nueva y el cambio pasaba inadvertido. El
+    hito es lo que está en el calendario de los usuarios. Sin hito de ese tipo
+    se usa la licitación, como antes.
+    """
+    en_calendario = {h.kind: h.due_at for h in hitos}
     cambios: dict[MilestoneKind, MilestoneDateChange] = {}
     for kind, campo, etiqueta in _OFICIALES:
-        antes: datetime = getattr(tender, campo)
+        antes: datetime = en_calendario.get(kind, getattr(tender, campo))
         ahora: datetime = getattr(oficiales, campo)
         if antes != ahora:
             cambios[kind] = MilestoneDateChange(label=etiqueta, previous_at=antes, new_at=ahora)
