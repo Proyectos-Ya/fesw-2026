@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -66,7 +67,12 @@ class FakeTenderRepo(InMemoryTenderRepository):
         return [self.tenders[i] for i in (filters.ids or []) if i in self.tenders]
 
     async def search_tenders(
-        self, criteria: TenderFilterCriteria, limit: int, offset: int = 0, q: str | None = None
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+        q: str | None = None,
+        closing_order: ClosingOrder = ClosingOrder.ASC,  # noqa: ARG002
     ) -> tuple[list[Tender], int]:
         self.search_calls.append((criteria, limit, offset, q))
         if q:

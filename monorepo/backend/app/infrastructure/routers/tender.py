@@ -163,8 +163,9 @@ def create_tender_router(
             str | None,
             Query(
                 max_length=200,
-                description="Texto libre. Se busca por significado, no por "
-                "coincidencia literal. Vacío ordena por afinidad con la empresa.",
+                description="Texto libre. Se busca por coincidencia de palabras "
+                "(con sus variantes en español) en nombre y descripción. Vacío, "
+                "y con solo estados vigentes, ordena por afinidad con la empresa.",
             ),
         ] = None,
         regions: Annotated[
@@ -187,7 +188,13 @@ def create_tender_router(
         ] = None,
         status_codes: Annotated[
             list[str] | None,
-            Query(description="Estados: publicada, cerrada, desierta, adjudicada..."),
+            Query(
+                description="Estados: publicada, cerrada, desierta o cancelada. "
+                "Sin estado entran todos. Solo `publicada` sin texto ordena por "
+                "afinidad con la empresa; con cualquier otro estado se ordena por "
+                "fecha de cierre, la más reciente primero. Un estado desconocido "
+                "responde 422."
+            ),
         ] = None,
         closing_from: Annotated[datetime | None, Query()] = None,
         closing_to: Annotated[datetime | None, Query()] = None,

@@ -17,6 +17,7 @@ from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -590,6 +591,7 @@ class InMemoryTenderRepository(ITenderRepository):
         limit: int,
         offset: int = 0,
         q: str | None = None,  # noqa: ARG002
+        closing_order: ClosingOrder = ClosingOrder.ASC,  # noqa: ARG002
     ) -> tuple[list[Tender], int]:
         todas = list(self.tenders.values())
         return todas[offset : offset + limit], len(todas)
