@@ -21,6 +21,8 @@ docs/
 Antes de implementar cualquier historia de usuario o cambio arquitectónico no trivial, se redacta un plan técnico en esta carpeta.
 * **Convención de nombre**: `<número-issue>-<slug-descriptivo>.md` (ejemplo: `240-integracion-notificaciones.md`).
 * **Regla**: El plan debe ser revisado por un humano antes de comenzar a escribir código de producción. Las issues de GitHub definen el **QUÉ** y los planes el **CÓMO** (siempre enlazar con `Refs #NNN`).
+* **Planes activos / registrados**:
+  * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).

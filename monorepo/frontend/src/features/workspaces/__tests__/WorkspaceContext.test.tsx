@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ApiError } from "@/features/shared/api/client";
 import { WorkspaceProvider, useWorkspace } from "../WorkspaceContext";
 import * as workspaceService from "../services/workspaceService";
 
@@ -18,6 +19,7 @@ vi.mock("../services/workspaceService", () => ({
   acceptInvitation: vi.fn(),
   rejectInvitation: vi.fn(),
   switchWorkspace: vi.fn(),
+  clearActiveWorkspace: vi.fn(),
 }));
 
 function TestConsumer() {
@@ -174,6 +176,37 @@ describe("WorkspaceContext", () => {
         token: "tok-reject",
       });
       expect(screen.getByTestId("inv-count")).toHaveTextContent("0");
+    });
+  });
+
+  it("muestra modal de bloqueo en caliente ante error 403 por revocación y permite volver al inicio (HU-13 CA3)", async () => {
+    vi.mocked(workspaceService.listWorkspaces).mockResolvedValue([]);
+    vi.mocked(workspaceService.getMyInvitations).mockResolvedValue([]);
+    vi.mocked(workspaceService.getCurrentWorkspace).mockRejectedValueOnce(
+      new ApiError(403, "Tu acceso a este espacio de trabajo ha sido revocado."),
+    );
+    vi.mocked(workspaceService.clearActiveWorkspace).mockResolvedValueOnce(
+      undefined,
+    );
+
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Tu acceso a este espacio de trabajo ha sido revocado/i),
+      ).toBeInTheDocument();
+    });
+
+    const goHomeButton = screen.getByRole("button", { name: /Ir al inicio/i });
+    fireEvent.click(goHomeButton);
+
+    await waitFor(() => {
+      expect(workspaceService.clearActiveWorkspace).toHaveBeenCalledTimes(1);
     });
   });
 });

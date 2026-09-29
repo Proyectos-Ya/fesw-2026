@@ -27,12 +27,21 @@ const API_BASE_PATH = "/api";
  * token sería darle una credencial de larga duración que no necesita.
  */
 type ProveedorDeToken = () => Promise<string | null>;
+type ManejadorRevocacionAcceso = (mensaje: string) => void;
 
 let obtenerToken: ProveedorDeToken = async () => null;
+let notificarRevocacionAcceso: ManejadorRevocacionAcceso | null = null;
 
 /** Lo llama `AuthProvider` al montarse. */
 export function registrarProveedorDeToken(proveedor: ProveedorDeToken): void {
   obtenerToken = proveedor;
+}
+
+/** Lo llama `WorkspaceProvider` al montarse para interceptar bloqueos 403 en caliente (HU-13 CA3). */
+export function registrarManejadorRevocacionAcceso(
+  manejador: ManejadorRevocacionAcceso | null,
+): void {
+  notificarRevocacionAcceso = manejador;
 }
 
 const REQUEST_TIMEOUT_MS = 60_000; 
@@ -113,6 +122,13 @@ export async function apiFetch<T>(
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el statusText.
+    }
+    if (
+      response.status === 403 &&
+      detail.toLowerCase().includes("revocado") &&
+      notificarRevocacionAcceso
+    ) {
+      notificarRevocacionAcceso(detail);
     }
     throw new ApiError(response.status, detail);
   }

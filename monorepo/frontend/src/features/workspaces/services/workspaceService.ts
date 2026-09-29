@@ -9,6 +9,7 @@ import type {
   UserWorkspaceSummary,
   WorkspaceContext,
   WorkspaceMemberDetail,
+  WorkspaceMemberSummary,
 } from "../types";
 
 export async function listWorkspaces(): Promise<UserWorkspaceSummary[]> {
@@ -93,4 +94,22 @@ export async function listWorkspaceInvitations(
   return apiFetch<SupplierInvitation[]>(
     `/workspaces/${encodeURIComponent(supplierId)}/invitations`,
   );
+}
+
+export async function revokeWorkspaceMember(
+  supplierId: string,
+  memberId: string,
+): Promise<WorkspaceMemberSummary> {
+  return apiFetch<WorkspaceMemberSummary>(
+    `/workspaces/${encodeURIComponent(supplierId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function clearActiveWorkspace(): Promise<void> {
+  return apiFetch<void>("/workspaces/clear-active", {
+    method: "POST",
+  });
 }

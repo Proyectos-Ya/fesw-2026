@@ -1,4 +1,5 @@
 from uuid import UUID
+
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -24,6 +25,7 @@ def _to_entity(model: SupplierMemberModel) -> SupplierMember:
         supplier_id=model.supplier_id,
         role=MemberRole(model.role),
         status=MemberStatus(model.status),
+        last_access_at=model.last_access_at,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -34,8 +36,13 @@ def _to_model(entity: SupplierMember) -> SupplierMemberModel:
         id=entity.id,
         user_id=entity.user_id,
         supplier_id=entity.supplier_id,
-        role=entity.role.value if isinstance(entity.role, MemberRole) else str(entity.role),
-        status=entity.status.value if isinstance(entity.status, MemberStatus) else str(entity.status),
+        role=entity.role.value
+        if isinstance(entity.role, MemberRole)
+        else str(entity.role),
+        status=entity.status.value
+        if isinstance(entity.status, MemberStatus)
+        else str(entity.status),
+        last_access_at=entity.last_access_at,
         created_at=entity.created_at,
         updated_at=entity.updated_at,
     )
@@ -46,7 +53,9 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         self.session = session
 
     async def get_by_id(self, member_id: UUID) -> SupplierMember | None:
-        statement = select(SupplierMemberModel).where(SupplierMemberModel.id == member_id)
+        statement = select(SupplierMemberModel).where(
+            SupplierMemberModel.id == member_id
+        )
         result = await self.session.exec(statement)
         model = result.first()
         return _to_entity(model) if model else None
@@ -70,7 +79,8 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         )
         if status is not None:
             statement = statement.where(
-                SupplierMemberModel.status == (status.value if isinstance(status, MemberStatus) else str(status))
+                SupplierMemberModel.status
+                == (status.value if isinstance(status, MemberStatus) else str(status))
             )
         statement = statement.order_by(SupplierMemberModel.created_at.asc())
         result = await self.session.exec(statement)
@@ -84,7 +94,8 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         )
         if status is not None:
             statement = statement.where(
-                SupplierMemberModel.status == (status.value if isinstance(status, MemberStatus) else str(status))
+                SupplierMemberModel.status
+                == (status.value if isinstance(status, MemberStatus) else str(status))
             )
         result = await self.session.exec(statement)
         return [_to_entity(m) for m in result.all()]
@@ -103,14 +114,25 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         return _to_entity(model)
 
     async def update(self, member: SupplierMember) -> SupplierMember:
-        statement = select(SupplierMemberModel).where(SupplierMemberModel.id == member.id)
+        statement = select(SupplierMemberModel).where(
+            SupplierMemberModel.id == member.id
+        )
         result = await self.session.exec(statement)
         model = result.first()
         if not model:
             return await self.save(member)
 
-        model.role = member.role.value if isinstance(member.role, MemberRole) else str(member.role)
-        model.status = member.status.value if isinstance(member.status, MemberStatus) else str(member.status)
+        model.role = (
+            member.role.value
+            if isinstance(member.role, MemberRole)
+            else str(member.role)
+        )
+        model.status = (
+            member.status.value
+            if isinstance(member.status, MemberStatus)
+            else str(member.status)
+        )
+        model.last_access_at = member.last_access_at
         model.updated_at = member.updated_at
         self.session.add(model)
         await self.session.commit()
@@ -118,7 +140,9 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         return _to_entity(model)
 
     async def delete(self, member_id: UUID) -> bool:
-        statement = select(SupplierMemberModel).where(SupplierMemberModel.id == member_id)
+        statement = select(SupplierMemberModel).where(
+            SupplierMemberModel.id == member_id
+        )
         result = await self.session.exec(statement)
         model = result.first()
         if not model:
@@ -127,9 +151,7 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
         await self.session.commit()
         return True
 
-    async def list_user_workspaces(
-        self, user_id: UUID
-    ) -> list[UserWorkspaceSummary]:
+    async def list_user_workspaces(self, user_id: UUID) -> list[UserWorkspaceSummary]:
         statement = (
             select(SupplierMemberModel, SupplierModel)
             .join(SupplierModel, SupplierMemberModel.supplier_id == SupplierModel.id)
