@@ -1,16 +1,15 @@
-"""Saca de circulación las licitaciones cuyo plazo de cotización ya venció.
+"""Saca del índice vectorial las licitaciones cuyo plazo de cotización venció.
 
-El payload de Qdrant se escribía una vez en la ingesta y no se volvía a tocar.
-Una licitación que cerró conservaba `status_code: "publicada"`, así que seguía
-pasando el pre-filtro de la primera etapa del embudo de matching y **ocupaba uno
-de los 50 cupos de candidatas**, para recién ser descartada en la segunda
-comparando `closing_at` contra SQL. Cada cerrada le roba el lugar a una
-candidata real: con rotación alta pueden estar rerankeándose 20 vigentes en vez
-de 50.
+El índice guarda **solo licitaciones activas**. Una cerrada no tiene nada que
+hacer ahí: el matching descarta lo no publicado y el buscador resuelve en
+Postgres toda búsqueda que incluya estados no activos (`SearchTendersUseCase`).
+Conservar sus puntos solo hacía crecer el índice —~11 GB al año contra ~87 MB
+de lo vigente, medido en el spike 2.1— y cada cerrada con el payload todavía en
+`publicada` le robaba un cupo de candidata al pre-filtro del matching.
 
-Se marcan, **no se borran**. Borrar el punto libera el cupo igual, pero el
-buscador manual expone un filtro por estado que acepta `cerrada`, y esa búsqueda
-quedaría devolviendo cero para siempre.
+Antes se marcaban en el payload en vez de borrarse, porque el buscador filtraba
+cerradas contra Qdrant. Desde que esa búsqueda va a Postgres, ese motivo ya no
+existe.
 
 No cuesta cuota de Mercado Público: `closing_at` ya está en Postgres y que el
 plazo haya vencido es aritmética, no una consulta a la API.
@@ -20,7 +19,7 @@ from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
-from app.shared.constants import TENDER_STATUSES
+from app.shared.constants import ACTIVE_TENDER_STATUSES
 
 
 class MarkExpiredTendersUseCase:
@@ -33,24 +32,48 @@ class MarkExpiredTendersUseCase:
         self.tender_vector_repo = tender_vector_repo
 
     async def execute(self) -> int:
-        """Marca como cerradas las vencidas que aún figuran publicadas.
+        """Cierra en SQL las vencidas que aún figuran publicadas y borra su punto.
 
-        Devuelve cuántas se marcaron. Es idempotente: la segunda pasada no
+        Devuelve cuántas se cerraron. Es idempotente: la segunda pasada no
         encuentra nada porque la primera ya las movió de estado.
         """
         vencidas = await self.repo.get_expired_published_ids()
-        if not vencidas:
-            return 0
+        if vencidas:
+            # Qdrant antes que SQL, igual que en la ingesta y por lo mismo: las
+            # dos escrituras no comparten transacción. Si SQL falla después, la
+            # corrida siguiente vuelve a encontrarlas en SQL y borrar un punto
+            # que ya no existe no es un error. Al revés, quedaría en el índice
+            # un punto que SQL ya no volvería a señalar.
+            await self.tender_vector_repo.delete_many(vencidas)
+            await self.repo.mark_as_closed(vencidas)
 
-        # Qdrant antes que SQL, igual que en la ingesta y por lo mismo: las dos
-        # escrituras no comparten transacción. Si SQL falla después, la
-        # licitación queda marcada en el índice —que es donde importa, porque es
-        # el pre-filtro— y la corrida siguiente vuelve a encontrarla en SQL y se
-        # autocorrige. Al revés, quedaría publicada en el índice para siempre.
-        for tender_id in vencidas:
-            await self.tender_vector_repo.set_payload(
-                tender_id, {"status_code": TENDER_STATUSES["CLOSED"]}
-            )
-
-        await self.repo.mark_as_closed(vencidas)
+        # Barrido por payload: corrige lo que quedó de antes de esta regla o de
+        # una escritura a medias. Lo resuelve Qdrant en el servidor, así que
+        # correrlo todos los días no cuesta nada.
+        await self.tender_vector_repo.delete_by_status_not_in(ACTIVE_TENDER_STATUSES)
         return len(vencidas)
+
+
+class PurgeInactiveTenderVectorsUseCase:
+    """Purga única: deja en el índice solo lo que Postgres dice que está activo.
+
+    El barrido por payload no alcanza a los puntos cuyo payload quedó diciendo
+    `publicada` cuando SQL ya no (6.24: desiertas leídas como publicadas por un
+    mapa de estados equivocado). Para esos manda Postgres, que es la fuente de
+    verdad del estado.
+    """
+
+    def __init__(
+        self,
+        repository: ITenderRepository,
+        tender_vector_repo: ITenderVectorRepository,
+    ):
+        self.repo = repository
+        self.tender_vector_repo = tender_vector_repo
+
+    async def execute(self) -> int:
+        """Devuelve cuántas licitaciones inactivas había en SQL."""
+        inactivas = await self.repo.get_inactive_ids()
+        await self.tender_vector_repo.delete_many(inactivas)
+        await self.tender_vector_repo.delete_by_status_not_in(ACTIVE_TENDER_STATUSES)
+        return len(inactivas)

@@ -80,6 +80,13 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
     async def delete(self, tender_id: UUID) -> None:
         pass
 
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        pass
+
     async def search_by_vector(
         self,
         vector: list[float],
@@ -147,6 +154,9 @@ class FakeTenderRepo(ITenderRepository):
         self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def get_inactive_ids(self) -> list[UUID]:
         return []
 
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:

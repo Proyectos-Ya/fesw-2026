@@ -293,6 +293,20 @@ async def test_search_con_texto_desempata_en_el_sentido_pedido(
 
 
 @pytest.mark.asyncio
+async def test_get_inactive_ids_devuelve_solo_las_no_activas(
+    db_session: AsyncSession,
+):
+    """La purga del índice se guía por esto: todo lo que no esté publicado."""
+    await _seed_para_busqueda(db_session)
+    repo = TenderRepository(db_session)
+
+    inactivas = await repo.get_inactive_ids()
+    codigos = {t.code for t in await repo.get_tenders(TenderFilters(ids=inactivas))}
+
+    assert codigos == {"RM-CERRADA"}
+
+
+@pytest.mark.asyncio
 async def test_search_filtra_por_estado(db_session: AsyncSession):
     await _seed_para_busqueda(db_session)
     repo = TenderRepository(db_session)
