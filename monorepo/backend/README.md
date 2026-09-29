@@ -126,11 +126,31 @@ Con la infraestructura arriba y `MERCADO_PUBLICO_API_KEY` en `monorepo/.env`:
 python -m scripts.sync_diaria --limite 100
 ```
 
-Es el mismo script que corre el cron de Railway: marca las vencidas, lista lo
-publicado en las últimas 24 h, baja el detalle y registra la corrida en
-`ingestion_run`. `--limite` acota cuántas se listan; con él la corrida termina
-`partial` (código 1), que es lo esperado en una prueba. El script se niega a
-correr contra una base que no sea local salvo con `--confirmar-produccion`.
+Es el mismo script que corre el cron nocturno de Railway: lista lo publicado
+desde la última corrida buena, baja el detalle de lo nuevo (y de lo reencolado)
+y registra la corrida en `ingestion_run`. `--limite` acota cuántas se listan;
+con él la corrida termina `partial` (código 1), que es lo esperado en una
+prueba. El script se niega a correr contra una base que no sea local salvo con
+`--confirmar-produccion`.
+
+Las licitaciones **ya guardadas** las mantiene al día otro cron,
+`sync_estados`, que corre cada hora:
+
+```bash
+python -m scripts.sync_estados --ventana-horas 0.25
+```
+
+Lista lo que cambió en la API en la ventana (sin pedir el detalle), escribe
+estado y fecha de cierre, saca del índice vectorial lo que dejó de estar activo,
+reencola las publicadas que cambiaron para que el nocturno baje su detalle, y al
+final marca las vencidas. La ventana, el tope de ítems y el tope de tiempo se
+ajustan con `SYNC_ESTADOS_VENTANA_HORAS`, `SYNC_ESTADOS_LIMITE` y
+`SYNC_ESTADOS_TIMEOUT_MINUTOS` (ver `monorepo/.env.example`). A mediodía hay del
+orden de 1.600 cambios por hora, así que en local conviene una ventana corta.
+
+Las dos ventanas se mandan a la API en hora de Chile aunque lleven "Z": la API
+guarda y compara hora de pared de Chile con etiqueta UTC (medido el 2026-09-29).
+Eso lo resuelve `mercado_publico_client.py`; el resto del sistema trabaja en UTC.
 
 No hay que deshacer nada del dump: los dos modos escriben en las mismas tablas e
 insertan con `ON CONFLICT DO NOTHING`, así que la ingesta agrega licitaciones nuevas
