@@ -12,6 +12,7 @@ class KanbanColumnModel(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="users.id", index=True)
     name: str
     position: int
+    color: str = Field(default="#A99A7C")
     created_at: datetime
 
 

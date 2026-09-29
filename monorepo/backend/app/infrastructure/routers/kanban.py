@@ -59,12 +59,13 @@ def create_kanban_router(
         use_case: Annotated[CreateKanbanColumnUseCase, Depends(get_create_kanban_column_use_case)],
     ):
         column = await use_case.execute(
-            user_id=current_user.id, name=body.name, position=body.position
+            user_id=current_user.id, name=body.name, position=body.position, color=body.color
         )
         return KanbanColumnResponse(
             id=column.id,
             name=column.name,
             position=column.position,
+            color=column.color,
             card_count=0,
             created_at=column.created_at,
         )
@@ -87,6 +88,7 @@ def create_kanban_router(
                 user_id=current_user.id,
                 name=body.name,
                 position=body.position,
+                color=body.color,
             )
         except KanbanColumnNotFound as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
