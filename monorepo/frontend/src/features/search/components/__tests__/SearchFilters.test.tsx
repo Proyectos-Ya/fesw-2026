@@ -9,8 +9,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={false}
@@ -32,8 +32,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={["Valparaíso"]}
         onRegionsChange={handleRegionsChange}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -54,26 +54,86 @@ describe("SearchFilters", () => {
     expect(handleRegionsChange).toHaveBeenCalledWith([]);
   });
 
-  it("permite alternar el filtro de disponibilidad (vigentes / cerradas)", () => {
-    const handleAvailabilityChange = vi.fn();
+  it("agrega un estado a la selección", () => {
+    const handleStatusesChange = vi.fn();
     render(
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={handleAvailabilityChange}
+        statuses={["publicada"]}
+        onStatusesChange={handleStatusesChange}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={false}
       />,
     );
 
-    // Open filters
+    fireEvent.click(screen.getByRole("button", { name: /filtros avanzados/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Cerrada/i }));
+
+    expect(handleStatusesChange).toHaveBeenCalledWith(["publicada", "cerrada"]);
+  });
+
+  it("quita un estado seleccionado cuando hay otros", () => {
+    const handleStatusesChange = vi.fn();
+    render(
+      <SearchFilters
+        regions={[]}
+        onRegionsChange={vi.fn()}
+        statuses={["publicada", "cerrada"]}
+        onStatusesChange={handleStatusesChange}
+        onAmountRangeChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        hasActiveFilters={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /filtros avanzados/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Vigente/i }));
+
+    expect(handleStatusesChange).toHaveBeenCalledWith(["cerrada"]);
+  });
+
+  it("no deja la selección de estados vacía", () => {
+    const handleStatusesChange = vi.fn();
+    render(
+      <SearchFilters
+        regions={[]}
+        onRegionsChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={handleStatusesChange}
+        onAmountRangeChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        hasActiveFilters={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /filtros avanzados/i }));
+    const vigente = screen.getByRole("button", { name: /Vigente/i });
+    fireEvent.click(vigente);
+
+    expect(handleStatusesChange).not.toHaveBeenCalled();
+    expect(vigente).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("ofrece los cuatro estados filtrables", () => {
+    render(
+      <SearchFilters
+        regions={[]}
+        onRegionsChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
+        onAmountRangeChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        hasActiveFilters={false}
+      />,
+    );
+
     fireEvent.click(screen.getByRole("button", { name: /filtros avanzados/i }));
 
-    const vigentesBtn = screen.getByRole("button", { name: /Vigentes/i });
-    fireEvent.click(vigentesBtn);
-    expect(handleAvailabilityChange).toHaveBeenCalledWith("vigentes");
+    for (const nombre of [/Vigente/i, /Cerrada/i, /Desierta/i, /Cancelada/i]) {
+      expect(screen.getByRole("button", { name: nombre })).toBeInTheDocument();
+    }
   });
 
   it("permite aplicar rango de monto", () => {
@@ -82,8 +142,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={handleAmountChange}
         onClearFilters={vi.fn()}
         hasActiveFilters={false}
@@ -111,8 +171,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onClosingDateRangeChange={handleDateRangeChange}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
@@ -141,8 +201,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         closingFrom="2026-09-01"
         closingTo="2026-09-15"
         onClosingDateRangeChange={handleDateRangeChange}
@@ -179,8 +239,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={[]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={false}
@@ -203,8 +263,8 @@ describe("SearchFilters", () => {
       <SearchFilters
         regions={["Metropolitana de Santiago"]}
         onRegionsChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -235,8 +295,8 @@ describe("SearchFilters", () => {
         onRegionsChange={vi.fn()}
         provinceId={51}
         onProvinceChange={vi.fn()}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -270,8 +330,8 @@ describe("SearchFilters", () => {
         onProvinceChange={handleProvinceChange}
         communeId={295}
         onCommuneChange={handleCommuneChange}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -300,8 +360,8 @@ describe("SearchFilters", () => {
         onProvinceChange={vi.fn()}
         communeId={295}
         onCommuneChange={handleCommuneChange}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -331,8 +391,8 @@ describe("SearchFilters", () => {
         onProvinceChange={handleProvinceChange}
         communeId={295}
         onCommuneChange={handleCommuneChange}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
@@ -364,8 +424,8 @@ describe("SearchFilters", () => {
         onProvinceChange={handleProvinceChange}
         communeId={295}
         onCommuneChange={handleCommuneChange}
-        availability={null}
-        onAvailabilityChange={vi.fn()}
+        statuses={["publicada"]}
+        onStatusesChange={vi.fn()}
         onAmountRangeChange={vi.fn()}
         onClearFilters={vi.fn()}
         hasActiveFilters={true}
