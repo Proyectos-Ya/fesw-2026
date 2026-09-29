@@ -9,7 +9,7 @@ from app.application.services.calendar_provider_client import (
     ICalendarProviderClient,
     OAuthTokens,
 )
-from app.domain.entities.calendar import CalendarEventDraft
+from app.domain.entities.calendar import NOMBRE_PRODUCTO, CalendarEventDraft
 from app.domain.errors.calendar_errors import (
     CalendarAuthExpired,
     CalendarEventNotFound,
@@ -181,7 +181,7 @@ def _cuerpo_evento(draft: CalendarEventDraft) -> dict[str, object]:
         "start": _local(draft.start),
         "end": _local(draft.end),
         "reminders": {"useDefault": False, "overrides": recordatorios},
-        "source": {"title": "ProyectosYA", "url": draft.return_url},
+        "source": {"title": NOMBRE_PRODUCTO, "url": draft.return_url},
         "extendedProperties": {"private": {"milestone_id": str(draft.milestone_id)}},
     }
 

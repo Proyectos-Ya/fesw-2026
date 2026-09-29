@@ -8,6 +8,11 @@ from app.domain.entities.tender_milestone import TenderMilestone
 from app.domain.errors.calendar_errors import MilestoneTimeRequired
 from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
+# Nombre del producto tal como lo ve el usuario en su calendario. El repositorio
+# y algunos identificadores técnicos conservan "ProyectosYA", el nombre anterior;
+# en texto visible va siempre este.
+NOMBRE_PRODUCTO = "Chiripa"
+
 _DURACION_EVENTO = timedelta(hours=1)
 _RECORDATORIOS_MINUTOS = (24 * 60, 60)
 _MARGEN_REFRESCO = timedelta(minutes=1)
@@ -89,7 +94,7 @@ class CalendarEventDraft(BaseModel):
     ) -> "CalendarEventDraft":
         if not milestone.has_time:
             raise MilestoneTimeRequired([milestone.id])
-        enlace = f"Ver la licitación en ProyectosYA: {return_url}"
+        enlace = f"Ver la licitación en {NOMBRE_PRODUCTO}: {return_url}"
         description = f"{milestone.description}\n\n{enlace}" if milestone.description else enlace
         return cls(
             milestone_id=milestone.id,

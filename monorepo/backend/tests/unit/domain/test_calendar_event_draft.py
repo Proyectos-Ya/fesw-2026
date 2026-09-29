@@ -11,7 +11,7 @@ from app.domain.entities.tender_milestone import (
 )
 from app.domain.errors.calendar_errors import MilestoneTimeRequired
 
-RETORNO = "https://proyectosya.cl/matches/abc"
+RETORNO = "https://app.test/matches/abc"
 
 
 def _hito(has_time: bool = True, description: str | None = None) -> TenderMilestone:
@@ -54,6 +54,16 @@ class TestDesdeHito:
 
         assert "Entregar en oficina de partes." in borrador.description
         assert RETORNO in borrador.description
+
+    def test_el_enlace_nombra_al_producto_como_chiripa(self):
+        # El evento lo ve el usuario en su calendario: "ProyectosYA" es el
+        # nombre antiguo y solo sobrevive en identificadores técnicos.
+        borrador = CalendarEventDraft.from_milestone(
+            _hito(), tender_title="Licitación", return_url=RETORNO
+        )
+
+        assert borrador.description == f"Ver la licitación en Chiripa: {RETORNO}"
+        assert "proyectosya" not in borrador.description.lower()
 
     def test_trae_recordatorios_un_dia_y_una_hora_antes(self):
         borrador = CalendarEventDraft.from_milestone(

@@ -175,7 +175,7 @@ def _borrador():
     return CalendarEventDraft(
         milestone_id=UUID("11111111-1111-1111-1111-111111111111"),
         title="Visita técnica — Reparación de techumbre",
-        description="Ver la licitación en ProyectosYA: https://app/matches/t-1",
+        description="Ver la licitación en Chiripa: https://app/matches/t-1",
         start=datetime(2026, 10, 20, 18, 0),  # 15:00 en Chile (UTC-3)
         end=datetime(2026, 10, 20, 19, 0),
         reminders_minutes=(1440, 60),
@@ -204,7 +204,8 @@ class TestEventos:
         assert {"method": "popup", "minutes": 60} in cuerpo["reminders"]["overrides"]
         assert {"method": "popup", "minutes": 1440} in cuerpo["reminders"]["overrides"]
         assert {"method": "email", "minutes": 1440} in cuerpo["reminders"]["overrides"]
-        assert cuerpo["source"] == {"title": "ProyectosYA", "url": "https://app/matches/t-1"}
+        # La "fuente" que Google muestra en el evento: es texto que ve el usuario.
+        assert cuerpo["source"] == {"title": "Chiripa", "url": "https://app/matches/t-1"}
         assert cuerpo["extendedProperties"]["private"]["milestone_id"] == "11111111-1111-1111-1111-111111111111"
 
     @respx.mock

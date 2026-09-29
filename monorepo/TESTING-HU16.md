@@ -30,9 +30,10 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
    inmediato. Los hitos vencidos no ofrecen la opción.
 
 Cada evento lleva el título del hito y de la licitación, la fecha y hora en hora de Chile,
-el enlace de vuelta a la ficha (en la descripción y como enlace del evento) y los avisos
+el enlace de vuelta a la ficha (en la descripción, "Ver la licitación en Chiripa", y como fuente
+del evento, que Google muestra como "Chiripa") y los avisos
 propios de Google 1 día y 1 hora antes (distintos del recordatorio del punto 6, que lo manda
-ProyectosYA y no depende de haber sincronizado). Volver a sincronizar actualiza el mismo evento; si el usuario lo borró
+Chiripa y no depende de haber sincronizado). Volver a sincronizar actualiza el mismo evento; si el usuario lo borró
 en Google, se vuelve a crear.
 
 ## Configuración
