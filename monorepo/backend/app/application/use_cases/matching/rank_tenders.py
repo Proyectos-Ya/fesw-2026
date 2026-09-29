@@ -21,6 +21,7 @@ from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.create_supplier import _build_supplier_text
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -87,11 +88,7 @@ class RankTendersUseCase:
             raise asyncio.CancelledError()
 
         # 1. Obtener perfil de proveedor asociado al espacio de trabajo activo o al usuario
-        supplier = None
-        if supplier_id is not None:
-            supplier = await self.supplier_repo.get_by_id(supplier_id)
-        if supplier is None:
-            supplier = await self.supplier_repo.get_by_user_id(user_id)
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
 
         if supplier is None:
             raise SupplierNotFoundForUser(user_id)
