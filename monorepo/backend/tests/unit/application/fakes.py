@@ -776,8 +776,12 @@ class InMemoryMatchingResultRepository(IMatchingResultRepository):
     async def save_bulk(self, results: list[MatchingResult]) -> None:
         if not results:
             return
+        # Mismo contrato que el repositorio real: el par (proveedor, licitación)
+        # ya guardado se reemplaza en vez de duplicarse.
         supplier_id = results[0].supplier_id
-        self.results.setdefault(supplier_id, []).extend(results)
+        nuevos = {r.tender_id for r in results}
+        previos = [r for r in self.results.get(supplier_id, []) if r.tender_id not in nuevos]
+        self.results[supplier_id] = previos + list(results)
 
     async def save_on_demand(self, result: MatchingResult) -> MatchingResult:
         await self.delete_by_supplier_and_tender_ids(
