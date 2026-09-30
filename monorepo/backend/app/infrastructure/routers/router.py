@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.catalog import create_catalog_router
 from app.infrastructure.routers.health import create_health_router
+from app.infrastructure.routers.kanban import create_kanban_router
 from app.infrastructure.routers.notification import create_notification_router
 from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.supplier import create_supplier_router
@@ -47,6 +48,14 @@ def create_router(
     get_ask_tender_assistant_use_case: Callable | None = None,
     get_tender_chat_history_use_case: Callable | None = None,
     get_create_tender_chat_session_use_case: Callable | None = None,
+    get_list_kanban_columns_use_case: Callable | None = None,
+    get_create_kanban_column_use_case: Callable | None = None,
+    get_update_kanban_column_use_case: Callable | None = None,
+    get_delete_kanban_column_use_case: Callable | None = None,
+    get_list_kanban_cards_use_case: Callable | None = None,
+    get_add_tender_to_board_use_case: Callable | None = None,
+    get_move_kanban_card_use_case: Callable | None = None,
+    get_remove_tender_from_board_use_case: Callable | None = None,
     get_email_service: Callable | None = None,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
@@ -142,5 +151,18 @@ def create_router(
         )
     )
 
-    return root
+    root.include_router(
+        create_kanban_router(
+            get_current_user=get_current_user,
+            get_list_kanban_columns_use_case=get_list_kanban_columns_use_case,
+            get_create_kanban_column_use_case=get_create_kanban_column_use_case,
+            get_update_kanban_column_use_case=get_update_kanban_column_use_case,
+            get_delete_kanban_column_use_case=get_delete_kanban_column_use_case,
+            get_list_kanban_cards_use_case=get_list_kanban_cards_use_case,
+            get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
+            get_move_kanban_card_use_case=get_move_kanban_card_use_case,
+            get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
+        )
+    )
 
+    return root
