@@ -39,15 +39,15 @@ pytestmark = pytest.mark.asyncio
 
 
 def _detalle(code: str) -> dict:
-    """Payload mínimo pero válido, con la forma que devuelve Compra Ágil v2."""
+    """Payload mínimo pero válido, con la forma que devuelve Compra Ágil v2 (fechas sin zona, en hora de Chile)."""
     return {
         "codigo": code,
         "nombre": f"Servicio {code}",
         "descripcion": "Descripción de prueba",
         "estado": {"id_estado": 2, "codigo": "publicada"},
         "fechas": {
-            "fecha_publicacion": "2026-09-01T10:00:00Z",
-            "fecha_cierre": "2026-12-01T10:00:00Z",
+            "fecha_publicacion": "2026-09-01 10:00",
+            "fecha_cierre": "2026-12-01 10:00",
         },
         "institucion": {
             "rut": "61.000.000-0",

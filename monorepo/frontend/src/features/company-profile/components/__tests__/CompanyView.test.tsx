@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompanyView } from "../CompanyView";
 import type { CompanyState } from "../CompanyProvider";
 import type { Supplier } from "../../services/supplierService";
+import * as WorkspaceContextModule from "@/features/workspaces/WorkspaceContext";
+import * as workspaceService from "@/features/workspaces/services/workspaceService";
 
 let companyState: CompanyState = { status: "loading" };
 const setSupplierMock = vi.fn();
@@ -21,6 +23,13 @@ const updateSupplierMock = vi.fn();
 
 vi.mock("../../services/supplierService", () => ({
   updateSupplier: (data: unknown) => updateSupplierMock(data) as Promise<Supplier>,
+}));
+
+vi.mock("@/features/workspaces/services/workspaceService", () => ({
+  listWorkspaceMembers: vi.fn().mockResolvedValue([]),
+  listWorkspaceInvitations: vi.fn().mockResolvedValue([]),
+  createInvitation: vi.fn(),
+  cancelInvitation: vi.fn(),
 }));
 
 const SUPPLIER: Supplier = {
@@ -42,6 +51,7 @@ const SUPPLIER: Supplier = {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("CompanyView", () => {
@@ -65,6 +75,50 @@ describe("CompanyView", () => {
     expect(screen.getByText("Valparaíso")).toBeInTheDocument();
     expect(screen.getByText("ISO 9001")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+  });
+
+  it("muestra la sección de equipo de la empresa cuando el usuario es administrador (CA1)", async () => {
+    companyState = { status: "with-company", supplier: SUPPLIER };
+    vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
+      workspaces: [],
+      recentWorkspaces: [],
+      activeWorkspace: {
+        user_id: "user-1",
+        active_supplier_id: "supplier-1",
+        active_supplier_name: "Constructora Norte SpA",
+        role: "admin",
+        permissions: ["invite_members"],
+        is_admin: true,
+      },
+      invitations: [],
+      isLoading: false,
+      isAdmin: true,
+      hasPermission: () => true,
+      switchActiveWorkspace: vi.fn(),
+      refreshWorkspaces: vi.fn(),
+      refreshInvitations: vi.fn(),
+      acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
+    });
+    vi.mocked(workspaceService.listWorkspaceMembers).mockResolvedValueOnce([
+      {
+        id: "m-1",
+        user_id: "user-1",
+        supplier_id: "supplier-1",
+        email: "admin@norte.cl",
+        full_name: "Admin Norte",
+        role: "admin",
+        status: "active",
+        joined_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    render(<CompanyView />);
+
+    expect(
+      await screen.findByRole("heading", { name: /equipo de la empresa/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Admin Norte")).toBeInTheDocument();
   });
 
   it("al editar y guardar envía los cambios y vuelve al modo lectura", async () => {

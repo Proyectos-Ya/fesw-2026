@@ -282,3 +282,21 @@ async def test_commit_failure_without_previous_vector_removes_new_one(
         )
 
     assert seeded.id not in vector_repo.vectors
+
+
+async def test_edita_la_empresa_activa_y_no_la_propia(
+    use_case: UpdateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
+    owner_id = uuid4()
+    propia = await _seed_supplier(supplier_repo, owner_id)
+    activa = await supplier_repo.save(
+        Supplier(rut="77.654.321-7", legal_name="Activa Ltda", user_id=uuid4())
+    )
+
+    result = await use_case.execute(
+        owner_id, UpdateSupplierSchema(trade_name="Renovada"), supplier_id=activa.id
+    )
+
+    assert result.id == activa.id
+    assert (await supplier_repo.get_by_id(activa.id)).trade_name == "Renovada"
+    assert (await supplier_repo.get_by_id(propia.id)).trade_name != "Renovada"

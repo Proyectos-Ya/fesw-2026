@@ -5,9 +5,11 @@ compatibilidad. Todo lo demás se ve en la plataforma, tras iniciar sesión.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from html import escape
 from uuid import UUID
+
+from app.shared.datetime_utils import CHILE_TZ
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,135 @@ class AlertItem:
 
 def _formatear_fecha(valor: datetime | None) -> str:
     return valor.strftime("%d-%m-%Y") if valor else "sin fecha informada"
+
+
+@dataclass(frozen=True)
+class DateChangeItem:
+    """Una licitación con fechas oficiales movidas (HU-16)."""
+
+    tender_id: UUID
+    title: str
+    # (hito, fecha anterior, fecha nueva), en UTC naive.
+    changes: list[tuple[str, datetime, datetime]]
+
+
+def _hora_chile(valor: datetime) -> str:
+    return valor.replace(tzinfo=UTC).astimezone(CHILE_TZ).strftime("%d-%m-%Y %H:%M")
+
+
+@dataclass(frozen=True)
+class MilestoneReminderItem:
+    """Una licitación con hitos próximos que el usuario pidió recordar (HU-16)."""
+
+    tender_id: UUID
+    title: str
+    # (hito, cuándo vence), en UTC naive.
+    milestones: list[tuple[str, datetime]]
+
+
+def build_reminder_subject(items: list[MilestoneReminderItem]) -> str:
+    total = sum(len(i.milestones) for i in items)
+    if total == 1:
+        return f"Recordatorio: {items[0].milestones[0][0]} — {items[0].title}"
+    return f"Recordatorio: {total} hitos próximos"
+
+
+_ENCABEZADO_RECORDATORIO = (
+    "Se acercan hitos de licitaciones para los que pediste un recordatorio:"
+)
+
+
+def build_reminder_text_body(items: list[MilestoneReminderItem], base_url: str) -> str:
+    lineas = [_ENCABEZADO_RECORDATORIO, ""]
+    for item in items:
+        lineas.append(f"* {item.title}")
+        for hito, vence in item.milestones:
+            lineas.append(f"  {hito}: {_hora_chile(vence)} (hora de Chile)")
+        lineas.append(f"  Ver detalle: {tender_url(base_url, item.tender_id)}")
+        lineas.append("")
+    return "\n".join(lineas)
+
+
+def build_reminder_html_body(items: list[MilestoneReminderItem], base_url: str) -> str:
+    tarjetas = []
+    for item in items:
+        url = tender_url(base_url, item.tender_id)
+        filas = "".join(
+            f'<p style="margin:0 0 4px;font-size:14px">{escape(hito)}: '
+            f"<strong>{_hora_chile(vence)}</strong></p>"
+            for hito, vence in item.milestones
+        )
+        tarjetas.append(
+            '<div style="border:1px solid #e5e0d8;border-radius:8px;'
+            'padding:16px;margin-bottom:12px">'
+            f'<h2 style="margin:0 0 8px;font-size:16px">{escape(item.title)}</h2>'
+            f"{filas}"
+            f'<a href="{escape(url)}" style="display:inline-block;margin-top:8px;'
+            "background:#0f766e;color:#ffffff;padding:8px 16px;border-radius:6px;"
+            'text-decoration:none;font-size:14px">Ver licitación</a>'
+            "</div>"
+        )
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        'max-width:600px;margin:0 auto;padding:24px">'
+        f'<p style="font-size:15px">{_ENCABEZADO_RECORDATORIO}</p>'
+        f"{''.join(tarjetas)}"
+        '<p style="color:#6b6259;font-size:13px">Horas en hora de Chile. Puedes desactivar '
+        "el recordatorio desde la ficha de la licitación.</p>"
+        "</div>"
+    )
+
+
+def build_date_change_subject(items: list[DateChangeItem]) -> str:
+    if len(items) == 1:
+        return f"Fecha modificada: {items[0].title}"
+    return f"Fechas modificadas en {len(items)} licitaciones"
+
+
+_ENCABEZADO_CAMBIO = (
+    "Mercado Público modificó fechas oficiales de una licitación que tienes en tu "
+    "calendario. Si la sincronizaste, el evento ya quedó actualizado."
+)
+
+
+def build_date_change_text_body(items: list[DateChangeItem], base_url: str) -> str:
+    lineas = [_ENCABEZADO_CAMBIO, ""]
+    for item in items:
+        lineas.append(f"* {item.title}")
+        for hito, antes, ahora in item.changes:
+            lineas.append(f"  {hito}: {_hora_chile(antes)} → {_hora_chile(ahora)} (hora de Chile)")
+        lineas.append(f"  Ver detalle: {tender_url(base_url, item.tender_id)}")
+        lineas.append("")
+    return "\n".join(lineas)
+
+
+def build_date_change_html_body(items: list[DateChangeItem], base_url: str) -> str:
+    tarjetas = []
+    for item in items:
+        url = tender_url(base_url, item.tender_id)
+        filas = "".join(
+            f'<p style="margin:0 0 4px;font-size:14px">{escape(hito)}: '
+            f"<s>{_hora_chile(antes)}</s> → <strong>{_hora_chile(ahora)}</strong></p>"
+            for hito, antes, ahora in item.changes
+        )
+        tarjetas.append(
+            '<div style="border:1px solid #e5e0d8;border-radius:8px;'
+            'padding:16px;margin-bottom:12px">'
+            f'<h2 style="margin:0 0 8px;font-size:16px">{escape(item.title)}</h2>'
+            f"{filas}"
+            f'<a href="{escape(url)}" style="display:inline-block;margin-top:8px;'
+            "background:#0f766e;color:#ffffff;padding:8px 16px;border-radius:6px;"
+            'text-decoration:none;font-size:14px">Ver licitación</a>'
+            "</div>"
+        )
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        'max-width:600px;margin:0 auto;padding:24px">'
+        f'<p style="font-size:15px">{_ENCABEZADO_CAMBIO}</p>'
+        f"{''.join(tarjetas)}"
+        '<p style="color:#6b6259;font-size:13px">Horas en hora de Chile.</p>'
+        "</div>"
+    )
 
 
 def tender_url(base_url: str, tender_id: UUID) -> str:
@@ -103,3 +234,82 @@ def build_html_body(items: list[AlertItem], base_url: str, is_digest: bool) -> s
         "preferencias de notificaciones</a>.</p>"
         "</div>"
     )
+
+
+_ETIQUETA_ROL: dict[str, str] = {
+    "admin": "Administrador",
+    "member": "Miembro",
+}
+
+
+def _nombre_rol(role: object) -> str:
+    valor = getattr(role, "value", str(role)).lower()
+    return _ETIQUETA_ROL.get(valor, "Miembro")
+
+
+def invitation_url(base_url: str, token: str) -> str:
+    """Enlace directo al panel principal con el token de invitación."""
+    from urllib.parse import quote
+
+    return f"{base_url.rstrip('/')}/?invitation_token={quote(token)}"
+
+
+def build_invitation_subject(supplier_name: str) -> str:
+    return f"Invitación para unirte al equipo de {supplier_name} en Chiripa"
+
+
+def build_invitation_text_body(
+    supplier_name: str,
+    inviter_name: str,
+    role: object,
+    base_url: str,
+    token: str,
+) -> str:
+    rol_legible = _nombre_rol(role)
+    url = invitation_url(base_url, token)
+    lineas = [
+        "Hola,",
+        "",
+        f"{inviter_name} te ha invitado a unirte al espacio de trabajo de "
+        f'"{supplier_name}" en Chiripa con el rol de {rol_legible}.',
+        "",
+        "Para revisar y aceptar o rechazar esta invitación, ingresa a tu cuenta en:",
+        f"  {url}",
+        "",
+        "Si no esperabas esta invitación, puedes ignorar este mensaje o rechazarla desde la plataforma.",
+    ]
+    return "\n".join(lineas)
+
+
+def build_invitation_html_body(
+    supplier_name: str,
+    inviter_name: str,
+    role: object,
+    base_url: str,
+    token: str,
+) -> str:
+    rol_legible = escape(_nombre_rol(role))
+    empresa_segura = escape(supplier_name)
+    invitador_seguro = escape(inviter_name)
+    url_segura = escape(invitation_url(base_url, token))
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        'max-width:600px;margin:0 auto;padding:24px">'
+        '<div style="border:1px solid #e5e0d8;border-radius:8px;padding:20px">'
+        f'<h2 style="margin:0 0 12px;font-size:18px">Invitación a {empresa_segura}</h2>'
+        f'<p style="margin:0 0 12px;font-size:15px;line-height:1.5">'
+        f"<strong>{invitador_seguro}</strong> te ha invitado a formar parte del equipo de "
+        f"<strong>{empresa_segura}</strong> en Chiripa con el rol de "
+        f"<strong>{rol_legible}</strong>.</p>"
+        f'<p style="margin:0 0 16px;font-size:14px;color:#6b6259">'
+        "Al aceptar, podrás colaborar en las licitaciones de esta organización sin perder "
+        "tus membresías actuales.</p>"
+        f'<a href="{url_segura}" style="display:inline-block;background:#0f766e;'
+        "color:#ffffff;padding:10px 18px;border-radius:6px;"
+        'text-decoration:none;font-size:14px;font-weight:600">Revisar invitación en Chiripa</a>'
+        "</div>"
+        '<p style="color:#6b6259;font-size:12px;margin-top:12px">'
+        "Si no reconoces esta invitación, puedes rechazarla desde tu panel de inicio en Chiripa.</p>"
+        "</div>"
+    )
+

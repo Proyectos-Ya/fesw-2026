@@ -6,11 +6,15 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
+    FilterSelector,
+    HasIdCondition,
     MatchAny,
     MatchValue,
     PointIdsList,
     PointStruct,
     Range,
+    SetPayload,
+    SetPayloadOperation,
     VectorParams,
 )
 
@@ -29,6 +33,14 @@ class QdrantTenderRepository(ITenderVectorRepository):
 
     _COLLECTION_NAME = "tenders"
     _VECTOR_NAME = "tender"
+
+    # Ids por petición de borrado. La purga inicial puede traer cientos de
+    # miles; en lotes, cada cuerpo de petición queda acotado.
+    _DELETE_BATCH_SIZE = 1_000
+
+    # Operaciones por petición en `set_payloads`. Cada una lleva su propio
+    # payload, así que el cuerpo crece más rápido que en un borrado por ids.
+    _SET_PAYLOAD_BATCH_SIZE = 100
 
     # Campos del payload por los que se pre-filtra, con el tipo que Qdrant usa
     # para indexarlos. El tipo importa: un rango sobre un campo indexado como
@@ -113,6 +125,36 @@ class QdrantTenderRepository(ITenderVectorRepository):
             points=[str(tender_id)],
         )
 
+    async def set_payloads(self, payloads: dict[UUID, dict]) -> None:
+        """Un `batch_update_points` por lote, en vez de un viaje por punto.
+
+        Cada punto recibe su propio payload (el cierre es distinto en cada
+        licitación), así que no sirve un único `set_payload` con varios ids.
+
+        Cada operación apunta por **filtro de id** y no por id. Por id, un punto
+        inexistente hace que Qdrant responda 404 y corte el lote a la mitad
+        (verificado contra 1.17.1); una licitación activa sin punto —una
+        escritura a medias— botaría la corrida entera. Por filtro, simplemente
+        no calza, y no se crea un punto sin vector.
+        """
+        items = list(payloads.items())
+        for i in range(0, len(items), self._SET_PAYLOAD_BATCH_SIZE):
+            lote = items[i : i + self._SET_PAYLOAD_BATCH_SIZE]
+            await self._client.batch_update_points(
+                collection_name=self._COLLECTION_NAME,
+                update_operations=[
+                    SetPayloadOperation(
+                        set_payload=SetPayload(
+                            payload=payload,
+                            filter=Filter(
+                                must=[HasIdCondition(has_id=[str(tender_id)])]
+                            ),
+                        )
+                    )
+                    for tender_id, payload in lote
+                ],
+            )
+
     async def delete(self, tender_id: UUID) -> None:
         """
         Elimina el punto correspondiente a la licitación en Qdrant.
@@ -120,6 +162,31 @@ class QdrantTenderRepository(ITenderVectorRepository):
         await self._client.delete(
             collection_name=self._COLLECTION_NAME,
             points_selector=PointIdsList(points=[str(tender_id)]),
+        )
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina los puntos en lotes de `_DELETE_BATCH_SIZE`."""
+        for i in range(0, len(tender_ids), self._DELETE_BATCH_SIZE):
+            lote = tender_ids[i : i + self._DELETE_BATCH_SIZE]
+            await self._client.delete(
+                collection_name=self._COLLECTION_NAME,
+                points_selector=PointIdsList(points=[str(t) for t in lote]),
+            )
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        """Borra por filtro en el servidor: todo lo que no tenga esos estados."""
+        await self._client.delete(
+            collection_name=self._COLLECTION_NAME,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must_not=[
+                        FieldCondition(
+                            key="status_code",
+                            match=MatchAny(any=sorted(status_codes)),
+                        )
+                    ]
+                )
+            ),
         )
 
     async def search_by_vector(

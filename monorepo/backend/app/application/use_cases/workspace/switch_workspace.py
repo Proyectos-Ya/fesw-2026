@@ -13,6 +13,7 @@ from app.domain.errors.membership_errors import (
     UnauthorizedWorkspaceAction,
 )
 from app.domain.errors.supplier_errors import SupplierNotFound
+from app.shared.datetime_utils import utc_now_naive
 
 
 class SwitchWorkspaceUseCase:
@@ -67,6 +68,11 @@ class SwitchWorkspaceUseCase:
             raise UnauthorizedWorkspaceAction(
                 "Tu membresía en este espacio de trabajo está inactiva o suspendida."
             )
+
+        now = utc_now_naive()
+        member.last_access_at = now
+        member.updated_at = now
+        await self.member_repo.update(member)
 
         active_perms = [p for p in all_perms if member.has_permission(p)]
 

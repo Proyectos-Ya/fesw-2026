@@ -12,6 +12,7 @@ from app.application.repositories.tender_repository import (
 )
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -54,11 +55,12 @@ class GetOrCreateDeepAnalysisUseCase:
         force_regenerate: bool = False,
         prompt_instruction: str | None = None,
         only_if_exists: bool = False,
+        supplier_id: UUID | None = None,
     ) -> DeepAnalysisResult:
         """
         Orquesta la recuperación o generación de un análisis de compatibilidad IA.
 
-        1. Obtiene el perfil de proveedor del usuario.
+        1. Obtiene la empresa activa (`supplier_id`) o, sin ella, la del usuario.
         2. Obtiene los detalles de la licitación.
         3. Decide si generar/regenerar o retornar el análisis guardado.
         4. Solo si hay que generar resuelve el puntaje, calculándolo si falta.
@@ -68,8 +70,8 @@ class GetOrCreateDeepAnalysisUseCase:
         licitación fuera del top-N no podía analizarse **ni mostrar el análisis
         que ya tenía guardado**.
         """
-        # 1. Obtener el proveedor por user_id
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        # 1. Obtener la empresa activa, o la propia si no hay
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if not supplier:
             raise SupplierNotFoundForUser(user_id)
 

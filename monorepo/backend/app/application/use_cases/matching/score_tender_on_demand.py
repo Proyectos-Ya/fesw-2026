@@ -9,6 +9,7 @@ from app.application.repositories.tender_repository import (
     TenderFilters,
 )
 from app.application.services.compatibility_scorer import CompatibilityScorer
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForScoring, TenderNotFound
@@ -36,8 +37,10 @@ class ScoreTenderOnDemandUseCase:
         self.matching_result_repo = matching_result_repo
         self.scorer = scorer
 
-    async def execute(self, user_id: UUID, tender_id: UUID) -> MatchingResult:
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+    async def execute(
+        self, user_id: UUID, tender_id: UUID, supplier_id: UUID | None = None
+    ) -> MatchingResult:
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if not supplier:
             raise SupplierNotFoundForUser(user_id)
 

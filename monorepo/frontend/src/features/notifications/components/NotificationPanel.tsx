@@ -5,6 +5,7 @@ import { Badge } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { formatClosingDate, formatDateTime } from "@/features/matches/utils/format";
+import { formatMilestoneDate } from "@/features/tender-milestones/utils/milestoneFormat";
 import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
 import { useNotifications } from "../hooks/useNotifications";
 import type { NotificationItem } from "../notificationTypes";
@@ -26,6 +27,11 @@ function NotificationCard({
   onOpen: (id: string) => void;
 }) {
   const sinLeer = item.read_at === null;
+  const esCambioDeFecha = item.kind === "date_changed";
+  const esRecordatorio = item.kind === "milestone_reminder";
+  // Los dos avisos de hitos comparten forma: ícono de calendario y una línea
+  // por hito, en vez del organismo y el puntaje del aviso de compatibilidad.
+  const esDeHitos = esCambioDeFecha || esRecordatorio;
 
   return (
     <li>
@@ -45,7 +51,7 @@ function NotificationCard({
           }`}
         >
           <Icon
-            name="bell"
+            name={esDeHitos ? "calendar-clock" : "bell"}
             size={18}
             color={sinLeer ? "var(--primary)" : "var(--text-subtle)"}
           />
@@ -60,17 +66,35 @@ function NotificationCard({
             >
               {item.tender?.name ?? "Licitación no disponible"}
             </span>
-            <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
+            {esCambioDeFecha && <Badge tone="warning">Fecha modificada</Badge>}
+            {esRecordatorio && <Badge tone="info">Recordatorio</Badge>}
+            {!esDeHitos && item.score_pct !== null && (
+              <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
+            )}
             {/* El criterio pide avisar cuando la licitación de una alerta ya cerró. */}
             {item.is_closed && <Badge tone="neutral">Cerrada</Badge>}
           </span>
 
+          {esCambioDeFecha &&
+            item.date_changes.map((cambio) => (
+              <span key={cambio.label} className="text-xs text-text-body">
+                {`${cambio.label}: ${formatMilestoneDate(cambio.previous_at, true)} → ${formatMilestoneDate(cambio.new_at, true)}`}
+              </span>
+            ))}
+          {esRecordatorio &&
+            item.milestone_reminders.map((hito) => (
+              <span key={hito.milestone_id} className="text-xs text-text-body">
+                {`${hito.title}: ${formatMilestoneDate(hito.due_at, true)}`}
+              </span>
+            ))}
+          {!esDeHitos && (
+            <span className="text-xs text-text-subtle">
+              {item.tender?.buyer_name ?? "Organismo no informado"}
+              {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
+            </span>
+          )}
           <span className="text-xs text-text-subtle">
-            {item.tender?.buyer_name ?? "Organismo no informado"}
-            {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
-          </span>
-          <span className="text-xs text-text-subtle">
-            Detectada el {formatDateTime(item.created_at)}
+            {esDeHitos ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
           </span>
         </span>
 
@@ -94,7 +118,8 @@ export function NotificationPanel() {
         <div>
           <h1 className="font-display text-2xl font-bold text-text-strong">Alertas</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Licitaciones nuevas que superan tu umbral de compatibilidad e invitaciones recibidas.
+            Licitaciones nuevas que superan tu umbral de compatibilidad, invitaciones
+            recibidas y cambios de fecha en las licitaciones de tu calendario.
           </p>
         </div>
         <div className="flex items-center gap-2">

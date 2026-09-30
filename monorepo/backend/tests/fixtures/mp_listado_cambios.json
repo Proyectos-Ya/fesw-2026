@@ -1,0 +1,205 @@
+{
+  "_comentario": "Listado real de /v2/compra-agil por ttl_cambio_ms (sin filtro de estado), capturado el 2026-09-28 a las 13:28 hora de Chile (16:28 UTC). Una muestra por caso: publicada, cerrada, desierta (en segundo llamado) y cancelada. Las fechas con 'Z' son hora de Chile mal etiquetada, no UTC: el último cambio más reciente del listado era 13:25Z, tres minutos antes de la captura en hora de Chile. Los ítems son reales; el sobre y 'paginacion' se armaron a mano con la forma que lee MercadoPublicoClient.",
+  "payload": {
+    "items": [
+      {
+        "codigo": "5052-431-COT26",
+        "nombre": "Chile crece contigo - mesas plegables",
+        "estado": {
+          "id_estado": 2,
+          "codigo": "publicada",
+          "glosa": "Publicada"
+        },
+        "convocatoria": {
+          "estado_convocatoria": 1,
+          "descripcion": "Primer llamado"
+        },
+        "documentos": [
+          {
+            "id": 1931002,
+            "nombre": "Anexo 3 Composición personalidad juridica.xlsx"
+          },
+          {
+            "id": 1931003,
+            "nombre": "anexos (1,1-A, 2).docx"
+          }
+        ],
+        "fechas": {
+          "fecha_publicacion": "2026-09-28 13:19",
+          "fecha_cierre": "2026-09-29 13:30",
+          "fecha_ultimo_cambio": "2026-09-28T13:20:00.353Z",
+          "fecha_cierre_primer_llamado": "2026-09-29T13:30:00Z",
+          "fecha_cierre_segundo_llamado": "2026-09-30T13:40:00.107Z"
+        },
+        "montos": {
+          "moneda": "CLP",
+          "monto_disponible": 49980,
+          "monto_disponible_clp": 49980
+        },
+        "institucion": {
+          "organismo_comprador": "SERVICIO DE SALUD DEL MAULE HOSPITAL DE TALCA",
+          "rut": "61.606.901-2",
+          "unidad_compra": "Generales",
+          "region": 7,
+          "nombre_region": "Región del Maule "
+        },
+        "resumen": {
+          "total_ofertas_recibidas": 0
+        },
+        "motivos": {
+          "motivo_cancelacion": null,
+          "motivo_desierta": null,
+          "motivo_seleccion": null
+        },
+        "links": {
+          "detalle": "/v2/compra-agil/5052-431-COT26"
+        }
+      },
+      {
+        "codigo": "5684-369-COT26",
+        "nombre": "Equipo Computacional",
+        "estado": {
+          "id_estado": 3,
+          "codigo": "cerrada",
+          "glosa": "Cerrada"
+        },
+        "convocatoria": {
+          "estado_convocatoria": 1,
+          "descripcion": "Primer llamado"
+        },
+        "documentos": [
+          {
+            "id": 1927964,
+            "nombre": "Especificaciones Técnicas.pdf"
+          }
+        ],
+        "fechas": {
+          "fecha_publicacion": "2026-09-27 11:32",
+          "fecha_cierre": "2026-09-28 12:00",
+          "fecha_ultimo_cambio": "2026-09-28T12:10:01.850Z",
+          "fecha_cierre_primer_llamado": "2026-09-28T12:00:00Z",
+          "fecha_cierre_segundo_llamado": "2026-09-29T12:27:10.650Z"
+        },
+        "montos": {
+          "moneda": "CLP",
+          "monto_disponible": 380000,
+          "monto_disponible_clp": 380000
+        },
+        "institucion": {
+          "organismo_comprador": "UNIVERSIDAD DE CHILE",
+          "rut": "60.910.000-1",
+          "unidad_compra": "FCFM Campus Facultad",
+          "region": 13,
+          "nombre_region": "Región Metropolitana de Santiago"
+        },
+        "resumen": {
+          "total_ofertas_recibidas": 17
+        },
+        "motivos": {
+          "motivo_cancelacion": null,
+          "motivo_desierta": null,
+          "motivo_seleccion": null
+        },
+        "links": {
+          "detalle": "/v2/compra-agil/5684-369-COT26"
+        }
+      },
+      {
+        "codigo": "1058078-836-COT26",
+        "nombre": "Insumos de medicina fisica y rehabilitacion",
+        "estado": {
+          "id_estado": 6,
+          "codigo": "desierta",
+          "glosa": "Desierta"
+        },
+        "convocatoria": {
+          "estado_convocatoria": 2,
+          "descripcion": "Segundo llamado"
+        },
+        "documentos": [
+          {
+            "id": 1927422,
+            "nombre": "Observaciones para compras agiles.pdf"
+          }
+        ],
+        "fechas": {
+          "fecha_publicacion": "2026-09-25 16:51",
+          "fecha_cierre": "2026-09-27 17:28",
+          "fecha_ultimo_cambio": "2026-09-28T10:55:01.080Z",
+          "fecha_cierre_primer_llamado": "2026-09-26T17:10:00Z",
+          "fecha_cierre_segundo_llamado": "2026-09-27T17:28:48.093Z"
+        },
+        "montos": {
+          "moneda": "CLP",
+          "monto_disponible": 600000,
+          "monto_disponible_clp": 600000
+        },
+        "institucion": {
+          "organismo_comprador": "Hospital San José de Melipilla",
+          "rut": "61.602.123-0",
+          "unidad_compra": "Fármarcos",
+          "region": 13,
+          "nombre_region": "Región Metropolitana de Santiago"
+        },
+        "resumen": {
+          "total_ofertas_recibidas": 1
+        },
+        "motivos": {
+          "motivo_cancelacion": null,
+          "motivo_desierta": "El proveedor no cumple con las necesidades del hospital ",
+          "motivo_seleccion": null
+        },
+        "links": {
+          "detalle": "/v2/compra-agil/1058078-836-COT26"
+        }
+      },
+      {
+        "codigo": "5153-1851-COT26",
+        "nombre": "ADQUISICIÓN DE CEPILLOS DE LAVADO MANUAL",
+        "estado": {
+          "id_estado": 5,
+          "codigo": "cancelada",
+          "glosa": "Cancelada"
+        },
+        "convocatoria": {
+          "estado_convocatoria": 1,
+          "descripcion": "Primer llamado"
+        },
+        "documentos": [],
+        "fechas": {
+          "fecha_publicacion": "2026-09-28 13:20",
+          "fecha_cierre": "2026-09-29 15:00",
+          "fecha_ultimo_cambio": "2026-09-28T13:25:00.647Z",
+          "fecha_cierre_primer_llamado": "2026-09-29T15:00:00Z",
+          "fecha_cierre_segundo_llamado": "2026-09-30T16:39:49.093Z"
+        },
+        "montos": {
+          "moneda": "CLP",
+          "monto_disponible": 7172000,
+          "monto_disponible_clp": 7172000
+        },
+        "institucion": {
+          "organismo_comprador": "UNIVERSIDAD DE CHILE",
+          "rut": "60.910.000-1",
+          "unidad_compra": "Hospital Clínico Univ. de Chile-Insumos Generales",
+          "region": 13,
+          "nombre_region": "Región Metropolitana de Santiago"
+        },
+        "resumen": {
+          "total_ofertas_recibidas": 0
+        },
+        "motivos": {
+          "motivo_cancelacion": "ERROR EN LA PUBLICACIÓN",
+          "motivo_desierta": null,
+          "motivo_seleccion": null
+        },
+        "links": {
+          "detalle": "/v2/compra-agil/5153-1851-COT26"
+        }
+      }
+    ],
+    "paginacion": {
+      "total_paginas": 1
+    }
+  }
+}

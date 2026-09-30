@@ -17,6 +17,7 @@ import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { Button } from "@/features/shared/components/Button";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
+import { CompanyTeamSection } from "./CompanyTeamSection";
 
 // El RUT no es editable (identidad tributaria de la empresa)
 const companyEditSchema = profileSchema.omit({ rut: true });
@@ -352,10 +353,18 @@ export function CompanyView() {
           onCancel={() => setIsEditing(false)}
         />
       ) : (
-        <CompanyDetails
-          supplier={company.supplier}
-          onEdit={() => setIsEditing(true)}
-        />
+        <>
+          <CompanyDetails
+            supplier={company.supplier}
+            onEdit={() => setIsEditing(true)}
+          />
+          <CompanyTeamSection
+            supplierId={company.supplier.id}
+            supplierName={
+              company.supplier.trade_name || company.supplier.legal_name
+            }
+          />
+        </>
       )}
     </div>
   );

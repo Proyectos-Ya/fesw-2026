@@ -196,6 +196,125 @@ async def test_delete_con_point_ids_list(
     mock_pil.assert_called_once_with(points=[str(tender_id)])
 
 
+@pytest.mark.anyio
+async def test_delete_many_borra_en_una_sola_llamada(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Son ~4.600 cierres al día: de a uno serían miles de viajes."""
+    ids = [uuid4() for _ in range(3)]
+
+    await repository.delete_many(ids)
+
+    client.delete.assert_called_once()
+    selector = client.delete.call_args.kwargs["points_selector"]
+    assert selector.points == [str(i) for i in ids]
+
+
+@pytest.mark.anyio
+async def test_delete_many_parte_en_lotes_las_listas_grandes(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """La purga inicial puede traer cientos de miles de ids: no caben en un
+    solo cuerpo de petición razonable."""
+    ids = [uuid4() for _ in range(2_500)]
+
+    await repository.delete_many(ids)
+
+    tamanos = [
+        len(c.kwargs["points_selector"].points) for c in client.delete.call_args_list
+    ]
+    assert tamanos == [1_000, 1_000, 500]
+
+
+@pytest.mark.anyio
+async def test_delete_many_sin_ids_no_llama_a_qdrant(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    await repository.delete_many([])
+
+    client.delete.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_set_payloads_manda_un_lote_por_peticion(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """El cron de estados actualiza cientos de puntos por corrida: de a uno,
+    cada punto es un viaje de red a Qdrant Cloud."""
+    a, b = uuid4(), uuid4()
+
+    await repository.set_payloads(
+        {a: {"status_code": "publicada"}, b: {"closing_at": 123}}
+    )
+
+    client.batch_update_points.assert_called_once()
+    client.set_payload.assert_not_called()
+    kwargs = client.batch_update_points.call_args.kwargs
+    assert kwargs["collection_name"] == COLLECTION
+    operaciones = [op.set_payload for op in kwargs["update_operations"]]
+    assert [op.payload for op in operaciones] == [
+        {"status_code": "publicada"},
+        {"closing_at": 123},
+    ]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_apunta_por_filtro_y_no_por_id(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Por id, un punto que no existe hace que Qdrant responda 404 y corte el
+    lote a la mitad (verificado contra Qdrant 1.17.1). Una licitación activa sin
+    punto —una escritura a medias— botaría la corrida entera. Por filtro de id,
+    un punto ausente simplemente no calza."""
+    a = uuid4()
+
+    await repository.set_payloads({a: {"status_code": "publicada"}})
+
+    op = client.batch_update_points.call_args.kwargs["update_operations"][0]
+    assert op.set_payload.points is None
+    condicion = op.set_payload.filter.must[0]
+    assert condicion.has_id == [str(a)]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_parte_en_lotes(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    payloads = {uuid4(): {"status_code": "publicada"} for _ in range(250)}
+
+    await repository.set_payloads(payloads)
+
+    tamanos = [
+        len(c.kwargs["update_operations"])
+        for c in client.batch_update_points.call_args_list
+    ]
+    assert tamanos == [100, 100, 50]
+
+
+@pytest.mark.anyio
+async def test_set_payloads_vacio_no_llama_a_qdrant(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    await repository.set_payloads({})
+
+    client.batch_update_points.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_delete_by_status_not_in_filtra_por_must_not(
+    repository: QdrantTenderRepository, client: AsyncMock
+) -> None:
+    """Borra todo lo que no esté en los estados a conservar, en el servidor."""
+    await repository.delete_by_status_not_in({"publicada"})
+
+    client.delete.assert_called_once()
+    selector = client.delete.call_args.kwargs["points_selector"]
+    (condicion,) = selector.filter.must_not
+    assert condicion.key == "status_code"
+    assert condicion.match.any == ["publicada"]
+    assert selector.filter.must is None
+
+
 # ---------------------------------------------------------------------------
 # search_by_vector: una sola operación para los tres usos
 #

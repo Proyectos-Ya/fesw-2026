@@ -57,4 +57,17 @@ describe("TenderCard", () => {
     expect(screen.getByText("Adquisición de Insumos Médicos")).toBeInTheDocument();
     expect(screen.getByText("Hospital Central")).toBeInTheDocument();
   });
+
+  it("muestra el estado real en la viñeta cuando la licitación no está activa", () => {
+    // Con cierre futuro: la viñeta no puede decir "Cierra en N días" de una
+    // licitación que ya se declaró desierta.
+    render(
+      <TenderCard
+        tender={{ ...mockTender, status_code: "desierta", closing_at: "2099-01-01T12:00:00Z" }}
+      />,
+    );
+
+    expect(screen.getByText("Desierta")).toBeInTheDocument();
+    expect(screen.queryByText(/Cierra en/)).not.toBeInTheDocument();
+  });
 });

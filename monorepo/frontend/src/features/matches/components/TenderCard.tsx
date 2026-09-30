@@ -51,7 +51,7 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
   // Solo calcula el score si viene un match con puntaje ya medido
   const score =
     match && match.final_score !== null ? normalizeScore(match.final_score) : null;
-  const closing = daysUntilClosing(tender.closing_at);
+  const closing = daysUntilClosing(tender.closing_at, tender.status_code);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const savedState = isSaved ?? tender.is_saved ?? false;
 
