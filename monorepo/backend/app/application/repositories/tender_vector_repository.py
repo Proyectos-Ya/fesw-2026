@@ -41,6 +41,16 @@ class ITenderVectorRepository(ABC):
         """
         ...
 
+    async def set_payloads(self, payloads: dict[UUID, dict]) -> None:
+        """`set_payload` para varias licitaciones, cada una con su payload.
+
+        No es abstracto: por defecto recorre `set_payload`, que es correcto para
+        cualquier implementación. Qdrant lo sobrescribe para mandar un lote por
+        petición, porque de a uno cada punto es un viaje de red.
+        """
+        for tender_id, payload in payloads.items():
+            await self.set_payload(tender_id, payload)
+
     @abstractmethod
     async def delete(self, tender_id: UUID) -> None:
         """

@@ -66,9 +66,21 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     print("Colección 'tenders' lista (con sus índices de payload).\n")
 
 
-def construir_servicio() -> tuple[
-    TenderIngestionService, AsyncEngine, AsyncQdrantClient
-]:
+class _SinEmbeddings:
+    """Para procesos que no calculan vectores, como el cron de estados.
+
+    Con `EMBEDDING_PROVIDER=local`, construir el servicio real carga bge-m3
+    (~2 GB) aunque nadie lo use. Si algo lo llamara por error, falla fuerte en
+    vez de escribir vectores vacíos.
+    """
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("Este proceso no calcula embeddings.")
+
+
+def construir_servicio(
+    *, con_embeddings: bool = True
+) -> tuple[TenderIngestionService, AsyncEngine, AsyncQdrantClient]:
     """Arma el servicio de ingesta con las mismas piezas que usa la aplicación."""
     from app.bootstrap import build_embedding_service
 
@@ -77,10 +89,37 @@ def construir_servicio() -> tuple[
     servicio = TenderIngestionService(
         engine=engine,
         client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
-        embedding_service=build_embedding_service(),
+        embedding_service=(
+            build_embedding_service() if con_embeddings else _SinEmbeddings()  # type: ignore[arg-type]
+        ),
         qdrant_client=qdrant,
     )
     return servicio, engine, qdrant
+
+
+async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int:
+    """Pasa a `cerrada` lo que venció y sigue figurando publicado.
+
+    En Postgres cambia el estado; en Qdrant se **borra** el punto, porque el
+    índice guarda solo activas y el buscador resuelve las cerradas en Postgres.
+    Además barre por payload cualquier punto que no esté activo.
+    """
+    from app.application.use_cases.mark_expired_tenders import (
+        MarkExpiredTendersUseCase,
+    )
+    from app.infrastructure.repositories.qdrant_tender_repository import (
+        QdrantTenderRepository,
+    )
+    from app.infrastructure.repositories.tender_repository import TenderRepository
+
+    async with AsyncSession(engine) as session:
+        caso = MarkExpiredTendersUseCase(
+            repository=TenderRepository(session),
+            tender_vector_repo=QdrantTenderRepository(
+                client=qdrant, vector_size=settings.embedding_vector_size
+            ),
+        )
+        return await caso.execute()
 
 
 async def contar_pendientes(engine: AsyncEngine) -> int:
@@ -170,8 +209,7 @@ async def vaciar_cola(
 
         intentadas = pasada.procesadas + pasada.fallidas
         goteo = (
-            intentadas > 0
-            and pasada.procesadas < intentadas * EXITO_MINIMO_POR_PASADA
+            intentadas > 0 and pasada.procesadas < intentadas * EXITO_MINIMO_POR_PASADA
         )
         if hechas <= 0 or goteo:
             sin_avance += 1

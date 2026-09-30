@@ -98,21 +98,16 @@ class ServicioFalso(ITenderIngestionService):
 
 
 def _args(**extra) -> argparse.Namespace:
-    base = {"limite": 5000, "estado": "publicada", "sin_marcar": True}
+    base = {"limite": 5000, "estado": "publicada", "sin_marcar": False}
     base.update(extra)
     return argparse.Namespace(**base)
 
 
-async def _correr(servicio: ServicioFalso, args=None, marcadas: int = 0) -> int:
+async def _correr(servicio: ServicioFalso, args=None) -> int:
     async def contar() -> int:
         return servicio.pendientes
 
-    async def marcar() -> int:
-        return marcadas
-
-    return await sincronizar(
-        args or _args(), servicio, contar=contar, marcar_vencidas=marcar
-    )
+    return await sincronizar(args or _args(), servicio, contar=contar)
 
 
 class TestCuandoLaCorridaEsBuena:
@@ -235,25 +230,28 @@ class TestElTechoDeLimite:
         assert servicio.limite_pedido == 9000
 
 
-class TestElBarridoDeVencidas:
-    @pytest.mark.asyncio
-    async def test_corre_antes_de_hablar_con_la_api(self, capsys):
-        """Cuota cero, y conviene que ocurra aunque la API esté caída."""
-        servicio = ServicioFalso(ResultadoListado(completo=True))
-
-        await _correr(servicio, _args(sin_marcar=False), marcadas=37)
-
-        salida = capsys.readouterr().out
-        assert "Vencidas marcadas como cerradas: 37" in salida
-        assert salida.index("Vencidas marcadas") < salida.index("Ventana:")
+class TestElBarridoDeVencidasSeMudoAlCronDeEstados:
+    """Marcar vencidas lo hace ahora `sync_estados`, **después** de corregir los
+    cierres con el listado de cambios. Hecho acá, antes de esa corrección, una
+    licitación con el plazo ampliado se cerraba con la fecha vieja."""
 
     @pytest.mark.asyncio
-    async def test_sin_marcar_lo_omite(self, capsys):
+    async def test_la_corrida_ya_no_marca_vencidas(self, capsys):
         servicio = ServicioFalso(ResultadoListado(completo=True))
 
-        await _correr(servicio, _args(sin_marcar=True), marcadas=37)
+        await _correr(servicio, _args(sin_marcar=False))
 
         assert "Vencidas marcadas" not in capsys.readouterr().out
+
+    @pytest.mark.asyncio
+    async def test_sin_marcar_se_acepta_y_avisa_que_no_hace_nada(self, capsys):
+        """Un `startCommand` del panel de Railway puede llevarla todavía."""
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        codigo = await _correr(servicio, _args(sin_marcar=True))
+
+        assert codigo == 0
+        assert "--sin-marcar ya no tiene efecto" in capsys.readouterr().out
 
 
 class TestGuardaContraProduccion:
@@ -314,14 +312,10 @@ class TestPrepararDestino:
         async def contar() -> int:
             return servicio.pendientes
 
-        async def marcar() -> int:
-            return 0
-
         await sincronizar(
             _args(),
             servicio,
             contar=contar,
-            marcar_vencidas=marcar,
             preparar_destino=preparar,
         )
 

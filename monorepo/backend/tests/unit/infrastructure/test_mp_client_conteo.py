@@ -113,7 +113,9 @@ class TestMismaVentanaQueLaIngesta:
         await _cliente().contar(DESDE, HASTA)
 
         params = dict(httpx.URL(str(ruta.calls.last.request.url)).params)
-        assert params["ttl_cambio_ms"] == str(24 * 3600 * 1000)
+        # 24 h pedidas + 4 h de desfase de Chile en agosto (UTC-4): la API mide
+        # el ttl contra hora de Chile (ver test_mp_client_hora_chile.py).
+        assert params["ttl_cambio_ms"] == str(28 * 3600 * 1000)
         assert "publicado_desde" not in params
 
     @respx.mock
@@ -124,8 +126,9 @@ class TestMismaVentanaQueLaIngesta:
         await _cliente().contar(DESDE, HASTA, por_publicacion=True)
 
         params = dict(httpx.URL(str(ruta.calls.last.request.url)).params)
-        assert params["publicado_desde"] == "2026-08-01T00:00:00Z"
-        assert params["publicado_hasta"] == "2026-08-02T00:00:00Z"
+        # En hora de Chile (UTC-4 en agosto), como la API compara.
+        assert params["publicado_desde"] == "2026-07-31T20:00:00Z"
+        assert params["publicado_hasta"] == "2026-08-01T20:00:00Z"
         assert "ttl_cambio_ms" not in params
 
     @respx.mock

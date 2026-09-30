@@ -41,6 +41,33 @@ def to_utc_naive(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
+def leer_fecha_mp(valor: str | None) -> datetime | None:
+    """Lee una fecha de Mercado Público como hora de Chile, naive.
+
+    **Ignora la "Z" y cualquier offset.** Verificado contra la API real el
+    2026-09-28: el listado etiqueta con "Z" fechas que están en hora de Chile
+    (`fecha_ultimo_cambio`, `fecha_cierre_primer_llamado`), mientras que
+    `fecha_cierre` y el detalle vienen sin zona. Tomar la Z como UTC corría esas
+    fechas 3-4 h. La hora de pared es siempre la de Chile.
+
+    Devuelve `None` si no hay valor o no se puede leer: la decisión de qué hacer
+    ante la duda es de quien llama.
+    """
+    if not valor:
+        return None
+    try:
+        # `fromisoformat` (3.11+) lee tanto "2026-09-29 13:30" como
+        # "2026-09-28T13:20:00.353Z".
+        return datetime.fromisoformat(valor.strip()).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
+def fecha_mp_a_utc(valor: str | None) -> datetime | None:
+    """Una fecha de Mercado Público convertida a UTC naive, lista para persistir."""
+    return to_utc_naive(leer_fecha_mp(valor))
+
+
 def to_utc_epoch(value: datetime) -> int:
     """Convierte a segundos epoch UTC, para los filtros de rango de Qdrant.
 

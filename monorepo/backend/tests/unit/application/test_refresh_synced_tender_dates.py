@@ -143,6 +143,33 @@ class Escenario:
         )
 
 
+class TestCambioYaAplicadoPorOtroProceso:
+    """El cron `sync_estados` actualiza `closing_at` de la licitación cada hora,
+    antes de que este refresco (cada 6 h) la mire. Comparar contra la fila de la
+    licitación dejaba de ver el cambio: el evento no se movía y el aviso no
+    salía. Se compara contra el hito oficial, que es lo que el calendario tiene.
+    """
+
+    async def test_detecta_el_cambio_contra_el_hito_y_no_contra_la_licitacion(self):
+        escenario = Escenario()
+        tender = escenario.licitacion()
+        user_id, evento_id = await escenario.usuario_sincronizado(tender)
+        escenario.mover_cierre(tender)
+        # El cron de estados ya escribió el cierre nuevo en la licitación.
+        escenario.tenders.tenders[tender.id] = tender.model_copy(
+            update={"closing_at": NUEVO_CIERRE}
+        )
+
+        cambiadas = await escenario.use_case.execute()
+
+        assert cambiadas == 1
+        assert escenario.google.eventos[evento_id].start == NUEVO_CIERRE
+        [aviso] = await escenario.avisos.list_by_user(user_id)
+        assert [(c.previous_at, c.new_at) for c in aviso.date_changes] == [
+            (CIERRE, NUEVO_CIERRE)
+        ]
+
+
 class TestCambioDeFecha:
     async def test_actualiza_el_evento_del_calendario(self):
         escenario = Escenario()

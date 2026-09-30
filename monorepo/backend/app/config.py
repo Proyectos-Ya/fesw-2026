@@ -147,6 +147,14 @@ class Settings(BaseSettings):
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
+    # Cron de estados (`scripts/sync_estados.py`). Por entorno para poder ajustar
+    # la ventana sin un PR: el volumen de cambios varía mucho según la hora
+    # (~1.600 por hora a mediodía, medido el 2026-09-29). El techo de la ventana
+    # (6 h) lo valida el script, no esto: un valor fuera de rango no debe
+    # impedir que arranque la API, que comparte esta configuración.
+    sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
+    sync_estados_limite: int = Field(default=9000, gt=0)
+    sync_estados_timeout_minutos: float = Field(default=50.0, gt=0)
     # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
