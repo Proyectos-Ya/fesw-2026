@@ -14,7 +14,7 @@ empresa. Tres piezas con dueños distintos:
 
 import re
 import unicodedata
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, Self
 from uuid import UUID, uuid4
 
@@ -125,6 +125,19 @@ class CapabilityAnswer(BaseModel):
     valid_until: UtcDateTime | None = None
     generated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     answered_at: UtcDateTime | None = None
+
+    @field_validator("valid_until")
+    @classmethod
+    def _vigencia_en_utc_naive(cls, value: datetime | None) -> datetime | None:
+        """Las fechas se guardan en UTC sin zona (`datetime_utils`).
+
+        Una fecha con zona se convierte desde su offset; una sin zona se asume ya
+        en UTC, que es el invariante de lo persistido. La ambigüedad de una fecha
+        sin zona que venga del cliente la resuelve la API rechazándola.
+        """
+        if value is None or value.tzinfo is None:
+            return value
+        return value.astimezone(UTC).replace(tzinfo=None)
 
     @model_validator(mode="after")
     def _estado_coherente(self) -> Self:

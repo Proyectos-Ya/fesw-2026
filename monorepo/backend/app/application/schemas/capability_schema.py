@@ -1,6 +1,4 @@
-from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class AnswerCapabilityInput(BaseModel):
@@ -14,8 +12,9 @@ class AnswerCapabilityInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     answer: str = Field(min_length=1, max_length=500)
-    # Vigencia de lo respondido, por ejemplo una certificación que vence.
-    valid_until: datetime | None = None
+    # Vigencia de lo respondido, por ejemplo una certificación que vence. Con
+    # zona obligatoria: sin ella no se sabe si es UTC u hora de Chile.
+    valid_until: AwareDatetime | None = None
 
 
 class AddCapabilityEvidenceInput(BaseModel):

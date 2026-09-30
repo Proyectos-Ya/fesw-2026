@@ -5,6 +5,7 @@ prueba es el contrato HTTP —empresa activa, permiso, códigos de error—, no 
 persistencia, que cubren los tests de integración.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -143,11 +144,18 @@ class TestResponder:
 
         assert response.status_code == 422
 
-    async def test_guarda_la_vigencia(self, api: Api):
-        response = api.responder(SEC, valid_until="2027-01-31T00:00:00Z")
+    async def test_guarda_la_vigencia_en_utc_sin_zona(self, api: Api):
+        response = api.responder(SEC, valid_until="2027-06-30T00:00:00-03:00")
 
         assert response.status_code == 200
-        assert response.json()["valid_until"] == "2027-01-31T00:00:00Z"
+        assert response.json()["valid_until"] == "2027-06-30T03:00:00Z"
+        guardada = await api.answers.get(api.empresa.id, SEC.id)
+        assert guardada is not None
+        assert guardada.valid_until == datetime(2027, 6, 30, 3, 0)
+
+    async def test_una_vigencia_sin_zona_es_422(self, api: Api):
+        """Sin zona no se sabe si es UTC u hora de Chile: se rechaza en vez de adivinar."""
+        assert api.responder(SEC, valid_until="2027-06-30T00:00:00").status_code == 422
 
     async def test_una_respuesta_que_no_es_opcion_es_422(self, api: Api):
         assert api.responder(SEC, answer="Tal vez").status_code == 422
