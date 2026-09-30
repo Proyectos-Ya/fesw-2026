@@ -1,0 +1,320 @@
+# Plan Técnico: Generación de Documentación de Postulación (Compra Ágil)
+
+**Issue asociada**: Refs #230  
+**Estado**: En Revisión  
+**Fecha**: 2026-09-28 (reescrito: 2026-09-29)  
+
+---
+
+## 1. Contexto y Objetivo
+
+La HdU 20 pide generar un borrador de postulación: nombre y descripción de la oferta, documentos necesarios y, si las bases lo exigen, un documento técnico. Los criterios de aceptación están en la issue #230; este plan no los repite y los cita como CA1…CA9.
+
+**Alcance de esta versión:**
+
+- **Solo Compra Ágil.** La ingesta ya trae solo Compra Ágil (`mercado_publico_client.py`, códigos `…-COT26`). Las licitaciones públicas quedan como trabajo futuro (§5).
+- **La "experiencia registrada" son preguntas.** Cuando las bases piden algo que no se sabe de la empresa, se genera una pregunta ("¿Cuenta con experiencia en X?"). Las preguntas respondidas forman un banco **de la empresa**, se reutilizan en otras licitaciones y son la fuente que cita cada párrafo del borrador (CA5).
+- **El flujo tiene dos fases:**
+  1. **Factibilidad:** se generan y responden las preguntas, y se resuelven las discrepancias (CA6, CA7, CA8, CA9).
+  2. **Redacción:** se escriben el nombre, la descripción, los documentos y el documento técnico condicional (CA1, CA2, CA5, CA6).
+
+La versión anterior de este plan traía extracción de texto, Supabase Storage, OCR e índice híbrido. Ningún CA lo exige, así que salen de aquí y pasan a issues propias (§5).
+
+---
+
+## 2. Decisiones Técnicas y Arquitectura
+
+### 2.1 Capacidades de la empresa: las preguntas capturan, las capacidades guardan
+
+**Situación actual:**
+
+- El banco de preguntas es estático y depende solo del rubro (`smart_question_service.py`). No está ligado a ninguna licitación: el `tender_id` de `question_model.py` está comentado.
+- `AnswerQuestionUseCase` escribe `campo:respuesta` en `supplier.keywords`, pero **nunca marca la pregunta como respondida**.
+- La empresa se resuelve con `get_by_user_id`, o sea sin la empresa activa.
+
+**Decisión:** las preguntas son solo la forma de **capturar** un dato; lo que se guarda es una **capacidad** de la empresa. Si se guardara la pregunta en sí, el dato quedaría amarrado a su redacción:
+
+- reutilizarlo dependería de que la IA empareje textos parecidos ("pavimentación urbana" frente a "obras viales"), lo que acumula duplicados;
+- un "Sí" con texto libre no alcanza para citar "el proyecto" que pide el CA5;
+- una certificación que vence no tiene dónde registrarse.
+
+**Origen del diseño:** se rescata el modelo de la rama local `230-hu-20-1-banco-de-capacidades` (`domain/entities/capability.py`, `infrastructure/repositories/capability_model.py`), que nunca se subió. Se copia el diseño y el código útil sobre `develop`, en PRs cortos. **No** se fusiona la rama: además reemplazaba entero el sistema de preguntas del home y es demasiado grande para integrarla de una vez. Su migración (`d9d22b5370ff`) no se reutiliza: se genera una nueva desde la cabeza de `develop`. Si alguien la aplicó en su base local, primero debe hacer `alembic downgrade` a la revisión anterior (ver la guía de Alembic, "revisión huérfana").
+
+**Tres tablas:**
+
+| Tabla | De quién es | Contenido |
+|---|---|---|
+| `capability_question` | **Banco compartido** entre empresas | `question`, `target_field` (clave normalizada, por ejemplo `iso_9001` o `experiencia:pavimentacion`), `category` (rubro), `kind` (`capacidad` \| `certificacion` \| `experiencia_proyecto`), `work_type` (obligatorio solo en `experiencia_proyecto`), `options[]` con `{label, polarity}` (`afirmativa` \| `negativa` \| `neutra`), `origin` (`semilla` \| `ia`) y `active`. Restricción única (`category`, `target_field`): es la deduplicación del banco. |
+| `capability_answer` | **Una empresa** | `supplier_id`, `question_id`, `answer`, `answered`, `omitted`, `tender_id` (licitación que motivó la pregunta, `SET NULL`), `answered_by_user_id` (nuevo), `valid_until` (nuevo, nullable: vigencia de una certificación), `generated_at` y `answered_at`. Restricción única (`supplier_id`, `question_id`) y `CHECK NOT (answered AND omitted)`. |
+| `capability_evidence` | **Una empresa** (nueva) | Proyectos que respaldan la experiencia de la empresa: `supplier_id`, `answer_id` (FK **nullable**, `SET NULL`), `work_type` (nullable), `origin` (texto con `CHECK`: `manual` \| `mercado_publico`, default `manual`), `title`, `buyer` (mandante), `year`, `amount_clp` (nullable), `description`, `created_by_user_id` (nullable: una importación no tiene autor) y `created_at`. Es lo que el borrador cita como "el proyecto" del CA5. |
+
+**Evidencia preparada para importarse (§5, punto 10).** En esta HdU toda evidencia es `manual` y cuelga de una respuesta. Aun así, dos decisiones del esquema se toman ya, porque cambiarlas después obligaría a una migración con datos:
+
+- `answer_id` es nullable. Una orden de compra importada de Mercado Público no responde ninguna pregunta: es experiencia que existe por sí sola y se clasifica por `work_type`. Cuando cuelga de una respuesta, `work_type` se copia de la pregunta.
+- `origin` existe desde el principio, con default `manual`.
+
+Lo que **no** se agrega todavía: `confirmed_at` y el código externo con restricción única (para no duplicar una orden de compra en dos importaciones). Dependen de lo que entregue la API y quedan para después del spike. Mientras no existan, el catálogo solo incluye evidencias `manual`.
+
+Siguiendo la rama original, `kind`, `origin` y `polarity` se guardan como texto con `CHECK` y no como `ENUM` de Postgres: sumar un valor no exige un `ALTER TYPE` en una migración que corre antes del despliegue.
+
+**Catálogo de experiencia (`ExperienceCatalog`), rescatado:**
+
+- No se guarda: se compone al leer, juntando el perfil de la empresa (certificaciones, regiones, rubros, años de experiencia), las respuestas vigentes y sus evidencias. Si se copiara, habría que mantenerlo sincronizado.
+- Cada elemento tiene un **id estable** según su origen y clave: `perfil:certificacion:iso-9001`, `capacidad:<question_id>` o `evidencia:<id>`. Son los ids que la IA recibe y cita en `sources[]` (§2.4).
+- `last_changed_at` es el máximo entre el último cambio del perfil y la última respuesta. Permite avisar que un borrador quedó desactualizado.
+- Una respuesta con `valid_until` vencido no entra al catálogo y la pregunta vuelve a quedar pendiente.
+- Una MiPyme tiene decenas de elementos en su catálogo, no miles: se envía completo en el prompt, sin búsqueda vectorial.
+
+**Cómo entra una pregunta nueva al banco:**
+
+1. En la factibilidad (§2.3), la IA recibe el catálogo de la empresa y las claves (`target_field`) del banco para su rubro.
+2. Por cada exigencia devuelve una de tres cosas:
+   - el id de un elemento del catálogo que la cubre,
+   - la clave de una pregunta del banco que la empresa aún no respondió,
+   - una pregunta nueva, con su clave, tipo y opciones.
+3. Las preguntas nuevas pasan por `question_leaks_supplier_data` (rescatada), que rechaza un enunciado que nombre a la empresa por razón social, nombre de fantasía o RUT. Luego se insertan con `origin = ia`. Si la clave ya existe, la restricción única devuelve la existente.
+4. Se crea la `capability_answer` pendiente con el `tender_id` de origen.
+
+**Excluyente o deseable:** esto es una propiedad de la **exigencia de la licitación**, no de la capacidad. Por eso vive en `ProposalDraft.requirements[].mandatory` (§2.2) y no en el banco: la misma certificación puede ser excluyente en una Compra Ágil y deseable en otra.
+
+- **Excluyente:** si no se cumple, la oferta queda fuera. Ejemplo: "el proveedor *deberá* contar con certificación SEC".
+- **Deseable:** suma, pero no descarta. Ejemplo: "*se valorará* experiencia en el sector público".
+- Lo decide la IA según la redacción: "deberá", "obligatorio" o "excluyente" frente a "se valorará" o "deseable".
+- Solo una respuesta con polaridad `negativa` a una exigencia excluyente abre una discrepancia (§2.3). Una negativa a una deseable solo se registra.
+
+**Por empresa, no por usuario:**
+
+- `supplier_id` es el de la **empresa activa**, resuelta con `_empresa_activa(workspace_context)` (`routers/tender.py`) y `resolver_empresa` (`use_cases/supplier/resolver_empresa.py`). Nunca se usa `user_id`.
+- Cualquier miembro con el permiso `generate_proposal` (§2.8) puede responder y agregar evidencia. La factibilidad y la redacción usan el catálogo completo de la empresa, sin importar quién respondió.
+- Las respuestas **no** modifican `supplier.keywords` ni `certifications` (§5).
+
+**Convivencia con el sistema de preguntas del home:** `profile_question`, `SmartQuestionsBanner` y `/questions` quedan como están en esta HdU. Migrar el banner al banco de capacidades y retirar `profile_question` es una issue aparte (§5). Así este trabajo no arrastra el reemplazo completo que hizo tan grande la rama original.
+
+### 2.2 Entidad `ProposalDraft`
+
+Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con restricción única sobre (`supplier_id`, `tender_id`). Como el borrador es de la empresa, si un miembro lo detiene, otro puede reanudarlo.
+
+| Campo | Contenido |
+|---|---|
+| `status` | `FEASIBILITY` (hay preguntas pendientes), `PAUSED` (discrepancia sin decidir, CA7), `STOPPED` (detenido por el usuario, CA9) o `READY` (borrador generado). |
+| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `desconocido`), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
+| `requires_technical_document`, `technical_document_reason` | Si las bases exigen documento técnico, y por qué (CA1). |
+| `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8). |
+| `discrepancy_decisions` (JSON) | `requirement_id`, `capability_question_id`, `action` (`continue` \| `stop`), `user_id` y fecha (CA8, CA9). |
+| `content` (JSON, nullable) | Secciones `offer_name`, `offer_description`, `required_documents[]` y `technical_document` (opcional). Cada una tiene párrafos con `text`, `sources[]` (ids de elementos del `ExperienceCatalog`: `perfil:…`, `capacidad:…` o `evidencia:…`, con su `label`) y `placeholders[]`. |
+| `last_instructions` | Últimas instrucciones de regeneración (CA4). |
+| `created_by_user_id`, `created_at`, `updated_at` | Auditoría. |
+
+**Borradores vencidos:** el estado "vencido" no se guarda. Se calcula al leer con `Tender.esta_cerrada()`, así ningún `GET` escribe en la base.
+
+**Estados:** las transiciones viven en el dominio como métodos de la entidad: `answer_question`, `decide(continue|stop)`, `resume` y `can_generate`.
+
+```text
+FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
+PAUSED ──continuar con advertencia──▶ FEASIBILITY
+PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
+FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regenerar──▶ READY
+```
+
+### 2.3 Fase 1: factibilidad y discrepancias (CA6, CA7, CA8, CA9)
+
+1. **Análisis.** La IA recibe la ficha (descripción e ítems), los adjuntos, el `ExperienceCatalog` de la empresa y las claves del banco para su rubro (§2.1). Devuelve las exigencias, y cada una termina en uno de estos casos:
+   - **Cubierta por el catálogo** (perfil, respuesta vigente o evidencia): queda con estado `cumple` y guarda su `catalog_item_id`.
+   - **Desconocida:** se reutiliza una pregunta del banco con la misma clave o se registra una nueva, neutra y sin datos de la empresa. Se crea la respuesta pendiente de la empresa.
+   - **En contradicción con el perfil:** por ejemplo, las bases exigen entrega en Arica y la empresa opera solo en la RM. Se genera una pregunta que expone la discrepancia ("¿Puede cubrir entregas en Arica?").
+2. **Respuestas.** El usuario responde las preguntas una a una, eligiendo una opción. Cada opción tiene polaridad. Si responde "Sí" a una pregunta `experiencia_proyecto`, se le ofrece agregar el proyecto (mandante, año, monto): es opcional, pero sin él el borrador solo puede citar la capacidad y no el proyecto (CA5).
+3. **Discrepancia (CA7).** Una respuesta de polaridad `negativa` a una exigencia excluyente pasa el borrador a `PAUSED`. Un modal muestra la cláusula, la respuesta y la recomendación: *"Recomendamos no postular: las bases exigen X y declaraste no contar con ello"*. Las opciones son:
+   - **Continuar con advertencia (CA8):** se guarda la decisión, se agrega la advertencia a `warnings` (y luego al borrador) y se vuelve a `FEASIBILITY`.
+   - **Detener (CA9):** se guarda la decisión y el borrador pasa a `STOPPED`. La ficha muestra "Postulación detenida — Reanudar". Al reanudar, se vuelve a `FEASIBILITY` y se puede **cambiar la respuesta**, por ejemplo si la empresa consiguió la certificación.
+4. **Pausa de la generación (CA7).** No se puede redactar mientras haya preguntas pendientes o el borrador esté `PAUSED` o `STOPPED`. `GenerateProposalUseCase` lo rechaza con un 409.
+
+### 2.4 Fase 2: redacción (CA1, CA2, CA5, CA6)
+
+- **Plantilla fija de Compra Ágil.** Tiene cuatro secciones: Nombre de la oferta, Descripción, Documentos necesarios y Documento técnico. La última aparece solo si `requires_technical_document` es verdadero (CA1).
+- **Redacción con IA.** Gemini redacta el contenido de cada sección con `responseSchema` JSON, igual que `GeminiDeepAnalysisService`.
+- **Vacíos (CA2).** La IA marca cada dato faltante como `[[INSERTAR: X]]`. Un parser determinístico del dominio lo convierte en una entrada de `placeholders` y en el texto visible *"(Por favor, inserte aquí el valor X)"*.
+- **Fuentes (CA5).** El prompt entrega una lista cerrada de fuentes: los elementos del `ExperienceCatalog` con su id estable (campos del perfil, capacidades respondidas y proyectos de evidencia), y la IA solo puede citar esos ids. El caso de uso valida cada id y descarta los que no existen. Un párrafo que afirma experiencia y queda sin fuente recibe un placeholder. Este es el guardrail contra alucinaciones.
+- **Advertencias (CA8).** Las `warnings` aceptadas se incluyen en el borrador como bloque destacado.
+- **Etapas (CA6).** Cada fase es una petición distinta, así que el frontend siempre sabe en qué etapa está, sin SSE ni workers:
+  - Mientras corre `POST /feasibility` muestra "Analizando bases y experiencia".
+  - Mientras corre `POST /generate` muestra "Redactando nombre, descripción y documentos".
+  - El timeout de Gemini en este servicio sube a 60 s, porque con adjuntos tarda más que el análisis profundo, que usa 30 s.
+
+### 2.5 Regenerar (CA4)
+
+`POST /regenerate` recibe `instructions` en texto libre. Se validan con `_validate_prompt_injection`, que hoy es un método privado de `GeminiDeepAnalysisService` y se extrae a un helper compartido. Luego se vuelve a redactar con las mismas fuentes y advertencias, y se guarda `last_instructions`.
+
+### 2.6 Exportar a .docx (CA3)
+
+- **Dependencia nueva, aprobada:** `python-docx`, en `requirements.txt`.
+- **Estructura del archivo:**
+  - H1 con el nombre de la oferta y un H2 por sección.
+  - Los documentos necesarios como viñetas.
+  - Los placeholders y las advertencias como **bloques destacados**: un párrafo sombreado con la etiqueta "Revisar". Se eligió esto en vez de comentarios nativos de Word porque es más simple de implementar.
+
+### 2.7 Licitación cerrada
+
+Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** con `TenderClosedError`. En el frontend, el botón queda deshabilitado con el tooltip *"Esta licitación se encuentra cerrada para postulaciones"*. El detalle ya expone `is_closed`.
+
+### 2.8 Permisos por rol
+
+Se agrega el permiso `generate_proposal` para ADMIN y MEMBER. VIEWER puede ver el borrador y exportarlo, pero no escribir.
+
+- **Dónde agregarlo:** en `_ROLE_PERMISSIONS` (`domain/entities/supplier_member.py`) y en las listas de permisos duplicadas de `infrastructure/auth/dependencies.py` (dos listas) y `use_cases/workspace/switch_workspace.py`. Si falta en alguna, el permiso no llega al `WorkspaceContext`.
+- **Backend:** los endpoints que escriben responden **403** sin el permiso, con el mismo patrón que `routers/supplier.py` usa para `edit_company_profile`.
+- **Frontend:** se usa `hasPermission("generate_proposal")` de `WorkspaceContext.tsx`.
+
+### 2.9 Adjuntos
+
+- Son opcionales: una Compra Ágil puede no tener bases adjuntas y basta con la descripción y los ítems.
+- Se reutilizan los del asistente con `ITenderChatRepository.get_documents_by_chat` y `get_document_bytes`, y se envían a Gemini como `DocumentContextDTO`, igual que hoy. No hay extracción ni storage nuevo.
+- El paso de factibilidad lista los adjuntos y permite subir más con el endpoint existente de subida.
+- **Limitación conocida:** los adjuntos son por usuario (`tender_chat_documents.user_id`) y no por empresa. La factibilidad usa los del miembro que la lanza (§5).
+
+### 2.10 Endpoints
+
+Van en un router nuevo, `infrastructure/routers/proposal.py`, con el prefijo `/api/v1/tenders/{tender_id}/proposal`. Todos declaran `summary`, `response_model` y `tags`, y usan la empresa activa.
+
+| Método y ruta | Qué hace | CA | Permiso |
+|---|---|---|---|
+| `GET ""` | Estado, exigencias, preguntas, contenido y si está vencida | CA2, CA5, CA9 | ver |
+| `POST /feasibility` | Crea o recupera el borrador y corre el análisis | CA6, CA7 | `generate_proposal` |
+| `POST /questions/{capability_question_id}/answer` | Responde la pregunta de capacidad de la empresa activa; si la respuesta es negativa y la exigencia es excluyente, pasa a `PAUSED` | CA7 | `generate_proposal` |
+| `POST /questions/{capability_question_id}/evidence` | Agrega un proyecto que respalda un "Sí" de experiencia | CA5 | `generate_proposal` |
+| `POST /discrepancy` | `{requirement_id, action: continue \| stop}` | CA8, CA9 | `generate_proposal` |
+| `POST /resume` | `STOPPED` → `FEASIBILITY` | CA9 | `generate_proposal` |
+| `POST /generate` | Redacta el borrador | CA1, CA2, CA5, CA6 | `generate_proposal` |
+| `POST /regenerate` | `{instructions}` | CA4 | `generate_proposal` |
+| `GET /export.docx` | Descarga el Word | CA3 | ver |
+
+### 2.11 Frontend
+
+Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La ruta `app/(app)/matches/[id]/postulacion/page.tsx` solo enruta. En `TenderDetailView` (`features/matches`) se agrega únicamente el botón de entrada.
+
+---
+
+## 3. Desglose de Tareas (Checklist TDD)
+
+**Entrega en PRs cortos:** B0 → B1 → B2 + B3 → B4 a B7 → F1 a F6. Se pueden crear como sub-issues de #230. B0 y B1 llevan migración y conviene mergearlos temprano, cada uno en su PR (ver AGENTS.md §3, cabezas múltiples). Antes de B0 y B1 se invoca la skill `supabase-postgres-best-practices`.
+
+### Backend (`monorepo/backend`)
+
+- [ ] **B0. Banco de capacidades** (§2.1, §2.8). Se rescata el diseño de `230-hu-20-1-banco-de-capacidades` copiando archivos puntuales (`git show <rama>:<ruta>`), no con merge ni cherry-pick. Se entrega en dos PRs.
+  - [ ] **B0a. Dominio y esquema** (PR propio y temprano, porque lleva migración)
+    - [ ] [Red] Entidades rescatadas: `CapabilityQuestion` (coherencia `kind`/`work_type`, opciones sin repetir, `polarity_of`), `CapabilityAnswer` (no respondida y omitida a la vez) y `question_leaks_supplier_data` (razón social, nombre de fantasía y RUT en cualquier formato). Se traen también sus tests de la rama.
+    - [ ] [Red] Nuevo: `CapabilityEvidence` exige título y año válido. Si tiene `answer_id`, solo se asocia a respuestas `afirmativa` de tipo `experiencia_proyecto` y hereda su `work_type`; sin `answer_id`, `work_type` es obligatorio. `origin` vale `manual` por defecto y solo acepta `manual` o `mercado_publico`. Una respuesta con `valid_until` vencido no cuenta como vigente.
+    - [ ] [Green] Entidades, `capability_model.py` con `answered_by_user_id`, `valid_until` y la tabla `capability_evidence` (`answer_id` nullable con `SET NULL`, `origin` con `CHECK` y default `manual`), y una **migración nueva** desde la cabeza de `develop`, sin reutilizar `d9d22b5370ff`.
+    - [ ] [Green] Repositorio `ICapabilityRepository` / `SqlCapabilityRepository`, rescatado y ampliado con evidencias. Test de integración: la restricción única (`category`, `target_field`) deduplica y el `CHECK` de estado se cumple.
+    - [ ] `python -m scripts.migraciones` debe devolver una sola cabeza.
+  - [ ] **B0b. Casos de uso, catálogo y permiso**
+    - [ ] [Red] `BuildExperienceCatalog` (rescatado): los ids estables `perfil:…`, `capacidad:…` y `evidencia:…`, excluye las respuestas vencidas, **excluye las evidencias que no sean `manual`** y calcula `last_changed_at`.
+    - [ ] [Red] `RegisterCapabilityQuestion` (rescatado): rechaza enunciados que filtran datos de la empresa y, si la clave ya existe, devuelve la pregunta existente.
+    - [ ] [Red] `AnswerCapabilityQuestion` (rescatado y ampliado): guarda `answered_by_user_id` y no toca `keywords` ni `certifications`. Nuevo `AddCapabilityEvidence`.
+    - [ ] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
+    - [ ] [Red] Regresión: `GET /questions` y `SmartQuestionsBanner` siguen funcionando igual con `profile_question`.
+    - [ ] [Green] Casos de uso y permiso `generate_proposal` en el dominio y en las tres listas duplicadas (§2.8).
+- [ ] **B1. `ProposalDraft`** (§2.2)
+  - [ ] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY`; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED`.
+  - [ ] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible.
+  - [ ] [Green] Entidad, `ProposalDraftModel`, migración de `proposal_drafts` con el índice único (`supplier_id`, `tender_id`), repositorio y `TenderClosedError`.
+- [ ] **B2. Factibilidad (CA7)** (§2.3)
+  - [ ] [Red] Con un servicio de IA falso:
+    - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,
+    - una exigencia desconocida con una clave ya existente en el banco reutiliza esa pregunta,
+    - una exigencia desconocida con una clave nueva registra la pregunta (`origin = ia`), crea la respuesta pendiente con `tender_id` y marca `mandatory` en la exigencia,
+    - una contradicción con el perfil genera una pregunta,
+    - se detecta si las bases exigen documento técnico,
+    - una licitación cerrada responde 409.
+  - [ ] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
+- [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
+  - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
+  - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.
+- [ ] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
+  - [ ] [Red] Con documento técnico y sin él; placeholders; fuentes con ids inexistentes descartadas; párrafo de experiencia sin fuente convertido en placeholder; advertencias incluidas; 409 si `!can_generate`.
+  - [ ] [Green] `IProposalAIService.generate_draft` y `GenerateProposalUseCase`.
+- [ ] **B5. Regenerar (CA4)** (§2.5)
+  - [ ] [Red] Las instrucciones llegan al prompt, las de prompt injection se rechazan y se conservan las fuentes.
+  - [ ] [Green] Extraer el helper anti-injection de `GeminiDeepAnalysisService` y crear `RegenerateProposalUseCase`.
+- [ ] **B6. Exportar a .docx (CA3)** (§2.6)
+  - [ ] [Red] El test abre el `.docx` generado y verifica el H1 y los H2, las viñetas de documentos y los bloques "Revisar".
+  - [ ] [Green] `python-docx` en `requirements.txt` y `ExportProposalDocxUseCase`.
+- [ ] **B7. Router** (§2.10)
+  - [ ] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo, empresa activa, 403 sin permiso y 409 con la licitación cerrada.
+  - [ ] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags`, y el cableado en `bootstrap.py`.
+
+### Frontend (`monorepo/frontend`)
+
+- [ ] **F1. Tipos y servicio**
+  - [ ] [Red/Green] `features/proposals/types.ts`, `services/proposalService.ts` y `hooks/useProposal.ts`.
+- [ ] **F2. Entrada desde la ficha**
+  - [ ] [Red] En `TenderDetailView`, el botón muestra "Generar postulación", "Continuar" o "Reanudar" según el estado. Queda deshabilitado con tooltip si la licitación está cerrada y oculto sin el permiso `generate_proposal`.
+  - [ ] [Green] Botón y ruta `app/(app)/matches/[id]/postulacion/page.tsx`.
+- [ ] **F3. Factibilidad (CA6)**
+  - [ ] [Red] `ProposalStepper` muestra "Analizando bases y experiencia" mientras carga. `FeasibilityStep` lista las exigencias con su estado, las preguntas con sus opciones, el formulario opcional de proyecto tras un "Sí" de experiencia, y los adjuntos con un botón para subir más.
+  - [ ] [Green] Implementación.
+- [ ] **F4. Discrepancias (CA7, CA8, CA9)**
+  - [ ] [Red] `DiscrepancyModal` muestra la cláusula y la recomendación, y los botones "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
+  - [ ] [Green] Implementación.
+- [ ] **F5. Redacción (CA6)**
+  - [ ] [Red/Green] `GeneratingLoader` con la etapa "Redactando nombre, descripción y documentos".
+- [ ] **F6. Borrador (CA1, CA2, CA3, CA4, CA5)**
+  - [ ] [Red] `ProposalDraftViewer` muestra las secciones, con el documento técnico solo si corresponde, y los placeholders destacados.
+  - [ ] [Red] Al hacer clic en un párrafo se abre `SourcePanel` con el elemento del catálogo que lo respalda: el proyecto (mandante, año, monto), la capacidad (pregunta, respuesta, quién respondió y licitación de origen) o el campo del perfil.
+  - [ ] [Green] `ProposalDraftViewer`, `SourcePanel`, `RegenerateDialog` y el botón "Exportar a .docx".
+  - [ ] Playwright para el flujo crítico: factibilidad → discrepancia → continuar → borrador → exportar.
+
+---
+
+## 4. Matriz de Cobertura de Criterios de Aceptación
+
+| CA (issue #230) | Backend | Frontend | Test |
+|---|---|---|---|
+| **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_con_y_sin_documento_tecnico` / `ProposalDraftViewer.test.tsx` |
+| **CA2** Vacíos marcados | Parser `[[INSERTAR]]`, `placeholders` | `ProposalDraftViewer` (destacado) | `test_parser_insertar` / `ProposalDraftViewer.test.tsx` |
+| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` (`python-docx`) | Botón "Exportar a .docx" | `test_export_docx_titulos_y_bloques_revisar` |
+| **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + helper anti-injection | `RegenerateDialog` | `test_regenerate_incorpora_instrucciones` |
+| **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog`, `capability_evidence` | `SourcePanel` | `test_fuentes_inexistentes_se_descartan` / `SourcePanel.test.tsx` |
+| **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `ProposalStepper`, `GeneratingLoader` | `ProposalStepper.test.tsx` |
+| **CA7** Pausa y pregunta ante contradicción | `StartFeasibilityUseCase`, `AnswerProposalQuestionUseCase` → `PAUSED` | `DiscrepancyModal` | `test_no_excluyente_pausa_borrador` / `DiscrepancyModal.test.tsx` |
+| **CA8** Continuar con advertencia | `DecideDiscrepancyUseCase(continue)` | Botón "Continuar con advertencia" | `test_continuar_guarda_decision_y_advertencia` |
+| **CA9** Detener y reanudar | `DecideDiscrepancyUseCase(stop)`, `ResumeProposalUseCase` | Botón "Detener", vista "Reanudar" | `test_stop_y_resume_permite_cambiar_respuesta` |
+
+---
+
+## 5. Fuera de alcance (issues futuras)
+
+1. **Extracción de texto de los adjuntos**, persistida, junto con el registro de `usage_metadata` de Gemini para medir el ahorro de tokens.
+2. **Originales en Supabase Storage** en vez del volumen de Railway.
+3. **OCR asíncrono** para bases escaneadas.
+4. **Fragmentos e índice híbrido** (Qdrant + `tsvector`) para el asistente.
+5. **Plantilla para licitaciones públicas.**
+6. **Llevar las respuestas del banco al perfil y al matching**: `keywords`, `certifications` y reindexación.
+7. **Adjuntos por empresa y no por usuario.** Se refiere solo a los archivos de `tender_chat_documents`; las respuestas ya son por empresa en esta HdU (§2.1).
+8. **Migrar el banner del home al banco de capacidades** y retirar `profile_question`, `smart_question_service.py` y el guardado en `keywords`. La rama `230-hu-20-1-banco-de-capacidades` ya lo tiene hecho (incluida una página de experiencia de la empresa) y sirve de referencia.
+9. **Volver a preguntar las respuestas negativas antiguas:** una negativa de hace meses puede ya no ser cierta. Queda pendiente definir el plazo.
+10. **Spike: experiencia desde Mercado Público.** Las órdenes de compra adjudicadas a la empresa son experiencia verificable (mandante, monto, fecha).
+    - **Hoy no se puede sacar de nuestra base:** la ingesta guarda que una licitación quedó "adjudicada", pero no a quién. Hay que consultar las órdenes de compra o las adjudicaciones por proveedor en la API. El spike debe confirmar qué permite consultar y con qué identificador (RUT o código de proveedor).
+    - **Si es viable:** un caso de uso o job del backend crea evidencias con `origin = mercado_publico` y sin `answer_id` (el esquema ya lo permite, §2.1). Se agregan `confirmed_at` y el código externo con restricción única. El catálogo pasa a incluir las importadas **solo una vez confirmadas** por el usuario.
+    - **El endpoint `POST /questions/{capability_question_id}/evidence` no es la vía de importación.** Se mantiene para los proyectos que no están en Mercado Público (clientes privados, otros canales) y para corregir lo importado.
+
+---
+
+## 6. Plan de Verificación y Pruebas
+
+```bash
+# Backend (con .venv activo)
+cd monorepo/backend
+pytest tests/unit tests/e2e/api/test_proposal_api.py
+python -m scripts.migraciones
+
+# Frontend
+cd monorepo/frontend
+pnpm run test src/features/proposals/
+pnpm run test:e2e
+```
+
+**Prueba manual con Gemini real:** elegir 2 o 3 Compras Ágiles reales, una sin adjuntos, una con bases que exijan certificación y una que pida documento técnico, y recorrer el flujo completo con dos miembros de la misma empresa. Revisar:
+
+- que las preguntas no se repitan en una segunda licitación similar,
+- que cada párrafo cite una fuente real,
+- que el `.docx` se abra bien en Word.
