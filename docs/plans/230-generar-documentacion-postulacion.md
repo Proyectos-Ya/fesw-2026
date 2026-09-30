@@ -254,9 +254,18 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
     - **Condiciones y documentos no se preguntan.** Probado con Gemini, la mayoría de las "exigencias" de una Compra Ágil eran condiciones del servicio (13 funcionarios, 40 horas, septiembre) o antecedentes a adjuntar (cotización, formulario), y generaban preguntas que cualquier proveedor responde que sí y que no sirven en otra licitación. Dos tipos nuevos de exigencia, `condicion` y `documento` (`KINDS_SIN_PREGUNTA`), quedan `cumple` sin pregunta aunque la IA proponga una. B4 usa las condiciones para describir la oferta y los documentos para la lista de documentos necesarios (CA1). El lugar de ejecución **no** es condición: se cruza con las regiones del perfil. Con Aysén en el perfil, la Compra Ágil 657-70-COT26 pasó de 4 preguntas a ninguna.
     - **Reintento y log:** un 429 o un 5xx de Gemini se reintenta una vez; si igual falla, el 502 deja la causa en el log (antes no quedaba rastro).
     - **Pendiente para B4 y la prueba manual (§6):** afinar la clasificación (Coyhaique salió como `experiencia` y no como `disponibilidad`; no cambia la lógica porque queda cubierta por el catálogo).
-- [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
-  - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
-  - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.
+- [x] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
+  - [x] [Red] Casos de uso (`tests/unit/application/test_proposal_discrepancies.py`):
+    - responder guarda en el banco de la empresa (con la licitación de origen y quién respondió) **y** mueve el borrador; un "No" excluyente lo pausa;
+    - en pausa, otra pregunta no se guarda en ningún lado: se valida contra el borrador antes de escribir. La pregunta pausada sí se actualiza;
+    - una pregunta que no es de la postulación da 404 y una respuesta fuera de las opciones da 422, sin escribir nada;
+    - continuar guarda la decisión y la advertencia; detener pasa a `STOPPED`; reanudar vuelve a `FEASIBILITY`;
+    - decidir sobre una exigencia distinta de la pausada da 409, porque el usuario decidió mirando una pausa que ya cambió;
+    - con la licitación cerrada no se responde, decide ni reanuda (409).
+  - [x] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase`, `ResumeProposalUseCase` y el helper `postulacion_abierta`.
+  - [x] Rutas (adelantadas de B7): `POST /tenders/{id}/proposal/questions/{question_id}/answer`, `POST /tenders/{id}/proposal/discrepancy` (`{requirement_id, action}`) y `POST /tenders/{id}/proposal/resume`, con permiso `generate_proposal`; e2e en `tests/e2e/api/test_proposal_api.py`.
+  - [x] Corrección de B1: `content` vacío se guardaba como el JSON `null` y no como `NULL` de SQL (`JSONB(none_as_null=True)`, sin migración).
+  - Queda fuera: responder desde `/capabilities/questions/{id}/answer` guarda en el banco pero no mueve los borradores abiertos. Si hace falta, el borrador puede releer el catálogo al abrirse; se decide con el frontend (F3).
 - [ ] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
   - [ ] [Red] Con documento técnico y sin él; placeholders; fuentes con ids inexistentes descartadas; párrafo de experiencia sin fuente convertido en placeholder; advertencias incluidas; 409 si `!can_generate`.
   - [ ] [Green] `IProposalAIService.generate_draft` y `GenerateProposalUseCase`.

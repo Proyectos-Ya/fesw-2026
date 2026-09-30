@@ -1,4 +1,6 @@
-from app.domain.entities.proposal import ProposalDraft
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.entities.proposal import DecisionAction, ProposalDraft
 
 
 class ProposalDraftView(ProposalDraft):
@@ -10,3 +12,28 @@ class ProposalDraftView(ProposalDraft):
     """
 
     is_expired: bool = False
+
+
+class AnswerProposalQuestionInput(BaseModel):
+    """Respuesta a una pregunta de la postulación.
+
+    Sin `supplier_id`: la empresa sale de la sesión. `extra="forbid"` rechaza a
+    quien lo mande.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str = Field(min_length=1, max_length=500)
+
+
+class DecideDiscrepancyInput(BaseModel):
+    """Decisión ante un "No" a una exigencia excluyente (CA8, CA9).
+
+    `requirement_id` es la exigencia que el usuario vio en el aviso: si la pausa
+    ya es otra, la API responde 409 en vez de decidir sobre algo que no vio.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_id: str = Field(min_length=1)
+    action: DecisionAction

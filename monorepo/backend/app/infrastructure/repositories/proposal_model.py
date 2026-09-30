@@ -31,7 +31,11 @@ class ProposalDraftModel(SQLModel, table=True):
     discrepancy_decisions: list[dict[str, Any]] = Field(
         sa_column=Column(JSONB, nullable=False)
     )
-    content: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB))
+    # `none_as_null`: sin él, None se guarda como el JSON `null` y no como NULL de
+    # SQL, y `WHERE content IS NULL` no encuentra los borradores sin redactar.
+    content: dict[str, Any] | None = Field(
+        default=None, sa_column=Column(JSONB(none_as_null=True))
+    )
     last_instructions: str | None = None
     # Si el miembro se va, el borrador sigue siendo de la empresa.
     created_by_user_id: UUID | None = Field(

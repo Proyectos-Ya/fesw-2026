@@ -19,3 +19,15 @@ class ProposalDraftNotFound(Exception):
             f"No hay una postulación iniciada para la licitación {tender_id}."
         )
         self.tender_id = tender_id
+
+
+class QuestionNotInProposal(Exception):
+    """La pregunta no corresponde a ninguna exigencia de esta postulación. La API da 404.
+
+    Para responder una pregunta del banco fuera de una postulación está
+    `/capabilities/questions/{id}/answer`.
+    """
+
+    def __init__(self, question_id: object):
+        super().__init__(f"La pregunta {question_id} no es parte de esta postulación.")
+        self.question_id = question_id

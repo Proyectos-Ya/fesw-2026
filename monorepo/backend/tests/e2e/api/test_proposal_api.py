@@ -15,10 +15,20 @@ from app.application.services.proposal_ai_service import (
     FeasibilityResultDTO,
     ProposalAIServiceError,
 )
+from app.application.use_cases.capabilities.answer_capability_question import (
+    AnswerCapabilityQuestionUseCase,
+)
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.proposals.answer_proposal_question import (
+    AnswerProposalQuestionUseCase,
+)
+from app.application.use_cases.proposals.decide_discrepancy import (
+    DecideDiscrepancyUseCase,
+)
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
@@ -103,6 +113,23 @@ def entorno(api: AsyncClient):
     )
     app.dependency_overrides[bootstrap.get_proposal_use_case] = lambda: (
         GetProposalUseCase(suppliers, tenders, drafts)
+    )
+    app.dependency_overrides[bootstrap.get_answer_proposal_question_use_case] = lambda: (
+        AnswerProposalQuestionUseCase(
+            supplier_repo=suppliers,
+            tender_repo=tenders,
+            draft_repo=drafts,
+            question_repo=questions,
+            answer_use_case=AnswerCapabilityQuestionUseCase(
+                suppliers, questions, answers
+            ),
+        )
+    )
+    app.dependency_overrides[bootstrap.get_decide_discrepancy_use_case] = lambda: (
+        DecideDiscrepancyUseCase(suppliers, tenders, drafts)
+    )
+    app.dependency_overrides[bootstrap.get_resume_proposal_use_case] = lambda: (
+        ResumeProposalUseCase(suppliers, tenders, drafts)
     )
 
     tender_id = uuid4()
@@ -207,3 +234,101 @@ async def test_si_la_ia_falla_es_502_y_no_queda_borrador(
     assert await drafts.get(empresa_2, tender_id) is None
     # La causa queda en el log: sin ella un 502 no se puede diagnosticar.
     assert "Gemini no responde" in caplog.text
+
+
+async def _iniciar(api: AsyncClient, tender_id: UUID, headers: dict[str, str]) -> None:
+    resp = await api.post(f"/tenders/{tender_id}/proposal/feasibility", headers=headers)
+    assert resp.status_code == 200, resp.text
+
+
+async def _responder(api, tender_id, headers, answer: str, question_id=SEC.id):
+    return await api.post(
+        f"/tenders/{tender_id}/proposal/questions/{question_id}/answer",
+        json={"answer": answer},
+        headers=headers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_un_no_pausa_y_continuar_deja_la_advertencia(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, _, _, answers, _ = entorno
+    headers_a, headers_b, _, empresa_2 = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await _responder(api, tender_id, headers_a, "No")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "PAUSED"
+    requirement_id = resp.json()["paused_requirement_id"]
+    respuesta = await answers.get(empresa_2, SEC.id)
+    assert respuesta is not None and respuesta.answer == "No"
+
+    # Decide la dueña: el borrador es de la empresa.
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/discrepancy",
+        json={"requirement_id": requirement_id, "action": "continue"},
+        headers=headers_b,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "FEASIBILITY"
+    assert resp.json()["warnings"][0]["requirement_id"] == requirement_id
+
+
+@pytest.mark.asyncio
+async def test_detener_y_reanudar(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+    pausa = (await _responder(api, tender_id, headers_a, "No")).json()
+
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/discrepancy",
+        json={"requirement_id": pausa["paused_requirement_id"], "action": "stop"},
+        headers=headers_a,
+    )
+    assert resp.json()["status"] == "STOPPED"
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/resume", headers=headers_a)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "FEASIBILITY"
+
+
+@pytest.mark.asyncio
+async def test_decidir_sobre_otra_exigencia_es_409(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+    await _responder(api, tender_id, headers_a, "No")
+
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/discrepancy",
+        json={"requirement_id": "req-inexistente", "action": "continue"},
+        headers=headers_a,
+    )
+
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_reanudar_sin_estar_detenido_es_409(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/resume", headers=headers_a)
+
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_errores_al_responder(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    assert (await _responder(api, tender_id, headers_a, "Tal vez")).status_code == 422
+    assert (
+        await _responder(api, tender_id, headers_a, "Sí", question_id=uuid4())
+    ).status_code == 404
+    assert (await _responder(api, tender_id, headers_c, "Sí")).status_code == 403

@@ -60,7 +60,14 @@ from app.application.use_cases.capabilities.build_experience_catalog import (
 from app.application.use_cases.capabilities.list_pending_questions import (
     ListPendingCapabilityQuestionsUseCase,
 )
+from app.application.use_cases.proposals.answer_proposal_question import (
+    AnswerProposalQuestionUseCase,
+)
+from app.application.use_cases.proposals.decide_discrepancy import (
+    DecideDiscrepancyUseCase,
+)
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
@@ -854,6 +861,42 @@ def get_proposal_use_case(
     )
 
 
+def get_answer_proposal_question_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AnswerProposalQuestionUseCase:
+    supplier_repo = SupplierRepository(session)
+    question_repo = SqlCapabilityQuestionRepository(session)
+    return AnswerProposalQuestionUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=TenderRepository(session),
+        draft_repo=SqlProposalDraftRepository(session),
+        question_repo=question_repo,
+        answer_use_case=AnswerCapabilityQuestionUseCase(
+            supplier_repo, question_repo, SqlCapabilityAnswerRepository(session)
+        ),
+    )
+
+
+def get_decide_discrepancy_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DecideDiscrepancyUseCase:
+    return DecideDiscrepancyUseCase(
+        SupplierRepository(session),
+        TenderRepository(session),
+        SqlProposalDraftRepository(session),
+    )
+
+
+def get_resume_proposal_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ResumeProposalUseCase:
+    return ResumeProposalUseCase(
+        SupplierRepository(session),
+        TenderRepository(session),
+        SqlProposalDraftRepository(session),
+    )
+
+
 def get_upload_tender_chat_doc_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
     validator_service: Annotated[
@@ -1419,6 +1462,9 @@ def bootstrap(app: FastAPI) -> None:
             get_current_user=get_current_user,
             get_start_feasibility_use_case=get_start_feasibility_use_case,
             get_proposal_use_case=get_proposal_use_case,
+            get_answer_proposal_question_use_case=get_answer_proposal_question_use_case,
+            get_decide_discrepancy_use_case=get_decide_discrepancy_use_case,
+            get_resume_proposal_use_case=get_resume_proposal_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )
