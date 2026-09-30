@@ -261,3 +261,130 @@ async def test_si_el_reintento_tambien_falla_es_un_error_del_servicio():
             )
 
     assert post.call_count == 2
+
+
+# --- Redacción del borrador (B4) -------------------------------------------
+
+from app.domain.entities.proposal import ProposalWarning, Requirement  # noqa: E402
+
+EXIGENCIAS = [
+    Requirement(
+        id="req-1",
+        text="Duración de 40 horas cronológicas",
+        kind="condicion",
+        mandatory=True,
+        origin="Descripción",
+        status="cumple",
+    ),
+    Requirement(
+        id="req-2",
+        text="Deberá contar con certificación SEC.",
+        kind="certificacion",
+        mandatory=True,
+        origin="Descripción",
+        status="no_cumple",
+    ),
+]
+ADVERTENCIAS = [
+    ProposalWarning(
+        requirement_id="req-2",
+        text="Las bases exigen: certificación SEC. La empresa declaró no cumplirlo.",
+    )
+]
+REDACCION = {
+    "offer_name": {"paragraphs": [{"text": "Capacitación PAC", "source_ids": []}]},
+    "offer_description": {
+        "paragraphs": [
+            {
+                "text": "Operamos en Aysén.",
+                "source_ids": ["perfil:region:valparaiso"],
+                "asserts_company_fact": True,
+            }
+        ]
+    },
+    "required_documents": {"paragraphs": [{"text": "Cotización"}]},
+    "technical_document": None,
+}
+
+
+async def _redactar(respuesta: MagicMock, **kwargs):
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    datos = dict(
+        tender=_licitacion(),
+        requirements=EXIGENCIAS,
+        catalog=CATALOGO,
+        warnings=ADVERTENCIAS,
+        include_technical_document=False,
+        documents=[],
+    )
+    datos.update(kwargs)
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.return_value = respuesta
+        resultado = await servicio.generate_draft(**datos)
+    return resultado, post
+
+
+def _texto_del_prompt(post) -> str:
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    return " ".join(p.get("text", "") for p in partes)
+
+
+async def test_redaccion_interpreta_secciones_y_fuentes():
+    resultado, _ = await _redactar(_respuesta(REDACCION))
+
+    assert resultado.offer_name.paragraphs[0].text == "Capacitación PAC"
+    parrafo = resultado.offer_description.paragraphs[0]
+    assert parrafo.source_ids == ["perfil:region:valparaiso"]
+    assert parrafo.asserts_company_fact is True
+    assert resultado.technical_document is None
+
+
+async def test_redaccion_manda_exigencias_advertencias_y_catalogo():
+    _, post = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(post)
+    assert "Duración de 40 horas cronológicas" in texto
+    assert "no_cumple" in texto
+    assert "La empresa declaró no cumplirlo" in texto
+    assert "perfil:region:valparaiso" in texto
+    assert "[[INSERTAR:" in texto
+    assert post.call_args.kwargs["json"]["generationConfig"]["temperature"] > 0
+
+
+async def test_redaccion_lista_los_documentos_ya_detectados_para_no_repetirlos():
+    documento = Requirement(
+        id="req-3",
+        text="Adjuntar cotización",
+        kind="documento",
+        mandatory=True,
+        origin="Descripción",
+        status="cumple",
+    )
+
+    _, post = await _redactar(
+        _respuesta(REDACCION), requirements=[*EXIGENCIAS, documento]
+    )
+
+    texto = _texto_del_prompt(post)
+    assert "DOCUMENTOS YA DETECTADOS\n- Adjuntar cotización" in texto
+
+
+async def test_redaccion_pide_documento_tecnico_solo_si_corresponde():
+    _, sin = await _redactar(_respuesta(REDACCION), include_technical_document=False)
+    _, con = await _redactar(_respuesta(REDACCION), include_technical_document=True)
+
+    assert "NO redactes documento técnico" in _texto_del_prompt(sin)
+    assert "SÍ redacta el documento técnico" in _texto_del_prompt(con)
+
+
+async def test_redaccion_trata_las_instrucciones_como_datos_de_baja_prioridad():
+    _, post = await _redactar(_respuesta(REDACCION), instructions="Tono más formal")
+
+    texto = _texto_del_prompt(post)
+    assert "Tono más formal" in texto
+    assert "PRIORIDAD BAJA" in texto
+
+
+async def test_redaccion_con_json_invalido_es_error_del_servicio():
+    with pytest.raises(ProposalAIServiceError):
+        await _redactar(_respuesta({"offer_name": "no es una sección"}))

@@ -1,7 +1,7 @@
 """Postulación a una Compra Ágil: borrador de la empresa activa (HU-20).
 
 B2 expone la factibilidad y la lectura del borrador; B3, responder, decidir ante
-una discrepancia y reanudar. Redactar y exportar llegan en las etapas siguientes.
+una discrepancia y reanudar; B4, redactar. Regenerar y exportar llegan después.
 """
 
 import logging
@@ -22,6 +22,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 )
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
+)
+from app.application.use_cases.proposals.generate_proposal import (
+    GenerateProposalUseCase,
 )
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
@@ -55,6 +58,7 @@ def create_proposal_router(
     get_answer_proposal_question_use_case: Callable,
     get_decide_discrepancy_use_case: Callable,
     get_resume_proposal_use_case: Callable,
+    get_generate_proposal_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(
@@ -274,5 +278,50 @@ def create_proposal_router(
             )
         except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
             raise _traducir(error) from error
+
+    @router.post(
+        "/{tender_id}/proposal/generate",
+        response_model=ProposalDraft,
+        summary="Redactar el borrador de la oferta",
+        responses={
+            **_ERRORES_DE_ESCRITURA,
+            409: {
+                "description": "Quedan preguntas, hay una pausa, está detenido "
+                "o la licitación cerró"
+            },
+            502: {"description": "La IA no respondió o respondió algo inválido"},
+        },
+    )
+    async def generate_proposal(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> ProposalDraft:
+        """Nombre, descripción, documentos necesarios y, si las bases lo exigen,
+        documento técnico (CA1), con los vacíos marcados (CA2) y la fuente de
+        cada párrafo (CA5). Etapa "Redactando…" del CA6. Deja el borrador en
+        `READY`."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+            )
+        except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
+            raise _traducir(error) from error
+        except ProposalAIServiceError as error:
+            logger.warning(
+                "Falló la redacción de la licitación %s: %s", tender_id, error
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "No fue posible redactar el borrador en este momento. Intenta de nuevo.",
+            ) from error
 
     return router

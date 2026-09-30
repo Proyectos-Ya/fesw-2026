@@ -266,9 +266,17 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] Rutas (adelantadas de B7): `POST /tenders/{id}/proposal/questions/{question_id}/answer`, `POST /tenders/{id}/proposal/discrepancy` (`{requirement_id, action}`) y `POST /tenders/{id}/proposal/resume`, con permiso `generate_proposal`; e2e en `tests/e2e/api/test_proposal_api.py`.
   - [x] Corrección de B1: `content` vacío se guardaba como el JSON `null` y no como `NULL` de SQL (`JSONB(none_as_null=True)`, sin migración).
   - Queda fuera: responder desde `/capabilities/questions/{id}/answer` guarda en el banco pero no mueve los borradores abiertos. Si hace falta, el borrador puede releer el catálogo al abrirse; se decide con el frontend (F3).
-- [ ] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
-  - [ ] [Red] Con documento técnico y sin él; placeholders; fuentes con ids inexistentes descartadas; párrafo de experiencia sin fuente convertido en placeholder; advertencias incluidas; 409 si `!can_generate`.
-  - [ ] [Green] `IProposalAIService.generate_draft` y `GenerateProposalUseCase`.
+- [x] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
+  - [x] [Red] Casos de uso (`tests/unit/application/test_generate_proposal.py`):
+    - con documento técnico y sin él; si las bases lo exigen y la IA no lo escribe, la sección queda como vacío; si no lo exigen, se omite aunque la IA lo escriba;
+    - vacíos `[[INSERTAR]]` convertidos en texto visible;
+    - fuentes: se conservan las del catálogo con su etiqueta y se descartan las inventadas; un párrafo que afirma algo de la empresa (`asserts_company_fact`) sin fuente válida recibe el vacío "respaldo de esta afirmación";
+    - documentos necesarios: primero los de la factibilidad (exigencias `documento`), después los que sume la IA sin repetir;
+    - 409 con preguntas pendientes, en pausa, detenido o con la licitación cerrada, **antes** de llamar a la IA; si la IA falla, el borrador no cambia.
+  - [x] [Green] `IProposalAIService.generate_draft`, `GeminiProposalService.generate_draft` (esquema propio, `temperature: 0.4` para que regenerar dé otro texto) y `GenerateProposalUseCase` con `armar_contenido`.
+  - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/generate`; e2e en `tests/e2e/api/test_proposal_api.py`.
+  - Las advertencias no se copian al contenido: viven en `ProposalDraft.warnings`, y el frontend y el `.docx` las muestran como bloque destacado (F6, B6).
+  - **Probado con Gemini real** sobre la Compra Ágil 657-70-COT26: el nombre y la descripción usan las condiciones del servicio y el párrafo sobre la empresa cita sus fuentes. Gemini reescribía los documentos ya detectados ("Se adjunta la cotización formal…") y salían duplicados; ahora el prompt recibe la lista de documentos ya detectados y solo agrega los que falten.
 - [ ] **B5. Regenerar (CA4)** (§2.5)
   - [ ] [Red] Las instrucciones llegan al prompt, las de prompt injection se rechazan y se conservan las fuentes.
   - [ ] [Green] Extraer el helper anti-injection de `GeminiDeepAnalysisService` y crear `RegenerateProposalUseCase`.

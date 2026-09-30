@@ -18,11 +18,11 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.seeder import seed_database_metadata
-from app.infrastructure.services.notifications.notification_scheduler import (
-    NotificationScheduler,
-)
 from app.infrastructure.services.milestone_refresh_scheduler import (
     MilestoneRefreshScheduler,
+)
+from app.infrastructure.services.notifications.notification_scheduler import (
+    NotificationScheduler,
 )
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,

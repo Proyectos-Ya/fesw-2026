@@ -11,6 +11,9 @@ from httpx import AsyncClient
 
 from app import bootstrap
 from app.application.services.proposal_ai_service import (
+    DraftContentDTO,
+    DraftParagraphDTO,
+    DraftSectionDTO,
     FeasibilityRequirementDTO,
     FeasibilityResultDTO,
     ProposalAIServiceError,
@@ -26,6 +29,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 )
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
+)
+from app.application.use_cases.proposals.generate_proposal import (
+    GenerateProposalUseCase,
 )
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
@@ -93,7 +99,21 @@ def entorno(api: AsyncClient):
                         question_key="sec",
                     )
                 ]
-            )
+            ),
+            DraftContentDTO(
+                offer_name=DraftSectionDTO(
+                    paragraphs=[DraftParagraphDTO(text="Servicio con SEC")]
+                ),
+                offer_description=DraftSectionDTO(
+                    paragraphs=[
+                        DraftParagraphDTO(
+                            text="Contamos con [[INSERTAR: número de técnicos]] técnicos.",
+                            source_ids=[f"capacidad:{SEC.id}"],
+                            asserts_company_fact=True,
+                        )
+                    ]
+                ),
+            ),
         )
     }
 
@@ -130,6 +150,18 @@ def entorno(api: AsyncClient):
     )
     app.dependency_overrides[bootstrap.get_resume_proposal_use_case] = lambda: (
         ResumeProposalUseCase(suppliers, tenders, drafts)
+    )
+    app.dependency_overrides[bootstrap.get_generate_proposal_use_case] = lambda: (
+        GenerateProposalUseCase(
+            supplier_repo=suppliers,
+            tender_repo=tenders,
+            draft_repo=drafts,
+            catalog_use_case=BuildExperienceCatalogUseCase(
+                suppliers, questions, answers, evidences
+            ),
+            chat_repo=InMemoryTenderChatRepository(),
+            ai_service=ia["servicio"],
+        )
     )
 
     tender_id = uuid4()
@@ -332,3 +364,50 @@ async def test_errores_al_responder(api: AsyncClient, entorno, empresas):
         await _responder(api, tender_id, headers_a, "Sí", question_id=uuid4())
     ).status_code == 404
     assert (await _responder(api, tender_id, headers_c, "Sí")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_redactar_con_todo_respondido_deja_el_borrador_listo(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, headers_b, _, _ = empresas
+    await _iniciar(api, tender_id, headers_a)
+    await _responder(api, tender_id, headers_a, "Sí")
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/generate", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["status"] == "READY"
+    [parrafo] = cuerpo["content"]["offer_description"]["paragraphs"]
+    assert parrafo["placeholders"] == ["número de técnicos"]
+    assert parrafo["sources"][0]["id"] == f"capacidad:{SEC.id}"
+    # La dueña lo ve redactado: el borrador es de la empresa.
+    leido = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_b)
+    assert leido.json()["status"] == "READY"
+
+
+@pytest.mark.asyncio
+async def test_redactar_con_preguntas_pendientes_es_409(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/generate", headers=headers_a)
+
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_un_viewer_no_redacta(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _iniciar(api, tender_id, headers_a)
+    await _responder(api, tender_id, headers_a, "Sí")
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/generate", headers=headers_c)
+
+    assert resp.status_code == 403

@@ -10,7 +10,11 @@ from app.domain.entities.capability import (
     CapabilityQuestion,
     ExperienceCatalog,
 )
-from app.domain.entities.proposal import RequirementKind
+from app.domain.entities.proposal import (
+    ProposalWarning,
+    Requirement,
+    RequirementKind,
+)
 from app.domain.entities.tender import Tender
 
 
@@ -53,6 +57,34 @@ class FeasibilityResultDTO(BaseModel):
     technical_document_reason: str | None = None
 
 
+class DraftParagraphDTO(BaseModel):
+    """Un párrafo tal como lo redacta la IA.
+
+    `text` puede traer marcas `[[INSERTAR: X]]` donde falta un dato (CA2).
+    `source_ids` son ids del catálogo que lo respaldan (CA5); el caso de uso
+    descarta los que no existan. `asserts_company_fact` indica si el párrafo
+    afirma algo de la empresa (experiencia, certificaciones, capacidad): si es
+    así y no queda ninguna fuente válida, se le agrega un vacío en vez de dejar
+    una afirmación sin respaldo.
+    """
+
+    text: str
+    source_ids: list[str] = Field(default_factory=list)
+    asserts_company_fact: bool = False
+
+
+class DraftSectionDTO(BaseModel):
+    paragraphs: list[DraftParagraphDTO] = Field(default_factory=list)
+
+
+class DraftContentDTO(BaseModel):
+    offer_name: DraftSectionDTO
+    offer_description: DraftSectionDTO
+    # Documentos que la IA encuentre además de los detectados en la factibilidad.
+    required_documents: DraftSectionDTO = Field(default_factory=DraftSectionDTO)
+    technical_document: DraftSectionDTO | None = None
+
+
 class ProposalAIServiceError(Exception):
     """La IA no respondió o respondió algo que no se pudo interpretar. La API da 502."""
 
@@ -71,4 +103,22 @@ class IProposalAIService(ABC):
         Recibe el catálogo completo de la empresa y las preguntas activas del
         banco para su rubro: con eso no vuelve a preguntar lo que ya se sabe ni
         crea preguntas repetidas.
+        """
+
+    @abstractmethod
+    async def generate_draft(
+        self,
+        tender: Tender,
+        requirements: list[Requirement],
+        catalog: ExperienceCatalog,
+        warnings: list[ProposalWarning],
+        include_technical_document: bool,
+        documents: list[DocumentContextDTO],
+        instructions: str | None = None,
+    ) -> DraftContentDTO:
+        """Redacta el borrador de la oferta (CA1, CA2, CA5).
+
+        Solo puede citar ids del catálogo y debe marcar con `[[INSERTAR: X]]` lo
+        que no sabe, en vez de inventarlo. `instructions` son las indicaciones
+        del usuario para regenerar (CA4).
         """

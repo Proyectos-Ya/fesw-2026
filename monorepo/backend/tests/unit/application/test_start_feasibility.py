@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.application.services.proposal_ai_service import (
+    DraftContentDTO,
+    DraftSectionDTO,
     FeasibilityRequirementDTO,
     FeasibilityResultDTO,
     IProposalAIService,
@@ -72,9 +74,21 @@ OTRO_RUBRO = _pregunta("iso_27001", category="tecnologia")
 
 
 class FakeProposalAI(IProposalAIService):
-    def __init__(self, resultado: FeasibilityResultDTO) -> None:
+    def __init__(
+        self,
+        resultado: FeasibilityResultDTO,
+        borrador: DraftContentDTO | None = None,
+    ) -> None:
         self.resultado = resultado
+        self.borrador = borrador or DraftContentDTO(
+            offer_name=DraftSectionDTO(), offer_description=DraftSectionDTO()
+        )
         self.llamadas: list[dict] = []
+        self.redacciones: list[dict] = []
+
+    async def generate_draft(self, **kwargs) -> DraftContentDTO:
+        self.redacciones.append(kwargs)
+        return self.borrador
 
     async def analyze_feasibility(
         self,

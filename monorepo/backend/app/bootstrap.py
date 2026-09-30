@@ -66,6 +66,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
 )
+from app.application.use_cases.proposals.generate_proposal import (
+    GenerateProposalUseCase,
+)
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
 from app.application.use_cases.proposals.start_feasibility import (
@@ -887,6 +890,32 @@ def get_decide_discrepancy_use_case(
     )
 
 
+def get_generate_proposal_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    ai_service: Annotated[IProposalAIService, Depends(get_proposal_ai_service)],
+    validator: Annotated[
+        IDocumentValidatorService, Depends(get_document_validator_service)
+    ],
+) -> GenerateProposalUseCase:
+    supplier_repo = SupplierRepository(session)
+    question_repo = SqlCapabilityQuestionRepository(session)
+    answer_repo = SqlCapabilityAnswerRepository(session)
+    return GenerateProposalUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=TenderRepository(session),
+        draft_repo=SqlProposalDraftRepository(session),
+        catalog_use_case=BuildExperienceCatalogUseCase(
+            supplier_repo,
+            question_repo,
+            answer_repo,
+            SqlCapabilityEvidenceRepository(session),
+        ),
+        chat_repo=SQLTenderChatRepository(session),
+        ai_service=ai_service,
+        validator_service=validator,
+    )
+
+
 def get_resume_proposal_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ResumeProposalUseCase:
@@ -1465,6 +1494,7 @@ def bootstrap(app: FastAPI) -> None:
             get_answer_proposal_question_use_case=get_answer_proposal_question_use_case,
             get_decide_discrepancy_use_case=get_decide_discrepancy_use_case,
             get_resume_proposal_use_case=get_resume_proposal_use_case,
+            get_generate_proposal_use_case=get_generate_proposal_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )
