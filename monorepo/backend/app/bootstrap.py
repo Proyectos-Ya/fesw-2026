@@ -48,6 +48,15 @@ from app.application.services.tender_assistant_ai_service import (
 )
 from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.weighting_service import IWeightingService
+from app.application.use_cases.capabilities.add_capability_evidence import (
+    AddCapabilityEvidenceUseCase,
+)
+from app.application.use_cases.capabilities.answer_capability_question import (
+    AnswerCapabilityQuestionUseCase,
+)
+from app.application.use_cases.capabilities.build_experience_catalog import (
+    BuildExperienceCatalogUseCase,
+)
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
 )
@@ -221,10 +230,16 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarEventLinkRepository,
 )
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.sql_capability_repository import (
+    SqlCapabilityAnswerRepository,
+    SqlCapabilityEvidenceRepository,
+    SqlCapabilityQuestionRepository,
+)
 from app.infrastructure.repositories.tender_milestone_repository import (
     TenderMilestoneRepository,
 )
 from app.infrastructure.routers.milestones import create_milestones_router
+from app.infrastructure.routers.capability import create_capability_router
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
@@ -373,6 +388,38 @@ def get_score_tender_on_demand_use_case(
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         scorer=scorer,
+    )
+
+
+def get_build_experience_catalog_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BuildExperienceCatalogUseCase:
+    return BuildExperienceCatalogUseCase(
+        SupplierRepository(session),
+        SqlCapabilityQuestionRepository(session),
+        SqlCapabilityAnswerRepository(session),
+        SqlCapabilityEvidenceRepository(session),
+    )
+
+
+def get_answer_capability_question_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AnswerCapabilityQuestionUseCase:
+    return AnswerCapabilityQuestionUseCase(
+        SupplierRepository(session),
+        SqlCapabilityQuestionRepository(session),
+        SqlCapabilityAnswerRepository(session),
+    )
+
+
+def get_add_capability_evidence_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AddCapabilityEvidenceUseCase:
+    return AddCapabilityEvidenceUseCase(
+        SupplierRepository(session),
+        SqlCapabilityQuestionRepository(session),
+        SqlCapabilityAnswerRepository(session),
+        SqlCapabilityEvidenceRepository(session),
     )
 
 
@@ -1287,6 +1334,15 @@ def bootstrap(app: FastAPI) -> None:
         get_email_service=get_email_service,
     )
     app.include_router(router)
+    app.include_router(
+        create_capability_router(
+            get_current_user=get_current_user,
+            get_build_catalog_use_case=get_build_experience_catalog_use_case,
+            get_answer_use_case=get_answer_capability_question_use_case,
+            get_add_evidence_use_case=get_add_capability_evidence_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
     app.include_router(
         create_quotation_router(
             get_current_user,

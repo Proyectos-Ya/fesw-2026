@@ -84,6 +84,7 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
     assert curr_context["role"] == "admin"
     assert curr_context["is_admin"] is True
     assert "invite_members" in curr_context["permissions"]
+    assert "generate_proposal" in curr_context["permissions"]
 
     # 6. Usuario A conmuta a Empresa 2 (POST /workspaces/switch)
     switch_resp = await api.post(
@@ -98,6 +99,8 @@ async def test_workspace_switching_and_dynamic_permissions(api: AsyncClient):
     assert switched_context["is_admin"] is False
     assert "invite_members" not in switched_context["permissions"]
     assert "view_matches" in switched_context["permissions"]
+    # HU-20: un MEMBER también genera postulaciones.
+    assert "generate_proposal" in switched_context["permissions"]
 
     # Cookie active_workspace_id debe estar en la respuesta
     assert "active_workspace_id" in switch_resp.cookies

@@ -1,6 +1,6 @@
 """Repositorios del banco de capacidades contra Postgres real."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -187,6 +187,29 @@ async def test_save_guarda_quien_respondio_y_la_vigencia(db_session):
     assert leida is not None
     assert leida.answered_by_user_id == autor
     assert leida.valid_until == vence
+
+
+async def test_save_acepta_una_vigencia_con_zona(db_session):
+    """Regresión: una fecha con zona llegaba a asyncpg tal cual y la API daba 500."""
+    preguntas = SqlCapabilityQuestionRepository(db_session)
+    respuestas = SqlCapabilityAnswerRepository(db_session)
+    pregunta = await preguntas.add(_pregunta(kind="certificacion"))
+    supplier_id = await _empresa(db_session)
+    santiago = timezone(timedelta(hours=-3))
+
+    await respuestas.save(
+        CapabilityAnswer(
+            supplier_id=supplier_id,
+            question_id=pregunta.id,
+            answered=True,
+            answer="Sí",
+            valid_until=datetime(2027, 6, 30, 0, 0, tzinfo=santiago),
+        )
+    )
+
+    leida = await respuestas.get(supplier_id, pregunta.id)
+    assert leida is not None
+    assert leida.valid_until == datetime(2027, 6, 30, 3, 0)
 
 
 async def test_save_reemplaza_tambien_quien_respondio_y_la_vigencia(db_session):

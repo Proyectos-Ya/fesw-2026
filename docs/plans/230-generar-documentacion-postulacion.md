@@ -97,9 +97,10 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 | Campo | Contenido |
 |---|---|
 | `status` | `FEASIBILITY` (hay preguntas pendientes), `PAUSED` (discrepancia sin decidir, CA7), `STOPPED` (detenido por el usuario, CA9) o `READY` (borrador generado). |
-| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `desconocido`), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
+| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `parcial` \| `desconocido`; `parcial` sale de una respuesta neutra como "En proceso de inscripción" y no pausa), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
 | `requires_technical_document`, `technical_document_reason` | Si las bases exigen documento técnico, y por qué (CA1). |
-| `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8). |
+| `paused_requirement_id` | La exigencia cuyo "No" tiene el borrador en `PAUSED`. |
+| `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8), cada una ligada a su `requirement_id`: si la empresa corrige la respuesta a "Sí", la advertencia se quita sola. |
 | `discrepancy_decisions` (JSON) | `requirement_id`, `capability_question_id`, `action` (`continue` \| `stop`), `user_id` y fecha (CA8, CA9). |
 | `content` (JSON, nullable) | Secciones `offer_name`, `offer_description`, `required_documents[]` y `technical_document` (opcional). Cada una tiene párrafos con `text`, `sources[]` (ids de elementos del `ExperienceCatalog`: `perfil:…`, `capacidad:…` o `evidencia:…`, con su `label`) y `placeholders[]`. |
 | `last_instructions` | Últimas instrucciones de regeneración (CA4). |
@@ -107,11 +108,19 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 
 **Borradores vencidos:** el estado "vencido" no se guarda. Se calcula al leer con `Tender.esta_cerrada()`, así ningún `GET` escribe en la base.
 
-**Estados:** las transiciones viven en el dominio como métodos de la entidad: `answer_question`, `decide(continue|stop)`, `resume` y `can_generate`.
+**Estados:** las transiciones viven en el dominio como métodos de la entidad (`app/domain/entities/proposal.py`): `load_requirements`, `record_answer`, `decide(continue|stop)`, `resume`, `can_generate` y `mark_ready`. Una acción que no corresponde al estado lanza `InvalidProposalTransition` (409 en la API). Reglas que se fijaron al implementar:
+
+- Al cargar las exigencias, una excluyente que ya está en "No" (la empresa lo respondió en otra licitación) pausa de entrada.
+- Una respuesta nueva reemplaza la anterior: borra la decisión y la advertencia de esa exigencia.
+- En `PAUSED` se puede responder de nuevo **solo** la pregunta de la exigencia pausada; responder otra lanza `InvalidProposalTransition`.
+- `resume` vuelve a `FEASIBILITY` **sin** volver a pausar, para que la empresa pueda corregir la respuesta. Mientras la excluyente siga en "No" sin una decisión de continuar, `can_generate` es falso.
+- Tras continuar, si queda otra excluyente en "No" sin decidir, se pausa en esa.
+- Las fechas que vuelven del JSONB con "Z" se normalizan a UTC sin zona (`aware_to_utc_naive`, en `app/shared/datetime_utils.py`).
 
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
 PAUSED ──continuar con advertencia──▶ FEASIBILITY
+PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regenerar──▶ READY
 ```
@@ -123,7 +132,8 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
    - **Desconocida:** se reutiliza una pregunta del banco con la misma clave o se registra una nueva, neutra y sin datos de la empresa. Se crea la respuesta pendiente de la empresa.
    - **En contradicción con el perfil:** por ejemplo, las bases exigen entrega en Arica y la empresa opera solo en la RM. Se genera una pregunta que expone la discrepancia ("¿Puede cubrir entregas en Arica?").
 2. **Respuestas.** El usuario responde las preguntas una a una, eligiendo una opción. Cada opción tiene polaridad. Si responde "Sí" a una pregunta `experiencia_proyecto`, se le ofrece agregar el proyecto (mandante, año, monto): es opcional, pero sin él el borrador solo puede citar la capacidad y no el proyecto (CA5).
-3. **Discrepancia (CA7).** Una respuesta de polaridad `negativa` a una exigencia excluyente pasa el borrador a `PAUSED`. Un modal muestra la cláusula, la respuesta y la recomendación: *"Recomendamos no postular: las bases exigen X y declaraste no contar con ello"*. Las opciones son:
+3. **Discrepancia (CA7).** Una respuesta de polaridad `negativa` a una exigencia excluyente pasa el borrador a `PAUSED`. Un modal muestra la cláusula, la respuesta y la recomendación: *"Recomendamos no postular: las bases exigen X y declaraste no contar con ello"*. Si el "No" viene de una respuesta anterior de la empresa (otra licitación), el modal lo dice: cuándo, quién y en qué licitación. Las opciones son:
+   - **Actualizar respuesta:** responder de nuevo la pregunta de la exigencia pausada, sin detener ni reanudar. Un "Sí" (o una respuesta neutra) resuelve la pausa y vuelve a `FEASIBILITY`; un "No" la mantiene. Es la salida natural cuando el "No" es viejo y la empresa ya consiguió la certificación.
    - **Continuar con advertencia (CA8):** se guarda la decisión, se agrega la advertencia a `warnings` (y luego al borrador) y se vuelve a `FEASIBILITY`.
    - **Detener (CA9):** se guarda la decisión y el borrador pasa a `STOPPED`. La ficha muestra "Postulación detenida — Reanudar". Al reanudar, se vuelve a `FEASIBILITY` y se puede **cambiar la respuesta**, por ejemplo si la empresa consiguió la certificación.
 4. **Pausa de la generación (CA7).** No se puede redactar mientras haya preguntas pendientes o el borrador esté `PAUSED` o `STOPPED`. `GenerateProposalUseCase` lo rechaza con un 409.
@@ -154,13 +164,13 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
 
 ### 2.7 Licitación cerrada
 
-Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** con `TenderClosedError`. En el frontend, el botón queda deshabilitado con el tooltip *"Esta licitación se encuentra cerrada para postulaciones"*. El detalle ya expone `is_closed`.
+Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** con `TenderClosedForProposal`. En el frontend, el botón queda deshabilitado con el tooltip *"Esta licitación se encuentra cerrada para postulaciones"*. El detalle ya expone `is_closed`.
 
 ### 2.8 Permisos por rol
 
 Se agrega el permiso `generate_proposal` para ADMIN y MEMBER. VIEWER puede ver el borrador y exportarlo, pero no escribir.
 
-- **Dónde agregarlo:** en `_ROLE_PERMISSIONS` (`domain/entities/supplier_member.py`) y en las listas de permisos duplicadas de `infrastructure/auth/dependencies.py` (dos listas) y `use_cases/workspace/switch_workspace.py`. Si falta en alguna, el permiso no llega al `WorkspaceContext`.
+- **Dónde agregarlo:** en `_ROLE_PERMISSIONS` y en `ALL_PERMISSIONS` (`domain/entities/supplier_member.py`). Antes había tres listas copiadas a mano (`infrastructure/auth/dependencies.py`, dos veces, y `use_cases/workspace/switch_workspace.py`) y un permiso que faltara en una no llegaba al `WorkspaceContext`. En B0b esas tres listas pasaron a leer `ALL_PERMISSIONS`, y un test verifica que cubre todos los permisos de los roles.
 - **Backend:** los endpoints que escriben responden **403** sin el permiso, con el mismo patrón que `routers/supplier.py` usa para `edit_company_profile`.
 - **Frontend:** se usa `hasPermission("generate_proposal")` de `WorkspaceContext.tsx`.
 
@@ -173,19 +183,28 @@ Se agrega el permiso `generate_proposal` para ADMIN y MEMBER. VIEWER puede ver e
 
 ### 2.10 Endpoints
 
-Van en un router nuevo, `infrastructure/routers/proposal.py`, con el prefijo `/api/v1/tenders/{tender_id}/proposal`. Todos declaran `summary`, `response_model` y `tags`, y usan la empresa activa.
+Van en un router nuevo, `infrastructure/routers/proposal.py`, con el prefijo `/tenders/{tender_id}/proposal`. Todos declaran `summary`, `response_model` y `tags`, y usan la empresa activa.
 
 | Método y ruta | Qué hace | CA | Permiso |
 |---|---|---|---|
 | `GET ""` | Estado, exigencias, preguntas, contenido y si está vencida | CA2, CA5, CA9 | ver |
 | `POST /feasibility` | Crea o recupera el borrador y corre el análisis | CA6, CA7 | `generate_proposal` |
 | `POST /questions/{capability_question_id}/answer` | Responde la pregunta de capacidad de la empresa activa; si la respuesta es negativa y la exigencia es excluyente, pasa a `PAUSED` | CA7 | `generate_proposal` |
-| `POST /questions/{capability_question_id}/evidence` | Agrega un proyecto que respalda un "Sí" de experiencia | CA5 | `generate_proposal` |
 | `POST /discrepancy` | `{requirement_id, action: continue \| stop}` | CA8, CA9 | `generate_proposal` |
 | `POST /resume` | `STOPPED` → `FEASIBILITY` | CA9 | `generate_proposal` |
 | `POST /generate` | Redacta el borrador | CA1, CA2, CA5, CA6 | `generate_proposal` |
 | `POST /regenerate` | `{instructions}` | CA4 | `generate_proposal` |
 | `GET /export.docx` | Descarga el Word | CA3 | ver |
+
+**Router del banco de capacidades (`/capabilities`, B0b).** Opera sobre la empresa activa y es independiente de una postulación, así que el flujo de propuesta lo reutiliza:
+
+| Método y ruta | Qué hace | Permiso |
+|---|---|---|
+| `GET /catalog` | Catálogo de experiencia con ids estables | ver |
+| `POST /questions/{question_id}/answer` | Responde o corrige; guarda quién respondió y la vigencia | `generate_proposal` |
+| `POST /questions/{question_id}/evidence` | Agrega un proyecto a un "Sí" de experiencia (409 si no hay "Sí") | `generate_proposal` |
+
+El `POST /questions/{capability_question_id}/answer` del router de propuestas usa el mismo caso de uso y además actualiza el estado del borrador (puede pasarlo a `PAUSED`).
 
 ### 2.11 Frontend
 
@@ -199,33 +218,35 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 
 ### Backend (`monorepo/backend`)
 
-- [ ] **B0. Banco de capacidades** (§2.1, §2.8). Se rescata el diseño de `230-hu-20-1-banco-de-capacidades` copiando archivos puntuales (`git show <rama>:<ruta>`), no con merge ni cherry-pick. Se entrega en dos PRs.
+- [x] **B0. Banco de capacidades** (§2.1, §2.8). Se rescata el diseño de `230-hu-20-1-banco-de-capacidades` copiando archivos puntuales (`git show <rama>:<ruta>`), no con merge ni cherry-pick. Se entrega en dos PRs.
   - [x] **B0a. Dominio y esquema** (PR propio y temprano, porque lleva migración)
     - [x] [Red] Entidades rescatadas: `CapabilityQuestion` (coherencia `kind`/`work_type`, opciones sin repetir, `polarity_of`), `CapabilityAnswer` (no respondida y omitida a la vez) y `question_leaks_supplier_data` (razón social, nombre de fantasía y RUT en cualquier formato). Se traen también sus tests de la rama.
     - [x] [Red] Nuevo: `CapabilityEvidence` exige título y año válido. Si tiene `answer_id`, solo se asocia a respuestas `afirmativa` de tipo `experiencia_proyecto` de esa misma pregunta y hereda su `work_type` (`evidence_for_answer`); sin `answer_id`, `work_type` se indica a mano. Siempre es obligatorio. `origin` vale `manual` por defecto y solo acepta `manual` o `mercado_publico`. Una respuesta con `valid_until` vencido no cuenta como vigente.
     - [x] [Green] Entidades, `capability_model.py` con `answered_by_user_id`, `valid_until` y la tabla `capability_evidence` (`answer_id` nullable con `SET NULL`, `origin` con `CHECK` y default `manual`), y una **migración nueva** desde la cabeza de `develop`, sin reutilizar `d9d22b5370ff` (quedó como `eead2dba418a`).
     - [x] [Green] Repositorio `ICapabilityRepository` / `SqlCapabilityRepository`, rescatado y ampliado con evidencias. Test de integración: la restricción única (`category`, `target_field`) deduplica y el `CHECK` de estado se cumple.
     - [x] `python -m scripts.migraciones` debe devolver una sola cabeza.
-  - [ ] **B0b. Casos de uso, catálogo y permiso**
-    - [ ] [Red] `BuildExperienceCatalog` (rescatado): los ids estables `perfil:…`, `capacidad:…` y `evidencia:…`, excluye las respuestas vencidas, **excluye las evidencias que no sean `manual`** y calcula `last_changed_at`.
-    - [ ] [Red] `RegisterCapabilityQuestion` (rescatado): rechaza enunciados que filtran datos de la empresa y, si la clave ya existe, devuelve la pregunta existente.
-    - [ ] [Red] `AnswerCapabilityQuestion` (rescatado y ampliado): guarda `answered_by_user_id` y no toca `keywords` ni `certifications`. Nuevo `AddCapabilityEvidence`.
-    - [ ] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
-    - [ ] [Red] Regresión: `GET /questions` y `SmartQuestionsBanner` siguen funcionando igual con `profile_question`.
-    - [ ] [Green] Casos de uso y permiso `generate_proposal` en el dominio y en las tres listas duplicadas (§2.8).
-- [ ] **B1. `ProposalDraft`** (§2.2)
-  - [ ] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY`; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED`.
-  - [ ] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible.
-  - [ ] [Green] Entidad, `ProposalDraftModel`, migración de `proposal_drafts` con el índice único (`supplier_id`, `tender_id`), repositorio y `TenderClosedError`.
+  - [x] **B0b. Casos de uso, catálogo, permiso y router `/capabilities`**
+    - [x] [Red] `BuildExperienceCatalog` (rescatado): los ids estables `perfil:…` (incluye regiones), `capacidad:…` y `evidencia:…`, excluye las respuestas vencidas y **las evidencias que no sean `manual`**, y calcula `last_changed_at`.
+    - [x] [Red] `RegisterCapabilityQuestion` (rescatado): rechaza enunciados que filtran datos de la empresa y, si la clave ya existe, devuelve la pregunta existente.
+    - [x] [Red] `AnswerCapabilityQuestion` (rescatado y ampliado): resuelve la empresa activa, guarda `answered_by_user_id`, vigencia y licitación de origen (que no cambia al corregir), y no toca `keywords` ni `certifications`. Nuevo `AddCapabilityEvidence`.
+    - [x] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
+    - [x] [Red] Regresión: `GET /questions` y el banner del home no se tocan; la suite existente sigue en verde.
+    - [x] [Green] Casos de uso, permiso `generate_proposal` y `ALL_PERMISSIONS` como única lista (§2.8), router `/capabilities` (§2.10) cableado en `bootstrap.py`, y test e2e `tests/e2e/api/test_capability_api.py`.
+- [x] **B1. `ProposalDraft`** (§2.2)
+  - [x] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; una neutra queda `parcial`; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY` sin volver a pausar; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED` (`tests/unit/domain/test_proposal.py`).
+  - [x] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible (`render_placeholders`, `DraftParagraph.from_ai_text`).
+  - [x] [Green] Entidad, `ProposalDraftModel`, migración `e4849ff0c0dd` de `proposal_drafts` con la restricción única (`supplier_id`, `tender_id`), repositorio SQL y en memoria, y `TenderClosedForProposal` (en `tender_errors.py`, junto a `TenderClosedForScoring` y `TenderClosedForAnalysis`).
 - [ ] **B2. Factibilidad (CA7)** (§2.3)
   - [ ] [Red] Con un servicio de IA falso:
     - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,
+    - una exigencia cubierta por una respuesta **negativa** previa del catálogo queda `no_cumple` con su `catalog_item_id`, para que el borrador pueda explicar el origen de la pausa ("respondiste 'No' el 12-oct en la licitación X, Ana Pérez"). Para eso `ExperienceItem` suma `answered_at`,
     - una exigencia desconocida con una clave ya existente en el banco reutiliza esa pregunta,
     - una exigencia desconocida con una clave nueva registra la pregunta (`origin = ia`), crea la respuesta pendiente con `tender_id` y marca `mandatory` en la exigencia,
     - una contradicción con el perfil genera una pregunta,
     - se detecta si las bases exigen documento técnico,
     - una licitación cerrada responde 409.
   - [ ] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
+  - [ ] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir), cada una con su licitación de origen (`tender_id` y código). Sirve para verlas sin pasar por una postulación y para la futura página de experiencia. La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
 - [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
   - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
   - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.
@@ -253,7 +274,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [ ] [Red] `ProposalStepper` muestra "Analizando bases y experiencia" mientras carga. `FeasibilityStep` lista las exigencias con su estado, las preguntas con sus opciones, el formulario opcional de proyecto tras un "Sí" de experiencia, y los adjuntos con un botón para subir más.
   - [ ] [Green] Implementación.
 - [ ] **F4. Discrepancias (CA7, CA8, CA9)**
-  - [ ] [Red] `DiscrepancyModal` muestra la cláusula y la recomendación, y los botones "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
+  - [ ] [Red] `DiscrepancyModal` muestra la cláusula, la recomendación y, si el "No" es de una respuesta anterior, su origen (fecha, quién, licitación). Los botones "Actualizar respuesta", "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
   - [ ] [Green] Implementación.
 - [ ] **F5. Redacción (CA6)**
   - [ ] [Red/Green] `GeneratingLoader` con la etapa "Redactando nombre, descripción y documentos".

@@ -5,7 +5,7 @@ la use (PENDIENTES 6.29): deducirla después leyendo etiquetas libres sería
 frágil, y cambiar la forma del banco con respuestas ya dadas cuesta más.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -165,6 +165,15 @@ class TestVigenciaDeLaRespuesta:
 
     def test_sin_vigencia_una_respuesta_sigue_vigente(self):
         assert self._respondida().is_current(self.AHORA)
+
+    def test_una_vigencia_con_zona_se_guarda_en_utc_sin_zona(self):
+        """Las columnas son `TIMESTAMP WITHOUT TIME ZONE`: con zona, asyncpg falla (500)."""
+        santiago = timezone(timedelta(hours=-3))
+        respuesta = self._respondida(
+            valid_until=datetime(2027, 6, 30, 0, 0, tzinfo=santiago)
+        )
+        assert respuesta.valid_until == datetime(2027, 6, 30, 3, 0)
+        assert respuesta.valid_until.tzinfo is None
 
     def test_con_vigencia_futura_sigue_vigente(self):
         respuesta = self._respondida(valid_until=self.AHORA + timedelta(days=1))
