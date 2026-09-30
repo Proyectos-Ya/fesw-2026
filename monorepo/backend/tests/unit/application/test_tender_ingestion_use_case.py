@@ -19,8 +19,10 @@ from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 from tests.unit.application.fakes import (
+    FakeEmbeddingPorTexto,
     FakeEmbeddingService,
     FakeTenderVectorRepository,
+    InMemoryTenderItemVectorRepository,
 )
 
 # ---------------------------------------------------------------------------
@@ -130,11 +132,14 @@ def _make_dto(
     status_code: int = 2,
     estado_codigo: str = "publicada",
     organismo: str = "Municipalidad de Santiago",
+    nombre: str = "Construcción de sede comunal",
+    monto: float = 50_000_000.0,
+    items: list[dict] | None = None,
 ) -> TenderIngestaDTO:
     return TenderIngestaDTO.model_validate(
         {
             "CodigoExterno": code,
-            "Nombre": "Construcción de sede comunal",
+            "Nombre": nombre,
             "Descripcion": "Se requiere construir edificio de 2 pisos",
             "CodigoEstado": status_code,
             "EstadoCodigo": estado_codigo,
@@ -145,8 +150,10 @@ def _make_dto(
             "UnidadCompra": "Depto. Obras",
             "RegionId": 13,
             "RegionUnidad": "Región Metropolitana de Santiago",
-            "MontoEstimado": 50_000_000.0,
-            "items": [
+            "MontoEstimado": monto,
+            "items": items
+            if items is not None
+            else [
                 {
                     "nombre_producto": "Mano de obra",
                     "cantidad": 10,
@@ -464,3 +471,408 @@ async def test_heuristica_especifica_sigue_activa_con_el_respaldo_apagado() -> N
     buyer = repo.buyers_created[0]
     assert buyer["comuna_id"] == 295
     assert buyer["comuna_resolution_source"] == "organismo_name"
+
+
+# ---------------------------------------------------------------------------
+# Vectores de partidas (uno por ítem, para el calce keyword ↔ partida)
+# ---------------------------------------------------------------------------
+
+_ITEMS_DOS_PARTIDAS = [
+    {
+        "nombre_producto": "Cemento",
+        "descripcion": "Saco de 25 kg",
+        "cantidad": 5,
+        "unidad_medida": "sc",
+    },
+    {"nombre_producto": "Fierro", "cantidad": 2, "unidad_medida": "kg"},
+]
+
+
+class RepoQueTeniaLaLicitacion(FakeTenderRepository):
+    """Ya tiene guardada `dto`, con las partidas y el monto que se le indiquen."""
+
+    def __init__(
+        self,
+        dto: TenderIngestaDTO,
+        *,
+        items_guardados: list[TenderItemModel] | None = None,
+        monto_guardado: float | None = None,
+    ) -> None:
+        super().__init__()
+        self._dto = dto
+        self._items = items_guardados if items_guardados is not None else []
+        self._monto = (
+            monto_guardado if monto_guardado is not None else dto.available_amount_clp
+        )
+
+    async def get_by_code(self, code: str) -> TenderModel:  # noqa: ARG002
+        dto = self._dto
+        return TenderModel(
+            id=_ID_EXISTENTE,
+            code=dto.code,
+            name=dto.name,
+            description=dto.description,
+            status_id=dto.status_code,
+            published_at=dto.published_at,
+            closing_at=dto.closing_at,
+            last_change_at=dto.published_at,
+            buyer_rut=dto.buyer_rut,
+            buyer_unit=dto.buyer_unit,
+            available_amount_clp=self._monto,
+            created_at=dto.published_at,
+            updated_at=dto.published_at,
+        )
+
+    async def get_items_by_tender_id(self, tender_id: UUID) -> list:  # noqa: ARG002
+        return list(self._items)
+
+
+def _items_modelo(dto: TenderIngestaDTO) -> list[TenderItemModel]:
+    """Las partidas de `dto` tal como quedarían guardadas en SQL."""
+    return [
+        TenderItemModel(
+            id=uuid4(),
+            tender_id=_ID_EXISTENTE,
+            product_code="0",
+            name=item.nombre_producto,
+            description=item.descripcion,
+            quantity=item.cantidad,
+            unit_of_measure=item.unidad_medida,
+        )
+        for item in dto.items
+    ]
+
+
+async def test_alta_guarda_un_vector_por_partida() -> None:
+    repo = FakeTenderRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    embedding = FakeEmbeddingPorTexto(
+        {"Cemento: Saco de 25 kg": [1.0, 0.0, 0.0], "Fierro": [0.0, 1.0, 0.0]}
+    )
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+
+    tender_model, _ = repo.saved[0]
+    assert item_repo.vectors == {
+        tender_model.id: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+    }
+
+
+async def test_alta_embebe_las_partidas_en_una_sola_llamada_aparte() -> None:
+    """Un batch para las partidas, además del embedding del texto de la licitación."""
+    embedding = FakeEmbeddingPorTexto()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=InMemoryTenderItemVectorRepository(),
+    )
+
+    await use_case.execute(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+
+    assert len(embedding.calls) == 2
+    assert embedding.calls[1] == ["Cemento: Saco de 25 kg", "Fierro"]
+
+
+async def test_alta_sin_partidas_no_embebe_y_deja_la_lista_vacia() -> None:
+    """Sin partidas no hay nada que inferir: se llama a upsert con [] y no se paga
+    otra llamada al modelo."""
+    embedding = FakeEmbeddingPorTexto()
+    item_repo = InMemoryTenderItemVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(_make_dto(items=[]))
+
+    assert len(embedding.calls) == 1  # solo el de la licitación
+    assert item_repo.vectors == {}
+
+
+async def test_alta_escribe_los_vectores_de_partidas_antes_que_sql() -> None:
+    """Mismo orden Qdrant → SQL que el vector de la licitación.
+
+    Un desbalance hacia "vectores sin fila en SQL" lo limpia solo el ranking; el
+    contrario dejaría una licitación en SQL sin partidas vectorizadas.
+    """
+    repo = FakeTenderRepository()
+    guardadas_al_escribir: list[int] = []
+
+    class ItemRepoEspia(InMemoryTenderItemVectorRepository):
+        async def upsert(self, tender_id, item_vectors, payload=None) -> None:
+            guardadas_al_escribir.append(len(repo.saved))
+            await super().upsert(tender_id, item_vectors, payload)
+
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=ItemRepoEspia(),
+    )
+
+    await use_case.execute(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+
+    assert guardadas_al_escribir == [0]
+    assert len(repo.saved) == 1
+
+
+async def test_alta_sin_repositorio_de_partidas_no_embebe_de_mas() -> None:
+    """El repositorio es opcional: sin él la ingesta se comporta como siempre."""
+    embedding = FakeEmbeddingPorTexto()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    await use_case.execute(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+
+    assert len(embedding.calls) == 1
+
+
+async def test_cambio_semantico_regenera_los_vectores_de_partidas() -> None:
+    """Si cambian las partidas, los vectores viejos ya no describen la licitación."""
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS)
+    guardadas = _items_modelo(
+        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+    )
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[9.0, 9.0, 9.0]])
+    embedding = FakeEmbeddingPorTexto(
+        {"Cemento: Saco de 25 kg": [1.0, 0.0, 0.0], "Fierro": [0.0, 1.0, 0.0]}
+    )
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=guardadas),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["semantico"] is True
+    assert item_repo.vectors == {_ID_EXISTENTE: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]}
+
+
+async def test_cambio_semantico_que_deja_sin_partidas_borra_los_vectores() -> None:
+    dto = _make_dto(items=[])
+    guardadas = _items_modelo(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0]])
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=guardadas),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(dto)
+
+    assert item_repo.vectors == {}
+
+
+async def test_cambio_solo_de_metadatos_no_toca_los_vectores_de_partidas() -> None:
+    """Un cambio de monto no altera lo que la licitación pide: cero inferencias."""
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    embedding = FakeEmbeddingPorTexto()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(
+            dto,
+            items_guardados=_items_modelo(dto),
+            monto_guardado=50_000_000.0,
+        ),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "updated"
+    assert resultado["semantico"] is False
+    assert embedding.calls == []
+    assert item_repo.vectors == {_ID_EXISTENTE: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]}
+
+
+async def test_sin_cambios_no_toca_los_vectores_de_partidas() -> None:
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS)
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0]])
+    embedding = FakeEmbeddingPorTexto()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=_items_modelo(dto)),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "unchanged"
+    assert embedding.calls == []
+    assert item_repo.vectors == {_ID_EXISTENTE: [[1.0, 0.0, 0.0]]}
+
+
+# ---------------------------------------------------------------------------
+# Payload en las partidas (pre-filtro del segundo canal de recuperación)
+#
+# Las partidas viven en su propia colección; para buscar dentro de ella por estado,
+# región o plazo el punto necesita el mismo payload que el de "tenders".
+# ---------------------------------------------------------------------------
+
+
+async def test_alta_guarda_las_partidas_con_el_mismo_payload_que_la_licitacion() -> None:
+    vector_repo = FakeTenderVectorRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    repo = FakeTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=vector_repo,
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(_make_dto(items=_ITEMS_DOS_PARTIDAS))
+
+    tender_model, _ = repo.saved[0]
+    _, _, payload_licitacion = vector_repo.upserts[0]
+    assert payload_licitacion["status_code"] == "publicada"
+    assert payload_licitacion["comuna_id"] == 295
+    assert item_repo.payloads[tender_model.id] == payload_licitacion
+
+
+async def test_alta_sin_partidas_no_deja_payload_huerfano() -> None:
+    item_repo = InMemoryTenderItemVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(_make_dto(items=[]))
+
+    assert item_repo.payloads == {}
+
+
+async def test_cambio_semantico_reescribe_las_partidas_con_el_payload_nuevo() -> None:
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0, estado_codigo="cerrada")
+    guardadas = _items_modelo(
+        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+    )
+    vector_repo = FakeTenderVectorRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[9.0, 9.0, 9.0]], {"status_code": "publicada"})
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=guardadas),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=vector_repo,
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(dto)
+
+    _, _, payload_licitacion = vector_repo.upserts[0]
+    assert payload_licitacion["status_code"] == "cerrada"
+    assert item_repo.payloads[_ID_EXISTENTE] == payload_licitacion
+
+
+async def test_cambio_de_metadatos_actualiza_el_payload_de_las_partidas_sin_tocar_vectores() -> (
+    None
+):
+    """Es el caso frecuente (estado, cierre, monto): además del payload de
+    "tenders", el de las partidas, o el pre-filtro del segundo canal quedaría
+    apuntando a un estado o plazo viejos."""
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0, estado_codigo="cerrada")
+    vector_repo = FakeTenderVectorRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    vectores = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+    await item_repo.upsert(
+        _ID_EXISTENTE, vectores, {"status_code": "publicada", "comuna_id": 295}
+    )
+    embedding = FakeEmbeddingPorTexto()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(
+            dto, items_guardados=_items_modelo(dto), monto_guardado=50_000_000.0
+        ),
+        embedding_service=embedding,
+        tender_vector_repo=vector_repo,
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["semantico"] is False
+    assert embedding.calls == []
+    payload_licitacion = vector_repo.payloads[_ID_EXISTENTE]
+    assert payload_licitacion["status_code"] == "cerrada"
+    assert payload_licitacion["available_amount_clp"] == 80_000_000.0
+    # Mismas claves y valores en ambas colecciones; `comuna_id` (que este camino no
+    # recalcula) se conserva porque `set_payload` fusiona.
+    assert item_repo.payloads[_ID_EXISTENTE] == {**payload_licitacion, "comuna_id": 295}
+    assert item_repo.vectors == {_ID_EXISTENTE: vectores}
+
+
+async def test_cambio_de_metadatos_sin_punto_de_partidas_no_falla_ni_lo_crea() -> None:
+    """Licitación ingestada antes de existir la colección y aún sin backfill."""
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
+    item_repo = InMemoryTenderItemVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(
+            dto, items_guardados=_items_modelo(dto), monto_guardado=50_000_000.0
+        ),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "updated"
+    assert item_repo.vectors == {}
+    assert item_repo.payloads == {}
+
+
+async def test_sin_cambios_no_toca_el_payload_de_las_partidas() -> None:
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS)
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0]], {"status_code": "otro"})
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=_items_modelo(dto)),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "unchanged"
+    assert item_repo.payloads == {_ID_EXISTENTE: {"status_code": "otro"}}
+
+
+async def test_cambio_de_metadatos_sin_repositorio_de_partidas_sigue_funcionando() -> None:
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
+    vector_repo = FakeTenderVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(
+            dto, items_guardados=_items_modelo(dto), monto_guardado=50_000_000.0
+        ),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=vector_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "updated"
+    assert vector_repo.payloads[_ID_EXISTENTE]["available_amount_clp"] == 80_000_000.0

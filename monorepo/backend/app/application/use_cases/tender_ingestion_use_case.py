@@ -2,6 +2,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
@@ -34,10 +37,15 @@ class TenderIngestionUseCase:
         embedding_service: IEmbeddingService,
         tender_vector_repo: ITenderVectorRepository,
         enable_comuna_generic_heuristic: bool = False,
+        tender_item_vector_repo: ITenderItemVectorRepository | None = None,
     ):
         self.repo = repository
         self.embedding_service = embedding_service
         self.tender_vector_repo = tender_vector_repo
+        # Opcional: guarda un vector por partida para el calce keyword ↔ partida
+        # del puntaje de compatibilidad. Sin él la ingesta funciona igual; las
+        # licitaciones sin vectores de partidas las cubre el backfill.
+        self.tender_item_vector_repo = tender_item_vector_repo
         self.text_builder = TextBuilder()
         # Ver settings.enable_comuna_generic_heuristic: apagado por defecto
         # hasta decidir si el riesgo de falso positivo de la heurística
@@ -122,24 +130,31 @@ class TenderIngestionUseCase:
             #
             # Escribiendo primero el vector, el único desbalance posible es
             # el que el sistema ya reconcilia solo.
+            payload = {
+                "status_code": status_code,
+                "region_id": region_id,
+                "provincia_id": provincia_id,
+                "comuna_id": comuna_id,
+                "available_amount_clp": dto.available_amount_clp,
+                # Como epoch entero: Qdrant no compara `datetime`, y el
+                # buscador manual pre-filtra por rango de fechas sobre el
+                # payload. Sin esto, filtrar por fecha obligaría a traer
+                # top-K y descartar después, que devuelve casi nada en
+                # cuanto el filtro es algo específico.
+                "closing_at": to_utc_epoch(dto.closing_at),
+                "published_at": to_utc_epoch(dto.published_at),
+            }
             await self.tender_vector_repo.upsert(
                 tender_id=tender_id,
                 embedding=vectors[0],
-                payload={
-                    "status_code": status_code,
-                    "region_id": region_id,
-                    "provincia_id": provincia_id,
-                    "comuna_id": comuna_id,
-                    "available_amount_clp": dto.available_amount_clp,
-                    # Como epoch entero: Qdrant no compara `datetime`, y el
-                    # buscador manual pre-filtra por rango de fechas sobre el
-                    # payload. Sin esto, filtrar por fecha obligaría a traer
-                    # top-K y descartar después, que devuelve casi nada en
-                    # cuanto el filtro es algo específico.
-                    "closing_at": to_utc_epoch(dto.closing_at),
-                    "published_at": to_utc_epoch(dto.published_at),
-                },
+                payload=payload,
             )
+            # Los vectores de partidas van en el mismo lado del orden, y por la
+            # misma razón: si SQL falla después, lo que queda es un punto sin
+            # fila, que el ranking limpia solo. Llevan el mismo payload que el
+            # punto de la licitación para poder pre-filtrar dentro de su propia
+            # colección.
+            await self._guardar_vectores_de_partidas(tender_id, tender_items, payload)
 
             # Recién acá se abre la transacción SQL. Ambos get_or_create
             # hacen flush, así que dejarlos antes del embedding mantendría
@@ -221,9 +236,17 @@ class TenderIngestionUseCase:
             await self.tender_vector_repo.upsert(
                 tender_id=existente.id, embedding=vectors[0], payload=payload
             )
+            # Las partidas cambiaron (o el texto que las incluye), así que los
+            # vectores por partida guardados ya no describen la licitación.
+            await self._guardar_vectores_de_partidas(existente.id, items_nuevos, payload)
             await self.repo.replace_tender_items(existente.id, items_nuevos)
         else:
             await self.tender_vector_repo.set_payload(existente.id, payload)
+            # El payload de las partidas se mantiene igual que el de la licitación:
+            # si no, el pre-filtro de su búsqueda por keywords vería el estado y
+            # los plazos de la última vez que cambió el texto, no los de hoy.
+            if self.tender_item_vector_repo is not None:
+                await self.tender_item_vector_repo.set_payload(existente.id, payload)
 
         self._aplicar_cambios(existente, dto)
         await self.repo.update_tender(existente)
@@ -233,6 +256,25 @@ class TenderIngestionUseCase:
             "tender_code": dto.code,
             "semantico": cambio_semantico,
         }
+
+    async def _guardar_vectores_de_partidas(
+        self, tender_id: uuid.UUID, items: list[TenderItemModel], payload: dict
+    ) -> None:
+        """Reemplaza los vectores por partida de la licitación, si hay repositorio.
+
+        Una sola llamada al modelo para todas las partidas. Sin partidas no hay
+        nada que inferir: se pasa la lista vacía, que el repositorio interpreta
+        como "esta licitación no tiene vectores" y borra los que hubiera.
+
+        El `payload` es el mismo que va al punto de la licitación: el `upsert`
+        reemplaza el punto entero, así que hay que entregarlo completo cada vez.
+        """
+        if self.tender_item_vector_repo is None:
+            return
+
+        textos = self.text_builder.build_item_texts(items)
+        vectores = await self.embedding_service.embed(textos) if textos else []
+        await self.tender_item_vector_repo.upsert(tender_id, vectores, payload)
 
     def _construir_items(
         self, tender_id: uuid.UUID, dto: TenderIngestaDTO

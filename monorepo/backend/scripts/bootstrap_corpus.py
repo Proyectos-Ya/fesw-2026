@@ -8,8 +8,9 @@ Dos fases, las mismas de la ingesta diaria:
 
 1. **Listado** → encola códigos en `tender_metadata` (`is_processed=False`).
 2. **Detalle** → por cada uno pide su ficha, calcula el embedding y escribe en
-   Postgres (`tender`, `tender_item`, `buyer_institution`) y en la colección
-   `tenders` de Qdrant.
+   Postgres (`tender`, `tender_item`, `buyer_institution`) y en Qdrant: la
+   colección `tenders` (un vector por licitación) y `tender_items` (un vector por
+   partida).
 
 Es **reanudable**: la fase 2 marca `is_processed` al terminar cada licitación, así
 que una interrupción no pierde trabajo. Se retoma con `--reanudar`.
@@ -202,6 +203,9 @@ async def _preparar_destino(engine, qdrant) -> None:
     tabla `region` estaría vacía y los FK de `tender` fallarían, y la colección
     `tenders` no existiría. Ambas operaciones son idempotentes.
     """
+    from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+        QdrantTenderItemVectorRepository,
+    )
     from app.infrastructure.repositories.qdrant_tender_repository import (
         QdrantTenderRepository,
     )
@@ -214,7 +218,14 @@ async def _preparar_destino(engine, qdrant) -> None:
     await QdrantTenderRepository(
         client=qdrant, vector_size=settings.embedding_vector_size
     ).ensure_collection()
-    print("Colección 'tenders' lista (con sus índices de payload).\n")
+    print("Colección 'tenders' lista (con sus índices de payload).")
+
+    # La ingesta también guarda un vector por partida; sin esta colección cada
+    # licitación fallaría al escribirlo y se daría por perdida tras tres intentos.
+    await QdrantTenderItemVectorRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tender_items' lista.\n")
 
 
 async def cargar(args: argparse.Namespace) -> None:

@@ -163,6 +163,18 @@ class Settings(BaseSettings):
     company_lookup_base_url: str | None = None
 
     # --- Matching ---
+    # Coeficientes de regresión logística calibrados sobre 1.146 pares juzgados
+    # (spikes/dataset_compra_agil/calibrar_multivector.py, AUC 0,75 vs 0,58).
+    # Modelos de P(relevancia >= 1) y P(relevancia == 2), validación cruzada por proveedor.
+    compatibility_relevant_intercept: float = -3.8878
+    compatibility_relevant_reranker: float = 0.3281
+    compatibility_relevant_best_match: float = 3.2548
+    compatibility_relevant_coverage: float = 6.0296
+    compatibility_exact_intercept: float = -5.0958
+    compatibility_exact_reranker: float = 0.4013
+    compatibility_exact_best_match: float = 3.5326
+    compatibility_exact_coverage: float = 5.0620
+
     # Escape para entornos sin RAM suficiente para el reranker ONNX.
     disable_reranker: bool = False
     # Variante ONNX del reranker a descargar y usar. El repositorio publica el

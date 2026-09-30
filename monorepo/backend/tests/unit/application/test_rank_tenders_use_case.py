@@ -1,8 +1,12 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
@@ -27,11 +31,14 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
+    FORMULA_DE_PRUEBA,
+    FakeEmbeddingPorTexto,
+    FakeEmbeddingService,
     FakeRerankerService,
     FakeSupplierVectorRepository,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
+    armar_scorer,
 )
 
 
@@ -165,6 +172,48 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         return len(self.search_results)
 
 
+class FakeTenderItemVectorSearch(ITenderItemVectorRepository):
+    """Repositorio de vectores de partidas para probar la búsqueda por keywords.
+
+    Implementa la interfaz completa acá mismo, sin depender de `fakes.py`: lo que
+    interesa es qué le pide el ranking (vectores, límite y criterio) y qué ids
+    manda a borrar como huérfanos.
+    """
+
+    def __init__(self) -> None:
+        self.search_results: list[tuple[UUID, float]] = []
+        self.searches: list[dict] = []
+        self.deleted: list[UUID] = []
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        item_vectors: list[list[float]],
+        payload: dict | None = None,
+    ) -> None:
+        pass
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        pass
+
+    async def get_many(self, tender_ids: list[UUID]) -> dict[UUID, list[list[float]]]:
+        return {}
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.deleted.append(tender_id)
+
+    async def search_by_keywords(
+        self,
+        keyword_vectors: list[list[float]],
+        limit: int,
+        criteria: TenderFilterCriteria | None = None,
+    ) -> list[tuple[UUID, float]]:
+        self.searches.append(
+            {"vectors": keyword_vectors, "limit": limit, "criteria": criteria}
+        )
+        return self.search_results
+
+
 # ---------------------------------------------------------------------------
 # Helpers para creación de entidades dummy
 # ---------------------------------------------------------------------------
@@ -174,12 +223,8 @@ def crear_scorer(
     reranker: FakeRerankerService | None = None,
     matching_result_repo: InMemoryMatchingResultRepository | None = None,
 ) -> CompatibilityScorer:
-    """Arma el servicio real de puntaje sobre los dobles de reranker y ponderación."""
-    return CompatibilityScorer(
-        reranker_service=reranker or FakeRerankerService(),
-        weighting_service=FakeWeightingService(),
-        matching_result_repo=matching_result_repo or InMemoryMatchingResultRepository(),
-    )
+    """Arma el servicio real de puntaje sobre los dobles de reranker y embeddings."""
+    return armar_scorer(reranker=reranker, matching_result_repo=matching_result_repo)
 
 
 def create_dummy_tender(
@@ -353,8 +398,11 @@ async def test_cache_miss_runs_full_pipeline_and_persists() -> None:
     # Verificaciones
     assert len(results) == 2
     assert results[0].tender_id == tender_id_1
-    assert results[0].final_score == pytest.approx(0.95)
-    assert results[1].final_score == pytest.approx(0.90)
+    # Con vectores idénticos B y C valen 1: el puntaje sale de la fórmula con
+    # el R que dio el reranker (1,00 y 0,95 en el doble).
+    assert results[0].reranker_score == pytest.approx(1.0)
+    assert results[0].final_score == pytest.approx(FORMULA_DE_PRUEBA.score(1.0, 1.0, 1.0))
+    assert results[1].final_score == pytest.approx(FORMULA_DE_PRUEBA.score(0.95, 1.0, 1.0))
     assert results[0].tender is not None
     assert results[0].tender.id == tender_id_1
 
@@ -501,7 +549,8 @@ async def test_el_pipeline_sigue_filtrando_por_estado_publicada() -> None:
     criterio = tender_vector_repo.search_criteria[0]
     assert criterio is not None
     assert criterio.status_codes == [TENDER_STATUSES["PUBLISHED"]]
-    # El dashboard no acota por región ni por fecha: eso es del buscador manual.
+    # Este proveedor no declaró regiones, así que no se acota por región; y el
+    # dashboard nunca acota por fecha: eso es del buscador manual.
     assert criterio.region_ids is None
     assert criterio.closing_from is None
 
@@ -640,3 +689,542 @@ async def test_si_la_licitacion_a_pedido_entra_al_top_reemplaza_su_fila() -> Non
     filas = await matching_result_repo.get_by_supplier_id(supplier.id)
     assert len(filas) == 1
     assert filas[0].source == "ranking"
+
+
+# ---------------------------------------------------------------------------
+# Versión del modelo y de la fórmula: invalida la caché de recomendaciones
+# ---------------------------------------------------------------------------
+
+VERSION_ANTERIOR = "BAAI/bge-m3"
+VERSION_ACTUAL = "BAAI/bge-m3+compat-calib-v1"
+
+
+async def _armar_caso_con_cache(
+    versiones_cacheadas: list[str], version_actual: str = VERSION_ACTUAL
+) -> tuple[
+    RankTendersUseCase,
+    UUID,
+    list[UUID],
+    FakeRerankerService,
+    InMemoryMatchingResultRepository,
+]:
+    """Un proveedor con una fila cacheada por cada versión indicada.
+
+    La caché es válida en todo lo demás (recién calculada, sin licitaciones ni
+    cambios de perfil posteriores): lo único que puede vencerla es la versión.
+    """
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
+
+    tender_ids = [uuid4() for _ in versiones_cacheadas]
+    tender_repo = InMemoryTenderRepository()
+    for tender_id in tender_ids:
+        tender_repo.tenders[tender_id] = create_dummy_tender(tender_id)
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    await matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=supplier.id,
+                tender_id=tender_id,
+                similarity_score=0.85,
+                reranker_score=0.90,
+                final_score=0.42,
+                model_version=version,
+            )
+            for tender_id, version in zip(tender_ids, versiones_cacheadas, strict=True)
+        ]
+    )
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(tid, 0.8) for tid in tender_ids]
+    reranker = FakeRerankerService()
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=armar_scorer(
+            reranker=reranker,
+            matching_result_repo=matching_result_repo,
+            model_version=version_actual,
+        ),
+        matching_result_repo=matching_result_repo,
+        model_version=version_actual,
+    )
+    return use_case, user_id, tender_ids, reranker, matching_result_repo
+
+
+@pytest.mark.asyncio
+async def test_cache_de_otra_version_del_modelo_se_recalcula() -> None:
+    """Tras desplegar una fórmula nueva, la caché vigente todavía trae los
+    porcentajes de la anterior. Sin esto el usuario los seguiría viendo hasta que
+    llegara una licitación nueva o cambiara su perfil."""
+    use_case, user_id, tender_ids, reranker, repo = await _armar_caso_con_cache(
+        [VERSION_ANTERIOR, VERSION_ANTERIOR]
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 1
+    assert {r.tender_id for r in results} == set(tender_ids)
+    assert all(r.model_version == VERSION_ACTUAL for r in results)
+    assert all(r.final_score != pytest.approx(0.42) for r in results)
+    # Y lo persistido es lo recalculado, no lo viejo.
+    guardadas = await repo.get_ranking_by_supplier_id(results[0].supplier_id)
+    assert {m.model_version for m in guardadas} == {VERSION_ACTUAL}
+
+
+@pytest.mark.asyncio
+async def test_basta_una_fila_de_otra_version_para_recalcular() -> None:
+    use_case, user_id, _, reranker, _ = await _armar_caso_con_cache(
+        [VERSION_ACTUAL, VERSION_ANTERIOR, VERSION_ACTUAL]
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_cache_de_la_version_actual_no_se_recalcula() -> None:
+    use_case, user_id, tender_ids, reranker, _ = await _armar_caso_con_cache(
+        [VERSION_ACTUAL, VERSION_ACTUAL]
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert reranker.calls == []
+    assert {r.tender_id for r in results} == set(tender_ids)
+    assert all(r.final_score == pytest.approx(0.42) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_recalcula_aunque_la_version_coincida() -> None:
+    use_case, user_id, _, reranker, _ = await _armar_caso_con_cache([VERSION_ACTUAL])
+
+    await use_case.execute(user_id=user_id, force_refresh=True)
+
+    assert len(reranker.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Región dentro de la búsqueda vectorial
+# ---------------------------------------------------------------------------
+#
+# Antes la búsqueda traía el top-50 de todo el país y la región se descartaba
+# después, en Python: un proveedor del Biobío recibía 6 candidatas de 50 habiendo
+# 134 en su región. Ahora la región viaja en el criterio y filtra Qdrant.
+
+
+@dataclass
+class CasoRanking:
+    """Un `RankTendersUseCase` armado sobre dobles, con lo que hay que inspeccionar."""
+
+    use_case: RankTendersUseCase
+    user_id: UUID
+    supplier: Supplier
+    tender_vector_repo: FakeTenderVectorRepository
+    item_repo: FakeTenderItemVectorSearch | None
+    reranker: FakeRerankerService
+    matching_result_repo: InMemoryMatchingResultRepository
+    embedding: FakeEmbeddingService | FakeEmbeddingPorTexto
+
+
+async def _armar_caso(
+    *,
+    regions: list[str] | None = None,
+    keywords: list[str] | None = None,
+    por_perfil: list[tuple[UUID, float]] | None = None,
+    por_keywords: list[tuple[UUID, float]] | None = None,
+    tenders: list[Tender] | None = None,
+    con_item_repo: bool = True,
+    con_embedding: bool = True,
+    item_search_limit: int | None = None,
+    embedding: FakeEmbeddingService | FakeEmbeddingPorTexto | None = None,
+) -> CasoRanking:
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(
+        rut="76086428-5",
+        legal_name="Empresa SpA",
+        user_id=user_id,
+        regions=regions,
+        keywords=["cemento", "fierro"] if keywords is None else keywords,
+    )
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.5] * 1024)
+
+    tender_repo = InMemoryTenderRepository()
+    for tender in tenders or []:
+        tender_repo.tenders[tender.id] = tender
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = por_perfil or []
+    item_repo = FakeTenderItemVectorSearch() if con_item_repo else None
+    if item_repo is not None:
+        item_repo.search_results = por_keywords or []
+
+    embedding = embedding or FakeEmbeddingService()
+    matching_result_repo = InMemoryMatchingResultRepository()
+    reranker = FakeRerankerService()
+
+    opciones: dict = {}
+    if item_search_limit is not None:
+        opciones["item_search_limit"] = item_search_limit
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=armar_scorer(
+            reranker=reranker,
+            matching_result_repo=matching_result_repo,
+            embedding=embedding,
+        ),
+        matching_result_repo=matching_result_repo,
+        embedding_service=embedding if con_embedding else None,
+        item_vector_repo=item_repo,
+        **opciones,
+    )
+    return CasoRanking(
+        use_case=use_case,
+        user_id=user_id,
+        supplier=supplier,
+        tender_vector_repo=tender_vector_repo,
+        item_repo=item_repo,
+        reranker=reranker,
+        matching_result_repo=matching_result_repo,
+        embedding=embedding,
+    )
+
+
+def _ids_puntuados(reranker: FakeRerankerService) -> list[UUID]:
+    """Ids de las candidatas que llegaron al scorer (al reranker), en orden."""
+    return [uid for uid, _ in reranker.calls[0][1]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("regiones", "esperado"),
+    [
+        (["Biobío"], [8]),
+        (["Región del Biobío", "Región de Ñuble"], [8, 16]),
+        (["Metropolitana"], [13]),
+        (["Región Metropolitana de Santiago"], [13]),
+        (["Metropolitana de Santiago", "Región Metropolitana"], [13]),
+        (["Valparaíso", "Narnia"], [5]),
+    ],
+)
+async def test_el_criterio_de_la_busqueda_lleva_los_ids_de_las_regiones_del_proveedor(
+    regiones: list[str], esperado: list[int]
+) -> None:
+    """Los nombres (con o sin "Región de", canónicos o del wizard) se resuelven a
+    ids con `normalize_region_name`, sin repetir y sin los que no se reconocen."""
+    caso = await _armar_caso(regions=regiones)
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    criterio = caso.tender_vector_repo.search_criteria[0]
+    assert criterio is not None
+    assert criterio.region_ids == esperado
+    assert criterio.status_codes == [TENDER_STATUSES["PUBLISHED"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("regiones", [None, [], ["Narnia", "Atlántida"]])
+async def test_sin_regiones_reconocibles_la_busqueda_no_filtra_por_region(
+    regiones: list[str] | None,
+) -> None:
+    """Sin regiones —o ninguna reconocible— no hay a qué acotar: igual que antes."""
+    caso = await _armar_caso(regions=regiones)
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    criterio = caso.tender_vector_repo.search_criteria[0]
+    assert criterio is not None
+    assert criterio.region_ids is None
+    assert criterio.status_codes == [TENDER_STATUSES["PUBLISHED"]]
+
+
+@pytest.mark.asyncio
+async def test_la_region_en_sql_sigue_descartando_lo_que_el_payload_dejo_pasar() -> None:
+    """Red de seguridad: el payload `region_id` de Qdrant puede estar desactualizado
+    (p. ej. se corrigió la región en SQL y no se re-sincronizó), así que el filtro
+    estricto posterior sigue rigiendo, venga la candidata del canal que venga."""
+    en_su_region = uuid4()
+    por_perfil_fuera = uuid4()
+    por_keywords_fuera = uuid4()
+    tenders = [
+        create_dummy_tender(en_su_region),
+        create_dummy_tender(por_perfil_fuera),
+        create_dummy_tender(por_keywords_fuera),
+    ]
+    tenders[0].region = "Región del Biobío"
+    tenders[1].region = "Región Metropolitana de Santiago"
+    tenders[2].region = "Región Metropolitana de Santiago"
+    caso = await _armar_caso(
+        regions=["Biobío"],
+        tenders=tenders,
+        por_perfil=[(en_su_region, 0.9), (por_perfil_fuera, 0.8)],
+        por_keywords=[(por_keywords_fuera, 0.7)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert [r.tender_id for r in results] == [en_su_region]
+    assert _ids_puntuados(caso.reranker) == [en_su_region]
+
+
+# ---------------------------------------------------------------------------
+# Segundo canal: keywords del proveedor contra los vectores de partidas
+# ---------------------------------------------------------------------------
+#
+# La búsqueda por el vector del perfil completo pierde licitaciones cuyas partidas
+# calzan con una keyword puntual. Buscar cada keyword contra las partidas (MaxSim)
+# las recupera, y las candidatas de ambos canales se unen antes de puntuar.
+
+
+@pytest.mark.asyncio
+async def test_una_licitacion_que_solo_aparece_por_keywords_llega_al_scorer() -> None:
+    por_perfil, solo_keywords = uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(por_perfil), create_dummy_tender(solo_keywords)],
+        por_perfil=[(por_perfil, 0.85)],
+        por_keywords=[(solo_keywords, 0.91)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert set(_ids_puntuados(caso.reranker)) == {por_perfil, solo_keywords}
+    assert {r.tender_id for r in results} == {por_perfil, solo_keywords}
+    persistidas = await caso.matching_result_repo.get_ranking_by_supplier_id(
+        caso.supplier.id
+    )
+    assert {m.tender_id for m in persistidas} == {por_perfil, solo_keywords}
+
+
+@pytest.mark.asyncio
+async def test_lo_que_solo_vino_por_keywords_no_tiene_similitud_de_perfil() -> None:
+    """El puntaje MaxSim no está en la escala de la similitud del perfil, y un 0.0
+    afirmaría "sin parecido alguno" de algo que calzó: queda nulo, "no se midió"."""
+    por_perfil, solo_keywords = uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(por_perfil), create_dummy_tender(solo_keywords)],
+        por_perfil=[(por_perfil, 0.85)],
+        por_keywords=[(solo_keywords, 0.91)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    similitud = {r.tender_id: r.similarity_score for r in results}
+    assert similitud[por_perfil] == pytest.approx(0.85)
+    assert similitud[solo_keywords] is None
+
+
+@pytest.mark.asyncio
+async def test_la_union_de_los_canales_no_repite_candidatas() -> None:
+    """Una licitación que trajeron los dos canales se puntúa una sola vez y
+    conserva la similitud de perfil."""
+    a, b, c = uuid4(), uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(t) for t in (a, b, c)],
+        por_perfil=[(a, 0.9), (b, 0.8)],
+        por_keywords=[(b, 0.95), (c, 0.7)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert _ids_puntuados(caso.reranker) == [a, b, c]
+    assert sorted(r.tender_id for r in results) == sorted([a, b, c])
+    similitud = {r.tender_id: r.similarity_score for r in results}
+    assert similitud[b] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_la_busqueda_por_keywords_recibe_los_vectores_el_limite_y_el_criterio() -> None:
+    """Va con un vector por keyword, con `item_search_limit` y con el mismo criterio
+    que la búsqueda por perfil (estado publicada y las regiones del proveedor)."""
+    embedding = FakeEmbeddingPorTexto(
+        {"cemento": [1.0, 0.0, 0.0], "fierro": [0.0, 1.0, 0.0]}
+    )
+    caso = await _armar_caso(
+        regions=["Región del Biobío"],
+        keywords=["cemento", "  ", "fierro"],
+        embedding=embedding,
+        item_search_limit=7,
+    )
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    assert caso.item_repo is not None
+    [busqueda] = caso.item_repo.searches
+    assert busqueda["vectors"] == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+    assert busqueda["limit"] == 7
+    assert busqueda["criteria"] == caso.tender_vector_repo.search_criteria[0]
+    assert busqueda["criteria"].region_ids == [8]
+    assert busqueda["criteria"].status_codes == [TENDER_STATUSES["PUBLISHED"]]
+
+
+@pytest.mark.asyncio
+async def test_el_limite_por_defecto_de_la_busqueda_por_keywords_es_30() -> None:
+    caso = await _armar_caso()
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    assert caso.item_repo is not None
+    assert caso.item_repo.searches[0]["limit"] == 30
+
+
+@pytest.mark.asyncio
+async def test_sin_keywords_la_busqueda_usa_la_descripcion_como_el_scorer() -> None:
+    """Los textos salen de `TextBuilder.build_keyword_texts`, los mismos con que el
+    scorer puntúa: sin keywords, la descripción del proveedor."""
+    embedding = FakeEmbeddingPorTexto({"Venta de materiales": [1.0, 0.0, 0.0]})
+    caso = await _armar_caso(keywords=[], embedding=embedding)
+    caso.supplier.description = "Venta de materiales"
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    assert caso.item_repo is not None
+    assert caso.item_repo.searches[0]["vectors"] == [[1.0, 0.0, 0.0]]
+
+
+@pytest.mark.asyncio
+async def test_si_el_perfil_no_trae_nada_las_keywords_pueden_sostener_el_ranking() -> None:
+    solo_keywords = uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(solo_keywords)],
+        por_perfil=[],
+        por_keywords=[(solo_keywords, 0.9)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert [r.tender_id for r in results] == [solo_keywords]
+
+
+@pytest.mark.asyncio
+async def test_si_ningun_canal_trae_nada_se_limpia_el_ranking_anterior() -> None:
+    caso = await _armar_caso()
+    await caso.matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=caso.supplier.id,
+                tender_id=uuid4(),
+                similarity_score=0.8,
+                final_score=0.5,
+                model_version="bge-m3-v1",
+            )
+        ]
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id, force_refresh=True)
+
+    assert results == []
+    assert (
+        await caso.matching_result_repo.get_ranking_by_supplier_id(caso.supplier.id)
+        == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_un_huerfano_del_canal_de_keywords_se_borra_del_repo_de_partidas() -> None:
+    """Un id que Qdrant devuelve por sus partidas pero que ya no existe en SQL
+    ocuparía un cupo de cada búsqueda: se borra del almacén de donde vino."""
+    valida, huerfano = uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(valida)],
+        por_perfil=[(valida, 0.9)],
+        por_keywords=[(huerfano, 0.9)],
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert [r.tender_id for r in results] == [valida]
+    assert caso.item_repo is not None
+    assert caso.item_repo.deleted == [huerfano]
+    assert caso.tender_vector_repo.deleted == []
+
+
+@pytest.mark.asyncio
+async def test_un_huerfano_del_canal_de_perfil_no_toca_el_repo_de_partidas() -> None:
+    valida, huerfano = uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(valida)],
+        por_perfil=[(valida, 0.9), (huerfano, 0.8)],
+    )
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    assert caso.item_repo is not None
+    assert caso.item_repo.deleted == []
+    assert caso.tender_vector_repo.deleted == [huerfano]
+
+
+@pytest.mark.asyncio
+async def test_un_huerfano_que_trajeron_los_dos_canales_se_borra_de_ambos_almacenes() -> None:
+    valida, huerfano = uuid4(), uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(valida)],
+        por_perfil=[(valida, 0.9), (huerfano, 0.8)],
+        por_keywords=[(huerfano, 0.9)],
+    )
+
+    await caso.use_case.execute(user_id=caso.user_id)
+
+    assert caso.item_repo is not None
+    assert caso.item_repo.deleted == [huerfano]
+    assert caso.tender_vector_repo.deleted == [huerfano]
+
+
+@pytest.mark.asyncio
+async def test_sin_repo_de_partidas_el_ranking_es_el_de_antes() -> None:
+    """Sin `item_vector_repo` no hay segundo canal: mismas candidatas y mismas
+    similitudes, y el caso de uso no embebe nada (el vector del perfil ya estaba)."""
+    a, b = uuid4(), uuid4()
+    embedding_del_caso_de_uso = FakeEmbeddingService()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(a), create_dummy_tender(b)],
+        por_perfil=[(a, 0.85), (b, 0.78)],
+        con_item_repo=False,
+        embedding=embedding_del_caso_de_uso,
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert [r.tender_id for r in results] == [a, b]
+    assert [r.similarity_score for r in results] == [
+        pytest.approx(0.85),
+        pytest.approx(0.78),
+    ]
+    # El doble de embeddings es el mismo que usa el scorer, así que aparecen sus
+    # llamadas (keywords y partidas), pero la búsqueda por keywords no hizo la
+    # suya: las keywords se embebieron una sola vez, en el scorer.
+    assert embedding_del_caso_de_uso.calls.count(["cemento", "fierro"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_sin_servicio_de_embeddings_no_se_busca_por_keywords() -> None:
+    """Sin cómo convertir las keywords en vectores no hay segundo canal, aunque
+    exista el repo de partidas: el ranking sigue con lo que trae el perfil."""
+    a = uuid4()
+    caso = await _armar_caso(
+        tenders=[create_dummy_tender(a)],
+        por_perfil=[(a, 0.85)],
+        con_embedding=False,
+    )
+
+    results = await caso.use_case.execute(user_id=caso.user_id)
+
+    assert [r.tender_id for r in results] == [a]
+    assert caso.item_repo is not None
+    assert caso.item_repo.searches == []

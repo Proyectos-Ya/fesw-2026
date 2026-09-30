@@ -2,15 +2,9 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import (
-    Condition,
     Distance,
-    FieldCondition,
-    Filter,
-    MatchAny,
-    MatchValue,
     PointIdsList,
     PointStruct,
-    Range,
     VectorParams,
 )
 
@@ -18,7 +12,10 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.schemas.tender_schema import TenderFilterCriteria
-from app.shared.datetime_utils import to_utc_epoch
+from app.infrastructure.repositories.qdrant_tender_filters import (
+    build_filter,
+    ensure_payload_indexes,
+)
 
 
 class QdrantTenderRepository(ITenderVectorRepository):
@@ -29,19 +26,6 @@ class QdrantTenderRepository(ITenderVectorRepository):
 
     _COLLECTION_NAME = "tenders"
     _VECTOR_NAME = "tender"
-
-    # Campos del payload por los que se pre-filtra, con el tipo que Qdrant usa
-    # para indexarlos. El tipo importa: un rango sobre un campo indexado como
-    # `keyword` no compara como número.
-    _PAYLOAD_INDEXES: dict[str, str] = {
-        "status_code": "keyword",
-        "region_id": "integer",
-        "provincia_id": "integer",
-        "comuna_id": "integer",
-        "available_amount_clp": "float",
-        "closing_at": "integer",
-        "published_at": "integer",
-    }
 
     def __init__(
         self,
@@ -73,12 +57,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
         # actuales, así que crear los índices solo al crearla significaría que
         # nadie los tendría nunca sin borrar y reindexar. Qdrant los trata de
         # forma idempotente.
-        for field_name, field_schema in self._PAYLOAD_INDEXES.items():
-            await self._client.create_payload_index(
-                collection_name=self._COLLECTION_NAME,
-                field_name=field_name,
-                field_schema=field_schema,  # type: ignore[arg-type]
-            )
+        await ensure_payload_indexes(self._client, self._COLLECTION_NAME)
 
     async def upsert(
         self,
@@ -138,7 +117,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
             collection_name=self._COLLECTION_NAME,
             query=vector,
             using=self._VECTOR_NAME,
-            query_filter=self._build_filter(criteria),
+            query_filter=build_filter(criteria),
             limit=limit,
             offset=offset,
         )
@@ -162,80 +141,7 @@ class QdrantTenderRepository(ITenderVectorRepository):
         # planificar una consulta, no para informar.
         response = await self._client.count(
             collection_name=self._COLLECTION_NAME,
-            count_filter=self._build_filter(criteria),
+            count_filter=build_filter(criteria),
             exact=True,
         )
         return response.count
-
-    def _build_filter(self, criteria: TenderFilterCriteria | None) -> Filter | None:
-        """Traduce el criterio de la capa de aplicación al `Filter` de Qdrant.
-
-        Es el único punto donde el vocabulario de negocio se convierte en tipos
-        de Qdrant, y donde las fechas pasan a epoch.
-        """
-        if criteria is None:
-            return None
-
-        # `Condition` y no `FieldCondition`: `Filter.must` es invariante en el
-        # tipo del elemento y no acepta la lista del subtipo.
-        conditions: list[Condition] = []
-
-        # Listas -> MatchAny. `MatchValue` compara contra un único valor, así que
-        # no sirve para "estado publicada o cerrada".
-        if criteria.status_codes:
-            conditions.append(
-                FieldCondition(
-                    key="status_code", match=MatchAny(any=list(criteria.status_codes))
-                )
-            )
-        if criteria.region_ids:
-            conditions.append(
-                FieldCondition(
-                    key="region_id", match=MatchAny(any=list(criteria.region_ids))
-                )
-            )
-        # `MatchValue`, no `MatchAny`: a diferencia de región, provincia/comuna
-        # son un solo valor (el frontend las selecciona de a una, en cascada).
-        if criteria.province_id is not None:
-            conditions.append(
-                FieldCondition(
-                    key="provincia_id", match=MatchValue(value=criteria.province_id)
-                )
-            )
-        if criteria.commune_id is not None:
-            conditions.append(
-                FieldCondition(
-                    key="comuna_id", match=MatchValue(value=criteria.commune_id)
-                )
-            )
-
-        # Rangos. `gte`/`lte` mantienen ambos extremos inclusivos, igual que el
-        # filtro de presupuesto del frontend.
-        rangos = (
-            ("closing_at", criteria.closing_from, criteria.closing_to),
-            ("published_at", criteria.published_from, criteria.published_to),
-        )
-        for key, desde, hasta in rangos:
-            if desde is None and hasta is None:
-                continue
-            conditions.append(
-                FieldCondition(
-                    key=key,
-                    range=Range(
-                        gte=to_utc_epoch(desde) if desde else None,
-                        lte=to_utc_epoch(hasta) if hasta else None,
-                    ),
-                )
-            )
-
-        if criteria.min_amount is not None or criteria.max_amount is not None:
-            conditions.append(
-                FieldCondition(
-                    key="available_amount_clp",
-                    range=Range(gte=criteria.min_amount, lte=criteria.max_amount),
-                )
-            )
-
-        # `Filter(must=[])` en Qdrant no equivale a "sin filtro": devolver None
-        # es lo que deja la búsqueda sin restricciones.
-        return Filter(must=conditions) if conditions else None

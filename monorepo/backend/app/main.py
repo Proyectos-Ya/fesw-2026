@@ -10,6 +10,9 @@ from app.bootstrap import bootstrap, build_notification_runners
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
+)
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
@@ -74,6 +77,14 @@ async def lifespan(app: FastAPI):
     # payload que el pre-filtrado del buscador necesita. Creándola aquí a mano,
     # esos índices no existirían nunca en un entorno real.
     await QdrantTenderRepository(
+        client=app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    ).ensure_collection()
+
+    # Colección aparte con un multivector por licitación (un vector por partida),
+    # para el calce de keywords contra cada ítem. No se agrega a "tenders" porque
+    # un vector nombrado nuevo obligaría a recrear esa colección.
+    await QdrantTenderItemVectorRepository(
         client=app.state.qdrant_async_client,
         vector_size=settings.embedding_vector_size,
     ).ensure_collection()

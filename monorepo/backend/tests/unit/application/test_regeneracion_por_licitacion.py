@@ -20,7 +20,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
@@ -28,11 +27,10 @@ from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
 
 from .fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 from .test_get_or_create_deep_analysis import (
     FakeDeepAnalysisService,
@@ -104,11 +102,7 @@ async def _correr(
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
         deep_analysis_service=servicio,
-        scorer=CompatibilityScorer(
-            reranker_service=FakeRerankerService(),
-            weighting_service=FakeWeightingService(),
-            matching_result_repo=matching_result_repo,
-        ),
+        scorer=armar_scorer(matching_result_repo=matching_result_repo),
     )
     await use_case.execute(tender_id=tender_id, user_id=user_id)
     return servicio

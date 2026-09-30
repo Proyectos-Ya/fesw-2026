@@ -23,12 +23,19 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.repositories.tender_chat_repository import (
     ITenderChatRepository,
 )
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_formula import (
+    CalibrationCoefficients,
+    CompatibilityFormula,
+)
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.services.document_validator_service import (
@@ -43,7 +50,6 @@ from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
 from app.application.services.token_verifier import IAuthTokenVerifier
-from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
 )
@@ -121,6 +127,9 @@ from app.infrastructure.repositories.notification_repository import (
 from app.infrastructure.repositories.qdrant_supplier_repository import (
     QdrantSupplierRepository,
 )
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
+)
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
@@ -162,7 +171,6 @@ from app.infrastructure.services.company_lookup.http_company_lookup_service impo
 from app.infrastructure.services.document_validator_service import (
     DocumentValidatorService,
 )
-from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
 )
@@ -234,8 +242,18 @@ def get_reranker_service(request: Request) -> IRerankerService:
     return request.app.state.reranker_service
 
 
-def get_weighting_service(request: Request) -> IWeightingService:
-    return request.app.state.weighting_service
+def get_tender_item_vector_repo(request: Request) -> ITenderItemVectorRepository:
+    # Como `get_tender_vector_repo`: el cliente Qdrant nace en el lifespan, que
+    # corre después de `bootstrap(app)`, así que no se puede guardar en
+    # `app.state` desde ahí y se arma el repositorio en cada petición.
+    return QdrantTenderItemVectorRepository(
+        client=request.app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    )
+
+
+def get_compatibility_formula(request: Request) -> CompatibilityFormula:
+    return request.app.state.compatibility_formula
 
 
 def get_matching_result_repo(
@@ -244,17 +262,58 @@ def get_matching_result_repo(
     return MatchingResultRepository(session)
 
 
+# Versión de la fórmula de compatibilidad. Se sube a mano cada vez que cambian los
+# coeficientes de `settings.compatibility_*` o las señales que los alimentan: es lo
+# que hace que los porcentajes cacheados con la fórmula anterior se recalculen.
+COMPATIBILITY_FORMULA_VERSION = "compat-calib-v1"
+
+
+def compatibility_model_version() -> str:
+    """Identifica embeddings y fórmula juntos, para `MatchingResult.model_version`.
+
+    `RankTendersUseCase` compara este valor con el de la caché de
+    recomendaciones. Antes era solo el modelo de embeddings, que no cambia
+    cuando se recalibra la fórmula: desplegar coeficientes nuevos habría dejado
+    a cada usuario viendo los porcentajes viejos hasta su próximo cambio de perfil.
+    """
+    return f"{settings.embedding_model}+{COMPATIBILITY_FORMULA_VERSION}"
+
+
+def build_compatibility_formula() -> CompatibilityFormula:
+    """Arma la fórmula calibrada con los coeficientes de la configuración."""
+    return CompatibilityFormula(
+        relevant=CalibrationCoefficients(
+            intercept=settings.compatibility_relevant_intercept,
+            reranker=settings.compatibility_relevant_reranker,
+            best_match=settings.compatibility_relevant_best_match,
+            coverage=settings.compatibility_relevant_coverage,
+        ),
+        exact=CalibrationCoefficients(
+            intercept=settings.compatibility_exact_intercept,
+            reranker=settings.compatibility_exact_reranker,
+            best_match=settings.compatibility_exact_best_match,
+            coverage=settings.compatibility_exact_coverage,
+        ),
+    )
+
+
 def get_compatibility_scorer(
     session: Annotated[AsyncSession, Depends(get_session)],
     reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+    item_vector_repo: Annotated[
+        ITenderItemVectorRepository, Depends(get_tender_item_vector_repo)
+    ],
+    formula: Annotated[CompatibilityFormula, Depends(get_compatibility_formula)],
 ) -> CompatibilityScorer:
     """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
     return CompatibilityScorer(
         reranker_service=reranker_service,
-        weighting_service=weighting_service,
         matching_result_repo=MatchingResultRepository(session),
-        model_version=settings.embedding_model,
+        embedding_service=embedding_service,
+        item_vector_repo=item_vector_repo,
+        formula=formula,
+        model_version=compatibility_model_version(),
     )
 
 
@@ -268,6 +327,9 @@ def get_rank_tenders_use_case(
     ],
     scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
     embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+    item_vector_repo: Annotated[
+        ITenderItemVectorRepository, Depends(get_tender_item_vector_repo)
+    ],
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
@@ -276,8 +338,10 @@ def get_rank_tenders_use_case(
         tender_repo=TenderRepository(session),
         scorer=scorer,
         matching_result_repo=MatchingResultRepository(session),
-        model_version=settings.embedding_model,
+        model_version=compatibility_model_version(),
         embedding_service=embedding_service,
+        # Segundo canal de candidatas: las keywords contra las partidas.
+        item_vector_repo=item_vector_repo,
     )
 
 
@@ -770,6 +834,10 @@ def build_notification_runners(
     """
 
     def _rank_tenders(session: AsyncSession) -> RankTendersUseCase:
+        item_vector_repo = QdrantTenderItemVectorRepository(
+            client=app.state.qdrant_async_client,
+            vector_size=settings.embedding_vector_size,
+        )
         return RankTendersUseCase(
             supplier_repo=SupplierRepository(session),
             supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_async_client),
@@ -780,12 +848,19 @@ def build_notification_runners(
             tender_repo=TenderRepository(session),
             scorer=CompatibilityScorer(
                 reranker_service=app.state.reranker_service,
-                weighting_service=app.state.weighting_service,
                 matching_result_repo=MatchingResultRepository(session),
-                model_version=settings.embedding_model,
+                embedding_service=app.state.embedding_service,
+                item_vector_repo=item_vector_repo,
+                formula=app.state.compatibility_formula,
+                model_version=compatibility_model_version(),
             ),
             matching_result_repo=MatchingResultRepository(session),
-            model_version=settings.embedding_model,
+            model_version=compatibility_model_version(),
+            # El escaneo reescribe el mismo ranking que ve el usuario: tiene que
+            # buscar candidatas con las mismas piezas que el endpoint, incluido el
+            # segundo canal (keywords contra partidas), que necesita ambas.
+            embedding_service=app.state.embedding_service,
+            item_vector_repo=item_vector_repo,
         )
 
     async def scan_all() -> int:
@@ -876,17 +951,15 @@ def bootstrap(app: FastAPI) -> None:
         use_tls=settings.smtp_use_tls,
     )
 
+    # Los coeficientes son inmutables y salen de la configuración, así que una
+    # sola instancia sirve a todas las peticiones. El repositorio de vectores de
+    # partidas no se registra acá: necesita el cliente Qdrant, que el lifespan
+    # crea después (ver `get_tender_item_vector_repo`).
+    #
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
     # llevarían todas las que sobreviven al filtro y no ordenaría nada.
-    # Estos son los pesos con que se calibró el reranker en
-    # tests/matching_evaluation.
-    app.state.weighting_service = FieldWeightingService(
-        reranker_weight=0.50,
-        sector_weight=0.25,
-        keyword_weight=0.25,
-        region_weight=0.0,
-    )
+    app.state.compatibility_formula = build_compatibility_formula()
 
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(

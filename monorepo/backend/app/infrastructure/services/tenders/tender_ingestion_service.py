@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
@@ -18,6 +21,9 @@ from app.application.services.tender_ingestion_service import ITenderIngestionSe
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
 from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
+)
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
@@ -127,12 +133,14 @@ class TenderIngestionService(ITenderIngestionService):
         embedding_service: IEmbeddingService,
         qdrant_client: AsyncQdrantClient | None = None,
         tender_vector_repo: ITenderVectorRepository | None = None,
+        tender_item_vector_repo: ITenderItemVectorRepository | None = None,
     ):
         self.engine = engine
         self.client = client
         self.embedding_service = embedding_service
         self.qdrant_client = qdrant_client
         self._tender_vector_repo = tender_vector_repo
+        self._tender_item_vector_repo = tender_item_vector_repo
 
     # Obtiene listado de cambios recientes y guarda códigos en tender_metadata si no existen
     async def fetch_tenders_metadata(
@@ -511,11 +519,28 @@ class TenderIngestionService(ITenderIngestionService):
                 client=self.qdrant_client,  # type: ignore[arg-type]
                 vector_size=settings.embedding_vector_size,
             )
+
+        # Mismo criterio que el de arriba, con una diferencia: sin repositorio
+        # inyectado ni cliente Qdrant no hay contra qué armarlo, así que se
+        # omite (la ingesta funciona igual, solo que sin vectores de partidas)
+        # en vez de fallar al primer upsert.
+        tender_item_vector_repo: ITenderItemVectorRepository | None
+        if self._tender_item_vector_repo is not None:
+            tender_item_vector_repo = self._tender_item_vector_repo
+        elif self.qdrant_client is not None:
+            tender_item_vector_repo = QdrantTenderItemVectorRepository(
+                client=self.qdrant_client,
+                vector_size=settings.embedding_vector_size,
+            )
+        else:
+            tender_item_vector_repo = None
+
         return TenderIngestionUseCase(
             repository=TenderRepository(session),
             embedding_service=self.embedding_service,
             tender_vector_repo=tender_vector_repo,
             enable_comuna_generic_heuristic=settings.enable_comuna_generic_heuristic,
+            tender_item_vector_repo=tender_item_vector_repo,
         )
 
     async def _marcar_procesada(

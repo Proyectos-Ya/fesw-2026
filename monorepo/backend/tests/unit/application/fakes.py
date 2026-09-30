@@ -1,5 +1,6 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
 
+import math
 from datetime import datetime
 from uuid import UUID
 
@@ -16,6 +17,9 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
@@ -26,11 +30,15 @@ from app.application.repositories.tender_vector_repository import (
 from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_formula import (
+    CalibrationCoefficients,
+    CompatibilityFormula,
+)
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
-from app.application.services.weighting_service import IWeightingService
 from app.domain.entities.company_profile import CompanyRecord
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
@@ -53,6 +61,7 @@ from app.domain.errors.supplier_errors import (
     UserAlreadyHasSupplier,
 )
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
+from app.shared.datetime_utils import to_utc_epoch
 
 
 class InMemoryUserRepository(IUserRepository):
@@ -348,6 +357,123 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         return 0
 
 
+class InMemoryTenderItemVectorRepository(ITenderItemVectorRepository):
+    """Repositorio de vectores de partidas en memoria para pruebas.
+
+    Misma semántica que el de Qdrant: `upsert` reemplaza el punto entero (vectores
+    y payload; con lista vacía lo borra), `set_payload` fusiona claves y no hace
+    nada si el punto no existe, `get_many` solo devuelve las licitaciones con
+    vectores, y `search_by_keywords` puntúa con MaxSim real (Σ_keywords
+    max_partidas coseno) sobre el conjunto que pasa los criterios.
+    """
+
+    def __init__(self) -> None:
+        self.vectors: dict[UUID, list[list[float]]] = {}
+        # Todo punto con vectores tiene entrada acá, vacía si se subió sin payload.
+        self.payloads: dict[UUID, dict] = {}
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        item_vectors: list[list[float]],
+        payload: dict | None = None,
+    ) -> None:
+        if not item_vectors:
+            self.vectors.pop(tender_id, None)
+            self.payloads.pop(tender_id, None)
+            return
+        self.vectors[tender_id] = [list(v) for v in item_vectors]
+        self.payloads[tender_id] = dict(payload or {})
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        if tender_id not in self.vectors:
+            return
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
+
+    async def get_many(self, tender_ids: list[UUID]) -> dict[UUID, list[list[float]]]:
+        return {tid: self.vectors[tid] for tid in tender_ids if tid in self.vectors}
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.vectors.pop(tender_id, None)
+        self.payloads.pop(tender_id, None)
+
+    async def search_by_keywords(
+        self,
+        keyword_vectors: list[list[float]],
+        limit: int,
+        criteria: TenderFilterCriteria | None = None,
+    ) -> list[tuple[UUID, float]]:
+        if not keyword_vectors:
+            return []
+        # El filtro se aplica al conjunto elegible ANTES del corte, como el
+        # pre-filtro de Qdrant; el orden de inserción desempata (sort estable).
+        puntajes = [
+            (tid, self._maxsim(keyword_vectors, items))
+            for tid, items in self.vectors.items()
+            if self._cumple(self.payloads.get(tid, {}), criteria)
+        ]
+        puntajes.sort(key=lambda par: par[1], reverse=True)
+        return puntajes[:limit]
+
+    @staticmethod
+    def _coseno(a: list[float], b: list[float]) -> float:
+        norma = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+        if norma == 0.0:
+            return 0.0
+        return sum(x * y for x, y in zip(a, b, strict=True)) / norma
+
+    @classmethod
+    def _maxsim(
+        cls, keyword_vectors: list[list[float]], item_vectors: list[list[float]]
+    ) -> float:
+        return sum(
+            max(cls._coseno(keyword, item) for item in item_vectors)
+            for keyword in keyword_vectors
+        )
+
+    @staticmethod
+    def _cumple(payload: dict, criteria: TenderFilterCriteria | None) -> bool:
+        """Misma interpretación de los criterios que `build_filter` de Qdrant.
+
+        Un campo ausente o nulo no calza con ninguna condición, como en Qdrant.
+        """
+        if criteria is None:
+            return True
+
+        def valor(campo: str):
+            return payload.get(campo)
+
+        if criteria.status_codes and valor("status_code") not in criteria.status_codes:
+            return False
+        if criteria.region_ids and valor("region_id") not in criteria.region_ids:
+            return False
+        if criteria.province_id is not None and valor("provincia_id") != criteria.province_id:
+            return False
+        if criteria.commune_id is not None and valor("comuna_id") != criteria.commune_id:
+            return False
+
+        def epoch(fecha: datetime | None) -> float | None:
+            return None if fecha is None else to_utc_epoch(fecha)
+
+        # Límites inclusivos; las fechas del criterio pasan a epoch como en Qdrant.
+        rangos = (
+            ("closing_at", epoch(criteria.closing_from), epoch(criteria.closing_to)),
+            ("published_at", epoch(criteria.published_from), epoch(criteria.published_to)),
+            ("available_amount_clp", criteria.min_amount, criteria.max_amount),
+        )
+        for campo, desde, hasta in rangos:
+            if desde is None and hasta is None:
+                continue
+            actual = valor(campo)
+            if actual is None:
+                return False
+            if desde is not None and actual < desde:
+                return False
+            if hasta is not None and actual > hasta:
+                return False
+        return True
+
+
 class FakeEmbeddingService(IEmbeddingService):
     """Devuelve siempre el mismo vector configurable — evita cargar el modelo real."""
 
@@ -358,6 +484,29 @@ class FakeEmbeddingService(IEmbeddingService):
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(texts)
         return [self.vector] * len(texts)
+
+
+class FakeEmbeddingPorTexto(IEmbeddingService):
+    """Embeddings deterministas y distintos por texto, para probar B y C.
+
+    `FakeEmbeddingService` devuelve el mismo vector para todo, así que la
+    similitud entre cualquier par de textos es 1 y no se puede distinguir un buen
+    calce de uno malo. Acá cada texto conocido tiene su vector; los desconocidos
+    reciben `por_defecto` (ortogonal a los vectores de los tests, por convención).
+    """
+
+    def __init__(
+        self,
+        vectores: dict[str, list[float]] | None = None,
+        por_defecto: list[float] | None = None,
+    ) -> None:
+        self.vectores = vectores or {}
+        self.por_defecto = por_defecto if por_defecto is not None else [0.0, 0.0, 1.0]
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        return [list(self.vectores.get(t, self.por_defecto)) for t in texts]
 
 
 class FakeCompanyLookupService(ICompanyLookupService):
@@ -846,14 +995,39 @@ class FakeRerankerService(IRerankerService):
         ]
 
 
-class FakeWeightingService(IWeightingService):
-    """Ponderación simulada: un score decreciente por candidata."""
+# Coeficientes sencillos y distintos entre sí, para que cada señal (R, B y C) pese
+# algo en el puntaje. Lo que se prueba con ellos es el cableado del scorer, no la
+# calibración (eso vive en test_compatibility_formula.py).
+FORMULA_DE_PRUEBA = CompatibilityFormula(
+    relevant=CalibrationCoefficients(
+        intercept=-3.0, reranker=0.3, best_match=3.0, coverage=4.0
+    ),
+    exact=CalibrationCoefficients(
+        intercept=-4.0, reranker=0.4, best_match=3.0, coverage=3.0
+    ),
+)
 
-    def __init__(self) -> None:
-        self.calls: list[list[tuple[Tender, float]]] = []
 
-    def calculate_scores(
-        self, candidates: list[tuple[Tender, float]], supplier: Supplier
-    ) -> list[tuple[UUID, float]]:
-        self.calls.append(list(candidates))
-        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
+def armar_scorer(
+    reranker: IRerankerService | None = None,
+    matching_result_repo: IMatchingResultRepository | None = None,
+    embedding: IEmbeddingService | None = None,
+    item_repo: ITenderItemVectorRepository | None = None,
+    formula: CompatibilityFormula | None = None,
+    model_version: str = "bge-m3-v1",
+) -> CompatibilityScorer:
+    """Arma el `CompatibilityScorer` real sobre dobles en memoria.
+
+    Con los valores por defecto todas las keywords y partidas comparten vector
+    (`FakeEmbeddingService`), así que B y C valen 1 para cualquier licitación y el
+    orden lo decide el reranker; quien quiera distinguir calces pasa `embedding`
+    (por ejemplo `FakeEmbeddingPorTexto`) y `item_repo`.
+    """
+    return CompatibilityScorer(
+        reranker_service=reranker or FakeRerankerService(),
+        matching_result_repo=matching_result_repo or InMemoryMatchingResultRepository(),
+        embedding_service=embedding or FakeEmbeddingService(),
+        item_vector_repo=item_repo or InMemoryTenderItemVectorRepository(),
+        formula=formula or FORMULA_DE_PRUEBA,
+        model_version=model_version,
+    )
