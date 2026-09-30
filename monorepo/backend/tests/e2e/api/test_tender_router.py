@@ -19,6 +19,7 @@ from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.tender import Tender
 from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
+from app.domain.errors.matching_errors import RecommendationsSaveError
 from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -143,6 +144,28 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
     assert response.status_code == 404
     data = response.json()
     assert "No se encontró el vector para el proveedor" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_get_recommended_tenders_save_error_returns_503_with_message(
+    api: AsyncClient,
+) -> None:
+    """Si no se pudo guardar el ranking, responde 503 con un mensaje legible.
+
+    Antes el error escapaba sin traducir y el frontend mostraba el texto crudo
+    "Internal Server Error". Es 503 y no 500: es transitorio y se puede reintentar.
+    """
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = RecommendationsSaveError()
+    app.dependency_overrides[get_rank_tenders_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="ana@example.com", full_name="Ana Rojas")
+
+    response = await api.get("/tenders/recommended")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == str(RecommendationsSaveError())
+    assert "Inténtalo nuevamente" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

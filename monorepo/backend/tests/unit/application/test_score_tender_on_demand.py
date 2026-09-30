@@ -10,7 +10,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
@@ -21,11 +20,10 @@ from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForScoring, TenderNotFound
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 
 
@@ -69,11 +67,7 @@ async def armar_caso() -> tuple[
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
-        scorer=CompatibilityScorer(
-            reranker_service=FakeRerankerService(),
-            weighting_service=FakeWeightingService(),
-            matching_result_repo=matching_result_repo,
-        ),
+        scorer=armar_scorer(matching_result_repo=matching_result_repo),
     )
     return use_case, supplier_repo, tender_repo, matching_result_repo, supplier
 

@@ -42,7 +42,10 @@ from app.domain.errors.deep_analysis_errors import (
     DeepAnalysisServiceError,
     InvalidPromptInstruction,
 )
-from app.domain.errors.matching_errors import ScoreCalculationError
+from app.domain.errors.matching_errors import (
+    RecommendationsSaveError,
+    ScoreCalculationError,
+)
 from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -261,6 +264,9 @@ def create_tender_router(
             404: {
                 "description": "No se encontró el perfil de proveedor o su vector asociado"
             },
+            503: {
+                "description": "No se pudo guardar el ranking calculado; se puede reintentar"
+            },
         },
     )
     async def get_recommended_tenders(
@@ -288,6 +294,11 @@ def create_tender_router(
         except SupplierVectorNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except RecommendationsSaveError as e:
+            # Transitorio: 503 para que el cliente sepa que puede reintentar.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
             ) from e
 
     # Declarada antes que las rutas con `{tender_id}` para que el segmento

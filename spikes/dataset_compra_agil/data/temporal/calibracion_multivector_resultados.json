@@ -1,0 +1,172 @@
+{
+  "binario": [
+    {
+      "modelo": "R",
+      "auc": 0.5426,
+      "brier": 0.2439,
+      "ece": 0.0225,
+      "prec_verdes_70": null,
+      "pct_verdes_70": 0.0,
+      "ordinal_media": [
+        0.403,
+        0.411,
+        0.406
+      ],
+      "ordinal_mae": 0.3416
+    },
+    {
+      "modelo": "Rc",
+      "auc": 0.6402,
+      "brier": 0.2302,
+      "ece": 0.0332,
+      "prec_verdes_70": 1.0,
+      "pct_verdes_70": 0.012,
+      "ordinal_media": [
+        0.372,
+        0.413,
+        0.46
+      ],
+      "ordinal_mae": 0.3282
+    },
+    {
+      "modelo": "B+C",
+      "auc": 0.7615,
+      "brier": 0.2043,
+      "ece": 0.0775,
+      "prec_verdes_70": 0.929,
+      "pct_verdes_70": 0.012,
+      "ordinal_media": [
+        0.35,
+        0.418,
+        0.494
+      ],
+      "ordinal_mae": 0.3048
+    },
+    {
+      "modelo": "Rc+B+C",
+      "auc": 0.7489,
+      "brier": 0.2024,
+      "ece": 0.0575,
+      "prec_verdes_70": 0.976,
+      "pct_verdes_70": 0.037,
+      "ordinal_media": [
+        0.335,
+        0.419,
+        0.517
+      ],
+      "ordinal_mae": 0.2989
+    },
+    {
+      "modelo": "Rc+B+C+S",
+      "auc": 0.748,
+      "brier": 0.2026,
+      "ece": 0.0589,
+      "prec_verdes_70": 0.976,
+      "pct_verdes_70": 0.037,
+      "ordinal_media": [
+        0.335,
+        0.419,
+        0.516
+      ],
+      "ordinal_mae": 0.2992
+    },
+    {
+      "modelo": "Rc+B+C+K+D+S",
+      "auc": 0.7477,
+      "brier": 0.2024,
+      "ece": 0.0504,
+      "prec_verdes_70": 0.977,
+      "pct_verdes_70": 0.038,
+      "ordinal_media": [
+        0.334,
+        0.418,
+        0.519
+      ],
+      "ordinal_mae": 0.2982
+    }
+  ],
+  "ordinal": {},
+  "confiabilidad_ordinal_Rc+B+C": [
+    {
+      "rango": "0–10%",
+      "n": 2,
+      "predicho": 0.089,
+      "observado": 0.25
+    },
+    {
+      "rango": "10–30%",
+      "n": 282,
+      "predicho": 0.237,
+      "observado": 0.229
+    },
+    {
+      "rango": "30–50%",
+      "n": 573,
+      "predicho": 0.391,
+      "observado": 0.344
+    },
+    {
+      "rango": "50–70%",
+      "n": 247,
+      "predicho": 0.58,
+      "observado": 0.688
+    },
+    {
+      "rango": "70–90%",
+      "n": 42,
+      "predicho": 0.762,
+      "observado": 0.833
+    }
+  ],
+  "coeficientes": {
+    "Rc+B+C": {
+      "entradas": [
+        "Rc",
+        "B",
+        "C"
+      ],
+      "rel_ge1": {
+        "intercepto": -3.8877800781407212,
+        "coef": [
+          0.3280611060594652,
+          3.2548385289853146,
+          6.029595718599867
+        ]
+      },
+      "rel_eq2": {
+        "intercepto": -5.0958288896097885,
+        "coef": [
+          0.40133965935458293,
+          3.5325775294246924,
+          5.061981524496129
+        ]
+      }
+    },
+    "Rc+B+C+S": {
+      "entradas": [
+        "Rc",
+        "B",
+        "C",
+        "S"
+      ],
+      "rel_ge1": {
+        "intercepto": -3.8488696380391123,
+        "coef": [
+          0.32928685175335853,
+          3.250616396386742,
+          6.040549074623811,
+          -0.07999065903545892
+        ]
+      },
+      "rel_eq2": {
+        "intercepto": -5.093719922324037,
+        "coef": [
+          0.4011572697646449,
+          3.5265747172386166,
+          5.05533821312136,
+          0.00827802690836725
+        ]
+      }
+    }
+  }
+}

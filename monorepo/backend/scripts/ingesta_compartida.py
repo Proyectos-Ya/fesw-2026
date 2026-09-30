@@ -51,6 +51,9 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     colección `tenders` no existiría. Ambas operaciones son idempotentes, así que
     repetirlas en cada corrida no cuesta nada.
     """
+    from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+        QdrantTenderItemVectorRepository,
+    )
     from app.infrastructure.repositories.qdrant_tender_repository import (
         QdrantTenderRepository,
     )
@@ -63,7 +66,14 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     await QdrantTenderRepository(
         client=qdrant, vector_size=settings.embedding_vector_size
     ).ensure_collection()
-    print("Colección 'tenders' lista (con sus índices de payload).\n")
+    print("Colección 'tenders' lista (con sus índices de payload).")
+
+    # La ingesta también guarda un vector por partida; sin esta colección cada
+    # licitación fallaría al escribirlo y se daría por perdida tras tres intentos.
+    await QdrantTenderItemVectorRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tender_items' lista.\n")
 
 
 class _SinEmbeddings:

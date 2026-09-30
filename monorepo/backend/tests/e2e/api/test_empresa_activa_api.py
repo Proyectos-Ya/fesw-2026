@@ -11,7 +11,6 @@ import pytest
 from httpx import AsyncClient
 
 from app import bootstrap
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
@@ -22,10 +21,9 @@ from app.domain.entities.quotation import Quotation, QuotationInput
 from app.main import app
 from app.shared.datetime_utils import utc_now_naive
 from tests.unit.application.fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
 
@@ -131,11 +129,7 @@ def licitaciones(api: AsyncClient):
             supplier_repo=suppliers,
             tender_repo=tenders,
             matching_result_repo=matching,
-            scorer=CompatibilityScorer(
-                reranker_service=FakeRerankerService(),
-                weighting_service=FakeWeightingService(),
-                matching_result_repo=matching,
-            ),
+            scorer=armar_scorer(matching_result_repo=matching),
         )
     )
     app.dependency_overrides[bootstrap.get_quotation_use_case] = lambda: (

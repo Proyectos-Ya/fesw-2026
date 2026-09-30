@@ -8,8 +8,9 @@ Dos fases, las mismas de la ingesta diaria:
 
 1. **Listado** → encola códigos en `tender_metadata` (`is_processed=False`).
 2. **Detalle** → por cada uno pide su ficha, calcula el embedding y escribe en
-   Postgres (`tender`, `tender_item`, `buyer_institution`) y en la colección
-   `tenders` de Qdrant.
+   Postgres (`tender`, `tender_item`, `buyer_institution`) y en Qdrant: la
+   colección `tenders` (un vector por licitación) y `tender_items` (un vector por
+   partida).
 
 Es **reanudable**: la fase 2 marca `is_processed` al terminar cada licitación, así
 que una interrupción no pierde trabajo. Se retoma con `--reanudar`.
