@@ -788,6 +788,36 @@ async def test_cambio_semantico_reescribe_las_partidas_con_el_payload_nuevo() ->
     assert item_repo.payloads[_ID_EXISTENTE] == payload_licitacion
 
 
+async def test_cambio_semantico_conserva_comuna_y_provincia_en_ambos_payloads() -> None:
+    """Un cambio de texto reescribe el punto entero (`upsert`), no lo fusiona.
+
+    El payload de `_actualizar` no llevaba `provincia_id` ni `comuna_id`: tras
+    cualquier cambio de nombre, descripción o partidas, la licitación dejaba de
+    aparecer al filtrar `/tenders/search` por provincia o comuna, y ahora también
+    en el pre-filtro del canal de keywords (colección de partidas).
+    """
+    dto = _make_dto(organismo="I Municipalidad de Santiago", items=_ITEMS_DOS_PARTIDAS)
+    guardadas = _items_modelo(
+        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+    )
+    vector_repo = FakeTenderVectorRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(dto, items_guardados=guardadas),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=vector_repo,
+        tender_item_vector_repo=item_repo,
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["semantico"] is True
+    _, _, payload_licitacion = vector_repo.upserts[0]
+    assert payload_licitacion["comuna_id"] == 295
+    assert payload_licitacion["provincia_id"] == 51
+    assert item_repo.payloads[_ID_EXISTENTE] == payload_licitacion
+
+
 async def test_cambio_de_metadatos_actualiza_el_payload_de_las_partidas_sin_tocar_vectores() -> (
     None
 ):

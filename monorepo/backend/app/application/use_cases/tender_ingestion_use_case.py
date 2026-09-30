@@ -102,20 +102,7 @@ class TenderIngestionUseCase:
             # Qdrant para poder viajar en su payload -- es ahí donde
             # `/tenders/search` filtra por provincia/comuna, igual que ya
             # hace con región.
-            comuna_name, comuna_source = resolve_comuna(
-                dto.buyer_name,
-                use_generic_fallback=self.enable_comuna_generic_heuristic,
-            )
-            comuna_id = (
-                await self.repo.get_comuna_id_by_name(comuna_name)
-                if comuna_name
-                else None
-            )
-            provincia_id = (
-                await self.repo.get_provincia_id_by_comuna_id(comuna_id)
-                if comuna_id
-                else None
-            )
+            comuna_id, provincia_id, comuna_source = await self._resolver_ubicacion(dto)
 
             # Qdrant antes que SQL, deliberadamente. Las dos escrituras no
             # comparten transacción, así que una puede fallar tras la otra;
@@ -232,6 +219,12 @@ class TenderIngestionUseCase:
         # escrituras no comparten transacción. Si SQL falla después, la corrida
         # siguiente vuelve a ver la diferencia y se autocorrige.
         if cambio_semantico:
+            # `upsert` reemplaza el punto entero, payload incluido: lo que no
+            # vaya aquí se pierde. Sin comuna y provincia, la licitación dejaba
+            # de aparecer al filtrar por ellas tras cualquier cambio de texto.
+            # El camino de solo metadatos no las necesita: `set_payload` fusiona.
+            comuna_id, provincia_id, _ = await self._resolver_ubicacion(dto)
+            payload = {**payload, "comuna_id": comuna_id, "provincia_id": provincia_id}
             vectors = await self.embedding_service.embed([texto_nuevo])
             await self.tender_vector_repo.upsert(
                 tender_id=existente.id, embedding=vectors[0], payload=payload
@@ -256,6 +249,28 @@ class TenderIngestionUseCase:
             "tender_code": dto.code,
             "semantico": cambio_semantico,
         }
+
+    async def _resolver_ubicacion(
+        self, dto: TenderIngestaDTO
+    ) -> tuple[int | None, int | None, str | None]:
+        """Comuna, provincia y la heurística que resolvió la comuna, desde el organismo.
+
+        Lecturas puras (sin escritura), compartidas por el alta y por la
+        actualización para que ambos payloads de Qdrant lleven lo mismo.
+        """
+        comuna_name, comuna_source = resolve_comuna(
+            dto.buyer_name,
+            use_generic_fallback=self.enable_comuna_generic_heuristic,
+        )
+        comuna_id = (
+            await self.repo.get_comuna_id_by_name(comuna_name) if comuna_name else None
+        )
+        provincia_id = (
+            await self.repo.get_provincia_id_by_comuna_id(comuna_id)
+            if comuna_id
+            else None
+        )
+        return comuna_id, provincia_id, comuna_source
 
     async def _guardar_vectores_de_partidas(
         self, tender_id: uuid.UUID, items: list[TenderItemModel], payload: dict
