@@ -13,7 +13,7 @@ RLS: en producción lo activa el event trigger `ensure_rls` del panel de
 Supabase al crear la tabla, no esta migración.
 
 Revision ID: e4849ff0c0dd
-Revises: eead2dba418a
+Revises: 1974cf871a7d
 Create Date: 2026-09-30 16:16:01.658444
 
 """
@@ -32,7 +32,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e4849ff0c0dd"
-down_revision: str | Sequence[str] | None = "eead2dba418a"
+down_revision: str | Sequence[str] | None = "1974cf871a7d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
