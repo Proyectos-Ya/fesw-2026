@@ -217,7 +217,7 @@ async def test_el_escaneo_de_alertas_usa_el_mismo_scorer_que_los_endpoints(
     monkeypatch.setattr(bootstrap, "async_session_maker", sesion_falsa)
     monkeypatch.setattr(bootstrap.asyncio, "sleep", sin_pausa)
 
-    scan_all, _, _ = bootstrap.build_notification_runners(app)
+    scan_all, *_ = bootstrap.build_notification_runners(app)
     await scan_all()
 
     [rank_tenders] = armados

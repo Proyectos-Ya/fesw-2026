@@ -64,6 +64,7 @@ describe("RecentWorkspacesBar", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     const { container } = render(<RecentWorkspacesBar />);
@@ -83,6 +84,7 @@ describe("RecentWorkspacesBar", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<RecentWorkspacesBar />);
@@ -112,6 +114,7 @@ describe("RecentWorkspacesBar", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<RecentWorkspacesBar />);
@@ -136,6 +139,7 @@ describe("RecentWorkspacesBar", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<RecentWorkspacesBar />);

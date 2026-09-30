@@ -9,13 +9,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ApiError } from "@/features/shared/api/client";
+import {
+  ApiError,
+  registrarManejadorRevocacionAcceso,
+} from "@/features/shared/api/client";
+import { Button } from "@/features/shared/components/Button";
+import { Icon } from "@/features/shared/components/Icon";
 import { useAuth } from "@/features/auth/AuthContext";
 import {
   acceptInvitation,
+  clearActiveWorkspace,
   getCurrentWorkspace,
   getMyInvitations,
   listWorkspaces,
+  rejectInvitation,
   switchWorkspace as switchWorkspaceApi,
 } from "./services/workspaceService";
 import type {
@@ -23,6 +30,27 @@ import type {
   UserWorkspaceSummary,
   WorkspaceContext as WorkspaceContextType,
 } from "./types";
+
+function isRevokedAccessError(
+  err: unknown,
+): err is { status: number; message: string } {
+  if (err instanceof ApiError) {
+    return err.status === 403 && err.message.toLowerCase().includes("revocado");
+  }
+  if (
+    err &&
+    typeof err === "object" &&
+    "status" in err &&
+    "message" in err &&
+    (err as { status: unknown }).status === 403 &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return (err as { message: string }).message
+      .toLowerCase()
+      .includes("revocado");
+  }
+  return false;
+}
 
 interface WorkspaceContextValue {
   workspaces: UserWorkspaceSummary[];
@@ -36,6 +64,7 @@ interface WorkspaceContextValue {
   refreshWorkspaces: () => Promise<void>;
   refreshInvitations: () => Promise<void>;
   acceptPendingInvitation: (token: string) => Promise<void>;
+  rejectPendingInvitation: (token: string) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -47,8 +76,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceContextType | null>(null);
   const [invitations, setInvitations] = useState<SupplierInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [revokedMessage, setRevokedMessage] = useState<string | null>(null);
+  const [isClearingRevoked, setIsClearingRevoked] = useState(false);
 
   const currentUserId = user?.id;
+
+  useEffect(() => {
+    registrarManejadorRevocacionAcceso((mensaje) => {
+      setRevokedMessage(mensaje);
+    });
+    return () => {
+      registrarManejadorRevocacionAcceso(null);
+    };
+  }, []);
 
   // Load recent workspaces for the current user from localStorage
   useEffect(() => {
@@ -127,6 +167,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (current.status === "fulfilled") {
         setActiveWorkspace(current.value);
       } else {
+        if (isRevokedAccessError(current.reason)) {
+          setRevokedMessage(current.reason.message);
+        }
         setActiveWorkspace(null);
       }
     } catch (err) {
@@ -156,6 +199,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           window.location.reload();
         }
       } catch (err) {
+        if (isRevokedAccessError(err)) {
+          setRevokedMessage(err.message);
+        }
         if (err instanceof ApiError) {
           throw err;
         }
@@ -165,12 +211,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [updateRecentSupplier],
   );
 
+  const handleReturnHomeAfterRevocation = useCallback(async () => {
+    setIsClearingRevoked(true);
+    try {
+      await clearActiveWorkspace();
+    } catch {
+      // Continúa el restablecimiento local aunque falle la llamada
+    } finally {
+      setRevokedMessage(null);
+      setActiveWorkspace(null);
+      setIsClearingRevoked(false);
+      await refreshWorkspaces();
+      if (typeof window !== "undefined" && window.location.pathname !== "/") {
+        window.location.href = "/";
+      }
+    }
+  }, [refreshWorkspaces]);
+
   const acceptPendingInvitation = useCallback(
     async (token: string) => {
       await acceptInvitation({ token });
       await Promise.all([refreshInvitations(), refreshWorkspaces()]);
     },
     [refreshInvitations, refreshWorkspaces],
+  );
+
+  const rejectPendingInvitation = useCallback(
+    async (token: string) => {
+      await rejectInvitation({ token });
+      await refreshInvitations();
+    },
+    [refreshInvitations],
   );
 
   const recentWorkspaces = useMemo<UserWorkspaceSummary[]>(() => {
@@ -240,6 +311,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       refreshWorkspaces,
       refreshInvitations,
       acceptPendingInvitation,
+      rejectPendingInvitation,
     }),
     [
       workspaces,
@@ -252,12 +324,48 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       refreshWorkspaces,
       refreshInvitations,
       acceptPendingInvitation,
+      rejectPendingInvitation,
     ],
   );
 
   return (
     <WorkspaceContext.Provider value={value}>
       {children}
+      {revokedMessage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="revoked-workspace-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border-subtle">
+            <div className="flex items-center gap-3 text-danger">
+              <Icon name="shield-alert" size={22} />
+              <h2
+                id="revoked-workspace-title"
+                className="text-lg font-bold text-text-strong"
+              >
+                Acceso restringido
+              </h2>
+            </div>
+            <p className="mt-3 text-sm text-text-muted leading-relaxed">
+              {revokedMessage} Un administrador de la empresa revocó tus
+              permisos sobre este espacio de trabajo.
+            </p>
+            <div className="mt-6 flex justify-end">
+              <Button
+                type="button"
+                variant="primary"
+                isLoading={isClearingRevoked}
+                onClick={() => void handleReturnHomeAfterRevocation()}
+                className="font-bold"
+              >
+                Ir al inicio
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </WorkspaceContext.Provider>
   );
 }
@@ -274,6 +382,7 @@ const defaultWorkspaceContextValue: WorkspaceContextValue = {
   refreshWorkspaces: async () => {},
   refreshInvitations: async () => {},
   acceptPendingInvitation: async () => {},
+  rejectPendingInvitation: async () => {},
 };
 
 export function useWorkspace(): WorkspaceContextValue {

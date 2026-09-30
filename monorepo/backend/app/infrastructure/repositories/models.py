@@ -8,6 +8,11 @@ Importar desde acá evita que eso dependa de qué módulos haya cargado la
 aplicación por casualidad. Al agregar un modelo nuevo, agregarlo también aquí.
 """
 
+from app.infrastructure.repositories.calendar_model import (
+    CalendarConnectionModel,
+    CalendarEventLinkModel,
+    CalendarOAuthStateModel,
+)
 from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
@@ -20,6 +25,10 @@ from app.infrastructure.repositories.notification_model import (
     NotificationPreferenceModel,
 )
 from app.infrastructure.repositories.question_model import QuestionModel
+from app.infrastructure.repositories.quotation_model import (
+    QuotationMaterialModel,
+    QuotationModel,
+)
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_invitation_model import (
     SupplierInvitationModel,
@@ -33,6 +42,9 @@ from app.infrastructure.repositories.tender_chat_model import (
     TenderChatMessageModel,
     TenderChatSessionModel,
 )
+from app.infrastructure.repositories.tender_milestone_model import (
+    TenderMilestoneModel,
+)
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -45,6 +57,12 @@ from app.infrastructure.repositories.tender_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "CalendarConnectionModel",
+    "CalendarEventLinkModel",
+    "CalendarOAuthStateModel",
+    "TenderMilestoneModel",
+    "QuotationModel",
+    "QuotationMaterialModel",
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "MatchingResultModel",

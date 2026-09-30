@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -29,6 +30,10 @@ from tests.unit.application.fakes import (
     FakeSupplierVectorRepository,
     InMemorySupplierRepository,
 )
+
+# El camino vectorial solo se usa cuando la selección de estado es únicamente
+# activa: Qdrant guarda solo vigentes, así que cualquier otra selección va a SQL.
+VIGENTES = TenderFilterCriteria(status_codes=["publicada"])
 
 # ---------------------------------------------------------------------------
 # Dobles
@@ -75,6 +80,13 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
     async def delete(self, tender_id: UUID) -> None:
         pass
 
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        pass
+
     async def search_by_vector(
         self,
         vector: list[float],
@@ -100,6 +112,7 @@ class FakeTenderRepo(ITenderRepository):
         self.tenders: dict[UUID, Tender] = {}
         self.sql_search_calls: list[tuple[TenderFilterCriteria, int, int, str | None]] = []
         self.sql_results: tuple[list[Tender], int] = ([], 0)
+        self.sql_orders: list[ClosingOrder] = []
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         # Devuelve en orden arbitrario a propósito: el caso de uso es responsable
@@ -115,8 +128,10 @@ class FakeTenderRepo(ITenderRepository):
         limit: int,
         offset: int = 0,
         q: str | None = None,
+        closing_order: ClosingOrder = ClosingOrder.ASC,
     ) -> tuple[list[Tender], int]:
         self.sql_search_calls.append((criteria, limit, offset, q))
+        self.sql_orders.append(closing_order)
         if self.sql_results != ([], 0):
             return self.sql_results
         todas = list(self.tenders.values())
@@ -139,6 +154,9 @@ class FakeTenderRepo(ITenderRepository):
         self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def get_inactive_ids(self) -> list[UUID]:
         return []
 
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
@@ -183,6 +201,9 @@ class FakeTenderRepo(ITenderRepository):
         return deep_analysis
 
     async def get_latest_tender_created_at(self) -> datetime | None:
+        return None
+
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
         return None
 
 
@@ -245,7 +266,7 @@ async def test_sin_texto_busca_con_el_vector_del_proveedor() -> None:
         vector_proveedor=vector_proveedor
     )
 
-    await use_case.execute(user_id=user_id, q=None)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert embedding.calls == [], "no hay texto que embeber"
     assert vector_repo.searched_vectors == [vector_proveedor]
@@ -258,7 +279,7 @@ async def test_el_texto_en_blanco_equivale_a_no_haber_texto() -> None:
         vector_proveedor=vector_proveedor
     )
 
-    await use_case.execute(user_id=user_id, q="   ")
+    await use_case.execute(user_id=user_id, q="   ", criteria=VIGENTES)
 
     assert embedding.calls == []
     assert vector_repo.searched_vectors == [vector_proveedor]
@@ -288,7 +309,7 @@ async def test_sin_texto_y_sin_vector_cae_al_camino_sql() -> None:
     t1 = uuid4()
     tender_repo.sql_results = ([_make_tender(t1)], 1)
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert vector_repo.searched_vectors == [], "no debe consultar Qdrant sin vector"
     assert len(tender_repo.sql_search_calls) == 1
@@ -301,7 +322,7 @@ async def test_sin_perfil_de_proveedor_tambien_cae_al_camino_sql() -> None:
     use_case, user_id, vector_repo, tender_repo, _ = await _build(con_perfil=False)
     tender_repo.sql_results = ([], 0)
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert vector_repo.searched_vectors == []
     assert len(tender_repo.sql_search_calls) == 1
@@ -330,7 +351,9 @@ async def test_con_texto_no_necesita_vector_del_proveedor() -> None:
 @pytest.mark.asyncio
 async def test_los_filtros_llegan_intactos_al_repositorio_vectorial() -> None:
     use_case, user_id, vector_repo, _, _ = await _build()
-    criterio = TenderFilterCriteria(region_ids=[13], min_amount=100_000)
+    criterio = TenderFilterCriteria(
+        region_ids=[13], min_amount=100_000, status_codes=["publicada"]
+    )
 
     await use_case.execute(user_id=user_id, q=None, criteria=criterio)
 
@@ -347,7 +370,7 @@ async def test_el_total_sale_de_count_y_no_del_largo_de_la_pagina() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 137
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert len(resultado.items) == 2
     assert resultado.total == 137
@@ -362,7 +385,7 @@ async def test_marca_truncado_cuando_quedan_resultados_fuera() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 137
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert resultado.is_truncated is True
 
@@ -375,7 +398,7 @@ async def test_no_marca_truncado_cuando_llego_todo() -> None:
     vector_repo.search_results = [(t1, 0.9)]
     vector_repo.total = 1
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert resultado.is_truncated is False
 
@@ -384,7 +407,7 @@ async def test_no_marca_truncado_cuando_llego_todo() -> None:
 async def test_el_tope_se_pasa_como_limite_a_qdrant() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=500)
 
-    await use_case.execute(user_id=user_id, q=None)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert vector_repo.search_limits == [500]
 
@@ -393,7 +416,7 @@ async def test_el_tope_se_pasa_como_limite_a_qdrant() -> None:
 async def test_el_offset_se_propaga_para_pedir_el_bloque_siguiente() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=500)
 
-    await use_case.execute(user_id=user_id, q=None, offset=500)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES, offset=500)
 
     assert vector_repo.search_offsets == [500]
 
@@ -408,7 +431,9 @@ async def test_el_truncado_considera_el_offset() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 4
 
-    resultado = await use_case.execute(user_id=user_id, q=None, offset=2)
+    resultado = await use_case.execute(
+        user_id=user_id, q=None, criteria=VIGENTES, offset=2
+    )
 
     # offset 2 + 2 entregadas = 4, que es el total: no queda nada más.
     assert resultado.is_truncated is False
@@ -433,7 +458,7 @@ async def test_conserva_el_orden_del_ranking_tras_hidratar() -> None:
     vector_repo.search_results = [(ids[0], 0.95), (ids[1], 0.80), (ids[2], 0.60)]
     vector_repo.total = 3
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert [t.id for t in resultado.items] == ids
 
@@ -450,7 +475,7 @@ async def test_descarta_los_ids_sin_fila_en_sql() -> None:
     vector_repo.search_results = [(huerfano, 0.99), (presente, 0.80)]
     vector_repo.total = 2
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert [t.id for t in resultado.items] == [presente]
 
@@ -462,7 +487,7 @@ async def test_sin_resultados_devuelve_lista_vacia_y_no_hidrata() -> None:
     vector_repo.search_results = []
     vector_repo.total = 0
 
-    resultado = await use_case.execute(user_id=user_id, q=None)
+    resultado = await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert resultado.items == []
     assert resultado.total == 0
@@ -542,7 +567,9 @@ async def test_acepta_un_rango_con_extremos_iguales() -> None:
     await use_case.execute(
         user_id=user_id,
         q=None,
-        criteria=TenderFilterCriteria(closing_from=base, closing_to=base),
+        criteria=TenderFilterCriteria(
+            closing_from=base, closing_to=base, status_codes=["publicada"]
+        ),
     )
 
     assert len(vector_repo.searched_vectors) == 1
@@ -557,7 +584,7 @@ async def test_acepta_un_rango_con_extremos_iguales() -> None:
 async def test_sin_limite_explicito_usa_el_por_defecto() -> None:
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
 
-    await use_case.execute(user_id=user_id, q=None)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
 
     assert vector_repo.search_limits == [100]
 
@@ -567,7 +594,7 @@ async def test_el_limite_pedido_llega_a_qdrant() -> None:
     """Permite que el cliente pida páginas chicas y pagine contra el backend."""
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100)
 
-    await use_case.execute(user_id=user_id, q=None, limit=20)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES, limit=20)
 
     assert vector_repo.search_limits == [20]
 
@@ -578,7 +605,7 @@ async def test_el_limite_se_recorta_al_maximo() -> None:
     HTTP valide bien: pedir 5.000 no puede traducirse en 5.000 hidrataciones."""
     use_case, user_id, vector_repo, _, _ = await _build(result_limit=100, max_limit=500)
 
-    await use_case.execute(user_id=user_id, q=None, limit=5000)
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES, limit=5000)
 
     assert vector_repo.search_limits == [500]
 
@@ -611,7 +638,130 @@ async def test_el_truncado_se_calcula_con_el_limite_pedido() -> None:
     vector_repo.search_results = [(ids[0], 0.9), (ids[1], 0.8)]
     vector_repo.total = 50
 
-    resultado = await use_case.execute(user_id=user_id, q=None, limit=2)
+    resultado = await use_case.execute(
+        user_id=user_id, q=None, criteria=VIGENTES, limit=2
+    )
 
     assert resultado.total == 50
     assert resultado.is_truncated is True
+
+
+# ---------------------------------------------------------------------------
+# El estado elige el camino: Qdrant guarda solo vigentes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_solo_publicada_sin_texto_ordena_por_afinidad_en_qdrant() -> None:
+    use_case, user_id, vector_repo, tender_repo, _ = await _build()
+
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
+
+    assert len(vector_repo.searched_vectors) == 1
+    assert tender_repo.sql_search_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cerradas_sin_texto_van_a_sql_y_no_tocan_qdrant() -> None:
+    """Las cerradas no tienen punto en el índice: buscarlas ahí devolvería cero."""
+    use_case, user_id, vector_repo, tender_repo, _ = await _build()
+    criterio = TenderFilterCriteria(status_codes=["cerrada", "desierta"])
+
+    await use_case.execute(user_id=user_id, q=None, criteria=criterio)
+
+    assert vector_repo.searched_vectors == []
+    assert len(tender_repo.sql_search_calls) == 1
+    assert tender_repo.sql_search_calls[0][0] == criterio
+
+
+@pytest.mark.asyncio
+async def test_cerradas_se_ordenan_por_cierre_mas_reciente_primero() -> None:
+    """De lo que ya cerró interesa lo último, no lo que cerró hace meses."""
+    use_case, user_id, _, tender_repo, _ = await _build()
+
+    await use_case.execute(
+        user_id=user_id, criteria=TenderFilterCriteria(status_codes=["cerrada"])
+    )
+
+    assert tender_repo.sql_orders == [ClosingOrder.DESC]
+
+
+@pytest.mark.asyncio
+async def test_una_mezcla_con_publicada_tambien_va_a_sql() -> None:
+    use_case, user_id, vector_repo, tender_repo, _ = await _build()
+
+    await use_case.execute(
+        user_id=user_id,
+        criteria=TenderFilterCriteria(status_codes=["publicada", "cerrada"]),
+    )
+
+    assert vector_repo.searched_vectors == []
+    assert tender_repo.sql_orders == [ClosingOrder.DESC]
+
+
+@pytest.mark.asyncio
+async def test_sin_filtro_de_estado_entra_todo_y_va_a_sql() -> None:
+    """Sin estado el contrato sigue siendo "todos", y eso incluye cerradas."""
+    use_case, user_id, vector_repo, tender_repo, _ = await _build()
+
+    await use_case.execute(user_id=user_id, q=None)
+
+    assert vector_repo.searched_vectors == []
+    assert tender_repo.sql_orders == [ClosingOrder.DESC]
+
+
+@pytest.mark.asyncio
+async def test_con_texto_y_solo_publicada_desempata_por_cierre_mas_proximo() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build()
+
+    await use_case.execute(user_id=user_id, q="cables", criteria=VIGENTES)
+
+    assert tender_repo.sql_orders == [ClosingOrder.ASC]
+
+
+@pytest.mark.asyncio
+async def test_con_texto_y_cerradas_desempata_por_cierre_mas_reciente() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build()
+
+    await use_case.execute(
+        user_id=user_id,
+        q="cables",
+        criteria=TenderFilterCriteria(status_codes=["cerrada"]),
+    )
+
+    assert tender_repo.sql_orders == [ClosingOrder.DESC]
+
+
+@pytest.mark.asyncio
+async def test_sin_vector_y_solo_publicada_ordena_por_cierre_mas_proximo() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build(con_vector=False)
+
+    await use_case.execute(user_id=user_id, q=None, criteria=VIGENTES)
+
+    assert tender_repo.sql_orders == [ClosingOrder.ASC]
+
+
+@pytest.mark.asyncio
+async def test_rechaza_un_estado_desconocido() -> None:
+    """Hoy un estado mal escrito filtra por `IN ()` y devuelve cero en silencio."""
+    use_case, user_id, _, _, _ = await _build()
+
+    with pytest.raises(InvalidSearchCriteria):
+        await use_case.execute(
+            user_id=user_id,
+            criteria=TenderFilterCriteria(status_codes=["publicada", "abierta"]),
+        )
+
+
+@pytest.mark.asyncio
+async def test_acepta_todos_los_estados_filtrables() -> None:
+    use_case, user_id, _, tender_repo, _ = await _build()
+
+    await use_case.execute(
+        user_id=user_id,
+        criteria=TenderFilterCriteria(
+            status_codes=["publicada", "cerrada", "desierta", "cancelada"]
+        ),
+    )
+
+    assert len(tender_repo.sql_search_calls) == 1

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { formatClosingDate, formatDateTime, parseApiDate } from "../format";
+import {
+  daysUntilClosing,
+  formatClosingDate,
+  formatDateTime,
+  parseApiDate,
+} from "../format";
 
 /**
  * El backend persiste todas las fechas en UTC y las serializa con sufijo `Z`.
@@ -97,5 +102,79 @@ describe("formatClosingDate", () => {
 
   it("devuelve un guion para una fecha inválida", () => {
     expect(formatClosingDate("no es una fecha")).toBe("—");
+  });
+});
+
+/**
+ * La viñeta de cierre. "Cerrada" la decide el **estado** que guarda el backend,
+ * no la fecha sola: el estado lo actualiza un proceso periódico, y entre una
+ * pasada y otra una licitación puede tener el plazo vencido y seguir figurando
+ * publicada. Ese caso se dice tal cual ("Cerró hoy") en vez de adelantarse.
+ *
+ * Los días se cuentan en calendario de Chile, no en bloques de 24 h.
+ */
+describe("daysUntilClosing", () => {
+  // Lunes 27 de julio de 2026, 10:00 en Chile (UTC-4).
+  const AHORA = new Date("2026-07-27T14:00:00Z");
+
+  it("dice la hora cuando cierra más tarde el mismo día", () => {
+    // 22:00 UTC son las 18:00 en Chile: faltan 8 horas, no "mañana".
+    expect(daysUntilClosing("2026-07-27T22:00:00Z", "publicada", AHORA)).toMatchObject({
+      days: 0,
+      label: "Cierra hoy 18:00",
+      tone: "danger",
+    });
+  });
+
+  it("cuenta días de calendario y no bloques de 24 horas", () => {
+    // 01:00 del 28 en Chile: 15 horas después, pero ya es el día siguiente.
+    expect(daysUntilClosing("2026-07-28T05:00:00Z", "publicada", AHORA).label).toBe(
+      "Cierra mañana",
+    );
+    expect(daysUntilClosing("2026-07-30T14:00:00Z", "publicada", AHORA).label).toBe(
+      "Cierra en 3 días",
+    );
+  });
+
+  it("dice que cerró hoy si venció hoy y el estado aún no se actualizó", () => {
+    // 13:30 UTC son las 09:30 en Chile: venció hace media hora.
+    expect(daysUntilClosing("2026-07-27T13:30:00Z", "publicada", AHORA)).toMatchObject({
+      label: "Cerró hoy 09:30",
+      tone: "expired",
+    });
+  });
+
+  it("da por cerrada una publicada que venció un día anterior", () => {
+    // Mientras no corra el proceso que actualiza estados, puede haber
+    // publicadas vencidas hace días: "Cerró hoy" sería falso.
+    expect(daysUntilClosing("2026-07-26T20:00:00Z", "publicada", AHORA)).toMatchObject({
+      label: "Cerrada",
+      tone: "expired",
+    });
+  });
+
+  it("muestra el estado real aunque la fecha de cierre no haya llegado", () => {
+    const futura = "2026-08-10T14:00:00Z";
+    expect(daysUntilClosing(futura, "cerrada", AHORA)).toMatchObject({
+      label: "Cerrada",
+      tone: "expired",
+    });
+    expect(daysUntilClosing(futura, "desierta", AHORA).label).toBe("Desierta");
+    expect(daysUntilClosing(futura, "cancelada", AHORA).label).toBe("Cancelada");
+  });
+
+  it("sin estado conocido decide solo por la fecha", () => {
+    expect(daysUntilClosing("2026-07-27T22:00:00Z", null, AHORA).label).toBe(
+      "Cierra hoy 18:00",
+    );
+    expect(daysUntilClosing("2026-07-27T13:30:00Z", undefined, AHORA).label).toBe(
+      "Cerró hoy 09:30",
+    );
+  });
+
+  it("avisa cuando la fecha no es válida", () => {
+    expect(daysUntilClosing("no es una fecha", "publicada", AHORA).label).toBe(
+      "Fecha no disponible",
+    );
   });
 });

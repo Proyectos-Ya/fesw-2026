@@ -17,6 +17,14 @@ class UnauthorizedWorkspaceAction(MembershipError):
         super().__init__(message)
 
 
+class CannotRevokeOwnMembership(MembershipError):
+    def __init__(
+        self,
+        message: str = "No puedes revocar tu propio acceso como administrador",
+    ):
+        super().__init__(message)
+
+
 class InvitationError(Exception):
     """Excepción base para errores de invitaciones."""
 
@@ -33,6 +41,22 @@ class InvitationExpired(InvitationError):
 
 class InvitationAlreadyProcessed(InvitationError):
     def __init__(self, message: str = "La invitación ya fue procesada previamente"):
+        super().__init__(message)
+
+
+class InvitationAlreadyPending(InvitationError):
+    def __init__(
+        self,
+        message: str = "Ya existe una invitación pendiente en curso para este correo electrónico",
+    ):
+        super().__init__(message)
+
+
+class InvitationCancelledOrInvalid(InvitationAlreadyProcessed):
+    def __init__(
+        self,
+        message: str = "La invitación fue cancelada o ya no es válida",
+    ):
         super().__init__(message)
 
 

@@ -60,6 +60,9 @@ class FakeTenderRepository(ITenderRepository):
     async def get_expired_published_ids(self) -> list[UUID]:
         return []
 
+    async def get_inactive_ids(self) -> list[UUID]:
+        return []
+
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
         self.cerradas.extend(tender_ids)
 
@@ -120,6 +123,9 @@ class FakeTenderRepository(ITenderRepository):
         return deep_analysis
 
     async def get_latest_tender_created_at(self) -> datetime | None:
+        return None
+
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
         return None
 
 
@@ -297,7 +303,8 @@ async def test_una_desierta_no_se_indexa_como_publicada():
     `id_estado = 6` es "desierta" en Compra Ágil v2, pero el mapa heredado de la
     API de Licitaciones lo traducía a "publicada". La licitación quedaba
     marcada como abierta y entraba en recomendaciones, ficha y alertas. Ahora el
-    estado sale de `estado.codigo`, así que no hay traducción que equivocar.
+    estado sale de `estado.codigo`, y además una licitación no activa no entra
+    al índice vectorial.
     """
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
@@ -308,9 +315,31 @@ async def test_una_desierta_no_se_indexa_como_publicada():
 
     await use_case.execute(_make_dto(status_code=6, estado_codigo="desierta"))
 
-    _, _, payload = vector_repo.upserts[0]
-    assert payload["status_code"] == "desierta"
-    assert payload["status_code"] not in ACTIVE_TENDER_STATUSES
+    assert all(
+        p["status_code"] in ACTIVE_TENDER_STATUSES for _, _, p in vector_repo.upserts
+    )
+
+
+async def test_una_licitacion_que_llega_cerrada_se_guarda_sin_vector() -> None:
+    """Qdrant guarda solo activas. Guardarla en SQL basta para la ficha y para
+    el buscador, que resuelve las cerradas en Postgres; y no paga inferencia."""
+    repo = FakeTenderRepository()
+    vector_repo = FakeTenderVectorRepository()
+    embedding = FakeEmbeddingService()
+    use_case = TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=embedding,
+        tender_vector_repo=vector_repo,
+    )
+
+    resultado = await use_case.execute(
+        _make_dto(status_code=3, estado_codigo="cerrada")
+    )
+
+    assert resultado["status"] == "success"
+    assert len(repo.saved) == 1
+    assert vector_repo.upserts == []
+    assert embedding.calls == []
 
 
 async def test_una_licitacion_sin_cambios_no_toca_qdrant() -> None:
@@ -767,7 +796,7 @@ async def test_alta_sin_partidas_no_deja_payload_huerfano() -> None:
 
 
 async def test_cambio_semantico_reescribe_las_partidas_con_el_payload_nuevo() -> None:
-    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0, estado_codigo="cerrada")
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
     guardadas = _items_modelo(
         _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
     )
@@ -784,7 +813,7 @@ async def test_cambio_semantico_reescribe_las_partidas_con_el_payload_nuevo() ->
     await use_case.execute(dto)
 
     _, _, payload_licitacion = vector_repo.upserts[0]
-    assert payload_licitacion["status_code"] == "cerrada"
+    assert payload_licitacion["available_amount_clp"] == 80_000_000.0
     assert item_repo.payloads[_ID_EXISTENTE] == payload_licitacion
 
 
@@ -824,7 +853,7 @@ async def test_cambio_de_metadatos_actualiza_el_payload_de_las_partidas_sin_toca
     """Es el caso frecuente (estado, cierre, monto): además del payload de
     "tenders", el de las partidas, o el pre-filtro del segundo canal quedaría
     apuntando a un estado o plazo viejos."""
-    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0, estado_codigo="cerrada")
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
     vector_repo = FakeTenderVectorRepository()
     item_repo = InMemoryTenderItemVectorRepository()
     vectores = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
@@ -846,7 +875,7 @@ async def test_cambio_de_metadatos_actualiza_el_payload_de_las_partidas_sin_toca
     assert resultado["semantico"] is False
     assert embedding.calls == []
     payload_licitacion = vector_repo.payloads[_ID_EXISTENTE]
-    assert payload_licitacion["status_code"] == "cerrada"
+    assert payload_licitacion["status_code"] == "publicada"
     assert payload_licitacion["available_amount_clp"] == 80_000_000.0
     # Mismas claves y valores en ambas colecciones; `comuna_id` (que este camino no
     # recalcula) se conserva porque `set_payload` fusiona.
@@ -906,3 +935,24 @@ async def test_cambio_de_metadatos_sin_repositorio_de_partidas_sigue_funcionando
 
     assert resultado["status"] == "updated"
     assert vector_repo.payloads[_ID_EXISTENTE]["available_amount_clp"] == 80_000_000.0
+
+
+async def test_una_licitacion_que_se_cierra_pierde_tambien_sus_vectores_de_partidas() -> None:
+    """Qdrant guarda solo activas, y el canal de keywords busca en `tender_items`:
+    si ahí quedara el punto de una cerrada, seguiría ocupando cupos del ranking
+    hasta que la limpieza de huérfanos lo encontrara."""
+    guardada = _make_dto(items=_ITEMS_DOS_PARTIDAS)  # publicada e indexada
+    dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, status_code=3, estado_codigo="cerrada")
+    vector_repo = FakeTenderVectorRepository()
+    item_repo = InMemoryTenderItemVectorRepository()
+    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0]], {"status_code": "publicada"})
+    use_case = TenderIngestionUseCase(
+        repository=RepoQueTeniaLaLicitacion(guardada, items_guardados=_items_modelo(guardada)),
+        embedding_service=FakeEmbeddingPorTexto(),
+        tender_vector_repo=vector_repo,
+        tender_item_vector_repo=item_repo,
+    )
+
+    await use_case.execute(dto)
+
+    assert await item_repo.get_many([_ID_EXISTENTE]) == {}

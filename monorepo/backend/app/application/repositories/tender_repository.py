@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -23,6 +24,17 @@ class TenderFilters(BaseModel):
     regions: list[str] | None = None  # Filter by Region Names (e.g. ['Metropolitana'])
 
 
+class ClosingOrder(StrEnum):
+    """Sentido en que el buscador SQL ordena por fecha de cierre.
+
+    Ascendente para vigentes: primero lo que está por cerrar. Descendente cuando
+    entran cerradas: de lo que ya cerró interesa lo último, no lo de hace meses.
+    """
+
+    ASC = "asc"
+    DESC = "desc"
+
+
 class ITenderRepository(ABC):
     """Interface for the Tender repository in the Application layer."""
 
@@ -38,11 +50,15 @@ class ITenderRepository(ABC):
         limit: int,
         offset: int = 0,
         q: str | None = None,
+        closing_order: ClosingOrder = ClosingOrder.ASC,
     ) -> tuple[list[Tender], int]:
         """Busca licitaciones por filtros y opcionalmente por texto léxico (FTS 'spanish').
 
-        Respaldo del buscador manual para cuando no hay vector con que ordenar
-        por relevancia, o modo principal de búsqueda estricta cuando se proporciona `q`.
+        Camino del buscador manual para todo lo que no se ordena por afinidad
+        en Qdrant: búsquedas con texto, selecciones de estado que incluyen
+        cerradas y proveedores sin vector. Con `q` ordena por relevancia de
+        texto y desempata por cierre; sin `q`, solo por cierre, en el sentido
+        de `closing_order`.
 
         Devuelve `(licitaciones de esta página, total que cumple los filtros)`.
         El total es independiente del corte, igual que en el camino vectorial.
@@ -80,6 +96,15 @@ class ITenderRepository(ABC):
 
         Solo las que dicen `publicada`: una cancelada o desierta con el plazo
         vencido no se reabre ni se reescribe.
+        """
+        ...
+
+    @abstractmethod
+    async def get_inactive_ids(self) -> list[UUID]:
+        """Ids de las licitaciones cuyo estado no es activo.
+
+        Lo usa la purga única del índice vectorial: es Postgres, y no el
+        payload de Qdrant, quien sabe el estado real de cada una.
         """
         ...
 
@@ -131,4 +156,12 @@ class ITenderRepository(ABC):
     @abstractmethod
     async def get_latest_tender_created_at(self) -> datetime | None:
         """Retrieve the timestamp of the most recently created tender."""
+        ...
+
+    @abstractmethod
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        """Fin de la última corrida de ingesta terminada que procesó algo.
+
+        None si no hay ninguna registrada (p. ej. solo corre el scheduler en proceso).
+        """
         ...

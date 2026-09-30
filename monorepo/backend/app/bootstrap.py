@@ -6,6 +6,9 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.calendar_repository import (
+    ICalendarConnectionRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -16,6 +19,12 @@ from app.application.repositories.notification_repository import (
 )
 from app.application.repositories.question_repository import IQuestionRepository
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
+from app.application.repositories.supplier_invitation_repository import (
+    ISupplierInvitationRepository,
+)
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -31,6 +40,10 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.calendar_provider_client import (
+    CalendarProviders,
+    ICalendarProviderClient,
+)
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.compatibility_formula import (
     CalibrationCoefficients,
@@ -44,14 +57,33 @@ from app.application.services.document_validator_service import (
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
+from app.application.services.milestone_extraction_ai_service import (
+    IMilestoneExtractionAIService,
+)
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
+from app.application.services.tender_refresher import ITenderRefresher
+from app.application.services.token_cipher import ITokenCipher
 from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
+)
+from app.application.use_cases.calendar.calendar_authorization import (
+    CompleteCalendarAuthorizationUseCase,
+    StartCalendarAuthorizationUseCase,
+)
+from app.application.use_cases.calendar.calendar_connections import (
+    DisconnectCalendarUseCase,
+    GetCalendarConnectionsUseCase,
+)
+from app.application.use_cases.calendar.refresh_synced_tender_dates import (
+    RefreshSyncedTenderDatesUseCase,
+)
+from app.application.use_cases.calendar.sync_milestones import (
+    SyncMilestonesToCalendarUseCase,
 )
 from app.application.use_cases.create_tender_chat_session_use_case import (
     CreateTenderChatSessionUseCase,
@@ -71,6 +103,18 @@ from app.application.use_cases.list_tender_chat_documents_use_case import (
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
+)
+from app.application.use_cases.milestones.extract_tender_milestones import (
+    ExtractTenderMilestonesUseCase,
+)
+from app.application.use_cases.milestones.get_tender_milestones import (
+    GetTenderMilestonesUseCase,
+)
+from app.application.use_cases.milestones.send_milestone_reminders import (
+    SendMilestoneRemindersUseCase,
+)
+from app.application.use_cases.milestones.set_milestone_reminder import (
+    SetMilestoneReminderUseCase,
 )
 from app.application.use_cases.notifications.build_daily_digest import (
     BuildDailyDigestUseCase,
@@ -96,6 +140,7 @@ from app.application.use_cases.questions.answer_question_use_case import (
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
+from app.application.use_cases.quotation import QuotationUseCase
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
@@ -109,13 +154,18 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
 from app.config import settings
+from app.domain.entities.calendar import CalendarProvider
 from app.infrastructure.auth.dependencies import (
     build_get_current_user,
     build_get_current_workspace_context,
     build_get_optional_workspace_context,
 )
 from app.infrastructure.db import async_session_maker, get_session
-
+from app.infrastructure.repositories.calendar_repository import (
+    CalendarConnectionRepository,
+    CalendarEventLinkRepository,
+    CalendarOAuthStateRepository,
+)
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -134,14 +184,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
+from app.infrastructure.repositories.quotation_repository import QuotationRepository
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
-)
-from app.application.repositories.supplier_invitation_repository import (
-    ISupplierInvitationRepository,
-)
-from app.application.repositories.supplier_member_repository import (
-    ISupplierMemberRepository,
 )
 from app.infrastructure.repositories.sql_supplier_invitation_repository import (
     SqlSupplierInvitationRepository,
@@ -153,16 +198,27 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_repository import (
+    TenderMilestoneRepository,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.infrastructure.routers.calendar import (
+    create_calendar_router,
+    create_milestone_sync_router,
+)
+from app.infrastructure.routers.milestones import create_milestones_router
+from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
-
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.calendar.google_calendar_client import (
+    GoogleCalendarClient,
+)
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
     HttpCompanyLookupService,
     SreLookupService,
@@ -174,11 +230,18 @@ from app.infrastructure.services.document_validator_service import (
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
 )
+from app.infrastructure.services.gemini_milestone_extraction_service import (
+    GeminiMilestoneExtractionService,
+)
 from app.infrastructure.services.gemini_tender_assistant_service import (
     GeminiTenderAssistantService,
 )
 from app.infrastructure.services.notifications.smtp_email_service import (
     SmtpEmailService,
+)
+from app.infrastructure.services.security.fernet_token_cipher import (
+    FernetTokenCipher,
+    UnconfiguredTokenCipher,
 )
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
 from app.infrastructure.services.supabase_identity_directory import (
@@ -354,6 +417,16 @@ def get_score_tender_on_demand_use_case(
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         scorer=scorer,
+    )
+
+
+def get_quotation_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> QuotationUseCase:
+    return QuotationUseCase(
+        QuotationRepository(session),
+        SupplierRepository(session),
+        TenderRepository(session),
     )
 
 
@@ -593,6 +666,121 @@ def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIServi
     return request.app.state.tender_assistant_ai_service
 
 
+def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAIService:
+    return request.app.state.milestone_extraction_service
+
+
+def get_calendar_providers(request: Request) -> CalendarProviders:
+    return request.app.state.calendar_providers
+
+
+def get_token_cipher(request: Request) -> ITokenCipher:
+    return request.app.state.token_cipher
+
+
+def get_calendar_connection_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    cipher: Annotated[ITokenCipher, Depends(get_token_cipher)],
+) -> ICalendarConnectionRepository:
+    return CalendarConnectionRepository(session, cipher)
+
+
+def get_calendar_connections_use_case(
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> GetCalendarConnectionsUseCase:
+    return GetCalendarConnectionsUseCase(connections, providers)
+
+
+def get_start_calendar_authorization_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> StartCalendarAuthorizationUseCase:
+    return StartCalendarAuthorizationUseCase(
+        milestones=TenderMilestoneRepository(session),
+        states=CalendarOAuthStateRepository(session),
+        providers=providers,
+    )
+
+
+def get_complete_calendar_authorization_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> CompleteCalendarAuthorizationUseCase:
+    return CompleteCalendarAuthorizationUseCase(
+        states=CalendarOAuthStateRepository(session),
+        connections=connections,
+        providers=providers,
+    )
+
+
+def get_sync_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> SyncMilestonesToCalendarUseCase:
+    return SyncMilestonesToCalendarUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        connections=connections,
+        event_links=CalendarEventLinkRepository(session),
+        providers=providers,
+        app_base_url=settings.app_base_url,
+    )
+
+
+def get_disconnect_calendar_use_case(
+    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
+    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+) -> DisconnectCalendarUseCase:
+    return DisconnectCalendarUseCase(connections, providers)
+
+
+def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient]:
+    """Solo los proveedores con credenciales; sin ninguno, la sincronización queda apagada."""
+    providers: dict[CalendarProvider, ICalendarProviderClient] = {}
+    if settings.google_calendar_client_id and settings.google_calendar_client_secret:
+        providers[CalendarProvider.GOOGLE] = GoogleCalendarClient(
+            client_id=settings.google_calendar_client_id,
+            client_secret=settings.google_calendar_client_secret,
+            redirect_uri=settings.google_calendar_redirect_uri,
+        )
+    return providers
+
+
+def get_tender_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+) -> GetTenderMilestonesUseCase:
+    return GetTenderMilestonesUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        event_links=CalendarEventLinkRepository(session),
+        chat=chat_repo,
+    )
+
+
+def get_set_milestone_reminder_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SetMilestoneReminderUseCase:
+    return SetMilestoneReminderUseCase(TenderMilestoneRepository(session))
+
+
+def get_extract_tender_milestones_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
+) -> ExtractTenderMilestonesUseCase:
+    return ExtractTenderMilestonesUseCase(
+        tenders=TenderRepository(session),
+        milestones=TenderMilestoneRepository(session),
+        event_links=CalendarEventLinkRepository(session),
+        chat=chat_repo,
+        ai=ai,
+    )
+
+
 def get_document_validator_service() -> IDocumentValidatorService:
     return DocumentValidatorService()
 
@@ -818,14 +1006,51 @@ def build_company_lookup_service() -> ICompanyLookupService | None:
     )
 
 
+def build_milestone_refresh_runner(
+    app: FastAPI, refresher: ITenderRefresher
+) -> Callable[[], Awaitable[int]]:
+    """Arma la función que ejecuta `MilestoneRefreshScheduler` (HU-16).
+
+    Como los runners de alertas, abre su propia sesión en cada vuelta: vive
+    fuera del ciclo de petición de FastAPI.
+    """
+
+    async def refresh() -> int:
+        async with async_session_maker() as session:
+            tenders = TenderRepository(session)
+            milestones = TenderMilestoneRepository(session)
+            event_links = CalendarEventLinkRepository(session)
+            sync = SyncMilestonesToCalendarUseCase(
+                tenders=tenders,
+                milestones=milestones,
+                connections=CalendarConnectionRepository(session, app.state.token_cipher),
+                event_links=event_links,
+                providers=app.state.calendar_providers,
+                app_base_url=settings.app_base_url,
+            )
+            return await RefreshSyncedTenderDatesUseCase(
+                tenders=tenders,
+                refresher=refresher,
+                milestones=milestones,
+                event_links=event_links,
+                sync=sync,
+                notifications=NotificationRepository(session),
+                deliveries=NotificationDeliveryRepository(session),
+                preferences=NotificationPreferenceRepository(session),
+            ).execute()
+
+    return refresh
+
+
 def build_notification_runners(
     app: FastAPI,
 ) -> tuple[
     Callable[[], Awaitable[int]],
     Callable[[], Awaitable[int]],
     Callable[[], Awaitable[int]],
+    Callable[[], Awaitable[int]],
 ]:
-    """Arma las tres funciones que ejecuta `NotificationScheduler`.
+    """Arma las cuatro funciones que ejecuta `NotificationScheduler`.
 
     Los bucles viven fuera del ciclo de petición de FastAPI, así que no pueden
     apoyarse en `Depends(get_session)`: cada ejecución abre y cierra su propia
@@ -910,7 +1135,18 @@ def build_notification_runners(
             )
             return await use_case.execute()
 
-    return scan_all, dispatch_pending, build_digest
+    async def send_milestone_reminders() -> int:
+        async with async_session_maker() as session:
+            use_case = SendMilestoneRemindersUseCase(
+                tenders=TenderRepository(session),
+                milestones=TenderMilestoneRepository(session),
+                notifications=NotificationRepository(session),
+                deliveries=NotificationDeliveryRepository(session),
+                preferences=NotificationPreferenceRepository(session),
+            )
+            return await use_case.execute()
+
+    return scan_all, dispatch_pending, build_digest, send_milestone_reminders
 
 
 def bootstrap(app: FastAPI) -> None:
@@ -934,6 +1170,17 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.milestone_extraction_service = GeminiMilestoneExtractionService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
+    # Una llave inválida corta el arranque acá, no al guardar el primer token.
+    app.state.token_cipher = (
+        FernetTokenCipher(settings.token_encryption_key)
+        if settings.token_encryption_key
+        else UnconfiguredTokenCipher()
+    )
+    app.state.calendar_providers = build_calendar_providers()
 
     app.state.reranker_service = build_reranker_service()
 
@@ -1013,8 +1260,34 @@ def bootstrap(app: FastAPI) -> None:
         get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
         get_tender_chat_history_use_case=get_tender_chat_history_use_case,
         get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
+        get_email_service=get_email_service,
     )
     app.include_router(router)
-
-
+    app.include_router(
+        create_quotation_router(
+            get_current_user,
+            get_quotation_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_milestones_router(
+            get_current_user,
+            get_tender_milestones_use_case,
+            get_extract_tender_milestones_use_case,
+            get_set_milestone_reminder_use_case,
+        )
+    )
+    app.include_router(
+        create_calendar_router(
+            get_current_user,
+            get_calendar_connections_use_case,
+            get_start_calendar_authorization_use_case,
+            get_complete_calendar_authorization_use_case,
+            get_disconnect_calendar_use_case,
+        )
+    )
+    app.include_router(
+        create_milestone_sync_router(get_current_user, get_sync_milestones_use_case)
+    )
 

@@ -50,6 +50,8 @@ class InMemoryTenderRepository(ITenderRepository):
         self.actualizadas: list = []
         self.cerradas: list[UUID] = []
         self.tenders: dict[UUID, Tender] = {}
+        # Fin de la última corrida de ingesta con datos; None = sin corridas.
+        self.ultima_ingesta: datetime | None = None
 
     async def get_tenders(self, filters: TenderFilters) -> list[Tender]:
         results = []
@@ -81,6 +83,9 @@ class InMemoryTenderRepository(ITenderRepository):
         self.actualizadas.append(tender)
 
     async def get_expired_published_ids(self) -> list[UUID]:
+        return []
+
+    async def get_inactive_ids(self) -> list[UUID]:
         return []
 
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
@@ -124,6 +129,9 @@ class InMemoryTenderRepository(ITenderRepository):
     async def save_deep_analysis(self, deep_analysis: DeepAnalysis) -> DeepAnalysis:
         return deep_analysis
 
+    async def get_latest_ingestion_finished_at(self) -> datetime | None:
+        return self.ultima_ingesta
+
     async def get_latest_tender_created_at(self) -> datetime | None:
         if not self.tenders:
             return None
@@ -156,6 +164,13 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
 
     async def delete(self, tender_id: UUID) -> None:
         self.deleted.append(tender_id)
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        pass
 
     async def search_by_vector(
         self,
@@ -1228,3 +1243,129 @@ async def test_sin_servicio_de_embeddings_no_se_busca_por_keywords() -> None:
     assert [r.tender_id for r in results] == [a]
     assert caso.item_repo is not None
     assert caso.item_repo.searches == []
+
+
+# ---------------------------------------------------------------------------
+# Invalidación de la caché por corrida de ingesta
+# ---------------------------------------------------------------------------
+
+
+async def _escenario_con_cache(
+    *,
+    cache_hace: timedelta,
+    licitacion_hace: timedelta,
+    ultima_ingesta_hace: timedelta | None,
+    perfil_cambio_hace: timedelta | None = None,
+) -> tuple[RankTendersUseCase, FakeRerankerService, UUID]:
+    """Empresa con dos recomendaciones en caché, calculadas hace `cache_hace`."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    supplier.created_at = now - timedelta(days=30)
+    supplier.updated_at = now - timedelta(days=30)
+    if perfil_cambio_hace is not None:
+        supplier.profile_changed_at = now - perfil_cambio_hace
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    ids = [uuid4(), uuid4()]
+    tender_repo = InMemoryTenderRepository()
+    for tid in ids:
+        tender = create_dummy_tender(tid)
+        tender.created_at = now - licitacion_hace
+        tender_repo.tenders[tid] = tender
+    if ultima_ingesta_hace is not None:
+        tender_repo.ultima_ingesta = now - ultima_ingesta_hace
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    await matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=supplier.id,
+                tender_id=tid,
+                similarity_score=0.8,
+                reranker_score=0.9,
+                final_score=0.9 - i * 0.01,
+                model_version="bge-m3-v1",
+                calculated_at=now - cache_hace,
+            )
+            for i, tid in enumerate(ids)
+        ]
+    )
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(tid, 0.8) for tid in ids]
+    reranker = FakeRerankerService()
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(
+            reranker=reranker, matching_result_repo=matching_result_repo
+        ),
+        matching_result_repo=matching_result_repo,
+    )
+    return use_case, reranker, user_id
+
+
+@pytest.mark.asyncio
+async def test_una_corrida_terminada_despues_de_la_cache_la_invalida() -> None:
+    use_case, reranker, user_id = await _escenario_con_cache(
+        cache_hace=timedelta(hours=10),
+        licitacion_hace=timedelta(hours=2),
+        ultima_ingesta_hace=timedelta(hours=1),
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_licitaciones_nuevas_de_una_corrida_en_curso_no_invalidan() -> None:
+    """El caso del cron: entran licitaciones durante la corrida, pero la última
+    corrida terminada es anterior a la caché. Recalcular en cada escaneo gastaba
+    ~10 peticiones de Pinecone por empresa por noche."""
+    use_case, reranker, user_id = await _escenario_con_cache(
+        cache_hace=timedelta(minutes=10),
+        licitacion_hace=timedelta(minutes=1),
+        ultima_ingesta_hace=timedelta(days=1),
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_sin_corridas_registradas_rige_la_regla_de_licitacion_nueva() -> None:
+    """Una base sin `ingestion_run`: por ejemplo, un corpus cargado desde el dump."""
+    use_case, reranker, user_id = await _escenario_con_cache(
+        cache_hace=timedelta(minutes=10),
+        licitacion_hace=timedelta(minutes=1),
+        ultima_ingesta_hace=None,
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_el_cambio_de_perfil_invalida_aunque_no_haya_corrida_nueva() -> None:
+    use_case, reranker, user_id = await _escenario_con_cache(
+        cache_hace=timedelta(hours=5),
+        licitacion_hace=timedelta(days=2),
+        ultima_ingesta_hace=timedelta(days=1),
+        perfil_cambio_hace=timedelta(minutes=5),
+    )
+
+    await use_case.execute(user_id=user_id)
+
+    assert len(reranker.calls) == 1
+

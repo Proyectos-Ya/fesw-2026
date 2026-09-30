@@ -135,14 +135,27 @@ class Settings(BaseSettings):
     pinecone_api_version: str = "2025-04"
 
     # --- Mercado Público ---
+    # La cuota (10.000 peticiones al día) es del **ticket**, no de la máquina ni
+    # del proyecto. Con varios tickets se suman, y por eso hay dos variables:
+    # `MERCADO_PUBLICO_API_KEY` es el ticket de siempre y sigue siendo
+    # obligatorio, y `MERCADO_PUBLICO_API_KEYS` —separados por coma— reemplaza la
+    # lista completa cuando hay más de uno. Ver `mercado_publico_tickets`.
     mercado_publico_api_key: str
+    mercado_publico_api_keys: str | None = None
     mercadopublico_fetching_limit: int = DEFAULT_MERCADOPUBLICO_FETCHING_LIMIT
     mercadopublico_detail_delay: float = DEFAULT_MERCADOPUBLICO_DETAIL_DELAY
     mercadopublico_detail_concurrency: int = (
         DEFAULT_MERCADOPUBLICO_DETAIL_CONCURRENCY
     )
-    # Ingesta automática al arrancar y región a la que acotarla (None = todas).
-    run_auto_ingestion: bool = True
+    # Cron de estados (`scripts/sync_estados.py`). Por entorno para poder ajustar
+    # la ventana sin un PR: el volumen de cambios varía mucho según la hora
+    # (~1.600 por hora a mediodía, medido el 2026-09-29). El techo de la ventana
+    # (6 h) lo valida el script, no esto: un valor fuera de rango no debe
+    # impedir que arranque la API, que comparte esta configuración.
+    sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
+    sync_estados_limite: int = Field(default=9000, gt=0)
+    sync_estados_timeout_minutos: float = Field(default=50.0, gt=0)
+    # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
     # (`resolve_comuna_from_organismo_name_generic`, ver app/shared/comunas.py):
@@ -208,10 +221,25 @@ class Settings(BaseSettings):
     # Base de los enlaces del correo. Debe ser la URL pública del frontend: es
     # lo que el usuario abre desde su bandeja.
     app_base_url: str = "http://localhost:3000"
-    # Igual que run_auto_ingestion, permite apagar los bucles sin tocar código.
+    # Permite apagar los bucles de alertas sin tocar código.
     run_notification_scan: bool = True
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
+
+    # --- Sincronización con Google Calendar (HU-16) ---
+    # Opcional: sin el cliente configurado, el resto de la app funciona igual y
+    # los endpoints de calendario responden que la sincronización no está
+    # disponible. La redirección se arma con app_base_url y debe coincidir
+    # exactamente con la registrada en Google Cloud.
+    google_calendar_client_id: str | None = None
+    google_calendar_client_secret: str | None = None
+    # Llave Fernet para cifrar los tokens en la base. Admite varias separadas
+    # por coma para rotarla: la primera cifra y todas descifran.
+    token_encryption_key: str | None = None
+    # Revisa en Mercado Público si cambiaron las fechas de las licitaciones que
+    # alguien tiene en su calendario. Solo corre con Google Calendar configurado.
+    run_milestone_refresh: bool = True
+    milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
@@ -257,6 +285,25 @@ class Settings(BaseSettings):
         return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
     @property
+    def mercado_publico_tickets(self) -> list[str]:
+        """Los tickets disponibles, en el orden en que se van a gastar.
+
+        El cliente rota al siguiente cuando uno agota su cuota diaria, así que el
+        orden importa poco salvo para saber cuál se quema primero.
+
+        Nunca devuelve una lista vacía: `mercado_publico_api_key` es obligatorio,
+        así que en el peor caso hay uno. Eso ahorra un validador y, sobre todo,
+        evita que el cliente tenga que defenderse de un caso que no puede pasar.
+        """
+        if self.mercado_publico_api_keys:
+            tickets = [
+                t.strip() for t in self.mercado_publico_api_keys.split(",") if t.strip()
+            ]
+            if tickets:
+                return tickets
+        return [self.mercado_publico_api_key]
+
+    @property
     def cors_origins_list(self) -> list[str]:
         """Orígenes de CORS como lista, desde la cadena separada por comas."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -288,11 +335,45 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def google_calendar_enabled(self) -> bool:
+        return self.google_calendar_client_id is not None
+
+    @property
+    def google_calendar_redirect_uri(self) -> str:
+        return f"{self.app_base_url.rstrip('/')}/calendario/callback/google"
+
+    @model_validator(mode="after")
+    def _exigir_configuracion_de_calendario(self) -> "Settings":
+        """Con el cliente de Google puesto, el secreto y la llave son obligatorios.
+
+        Sin la llave, los tokens de los usuarios no se podrían guardar cifrados;
+        mejor que no arranque a que falle al conectar el primer calendario.
+        """
+        if not self.google_calendar_client_id:
+            return self
+        faltantes = [
+            nombre
+            for nombre, valor in (
+                ("GOOGLE_CALENDAR_CLIENT_SECRET", self.google_calendar_client_secret),
+                ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
+            )
+            if not valor
+        ]
+        if faltantes:
+            raise ValueError(
+                "Falta configurar para Google Calendar: " + ", ".join(faltantes)
+            )
+        return self
+
     @field_validator(
         "embedding_api_key",
         "pinecone_api_key",
         "postgres_password",
         "company_lookup_api_key",
+        "google_calendar_client_id",
+        "google_calendar_client_secret",
+        "token_encryption_key",
         mode="after",
     )
     @classmethod

@@ -1,17 +1,18 @@
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID, uuid4
+
 from pydantic import BaseModel, Field
 
 from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 
-class MemberRole(str, Enum):
+class MemberRole(StrEnum):
     ADMIN = "admin"
     MEMBER = "member"
     VIEWER = "viewer"
 
 
-class MemberStatus(str, Enum):
+class MemberStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
@@ -46,6 +47,7 @@ class SupplierMember(BaseModel):
     supplier_id: UUID
     role: MemberRole = MemberRole.MEMBER
     status: MemberStatus = MemberStatus.ACTIVE
+    last_access_at: UtcDateTime | None = Field(default_factory=utc_now_naive)
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

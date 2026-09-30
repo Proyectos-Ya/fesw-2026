@@ -53,16 +53,76 @@ export function parseApiDate(iso: string | null | undefined): Date | null {
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-export function daysUntilClosing(closingAtIso: string, now: Date = new Date()): ClosingInfo {
+/** Zona en la que se cuentan los días y se muestra la hora de cierre. */
+const CLOSING_TIME_ZONE = "America/Santiago";
+
+/** Fecha de calendario en Chile, como `YYYY-MM-DD` (formato de `en-CA`). */
+const chileDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: CLOSING_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const closingTimeFormatter = new Intl.DateTimeFormat("es-CL", {
+  timeZone: CLOSING_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** Días de calendario en Chile entre `desde` y `hasta` (negativo si ya pasó). */
+function calendarDaysBetween(desde: Date, hasta: Date): number {
+  const dia = (d: Date) => Date.parse(`${chileDayFormatter.format(d)}T00:00:00Z`);
+  return Math.round((dia(hasta) - dia(desde)) / MS_PER_DAY);
+}
+
+/**
+ * Estados que ya no admiten postulación, con el nombre que se muestra. Un
+ * estado ausente o `publicada` deja que decida la fecha.
+ */
+const INACTIVE_STATUS_LABELS: Readonly<Record<string, string>> = {
+  cerrada: "Cerrada",
+  desierta: "Desierta",
+  cancelada: "Cancelada",
+  proveedor_seleccionado: "Cerrada",
+  oc_emitida: "Cerrada",
+  desconocido: "Cerrada",
+};
+
+/**
+ * Viñeta de cierre de una licitación.
+ *
+ * "Cerrada" la decide el **estado** que guarda el backend y no la fecha sola:
+ * el estado lo actualiza un proceso periódico, y entre una pasada y otra una
+ * licitación puede tener el plazo vencido y seguir figurando publicada. Ese
+ * caso se dice tal cual ("Cerró hoy 10:00") mientras sea del mismo día; si
+ * venció un día anterior, la fecha basta para darla por cerrada.
+ *
+ * Los días se cuentan en calendario de Chile: una que cierra a las 18:00 de
+ * hoy "cierra hoy" aunque falten menos de 24 horas.
+ */
+export function daysUntilClosing(
+  closingAtIso: string,
+  statusCode?: string | null,
+  now: Date = new Date(),
+): ClosingInfo {
   const closing = parseApiDate(closingAtIso);
   if (closing === null) {
     return { days: 0, label: "Fecha no disponible", tone: "neutral" };
   }
-  const diffMs = closing.getTime() - now.getTime();
-  const days = Math.ceil(diffMs / MS_PER_DAY);
+  const days = calendarDaysBetween(now, closing);
 
-  if (days < 0) return { days, label: "Cerrada", tone: "expired" };
-  if (days === 0) return { days, label: "Cierra hoy", tone: "danger" };
+  const inactiveLabel = statusCode ? INACTIVE_STATUS_LABELS[statusCode] : undefined;
+  if (inactiveLabel) return { days, label: inactiveLabel, tone: "expired" };
+
+  const hora = closingTimeFormatter.format(closing);
+  if (closing.getTime() <= now.getTime()) {
+    return days === 0
+      ? { days, label: `Cerró hoy ${hora}`, tone: "expired" }
+      : { days, label: "Cerrada", tone: "expired" };
+  }
+  if (days === 0) return { days, label: `Cierra hoy ${hora}`, tone: "danger" };
   if (days === 1) return { days, label: "Cierra mañana", tone: "danger" };
   if (days <= 3) return { days, label: `Cierra en ${days} días`, tone: "danger" };
   if (days <= 7) return { days, label: `Cierra en ${days} días`, tone: "warning" };

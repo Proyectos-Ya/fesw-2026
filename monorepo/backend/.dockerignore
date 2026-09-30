@@ -25,7 +25,6 @@ htmlcov/
 
 # Documentación y notas de trabajo
 README.md
-status.md
 
 # Pruebas: no se ejecutan dentro de la imagen. La etapa dev las recibe igual
 # por el bind mount del código que hace docker-compose.

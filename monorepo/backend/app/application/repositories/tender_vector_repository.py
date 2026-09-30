@@ -41,10 +41,40 @@ class ITenderVectorRepository(ABC):
         """
         ...
 
+    async def set_payloads(self, payloads: dict[UUID, dict]) -> None:
+        """`set_payload` para varias licitaciones, cada una con su payload.
+
+        No es abstracto: por defecto recorre `set_payload`, que es correcto para
+        cualquier implementación. Qdrant lo sobrescribe para mandar un lote por
+        petición, porque de a uno cada punto es un viaje de red.
+        """
+        for tender_id, payload in payloads.items():
+            await self.set_payload(tender_id, payload)
+
     @abstractmethod
     async def delete(self, tender_id: UUID) -> None:
         """
         Elimina el vector de una licitación en Qdrant.
+        """
+        ...
+
+    @abstractmethod
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina varios puntos de una vez.
+
+        Es la operación del barrido diario (~4.600 cierres por día) y de la
+        purga inicial: de a uno serían miles de viajes. Borrar un id que no
+        existe no es un error, así que repetirla es seguro.
+        """
+        ...
+
+    @abstractmethod
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        """Elimina todo punto cuyo `status_code` no esté entre los dados.
+
+        El índice guarda solo licitaciones activas. Este barrido, resuelto por
+        el propio Qdrant, limpia lo que quedó de antes de esa regla o de una
+        escritura a medias, sin tener que listar ids.
         """
         ...
 

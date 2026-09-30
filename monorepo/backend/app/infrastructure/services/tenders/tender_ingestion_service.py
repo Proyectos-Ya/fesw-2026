@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
@@ -17,9 +17,11 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
+from app.domain.models.cambio_estado import CambioDeEstado
 from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
 from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
     QdrantTenderItemVectorRepository,
@@ -32,13 +34,14 @@ from app.infrastructure.repositories.tender_model import (
     TenderMetadataModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
 from app.shared.constants import ACTIVE_TENDER_STATUSES
-from app.shared.datetime_utils import to_utc_naive, utc_now_naive
+from app.shared.datetime_utils import fecha_mp_a_utc, leer_fecha_mp, utc_now_naive
 from app.shared.ingestion_window import calcular_ventana
 from app.shared.regions import to_region_id
 
@@ -76,6 +79,20 @@ class ResultadoListado:
 
 
 @dataclass
+class ListadoCambios:
+    """Lo que devolvió el listado de cambios, ya traducido.
+
+    `listadas` cuenta los ítems crudos, incluidos los ilegibles: es lo que se
+    compara contra el tope de la corrida para saber si quedaron sin mirar.
+    """
+
+    cambios: list[CambioDeEstado]
+    listadas: int
+    ilegibles: int
+    completo: bool
+
+
+@dataclass
 class ResultadoProceso:
     """Qué pasó en una pasada, para que el llamador decida si sigue.
 
@@ -89,6 +106,30 @@ class ResultadoProceso:
     cuota_agotada: bool = False
 
 
+def _en_utc_naive(momento: datetime) -> datetime:
+    """Un instante del sistema, listo para persistir.
+
+    No es `to_utc_naive`: ese conversor es para las fechas de Mercado Público y
+    supone que un naive viene en hora de Chile. La ventana la calcula
+    `utc_now_naive()`, así que un naive acá **ya está en UTC** y convertirlo lo
+    corría 3-4 h hacia el futuro.
+    """
+    if momento.tzinfo is None:
+        return momento
+    return momento.astimezone(UTC).replace(tzinfo=None)
+
+
+def _describir(error: Exception) -> str:
+    """Motivo legible para `tender_metadata.last_error`.
+
+    Con el tipo delante: un timeout de red tiene `str(e) == ""`, y la segunda
+    corrida en `dev test` dejó 46 filas con el error vacío.
+    """
+    mensaje = str(error)
+    nombre = type(error).__name__
+    return f"{nombre}: {mensaje}" if mensaje else nombre
+
+
 def _lotes(elementos: list, tamano: int):
     """Trocea una lista en sublistas de a lo más `tamano`."""
     for inicio in range(0, len(elementos), tamano):
@@ -98,34 +139,19 @@ def _lotes(elementos: list, tamano: int):
 def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bool:
     """Si el plazo de cotización ya pasó. Ante la duda, False: se conserva.
 
-    La conversión de zona la hace `to_utc_naive` y no un `replace(tzinfo=None)`:
-    `replace` **descarta** el offset en vez de convertir, así que un cierre con
-    `-04:00` —la hora de Chile— se comparaba contra UTC con cuatro horas de
-    error, y descartaba licitaciones que seguían abiertas. Con sufijo `Z` el
-    error no se notaba, porque ahí la hora de pared ya es UTC.
+    La lectura la hace `fecha_mp_a_utc`, el parser compartido con el cron de
+    estados: toda fecha de Mercado Público es hora de Chile, aunque venga con
+    "Z" (verificado el 2026-09-28). Antes se tomaba la Z como UTC, lo que habría
+    descartado con 3-4 h de error licitaciones que seguían abiertas.
 
     Descartar una licitación viva es peor que ingerir una ya cerrada: lo segundo
     lo corrige el barrido de vencidas, lo primero no lo nota nadie.
     """
-    if not fecha_cierre:
-        return False
-
-    texto = fecha_cierre.replace("Z", "+00:00")
-    try:
-        if " " in texto and "T" not in texto:
-            # Formato sin zona que la API no documenta, pero que se vio en la
-            # práctica. `to_utc_naive` lo interpreta en hora de Chile.
-            parseada = datetime.strptime(texto, "%Y-%m-%d %H:%M")
-        else:
-            parseada = datetime.fromisoformat(texto)
-    except (ValueError, TypeError):
-        return False
-
-    cierre = to_utc_naive(parseada)
+    cierre = fecha_mp_a_utc(fecha_cierre)
     return cierre is not None and cierre <= ahora_utc_naive
 
 
-class TenderIngestionService(ITenderIngestionService):
+class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
     def __init__(
         self,
         engine: AsyncEngine,
@@ -273,19 +299,74 @@ class TenderIngestionService(ITenderIngestionService):
             nuevos += len(resultado.all())
         return nuevos
 
-    async def ultima_sincronizacion(self) -> datetime | None:
-        """Fecha del registro de metadata más reciente, en UTC con zona.
+    async def listar_cambios(
+        self, ventana: timedelta, limite: int
+    ) -> ListadoCambios:
+        """Lo que cambió en la API en las últimas `ventana`, sin filtro de estado.
 
-        La columna se guarda naive —en UTC, por convención del proyecto—, así que
-        se le pone la zona antes de devolverla: quien compara contra `ahora` está
-        en hora de Chile, y restar un naive de un aware lanza TypeError.
+        Ventana de **cambios** (`ttl_cambio_ms`), siempre contada hacia atrás
+        desde ahora: no admite cursor. Sin filtro de estado porque justamente
+        interesan las que pasaron a desierta, cancelada o cerrada.
         """
+        hasta = utc_now_naive()
+        listado = await self.client.get_tenders(
+            hasta - ventana, hasta, limite, por_publicacion=False, estado=None
+        )
+        cambios = [
+            cambio
+            for cambio in (cambio_desde_item(item) for item in listado.items)
+            if cambio is not None
+        ]
+        return ListadoCambios(
+            cambios=cambios,
+            listadas=len(listado.items),
+            ilegibles=len(listado.items) - len(cambios),
+            completo=listado.completo,
+        )
+
+    async def reencolar(self, codigos: list[str]) -> int:
+        """Devuelve esos códigos a la cola, procesados o no.
+
+        Es el `_insertar_metadata` al revés: `ON CONFLICT DO UPDATE` en vez de
+        `DO NOTHING`. Reinicia `attempts` y `last_error` porque la licitación
+        vuelve por un cambio en la API, no por el error de antes. Un código sin
+        fila (cargado desde un dump) se inserta.
+        """
+        # Sin repetidos: un ON CONFLICT DO UPDATE no puede tocar dos veces la
+        # misma fila en una sentencia, y Postgres lo rechaza.
+        unicos = sorted(set(codigos))
+        if not unicos:
+            return 0
+
+        ahora = utc_now_naive()
+        reencoladas = 0
         async with AsyncSession(self.engine) as session:
-            stmt = select(func.max(col(TenderMetadataModel.created_at)))
-            ultima = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
-            if ultima is None:
-                return None
-            return ultima.replace(tzinfo=UTC)
+            for lote in _lotes(unicos, LOTE_METADATA):
+                insercion = pg_insert(TenderMetadataModel).values(
+                    [
+                        {
+                            "id": uuid.uuid4(),
+                            "code": code,
+                            "is_processed": False,
+                            "created_at": ahora,
+                            "updated_at": ahora,
+                        }
+                        for code in lote
+                    ]
+                )
+                stmt = insercion.on_conflict_do_update(
+                    index_elements=["code"],
+                    set_={
+                        "is_processed": False,
+                        "attempts": 0,
+                        "last_error": None,
+                        "updated_at": ahora,
+                    },
+                ).returning(TenderMetadataModel.code)
+                resultado = await session.exec(stmt)  # type: ignore[call-overload]
+                reencoladas += len(resultado.all())
+            await session.commit()
+        return reencoladas
 
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
@@ -315,8 +396,8 @@ class TenderIngestionService(ITenderIngestionService):
             session.add(
                 IngestionRunModel(
                     id=run_id,
-                    window_from=to_utc_naive(desde) or utc_now_naive(),
-                    window_to=to_utc_naive(hasta) or utc_now_naive(),
+                    window_from=_en_utc_naive(desde),
+                    window_to=_en_utc_naive(hasta),
                     status="running",
                 )
             )
@@ -344,6 +425,34 @@ class TenderIngestionService(ITenderIngestionService):
             corrida.finished_at = utc_now_naive()
             session.add(corrida)
             await session.commit()
+
+    async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
+        """Pasa a `failed` las `running` que empezaron antes de `antes_de`.
+
+        `failed` y no `partial`: no se sabe hasta dónde llegó, y ninguno de los
+        dos mueve el cursor, así que la ventana se vuelve a pedir igual.
+        """
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                update(IngestionRunModel)
+                .where(
+                    col(IngestionRunModel.status) == "running",
+                    col(IngestionRunModel.started_at) < _en_utc_naive(antes_de),
+                )
+                .values(status="failed", finished_at=utc_now_naive())
+            )
+            resultado = await session.exec(stmt)  # type: ignore[call-overload]
+            await session.commit()
+            return resultado.rowcount or 0
+
+    async def hay_corrida_en_curso(self) -> bool:
+        async with AsyncSession(self.engine) as session:
+            stmt = (
+                select(IngestionRunModel.id)
+                .where(IngestionRunModel.status == "running")
+                .limit(1)
+            )
+            return (await session.exec(stmt)).first() is not None
 
     async def process_unprocessed_tenders(
         self, limite: int | None = None
@@ -486,7 +595,7 @@ class TenderIngestionService(ITenderIngestionService):
                     # La licitación existe y el próximo intento la recupera.
                     # Nunca se marca procesada: eso la perdería para siempre.
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=False
+                        session, metadata_id, _describir(e), rendirse=False
                     )
                     resultado.fallidas += 1
                 except Exception as e:
@@ -494,7 +603,7 @@ class TenderIngestionService(ITenderIngestionService):
                         f"[IngestionService] Error al procesar licitación {code}: {e}"
                     )
                     await self._registrar_fallo(
-                        session, metadata_id, str(e), rendirse=True
+                        session, metadata_id, _describir(e), rendirse=True
                     )
                     resultado.fallidas += 1
 
@@ -502,6 +611,23 @@ class TenderIngestionService(ITenderIngestionService):
             # peticiones de cada slot sin volver a serializar el conjunto.
             if settings.mercadopublico_detail_delay:
                 await asyncio.sleep(settings.mercadopublico_detail_delay)
+
+    async def refresh_tender(self, code: str) -> TenderIngestaDTO | None:
+        """Vuelve a traer una licitación ya ingerida y la actualiza (HU-16).
+
+        Pasa por el mismo caso de uso que la ingesta, así SQL y el payload de
+        Qdrant quedan alineados. Si Mercado Público no trae las dos fechas
+        oficiales no se toca nada: el parser las reemplazaría por "ahora" y eso
+        se leería como un cambio de fecha.
+        """
+        detalle = await self.client.get_tender_detail(code)
+        fechas = (detalle or {}).get("fechas") or {}
+        if not detalle or not fechas.get("fecha_publicacion") or not fechas.get("fecha_cierre"):
+            return None
+        dto = self._parse_to_dto(detalle)
+        async with AsyncSession(self.engine) as session:
+            await self._construir_use_case(session).execute(dto)
+        return dto
 
     def _fuera_de_region(self, region_name: str) -> bool:
         """Si TARGET_REGION está puesto y esta licitación no es de ahí."""
@@ -549,6 +675,9 @@ class TenderIngestionService(ITenderIngestionService):
         metadata_item = await session.get(TenderMetadataModel, metadata_id)
         if metadata_item:
             metadata_item.is_processed = True
+            # Si falló antes y ahora entró, el error viejo haría que una
+            # licitación ya ingerida pareciera fallida al revisar la cola.
+            metadata_item.last_error = None
             metadata_item.updated_at = utc_now_naive()
             session.add(metadata_item)
         await session.commit()
@@ -617,14 +746,10 @@ class TenderIngestionService(ITenderIngestionService):
         estado = detail.get("estado", {}) or {}
 
         def parse_date(date_str) -> datetime:
-            if not date_str:
-                return datetime.now(UTC).replace(tzinfo=None)
-            try:
-                return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
-                    tzinfo=None
-                )
-            except Exception:
-                return datetime.now(UTC).replace(tzinfo=None)
+            # Naive en hora de Chile: el DTO la pasa a UTC (`normalize_to_utc`).
+            # Mismo lector que el listado y el cron de estados.
+            leida = leer_fecha_mp(date_str)
+            return leida if leida else datetime.now(UTC).replace(tzinfo=None)
 
         return TenderIngestaDTO(
             CodigoExterno=str(detail.get("codigo")),

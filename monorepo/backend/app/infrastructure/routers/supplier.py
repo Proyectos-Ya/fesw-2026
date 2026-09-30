@@ -4,7 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.config import settings
 from app.application.repositories.supplier_member_repository import (
     ISupplierMemberRepository,
 )
@@ -29,9 +28,10 @@ from app.application.use_cases.supplier.import_company_profile import (
     ImportCompanyProfileUseCase,
 )
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
-from app.domain.entities.company_profile import CompanyProfileDraft
 from app.config import settings
+from app.domain.entities.company_profile import CompanyProfileDraft
 from app.domain.entities.supplier import Supplier
+from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 from app.domain.errors.company_lookup_errors import (
     CompanyLookupNotConfigured,
@@ -56,6 +56,7 @@ def create_supplier_router(
     get_company_lookup_service: Callable,
     get_current_user: Callable,
     get_supplier_member_repo: Callable,
+    get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
@@ -66,6 +67,7 @@ def create_supplier_router(
         tags=["Suppliers"],
         dependencies=[Depends(get_current_user)],
     )
+    workspace_context_dep = get_current_workspace_context or (lambda: None)
 
     # Ruta sin barra final a proposito: declarada como "/" su forma canonica era
     # `/suppliers/`, y FastAPI respondia a `/suppliers` con un 307 cuya `Location`
@@ -161,8 +163,18 @@ def create_supplier_router(
     async def get_my_supplier(
         current_user: Annotated[User, Depends(get_current_user)],
         repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
     ):
-        # Devuelve la empresa del usuario autenticado (o 404 si aún no crea una)
+        # Devuelve primero la empresa del espacio de trabajo activo (soporte multi-empresa / miembros invitados)
+        if workspace_context is not None:
+            active_supplier = await repo.get_by_id(
+                workspace_context.active_supplier_id
+            )
+            if active_supplier is not None:
+                return active_supplier
+        # Fallback: devuelve la empresa creada directamente por el usuario autenticado (o 404)
         try:
             return await GetSupplierByUserUseCase(repo).execute(current_user.id)
         except SupplierNotFoundForUser as e:
@@ -175,6 +187,9 @@ def create_supplier_router(
         response_model=Supplier,
         responses={
             400: {"description": "Datos de empresa inválidos"},
+            403: {
+                "description": "Sin permiso para editar el perfil de la empresa activa"
+            },
             404: {"description": "El usuario no tiene una empresa asociada"},
         },
     )
@@ -186,13 +201,30 @@ def create_supplier_router(
             ISupplierVectorRepository, Depends(get_supplier_vector_repo)
         ],
         embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
     ):
-        # Edita la empresa del usuario autenticado; re-indexa el vector si
-        # cambian los campos que alimentan el matching
+        # Edita la empresa activa (o la propia, sin espacio de trabajo); re-indexa
+        # el vector si cambian los campos que alimentan el matching
+        if (
+            workspace_context is not None
+            and "edit_company_profile" not in workspace_context.permissions
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para editar el perfil de esta empresa",
+            )
         try:
             return await UpdateSupplierUseCase(
                 repo, vector_repo, embedding_service
-            ).execute(current_user.id, data)
+            ).execute(
+                current_user.id,
+                data,
+                supplier_id=(
+                    workspace_context.active_supplier_id if workspace_context else None
+                ),
+            )
         except SupplierNotFoundForUser as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)

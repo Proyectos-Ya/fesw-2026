@@ -1,12 +1,12 @@
 """Tareas en segundo plano de las alertas de licitaciones (HdU 08).
 
-Mismo enfoque que `TenderScheduler`: bucles `asyncio` dentro del lifespan de la
-aplicación, sin broker ni cron externo. El scheduler solo decide *cuándo*; el
-*qué* son las funciones que recibe, cada una responsable de abrir y cerrar su
-propia sesión de base de datos.
+Bucles `asyncio` dentro del lifespan de la aplicación, sin broker ni cron
+externo. El scheduler solo decide *cuándo*; el *qué* son las funciones que
+recibe, cada una responsable de abrir y cerrar su propia sesión de base de datos.
 
-Como el de ingesta, esto asume **una sola instancia** de la API. Con dos
-réplicas ambas escanearían y el usuario recibiría correos duplicados.
+Esto asume **una sola instancia** de la API contra la base. Con dos —dos
+réplicas, o dos entornos que comparten base— ambas despachan y el usuario
+recibe correos duplicados (visto el 16-sep-2026; ver PENDIENTES §3.19).
 """
 
 import asyncio
@@ -20,6 +20,10 @@ from app.shared.datetime_utils import CHILE_TZ
 # salga en segundos y no en la próxima hora.
 DELIVERY_LOOP_SECONDS = 30
 
+# La anticipación del recordatorio se elige en días, así que revisar cada hora
+# alcanza de sobra y no carga la base.
+REMINDER_LOOP_SECONDS = 60 * 60
+
 
 class NotificationScheduler:
     def __init__(
@@ -27,14 +31,35 @@ class NotificationScheduler:
         scan_all: Callable[[], Awaitable[int]],
         dispatch_pending: Callable[[], Awaitable[int]],
         build_digest: Callable[[], Awaitable[int]],
+        send_milestone_reminders: Callable[[], Awaitable[int]] | None = None,
         scan_interval_seconds: int = 300,
         digest_hour: int = 8,
+        reminder_interval_seconds: int = REMINDER_LOOP_SECONDS,
     ) -> None:
         self.scan_all = scan_all
         self.dispatch_pending = dispatch_pending
         self.build_digest = build_digest
+        self.send_milestone_reminders = send_milestone_reminders
         self.scan_interval_seconds = scan_interval_seconds
         self.digest_hour = digest_hour
+        self.reminder_interval_seconds = reminder_interval_seconds
+
+    async def start_reminder_loop(self) -> None:
+        """Avisa de los hitos con recordatorio activado (HU-16, criterio 10)."""
+        if self.send_milestone_reminders is None:
+            return
+        print(
+            f"[Alertas] Iniciando loop de recordatorios de hitos "
+            f"(cada {self.reminder_interval_seconds} segundos)..."
+        )
+        while True:
+            try:
+                recordados = await self.send_milestone_reminders()
+                if recordados:
+                    print(f"[Alertas] {recordados} hitos recordados")
+            except Exception as e:
+                print(f"[Alertas] Error al enviar recordatorios de hitos: {e}")
+            await asyncio.sleep(self.reminder_interval_seconds)
 
     async def start_scan_loop(self) -> None:
         """Busca licitaciones compatibles nuevas para cada proveedor."""

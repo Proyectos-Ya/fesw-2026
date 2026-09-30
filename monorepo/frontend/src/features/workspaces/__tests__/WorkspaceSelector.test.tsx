@@ -55,6 +55,7 @@ describe("WorkspaceSelector", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<WorkspaceSelector />);
@@ -74,6 +75,7 @@ describe("WorkspaceSelector", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<WorkspaceSelector />);
@@ -95,6 +97,7 @@ describe("WorkspaceSelector", () => {
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
       acceptPendingInvitation: vi.fn(),
+      rejectPendingInvitation: vi.fn(),
     });
 
     render(<WorkspaceSelector />);

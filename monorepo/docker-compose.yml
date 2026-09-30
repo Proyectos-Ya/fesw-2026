@@ -86,7 +86,9 @@ services:
   # Motor de búsqueda vectorial: matching semántico de licitaciones
   # ------------------------------------------------------------
   qdrant:
-    image: qdrant/qdrant:v1.17.1
+    # Misma versión que el clúster de Qdrant Cloud de producción (1.19.0), para
+    # que lo probado en local se comporte igual que en producción.
+    image: qdrant/qdrant:v1.19.0
     container_name: proyectosya_qdrant
     restart: unless-stopped
     ports:

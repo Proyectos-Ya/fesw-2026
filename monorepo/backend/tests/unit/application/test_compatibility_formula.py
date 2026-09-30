@@ -1,16 +1,12 @@
 """Tests unitarios de CompatibilityFormula — calibración logística de matching."""
 
 import math
-from dataclasses import dataclass
-
-import pytest
 
 from app.application.services.compatibility_formula import (
     CalibrationCoefficients,
     CompatibilityFormula,
     item_match_signals,
 )
-
 
 # ---------------------------------------------------------------------------
 # item_match_signals: similaridad coseno entre keywords e items

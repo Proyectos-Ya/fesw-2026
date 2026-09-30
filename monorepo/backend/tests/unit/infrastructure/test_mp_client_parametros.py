@@ -44,7 +44,9 @@ class TestComportamientoActual:
         """La sincronización diaria no debe cambiar de comportamiento."""
         params = await _pedir()
 
-        assert params["ttl_cambio_ms"] == str(30 * 24 * 3600 * 1000)
+        # 30 días + 4 h de desfase de Chile en agosto (UTC-4): la API mide el
+        # ttl contra hora de Chile (ver test_mp_client_hora_chile.py).
+        assert params["ttl_cambio_ms"] == str((30 * 24 + 4) * 3600 * 1000)
         assert "publicado_desde" not in params
         assert "estado" not in params
 
@@ -55,8 +57,9 @@ class TestVentanaDePublicacion:
     async def test_por_publicacion_manda_el_rango_en_iso_8601(self):
         params = await _pedir(por_publicacion=True)
 
-        assert params["publicado_desde"] == "2026-08-01T00:00:00Z"
-        assert params["publicado_hasta"] == "2026-08-31T00:00:00Z"
+        # En hora de Chile (UTC-4 en agosto), como la API compara.
+        assert params["publicado_desde"] == "2026-07-31T20:00:00Z"
+        assert params["publicado_hasta"] == "2026-08-30T20:00:00Z"
 
     @respx.mock
     @pytest.mark.asyncio

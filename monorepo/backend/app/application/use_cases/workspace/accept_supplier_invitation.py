@@ -6,13 +6,13 @@ from app.application.repositories.supplier_member_repository import (
 )
 from app.domain.entities.supplier_invitation import InvitationStatus
 from app.domain.entities.supplier_member import (
-    MemberRole,
     MemberStatus,
     SupplierMember,
 )
 from app.domain.entities.user import User
 from app.domain.errors.membership_errors import (
     InvitationAlreadyProcessed,
+    InvitationCancelledOrInvalid,
     InvitationEmailMismatch,
     InvitationExpired,
     InvitationNotFound,
@@ -38,8 +38,18 @@ class AcceptSupplierInvitationUseCase:
         if not invitation:
             raise InvitationNotFound("La invitación no existe o es inválida.")
 
+        if invitation.status in (
+            InvitationStatus.CANCELLED,
+            InvitationStatus.REJECTED,
+        ):
+            raise InvitationCancelledOrInvalid(
+                "Esta invitación fue cancelada o rechazada y ya no es válida."
+            )
+
         if invitation.status == InvitationStatus.ACCEPTED:
-            raise InvitationAlreadyProcessed("Esta invitación ya fue aceptada previamente.")
+            raise InvitationAlreadyProcessed(
+                "Esta invitación ya fue aceptada previamente."
+            )
 
         if invitation.is_expired():
             raise InvitationExpired("La invitación ha expirado.")
@@ -60,6 +70,7 @@ class AcceptSupplierInvitationUseCase:
             # Si existía inactiva, la reactivamos con el nuevo rol
             existing_membership.role = invitation.role
             existing_membership.status = MemberStatus.ACTIVE
+            existing_membership.last_access_at = now
             existing_membership.updated_at = now
             member = await self.member_repo.update(existing_membership)
         else:
@@ -68,6 +79,7 @@ class AcceptSupplierInvitationUseCase:
                 supplier_id=invitation.supplier_id,
                 role=invitation.role,
                 status=MemberStatus.ACTIVE,
+                last_access_at=now,
                 created_at=now,
                 updated_at=now,
             )
