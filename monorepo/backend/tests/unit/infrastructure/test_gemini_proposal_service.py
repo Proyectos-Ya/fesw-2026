@@ -98,6 +98,12 @@ RESULTADO = {
             "catalog_item_id": "perfil:region:valparaiso",
         },
         {
+            "text": "Duración de 40 horas cronológicas.",
+            "kind": "condicion",
+            "mandatory": True,
+            "origin": "Descripción",
+        },
+        {
             "text": "Se valorará experiencia en colegios.",
             "kind": "experiencia",
             "mandatory": False,
@@ -134,11 +140,13 @@ async def test_interpreta_las_exigencias_y_el_documento_tecnico():
     assert [r.text for r in resultado.requirements] == [
         "Deberá contar con certificación SEC.",
         "Entrega en Valparaíso.",
+        "Duración de 40 horas cronológicas.",
         "Se valorará experiencia en colegios.",
     ]
+    assert resultado.requirements[2].kind == "condicion"
     assert resultado.requirements[0].question_key == "sec_clase_a"
     assert resultado.requirements[1].catalog_item_id == "perfil:region:valparaiso"
-    nueva = resultado.requirements[2].new_question
+    nueva = resultado.requirements[3].new_question
     assert nueva is not None and nueva.kind == "experiencia_proyecto"
     assert resultado.requires_technical_document is True
 
@@ -157,6 +165,9 @@ async def test_el_prompt_lleva_la_ficha_el_catalogo_y_las_claves_del_banco():
     assert kwargs["timeout"] == 60.0
     assert kwargs["json"]["generationConfig"]["responseMimeType"] == "application/json"
     assert kwargs["json"]["generationConfig"]["temperature"] == 0
+    esquema = kwargs["json"]["generationConfig"]["responseSchema"]
+    tipos = esquema["properties"]["requirements"]["items"]["properties"]["kind"]
+    assert "condicion" in tipos["enum"]
 
 
 async def test_manda_los_pdf_como_datos_en_linea_y_avisa_los_danados():
@@ -204,3 +215,49 @@ async def test_un_error_de_conexion_es_un_error_del_servicio():
             await servicio.analyze_feasibility(
                 tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
             )
+
+
+async def test_reintenta_una_vez_si_gemini_esta_sobrecargado():
+    """503 y 429 son pasajeros: un reintento evita un 502 innecesario."""
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = [
+            _respuesta({"error": "sobrecarga"}, 503),
+            _respuesta(RESULTADO),
+        ]
+        resultado = await servicio.analyze_feasibility(
+            tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+        )
+
+    assert post.call_count == 2
+    assert len(resultado.requirements) == 4
+
+
+async def test_no_reintenta_un_error_que_no_es_pasajero():
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.return_value = _respuesta({"error": "pedido inválido"}, 400)
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 1
+
+
+async def test_si_el_reintento_tambien_falla_es_un_error_del_servicio():
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.return_value = _respuesta({"error": "sobrecarga"}, 503)
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 2

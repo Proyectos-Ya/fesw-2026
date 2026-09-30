@@ -36,7 +36,16 @@ from app.shared.datetime_utils import (
 )
 
 ProposalStatus = Literal["FEASIBILITY", "PAUSED", "STOPPED", "READY"]
-RequirementKind = Literal["certificacion", "experiencia", "disponibilidad", "otro"]
+# Dos tipos no describen a la empresa y por eso no se preguntan:
+# - `condicion`: lo que define la oferta (cantidades, duración, fechas, plazos,
+#   especificaciones). Cualquier proveedor que cotiza la acepta; la redacción la
+#   usa para describir la oferta.
+# - `documento`: un antecedente que se adjunta (cotización, formulario,
+#   declaración jurada). Es la lista de documentos necesarios del borrador (CA1).
+RequirementKind = Literal[
+    "certificacion", "experiencia", "disponibilidad", "condicion", "documento", "otro"
+]
+KINDS_SIN_PREGUNTA: frozenset[str] = frozenset({"condicion", "documento"})
 # `parcial` sale de una respuesta neutra ("En proceso de inscripción"): no es un
 # "No", así que no pausa, pero tampoco es un "Sí" que el borrador pueda afirmar.
 RequirementStatus = Literal["cumple", "no_cumple", "parcial", "desconocido"]

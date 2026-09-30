@@ -34,6 +34,7 @@ from app.domain.entities.capability import (
     question_leaks_supplier_data,
 )
 from app.domain.entities.proposal import (
+    KINDS_SIN_PREGUNTA,
     ProposalDraft,
     Requirement,
     RequirementStatus,
@@ -215,6 +216,12 @@ class StartFeasibilityUseCase:
             mandatory=dto.mandatory,
             origin=dto.origin,
         )
+
+        # 0. Una condición del servicio o un documento a adjuntar no describen a
+        # la empresa: se dan por aceptados y no se preguntan, aunque la IA haya
+        # propuesto una pregunta.
+        if dto.kind in KINDS_SIN_PREGUNTA:
+            return base.model_copy(update={"status": "cumple"})
 
         # 1. Cubierta por el catálogo: solo si el id existe de verdad.
         item = next((i for i in catalog.items if i.id == dto.catalog_item_id), None)

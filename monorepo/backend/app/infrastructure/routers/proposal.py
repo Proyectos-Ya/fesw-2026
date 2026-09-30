@@ -4,6 +4,7 @@ B2 expone la factibilidad y la lectura del borrador. Responder, decidir ante una
 discrepancia, reanudar, redactar y exportar llegan en las etapas siguientes.
 """
 
+import logging
 from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
@@ -22,6 +23,8 @@ from app.domain.entities.user import User
 from app.domain.errors.proposal_errors import ProposalDraftNotFound
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFound
+
+logger = logging.getLogger(__name__)
 
 PERMISO_ESCRITURA = "generate_proposal"
 
@@ -120,6 +123,11 @@ def create_proposal_router(
         except TenderClosedForProposal as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except ProposalAIServiceError as error:
+            # Al usuario no se le muestra el detalle técnico, pero tiene que
+            # quedar en el log: sin él un 502 no se puede diagnosticar.
+            logger.warning(
+                "Falló la factibilidad de la licitación %s: %s", tender_id, error
+            )
             raise HTTPException(
                 status.HTTP_502_BAD_GATEWAY,
                 "No fue posible analizar las bases en este momento. Intenta de nuevo.",

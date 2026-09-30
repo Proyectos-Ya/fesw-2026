@@ -404,3 +404,75 @@ class TestErrores:
 def test_ids_de_las_preguntas_de_prueba_son_distintos():
     assert len({SEC.id, MOP.id, BIM.id, OTRO_RUBRO.id}) == 4
     assert isinstance(SEC.id, UUID)
+
+
+class TestCondicionesDelServicio:
+    """Cantidades, duración, fechas o especificaciones: definen la oferta, no a la empresa.
+
+    Cualquier proveedor que cotiza las acepta. Preguntarlas cansa y llena el
+    banco de preguntas que no sirven en otra licitación: quedan cumplidas y la
+    redacción las usa para describir la oferta.
+    """
+
+    async def test_una_condicion_queda_cumplida_sin_pregunta(self):
+        e = await Escenario(
+            _exigencia(kind="condicion", text="Duración total de 40 horas cronológicas")
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.kind == "condicion"
+        assert req.status == "cumple"
+        assert req.capability_question_id is None
+        assert borrador.can_generate()
+
+    async def test_una_condicion_no_crea_preguntas_aunque_la_ia_proponga_una(self):
+        e = await Escenario(
+            _exigencia(
+                kind="condicion",
+                text="Ejecución durante septiembre de 2026",
+                new_question=NewQuestionDTO(
+                    question="¿Tiene disponibilidad en septiembre de 2026?",
+                    target_field="disponibilidad_septiembre",
+                    kind="capacidad",
+                ),
+            )
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert (
+            await e.questions.get_by_key(CATEGORIA, "disponibilidad_septiembre") is None
+        )
+        assert _req(borrador, 0).capability_question_id is None
+        assert e.answers._filas == {}
+
+
+class TestDocumentosNecesarios:
+    """Adjuntar una cotización o un formulario no es una capacidad de la empresa.
+
+    Son los documentos necesarios de la oferta (CA1): no se preguntan, quedan
+    cumplidos y la redacción los lista.
+    """
+
+    async def test_un_documento_queda_cumplido_sin_pregunta(self):
+        e = await Escenario(
+            _exigencia(
+                kind="documento",
+                text="Adjuntar cotización y formulario de transferencias",
+                new_question=NewQuestionDTO(
+                    question="¿Cuenta con la cotización y el formulario?",
+                    target_field="cotizacion_formulario",
+                    kind="capacidad",
+                ),
+            )
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.kind == "documento"
+        assert req.status == "cumple"
+        assert req.capability_question_id is None
+        assert await e.questions.get_by_key(CATEGORIA, "cotizacion_formulario") is None

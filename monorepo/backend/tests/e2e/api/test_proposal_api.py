@@ -193,7 +193,7 @@ async def test_una_licitacion_cerrada_es_409(api: AsyncClient, entorno, empresas
 
 @pytest.mark.asyncio
 async def test_si_la_ia_falla_es_502_y_no_queda_borrador(
-    api: AsyncClient, entorno, empresas
+    api: AsyncClient, entorno, empresas, caplog
 ):
     tender_id, _, drafts, _, ia = entorno
     headers_a, _, _, empresa_2 = empresas
@@ -205,3 +205,5 @@ async def test_si_la_ia_falla_es_502_y_no_queda_borrador(
 
     assert resp.status_code == 502
     assert await drafts.get(empresa_2, tender_id) is None
+    # La causa queda en el log: sin ella un 502 no se puede diagnosticar.
+    assert "Gemini no responde" in caplog.text

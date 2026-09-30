@@ -5,6 +5,7 @@ Los PDF van en línea (`inlineData`), como en el asistente: la extracción de te
 y el índice de fragmentos quedaron fuera de esta HdU (plan 230, §5).
 """
 
+import asyncio
 import base64
 import json
 
@@ -22,6 +23,9 @@ from app.domain.entities.tender import Tender
 
 # Con adjuntos, Gemini tarda más que en el análisis profundo (30 s).
 _TIMEOUT_SEGUNDOS = 60.0
+# Sobrecarga (503), cuota momentánea (429) y fallas del servidor: se reintenta una vez.
+_ESTADOS_PASAJEROS = {429, 500, 502, 503, 504}
+_ESPERA_REINTENTO_SEGUNDOS = 2.0
 _MIME_POR_TIPO = {"pdf": "application/pdf", "png": "image/png"}
 
 _INSTRUCCIONES = """[INSTRUCCIONES DEL SISTEMA - PRIORIDAD MÁXIMA]
@@ -33,12 +37,25 @@ más parecidas a algo.
 
 Para cada exigencia indica:
 - text: la exigencia, en una frase, fiel a las bases.
-- kind: certificacion | experiencia | disponibilidad | otro.
+- kind:
+  - certificacion, experiencia, disponibilidad u otro: EXIGENCIAS AL
+    PROVEEDOR, que dependen de quién es la empresa (certificaciones, registros,
+    experiencia previa, cobertura geográfica: poder operar en la región o
+    ciudad de ejecución).
+  - condicion: CONDICIONES DEL SERVICIO, que definen lo que se oferta y
+    cualquier proveedor que cotiza acepta (cantidades, número de
+    beneficiarios, duración, horas, fechas o mes de ejecución, plazos de
+    entrega, especificaciones del producto o servicio).
+  - documento: ANTECEDENTES QUE SE ADJUNTAN a la oferta (cotización,
+    formularios, declaraciones juradas, certificados que se piden adjuntar).
+    Son la lista de documentos necesarios, no una capacidad de la empresa.
+  Una condicion o un documento NO llevan cobertura: deja catalog_item_id,
+  question_key y new_question vacíos.
 - mandatory: true si es EXCLUYENTE (redacción como "deberá", "obligatorio",
   "excluyente", "se exige"); false si es deseable ("se valorará", "deseable",
   "preferentemente").
 - origin: dónde está ("Descripción", "Ítem N" o el nombre del adjunto).
-- Y EXACTAMENTE UNA de estas tres coberturas:
+- Salvo en condicion y documento, EXACTAMENTE UNA de estas tres coberturas:
   1. catalog_item_id: el id de un elemento del CATÁLOGO DE LA EMPRESA que
      responde la exigencia, a favor o en contra (una respuesta negativa también
      cuenta). Copia el id tal cual; nunca inventes uno.
@@ -87,6 +104,8 @@ _SCHEMA = {
                             "certificacion",
                             "experiencia",
                             "disponibilidad",
+                            "condicion",
+                            "documento",
                             "otro",
                         ],
                     },
@@ -224,15 +243,12 @@ class GeminiProposalService(IProposalAIService):
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model_name}:generateContent?key={self.api_key}"
         )
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url, json=payload, timeout=_TIMEOUT_SEGUNDOS
-                )
-        except httpx.HTTPError as error:
-            raise ProposalAIServiceError(
-                f"Error de conexión con la API de Gemini: {error}"
-            ) from error
+        response = await self._post(url, payload)
+        if response.status_code in _ESTADOS_PASAJEROS:
+            # Sobrecarga o cuota momentánea: un reintento suele bastar y evita
+            # devolverle un 502 al usuario por algo que se arregla solo.
+            await asyncio.sleep(_ESPERA_REINTENTO_SEGUNDOS)
+            response = await self._post(url, payload)
 
         if response.status_code != 200:
             raise ProposalAIServiceError(
@@ -244,4 +260,14 @@ class GeminiProposalService(IProposalAIService):
         except (KeyError, IndexError, ValueError, TypeError) as error:
             raise ProposalAIServiceError(
                 f"Estructura de respuesta inesperada de Gemini: {error}"
+            ) from error
+
+    @staticmethod
+    async def _post(url: str, payload: dict) -> httpx.Response:
+        try:
+            async with httpx.AsyncClient() as client:
+                return await client.post(url, json=payload, timeout=_TIMEOUT_SEGUNDOS)
+        except httpx.HTTPError as error:
+            raise ProposalAIServiceError(
+                f"Error de conexión con la API de Gemini: {error!r}"
             ) from error
