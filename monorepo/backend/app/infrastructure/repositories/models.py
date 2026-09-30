@@ -13,6 +13,11 @@ from app.infrastructure.repositories.calendar_model import (
     CalendarEventLinkModel,
     CalendarOAuthStateModel,
 )
+from app.infrastructure.repositories.capability_model import (
+    CapabilityAnswerModel,
+    CapabilityEvidenceModel,
+    CapabilityQuestionModel,
+)
 from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
@@ -57,6 +62,9 @@ from app.infrastructure.repositories.tender_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "CapabilityAnswerModel",
+    "CapabilityEvidenceModel",
+    "CapabilityQuestionModel",
     "CalendarConnectionModel",
     "CalendarEventLinkModel",
     "CalendarOAuthStateModel",
