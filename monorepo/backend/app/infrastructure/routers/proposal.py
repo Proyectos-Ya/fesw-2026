@@ -1,7 +1,7 @@
 """Postulación a una Compra Ágil: borrador de la empresa activa (HU-20).
 
 B2 expone la factibilidad y la lectura del borrador; B3, responder, decidir ante
-una discrepancia y reanudar; B4, redactar. Regenerar y exportar llegan después.
+una discrepancia y reanudar; B4, redactar; B5, regenerar. Exportar llega después.
 """
 
 import logging
@@ -15,6 +15,7 @@ from app.application.schemas.proposal_schema import (
     AnswerProposalQuestionInput,
     DecideDiscrepancyInput,
     ProposalDraftView,
+    RegenerateProposalInput,
 )
 from app.application.services.proposal_ai_service import ProposalAIServiceError
 from app.application.use_cases.proposals.answer_proposal_question import (
@@ -27,6 +28,9 @@ from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.regenerate_proposal import (
+    RegenerateProposalUseCase,
+)
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
@@ -38,6 +42,7 @@ from app.domain.errors.capability_errors import (
     CapabilityQuestionNotFound,
     InvalidCapabilityAnswer,
 )
+from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
     ProposalDraftNotFound,
@@ -59,6 +64,7 @@ def create_proposal_router(
     get_decide_discrepancy_use_case: Callable,
     get_resume_proposal_use_case: Callable,
     get_generate_proposal_use_case: Callable,
+    get_regenerate_proposal_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(
@@ -322,6 +328,54 @@ def create_proposal_router(
             raise HTTPException(
                 status.HTTP_502_BAD_GATEWAY,
                 "No fue posible redactar el borrador en este momento. Intenta de nuevo.",
+            ) from error
+
+    @router.post(
+        "/{tender_id}/proposal/regenerate",
+        response_model=ProposalDraft,
+        summary="Regenerar el borrador con instrucciones libres",
+        responses={
+            **_ERRORES_DE_ESCRITURA,
+            400: {"description": "Las instrucciones intentan manipular a la IA"},
+            409: {
+                "description": "El borrador aún no está redactado o la licitación cerró"
+            },
+            502: {"description": "La IA no respondió o respondió algo inválido"},
+        },
+    )
+    async def regenerate_proposal(
+        tender_id: UUID,
+        data: RegenerateProposalInput,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            RegenerateProposalUseCase, Depends(get_regenerate_proposal_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> ProposalDraft:
+        """Vuelve a redactar un borrador en `READY` siguiendo las instrucciones del
+        usuario, por ejemplo "tono más formal" (CA4). Mismas fuentes, vacíos y
+        advertencias que la redacción."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+                instructions=data.instructions,
+            )
+        except InvalidPromptInstruction as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+        except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
+            raise _traducir(error) from error
+        except ProposalAIServiceError as error:
+            logger.warning(
+                "Falló la regeneración de la licitación %s: %s", tender_id, error
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "No fue posible regenerar el borrador en este momento. Intenta de nuevo.",
             ) from error
 
     return router

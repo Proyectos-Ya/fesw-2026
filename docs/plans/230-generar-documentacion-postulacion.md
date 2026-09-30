@@ -277,9 +277,11 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/generate`; e2e en `tests/e2e/api/test_proposal_api.py`.
   - Las advertencias no se copian al contenido: viven en `ProposalDraft.warnings`, y el frontend y el `.docx` las muestran como bloque destacado (F6, B6).
   - **Probado con Gemini real** sobre la Compra Ágil 657-70-COT26: el nombre y la descripción usan las condiciones del servicio y el párrafo sobre la empresa cita sus fuentes. Gemini reescribía los documentos ya detectados ("Se adjunta la cotización formal…") y salían duplicados; ahora el prompt recibe la lista de documentos ya detectados y solo agrega los que falten.
-- [ ] **B5. Regenerar (CA4)** (§2.5)
-  - [ ] [Red] Las instrucciones llegan al prompt, las de prompt injection se rechazan y se conservan las fuentes.
-  - [ ] [Green] Extraer el helper anti-injection de `GeminiDeepAnalysisService` y crear `RegenerateProposalUseCase`.
+- [x] **B5. Regenerar (CA4)** (§2.5)
+  - [x] [Red] `tests/unit/application/test_regenerate_proposal.py`: redacta de nuevo con las instrucciones y las guarda en `last_instructions`; una instrucción con inyección se rechaza **antes** de llamar a la IA y el borrador no cambia; solo se regenera un borrador en `READY`; con la licitación cerrada, 409. Filtro en `tests/unit/shared/test_prompt_guard.py`.
+  - [x] [Green] `app/shared/prompt_guard.py` (`frase_de_inyeccion`): la lista de frases que estaba dentro de `GeminiDeepAnalysisService`, ahora compartida, sin cambiar su comportamiento. `RegenerateProposalUseCase` delega en la redacción de B4 con `require_ready=True`.
+  - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/regenerate` con `{instructions}`; 400 ante inyección, como en el análisis profundo. La redacción usa `temperature: 0.4` para que regenerar dé otro texto.
+  - El asistente (`AskTenderAssistantUseCase.FORBIDDEN_PROMPT_PATTERNS`) mantiene su propia lista; unificarlas queda fuera de esta HdU.
 - [ ] **B6. Exportar a .docx (CA3)** (§2.6)
   - [ ] [Red] El test abre el `.docx` generado y verifica el H1 y los H2, las viñetas de documentos y los bloques "Revisar".
   - [ ] [Green] `python-docx` en `requirements.txt` y `ExportProposalDocxUseCase`.

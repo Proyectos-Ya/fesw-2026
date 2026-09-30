@@ -37,3 +37,11 @@ class DecideDiscrepancyInput(BaseModel):
 
     requirement_id: str = Field(min_length=1)
     action: DecisionAction
+
+
+class RegenerateProposalInput(BaseModel):
+    """Instrucciones libres para volver a redactar el borrador (CA4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    instructions: str = Field(min_length=1, max_length=1000)

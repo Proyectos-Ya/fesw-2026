@@ -137,6 +137,7 @@ class GenerateProposalUseCase:
         supplier_id: UUID | None,
         tender_id: UUID,
         instructions: str | None = None,
+        require_ready: bool = False,
     ) -> ProposalDraft:
         postulacion = await postulacion_abierta(
             self.supplier_repo,
@@ -148,6 +149,8 @@ class GenerateProposalUseCase:
         )
         draft = postulacion.draft
         # Antes de gastar una llamada a la IA.
+        if require_ready and draft.status != "READY":
+            raise InvalidProposalTransition(draft.status, "regenerar")
         if not draft.can_generate():
             raise InvalidProposalTransition(draft.status, "redactar")
 

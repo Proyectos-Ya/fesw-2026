@@ -70,6 +70,9 @@ from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.regenerate_proposal import (
+    RegenerateProposalUseCase,
+)
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
@@ -916,6 +919,14 @@ def get_generate_proposal_use_case(
     )
 
 
+def get_regenerate_proposal_use_case(
+    generate_use_case: Annotated[
+        GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
+    ],
+) -> RegenerateProposalUseCase:
+    return RegenerateProposalUseCase(generate_use_case)
+
+
 def get_resume_proposal_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ResumeProposalUseCase:
@@ -1495,6 +1506,7 @@ def bootstrap(app: FastAPI) -> None:
             get_decide_discrepancy_use_case=get_decide_discrepancy_use_case,
             get_resume_proposal_use_case=get_resume_proposal_use_case,
             get_generate_proposal_use_case=get_generate_proposal_use_case,
+            get_regenerate_proposal_use_case=get_regenerate_proposal_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )
