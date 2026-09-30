@@ -35,7 +35,10 @@ export function registrarProveedorDeToken(proveedor: ProveedorDeToken): void {
   obtenerToken = proveedor;
 }
 
-const REQUEST_TIMEOUT_MS = 60_000; 
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const MENSAJE_ERROR_SERVIDOR =
+  "Tuvimos un problema en el servidor. Inténtalo nuevamente en unos segundos.";
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
 /** Error de una respuesta HTTP no exitosa del backend. */
@@ -100,7 +103,10 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
-    let detail = response.statusText;
+    // Un 5xx no controlado llega en texto plano; su statusText ("Internal
+    // Server Error") no le sirve a quien lo lee. Si el backend manda `detail`,
+    // ese mensaje tiene prioridad más abajo.
+    let detail = response.status >= 500 ? MENSAJE_ERROR_SERVIDOR : response.statusText;
     try {
       const body: unknown = await response.json();
       if (

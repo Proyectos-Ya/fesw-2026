@@ -38,6 +38,35 @@ describe("apiFetch", () => {
     );
     await expect(apiFetch("/auth/me")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("usa un mensaje legible cuando un error 5xx llega sin detail", async () => {
+    // Un 500 no controlado de FastAPI trae el cuerpo en texto plano; antes el
+    // usuario veía el statusText crudo: "Internal Server Error".
+    mockFetchOnce(
+      new Response("Internal Server Error", {
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    const error = await apiFetch("/tenders/recommended").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(500);
+    expect((error as ApiError).message).not.toMatch(/Internal Server Error/);
+    expect((error as ApiError).message).toMatch(/Inténtalo nuevamente/);
+  });
+
+  it("prefiere el detail del backend también en errores 5xx", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No pudimos guardar tus recomendaciones." }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(apiFetch("/tenders/recommended")).rejects.toThrowError(
+      expect.objectContaining({ status: 503, message: "No pudimos guardar tus recomendaciones." }),
+    );
+  });
 });
 
 describe("apiFetch — origen de la API", () => {
