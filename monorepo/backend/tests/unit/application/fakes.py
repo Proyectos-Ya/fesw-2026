@@ -11,6 +11,7 @@ from app.application.repositories.capability_repository import (
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
+from app.application.repositories.proposal_repository import IProposalDraftRepository
 from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
     INotificationPreferenceRepository,
@@ -50,6 +51,7 @@ from app.domain.entities.notification import (
     NotificationDelivery,
     NotificationPreference,
 )
+from app.domain.entities.proposal import ProposalDraft
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -978,3 +980,21 @@ class InMemoryCapabilityEvidenceRepository(ICapabilityEvidenceRepository):
 
     async def list_by_supplier(self, supplier_id: UUID) -> list[CapabilityEvidence]:
         return [e for e in self.filas if e.supplier_id == supplier_id]
+
+
+class InMemoryProposalDraftRepository(IProposalDraftRepository):
+    def __init__(self) -> None:
+        self.filas: dict[tuple[UUID, UUID], ProposalDraft] = {}
+
+    async def get(self, supplier_id: UUID, tender_id: UUID) -> ProposalDraft | None:
+        borrador = self.filas.get((supplier_id, tender_id))
+        # Copia: como en la base, modificar lo leído no cambia lo guardado.
+        return borrador.model_copy(deep=True) if borrador else None
+
+    async def save(self, draft: ProposalDraft) -> ProposalDraft:
+        clave = (draft.supplier_id, draft.tender_id)
+        previo = self.filas.get(clave)
+        if previo is not None and previo.id != draft.id:
+            raise ValueError("Ya hay un borrador para esa empresa y licitación.")
+        self.filas[clave] = draft.model_copy(deep=True)
+        return draft

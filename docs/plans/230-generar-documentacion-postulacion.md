@@ -97,9 +97,10 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 | Campo | Contenido |
 |---|---|
 | `status` | `FEASIBILITY` (hay preguntas pendientes), `PAUSED` (discrepancia sin decidir, CA7), `STOPPED` (detenido por el usuario, CA9) o `READY` (borrador generado). |
-| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `desconocido`), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
+| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `parcial` \| `desconocido`; `parcial` sale de una respuesta neutra como "En proceso de inscripción" y no pausa), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
 | `requires_technical_document`, `technical_document_reason` | Si las bases exigen documento técnico, y por qué (CA1). |
-| `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8). |
+| `paused_requirement_id` | La exigencia cuyo "No" tiene el borrador en `PAUSED`. |
+| `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8), cada una ligada a su `requirement_id`: si la empresa corrige la respuesta a "Sí", la advertencia se quita sola. |
 | `discrepancy_decisions` (JSON) | `requirement_id`, `capability_question_id`, `action` (`continue` \| `stop`), `user_id` y fecha (CA8, CA9). |
 | `content` (JSON, nullable) | Secciones `offer_name`, `offer_description`, `required_documents[]` y `technical_document` (opcional). Cada una tiene párrafos con `text`, `sources[]` (ids de elementos del `ExperienceCatalog`: `perfil:…`, `capacidad:…` o `evidencia:…`, con su `label`) y `placeholders[]`. |
 | `last_instructions` | Últimas instrucciones de regeneración (CA4). |
@@ -107,7 +108,13 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 
 **Borradores vencidos:** el estado "vencido" no se guarda. Se calcula al leer con `Tender.esta_cerrada()`, así ningún `GET` escribe en la base.
 
-**Estados:** las transiciones viven en el dominio como métodos de la entidad: `answer_question`, `decide(continue|stop)`, `resume` y `can_generate`.
+**Estados:** las transiciones viven en el dominio como métodos de la entidad (`app/domain/entities/proposal.py`): `load_requirements`, `record_answer`, `decide(continue|stop)`, `resume`, `can_generate` y `mark_ready`. Una acción que no corresponde al estado lanza `InvalidProposalTransition` (409 en la API). Reglas que se fijaron al implementar:
+
+- Al cargar las exigencias, una excluyente que ya está en "No" (la empresa lo respondió en otra licitación) pausa de entrada.
+- Una respuesta nueva reemplaza la anterior: borra la decisión y la advertencia de esa exigencia.
+- `resume` vuelve a `FEASIBILITY` **sin** volver a pausar, para que la empresa pueda corregir la respuesta. Mientras la excluyente siga en "No" sin una decisión de continuar, `can_generate` es falso.
+- Tras continuar, si queda otra excluyente en "No" sin decidir, se pausa en esa.
+- Las fechas que vuelven del JSONB con "Z" se normalizan a UTC sin zona (`aware_to_utc_naive`, en `app/shared/datetime_utils.py`).
 
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
@@ -154,7 +161,7 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
 
 ### 2.7 Licitación cerrada
 
-Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** con `TenderClosedError`. En el frontend, el botón queda deshabilitado con el tooltip *"Esta licitación se encuentra cerrada para postulaciones"*. El detalle ya expone `is_closed`.
+Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** con `TenderClosedForProposal`. En el frontend, el botón queda deshabilitado con el tooltip *"Esta licitación se encuentra cerrada para postulaciones"*. El detalle ya expone `is_closed`.
 
 ### 2.8 Permisos por rol
 
@@ -222,10 +229,10 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
     - [x] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
     - [x] [Red] Regresión: `GET /questions` y el banner del home no se tocan; la suite existente sigue en verde.
     - [x] [Green] Casos de uso, permiso `generate_proposal` y `ALL_PERMISSIONS` como única lista (§2.8), router `/capabilities` (§2.10) cableado en `bootstrap.py`, y test e2e `tests/e2e/api/test_capability_api.py`.
-- [ ] **B1. `ProposalDraft`** (§2.2)
-  - [ ] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY`; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED`.
-  - [ ] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible.
-  - [ ] [Green] Entidad, `ProposalDraftModel`, migración de `proposal_drafts` con el índice único (`supplier_id`, `tender_id`), repositorio y `TenderClosedError`.
+- [x] **B1. `ProposalDraft`** (§2.2)
+  - [x] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; una neutra queda `parcial`; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY` sin volver a pausar; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED` (`tests/unit/domain/test_proposal.py`).
+  - [x] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible (`render_placeholders`, `DraftParagraph.from_ai_text`).
+  - [x] [Green] Entidad, `ProposalDraftModel`, migración `e4849ff0c0dd` de `proposal_drafts` con la restricción única (`supplier_id`, `tender_id`), repositorio SQL y en memoria, y `TenderClosedForProposal` (en `tender_errors.py`, junto a `TenderClosedForScoring` y `TenderClosedForAnalysis`).
 - [ ] **B2. Factibilidad (CA7)** (§2.3)
   - [ ] [Red] Con un servicio de IA falso:
     - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,

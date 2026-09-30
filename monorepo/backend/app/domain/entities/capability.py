@@ -14,7 +14,7 @@ empresa. Tres piezas con dueños distintos:
 
 import re
 import unicodedata
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID, uuid4
 
@@ -22,7 +22,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.capability_errors import EvidenceNeedsAffirmativeProjectAnswer
-from app.shared.datetime_utils import UtcDateTime, utc_now_naive
+from app.shared.datetime_utils import (
+    UtcDateTime,
+    aware_to_utc_naive,
+    utc_now_naive,
+)
 
 # Se exige desde ya aunque el matching todavía no la use (PENDIENTES 6.29).
 Polarity = Literal["afirmativa", "negativa", "neutra"]
@@ -135,9 +139,7 @@ class CapabilityAnswer(BaseModel):
         en UTC, que es el invariante de lo persistido. La ambigüedad de una fecha
         sin zona que venga del cliente la resuelve la API rechazándola.
         """
-        if value is None or value.tzinfo is None:
-            return value
-        return value.astimezone(UTC).replace(tzinfo=None)
+        return aware_to_utc_naive(value)
 
     @model_validator(mode="after")
     def _estado_coherente(self) -> Self:

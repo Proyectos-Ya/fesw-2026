@@ -33,6 +33,7 @@ from app.infrastructure.repositories.notification_model import (
     NotificationModel,
     NotificationPreferenceModel,
 )
+from app.infrastructure.repositories.proposal_model import ProposalDraftModel
 from app.infrastructure.repositories.question_model import QuestionModel
 from app.infrastructure.repositories.quotation_model import (
     QuotationMaterialModel,
@@ -83,6 +84,7 @@ __all__ = [
     "NotificationDeliveryModel",
     "NotificationModel",
     "NotificationPreferenceModel",
+    "ProposalDraftModel",
     "QuestionModel",
     "RegionModel",
     "SavedTenderModel",

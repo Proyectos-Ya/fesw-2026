@@ -47,3 +47,17 @@ class TenderClosedForAnalysis(Exception):
             f"La licitación {tender_id} ya cerró: no se genera su análisis"
         )
         self.tender_id = tender_id
+
+
+class TenderClosedForProposal(Exception):
+    """No se inicia, reanuda ni redacta la postulación de una licitación cerrada.
+
+    Ya no se puede ofertar: seguir generando el borrador sería trabajo perdido.
+    La API la traduce a 409.
+    """
+
+    def __init__(self, tender_id: UUID):
+        super().__init__(
+            f"La licitación {tender_id} se encuentra cerrada para postulaciones"
+        )
+        self.tender_id = tender_id
