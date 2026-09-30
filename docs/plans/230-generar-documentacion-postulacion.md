@@ -235,6 +235,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
     - se detecta si las bases exigen documento técnico,
     - una licitación cerrada responde 409.
   - [ ] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
+  - [ ] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir), cada una con su licitación de origen (`tender_id` y código). Sirve para verlas sin pasar por una postulación y para la futura página de experiencia. La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
 - [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
   - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
   - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.
