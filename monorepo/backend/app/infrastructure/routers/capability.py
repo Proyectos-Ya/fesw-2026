@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from app.application.schemas.capability_schema import (
     AddCapabilityEvidenceInput,
     AnswerCapabilityInput,
+    PendingCapabilityQuestion,
 )
 from app.application.use_cases.capabilities.add_capability_evidence import (
     AddCapabilityEvidenceUseCase,
@@ -27,6 +28,9 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 )
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
+)
+from app.application.use_cases.capabilities.list_pending_questions import (
+    ListPendingCapabilityQuestionsUseCase,
 )
 from app.domain.entities.capability import (
     CapabilityAnswer,
@@ -50,6 +54,7 @@ def create_capability_router(
     get_build_catalog_use_case: Callable,
     get_answer_use_case: Callable,
     get_add_evidence_use_case: Callable,
+    get_list_pending_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(
@@ -91,6 +96,30 @@ def create_capability_router(
     ) -> ExperienceCatalog:
         """Perfil, respuestas vigentes y proyectos, cada uno con un id estable
         (`perfil:…`, `capacidad:…`, `evidencia:…`) que el borrador usa para citar."""
+        try:
+            return await use_case.execute(
+                user_id=user.id, supplier_id=_empresa_activa(workspace_context)
+            )
+        except SupplierNotFoundForUser as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+    @router.get(
+        "/questions/pending",
+        response_model=list[PendingCapabilityQuestion],
+        summary="Preguntas que la empresa activa tiene por responder",
+        responses={404: {"description": "El usuario no tiene empresa"}},
+    )
+    async def list_pending(
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ListPendingCapabilityQuestionsUseCase, Depends(get_list_pending_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> list[PendingCapabilityQuestion]:
+        """Sin responder ni omitir, o con la vigencia vencida. Cada una trae la
+        licitación que la originó, si la hay."""
         try:
             return await use_case.execute(
                 user_id=user.id, supplier_id=_empresa_activa(workspace_context)

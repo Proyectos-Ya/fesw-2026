@@ -236,17 +236,22 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; una neutra queda `parcial`; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY` sin volver a pausar; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED` (`tests/unit/domain/test_proposal.py`).
   - [x] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible (`render_placeholders`, `DraftParagraph.from_ai_text`).
   - [x] [Green] Entidad, `ProposalDraftModel`, migración `e4849ff0c0dd` de `proposal_drafts` con la restricción única (`supplier_id`, `tender_id`), repositorio SQL y en memoria, y `TenderClosedForProposal` (en `tender_errors.py`, junto a `TenderClosedForScoring` y `TenderClosedForAnalysis`).
-- [ ] **B2. Factibilidad (CA7)** (§2.3)
-  - [ ] [Red] Con un servicio de IA falso:
-    - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,
-    - una exigencia cubierta por una respuesta **negativa** previa del catálogo queda `no_cumple` con su `catalog_item_id`, para que el borrador pueda explicar el origen de la pausa ("respondiste 'No' el 12-oct en la licitación X, Ana Pérez"). Para eso `ExperienceItem` suma `answered_at`,
-    - una exigencia desconocida con una clave ya existente en el banco reutiliza esa pregunta,
-    - una exigencia desconocida con una clave nueva registra la pregunta (`origin = ia`), crea la respuesta pendiente con `tender_id` y marca `mandatory` en la exigencia,
-    - una contradicción con el perfil genera una pregunta,
+- [x] **B2. Factibilidad (CA7)** (§2.3)
+  - [x] [Red] Con un servicio de IA falso (`tests/unit/application/test_start_feasibility.py`):
+    - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta; un id que no existe en el catálogo se descarta (guardrail),
+    - una exigencia cubierta por una respuesta **negativa** previa queda `no_cumple` con su `catalog_item_id` **y** su `capability_question_id`: así el borrador explica el origen de la pausa y la empresa puede actualizar la respuesta desde la pausa. `ExperienceItem` suma `answered_at`,
+    - una exigencia con una clave del banco reutiliza esa pregunta y crea la respuesta pendiente con `tender_id`; si la empresa ya la respondió, usa esa respuesta,
+    - una pregunta nueva se registra en el rubro de la empresa (`origin = ia`, opciones Sí/No); si la clave ya existe, se reutiliza; si nombra a la empresa, no entra al banco y la exigencia queda `parcial`,
     - se detecta si las bases exigen documento técnico,
-    - una licitación cerrada responde 409.
-  - [ ] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
-  - [ ] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir), cada una con su licitación de origen (`tender_id` y código). Sirve para verlas sin pasar por una postulación y para la futura página de experiencia. La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
+    - si ya hay borrador se devuelve sin llamar a la IA; una licitación cerrada sin borrador da 409.
+  - [x] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
+  - [x] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir, o con la vigencia vencida), cada una con su licitación de origen (`tender_id`, código y nombre). La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
+  - [x] Adelantado de B7, para poder probar B2: `POST /tenders/{id}/proposal/feasibility` y `GET /tenders/{id}/proposal` (con `is_expired` calculado al leer). Router `routers/proposal.py`, e2e en `tests/e2e/api/test_proposal_api.py`.
+  - Decisiones al implementar:
+    - **Rubro del banco:** el primer sector de la empresa, en slug (`categoria_de`). La IA recibe solo las preguntas activas de ese rubro.
+    - **Exigencia sin cobertura válida** (id inventado, sin pregunta o con una pregunta que nombra a la empresa): queda `parcial`. No bloquea la redacción; B4 la marcará como dato por completar.
+    - **Prompt probado con Gemini real** sobre la Compra Ágil 657-70-COT26. Acepta el `responseSchema`, detecta la contradicción de cobertura (Coyhaique frente a una empresa de la RM) y propone preguntas. Hubo que aclarar qué **no** es documento técnico (cotización y formularios son documentos necesarios) y que, si las bases mencionan un adjunto no recibido (un TDR), se avise en `technical_document_reason`. `temperature: 0` porque la lista de exigencias cambiaba entre llamadas.
+    - **Pendiente para B4 y la prueba manual (§6):** afinar la clasificación (el "servicio de capacitación en PAC" quedó como `otro` y no como `experiencia`) y extraer la lista de documentos necesarios (CA1).
 - [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
   - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
   - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.

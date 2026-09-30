@@ -57,6 +57,13 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.capabilities.list_pending_questions import (
+    ListPendingCapabilityQuestionsUseCase,
+)
+from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.start_feasibility import (
+    StartFeasibilityUseCase,
+)
 from app.application.use_cases.ask_tender_assistant_use_case import (
     AskTenderAssistantUseCase,
 )
@@ -230,6 +237,9 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarEventLinkRepository,
 )
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.sql_proposal_repository import (
+    SqlProposalDraftRepository,
+)
 from app.infrastructure.repositories.sql_capability_repository import (
     SqlCapabilityAnswerRepository,
     SqlCapabilityEvidenceRepository,
@@ -240,6 +250,7 @@ from app.infrastructure.repositories.tender_milestone_repository import (
 )
 from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.capability import create_capability_router
+from app.infrastructure.routers.proposal import create_proposal_router
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
@@ -261,6 +272,8 @@ from app.infrastructure.services.document_validator_service import (
     DocumentValidatorService,
 )
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
+from app.application.services.proposal_ai_service import IProposalAIService
+from app.infrastructure.services.gemini_proposal_service import GeminiProposalService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
 )
@@ -788,6 +801,59 @@ def get_document_validator_service() -> IDocumentValidatorService:
     return DocumentValidatorService()
 
 
+def get_list_pending_capability_questions_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ListPendingCapabilityQuestionsUseCase:
+    return ListPendingCapabilityQuestionsUseCase(
+        SupplierRepository(session),
+        SqlCapabilityQuestionRepository(session),
+        SqlCapabilityAnswerRepository(session),
+        TenderRepository(session),
+    )
+
+
+def get_proposal_ai_service(request: Request) -> IProposalAIService:
+    return request.app.state.proposal_ai_service
+
+
+def get_start_feasibility_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    ai_service: Annotated[IProposalAIService, Depends(get_proposal_ai_service)],
+    validator: Annotated[
+        IDocumentValidatorService, Depends(get_document_validator_service)
+    ],
+) -> StartFeasibilityUseCase:
+    supplier_repo = SupplierRepository(session)
+    question_repo = SqlCapabilityQuestionRepository(session)
+    answer_repo = SqlCapabilityAnswerRepository(session)
+    return StartFeasibilityUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=TenderRepository(session),
+        draft_repo=SqlProposalDraftRepository(session),
+        question_repo=question_repo,
+        answer_repo=answer_repo,
+        catalog_use_case=BuildExperienceCatalogUseCase(
+            supplier_repo,
+            question_repo,
+            answer_repo,
+            SqlCapabilityEvidenceRepository(session),
+        ),
+        chat_repo=SQLTenderChatRepository(session),
+        ai_service=ai_service,
+        validator_service=validator,
+    )
+
+
+def get_proposal_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetProposalUseCase:
+    return GetProposalUseCase(
+        SupplierRepository(session),
+        TenderRepository(session),
+        SqlProposalDraftRepository(session),
+    )
+
+
 def get_upload_tender_chat_doc_use_case(
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
     validator_service: Annotated[
@@ -1227,6 +1293,10 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.proposal_ai_service = GeminiProposalService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
     app.state.tender_assistant_ai_service = GeminiTenderAssistantService(
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
@@ -1340,6 +1410,15 @@ def bootstrap(app: FastAPI) -> None:
             get_build_catalog_use_case=get_build_experience_catalog_use_case,
             get_answer_use_case=get_answer_capability_question_use_case,
             get_add_evidence_use_case=get_add_capability_evidence_use_case,
+            get_list_pending_use_case=get_list_pending_capability_questions_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_proposal_router(
+            get_current_user=get_current_user,
+            get_start_feasibility_use_case=get_start_feasibility_use_case,
+            get_proposal_use_case=get_proposal_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )
