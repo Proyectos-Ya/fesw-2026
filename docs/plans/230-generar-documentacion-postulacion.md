@@ -112,6 +112,7 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 
 - Al cargar las exigencias, una excluyente que ya está en "No" (la empresa lo respondió en otra licitación) pausa de entrada.
 - Una respuesta nueva reemplaza la anterior: borra la decisión y la advertencia de esa exigencia.
+- En `PAUSED` se puede responder de nuevo **solo** la pregunta de la exigencia pausada; responder otra lanza `InvalidProposalTransition`.
 - `resume` vuelve a `FEASIBILITY` **sin** volver a pausar, para que la empresa pueda corregir la respuesta. Mientras la excluyente siga en "No" sin una decisión de continuar, `can_generate` es falso.
 - Tras continuar, si queda otra excluyente en "No" sin decidir, se pausa en esa.
 - Las fechas que vuelven del JSONB con "Z" se normalizan a UTC sin zona (`aware_to_utc_naive`, en `app/shared/datetime_utils.py`).
@@ -119,6 +120,7 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
 PAUSED ──continuar con advertencia──▶ FEASIBILITY
+PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regenerar──▶ READY
 ```
@@ -130,7 +132,8 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
    - **Desconocida:** se reutiliza una pregunta del banco con la misma clave o se registra una nueva, neutra y sin datos de la empresa. Se crea la respuesta pendiente de la empresa.
    - **En contradicción con el perfil:** por ejemplo, las bases exigen entrega en Arica y la empresa opera solo en la RM. Se genera una pregunta que expone la discrepancia ("¿Puede cubrir entregas en Arica?").
 2. **Respuestas.** El usuario responde las preguntas una a una, eligiendo una opción. Cada opción tiene polaridad. Si responde "Sí" a una pregunta `experiencia_proyecto`, se le ofrece agregar el proyecto (mandante, año, monto): es opcional, pero sin él el borrador solo puede citar la capacidad y no el proyecto (CA5).
-3. **Discrepancia (CA7).** Una respuesta de polaridad `negativa` a una exigencia excluyente pasa el borrador a `PAUSED`. Un modal muestra la cláusula, la respuesta y la recomendación: *"Recomendamos no postular: las bases exigen X y declaraste no contar con ello"*. Las opciones son:
+3. **Discrepancia (CA7).** Una respuesta de polaridad `negativa` a una exigencia excluyente pasa el borrador a `PAUSED`. Un modal muestra la cláusula, la respuesta y la recomendación: *"Recomendamos no postular: las bases exigen X y declaraste no contar con ello"*. Si el "No" viene de una respuesta anterior de la empresa (otra licitación), el modal lo dice: cuándo, quién y en qué licitación. Las opciones son:
+   - **Actualizar respuesta:** responder de nuevo la pregunta de la exigencia pausada, sin detener ni reanudar. Un "Sí" (o una respuesta neutra) resuelve la pausa y vuelve a `FEASIBILITY`; un "No" la mantiene. Es la salida natural cuando el "No" es viejo y la empresa ya consiguió la certificación.
    - **Continuar con advertencia (CA8):** se guarda la decisión, se agrega la advertencia a `warnings` (y luego al borrador) y se vuelve a `FEASIBILITY`.
    - **Detener (CA9):** se guarda la decisión y el borrador pasa a `STOPPED`. La ficha muestra "Postulación detenida — Reanudar". Al reanudar, se vuelve a `FEASIBILITY` y se puede **cambiar la respuesta**, por ejemplo si la empresa consiguió la certificación.
 4. **Pausa de la generación (CA7).** No se puede redactar mientras haya preguntas pendientes o el borrador esté `PAUSED` o `STOPPED`. `GenerateProposalUseCase` lo rechaza con un 409.
@@ -236,6 +239,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 - [ ] **B2. Factibilidad (CA7)** (§2.3)
   - [ ] [Red] Con un servicio de IA falso:
     - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,
+    - una exigencia cubierta por una respuesta **negativa** previa del catálogo queda `no_cumple` con su `catalog_item_id`, para que el borrador pueda explicar el origen de la pausa ("respondiste 'No' el 12-oct en la licitación X, Ana Pérez"). Para eso `ExperienceItem` suma `answered_at`,
     - una exigencia desconocida con una clave ya existente en el banco reutiliza esa pregunta,
     - una exigencia desconocida con una clave nueva registra la pregunta (`origin = ia`), crea la respuesta pendiente con `tender_id` y marca `mandatory` en la exigencia,
     - una contradicción con el perfil genera una pregunta,
@@ -270,7 +274,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [ ] [Red] `ProposalStepper` muestra "Analizando bases y experiencia" mientras carga. `FeasibilityStep` lista las exigencias con su estado, las preguntas con sus opciones, el formulario opcional de proyecto tras un "Sí" de experiencia, y los adjuntos con un botón para subir más.
   - [ ] [Green] Implementación.
 - [ ] **F4. Discrepancias (CA7, CA8, CA9)**
-  - [ ] [Red] `DiscrepancyModal` muestra la cláusula y la recomendación, y los botones "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
+  - [ ] [Red] `DiscrepancyModal` muestra la cláusula, la recomendación y, si el "No" es de una respuesta anterior, su origen (fecha, quién, licitación). Los botones "Actualizar respuesta", "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
   - [ ] [Green] Implementación.
 - [ ] **F5. Redacción (CA6)**
   - [ ] [Red/Green] `GeneratingLoader` con la etapa "Redactando nombre, descripción y documentos".

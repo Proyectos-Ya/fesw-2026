@@ -11,6 +11,7 @@ Hay un borrador por empresa y licitación. Pasa por dos fases:
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
 PAUSED ──continuar con advertencia──▶ FEASIBILITY
+PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin pendientes + generar──▶ READY ──regenerar──▶ READY
 ```
@@ -233,9 +234,26 @@ class ProposalDraft(BaseModel):
         self._pausar_si_corresponde()
         self._tocar()
 
+    def _pregunta_en_pausa(self) -> UUID | None:
+        pausada = next(
+            (r for r in self.requirements if r.id == self.paused_requirement_id),
+            None,
+        )
+        return pausada.capability_question_id if pausada else None
+
     def record_answer(self, question_id: UUID, polarity: Polarity) -> None:
-        """Aplica la respuesta de la empresa a las exigencias que la esperaban."""
-        self._exigir("FEASIBILITY", accion="responder")
+        """Aplica la respuesta de la empresa a las exigencias que la esperaban.
+
+        En factibilidad se responde cualquier pregunta. En pausa, solo la de la
+        exigencia pausada: así se corrige un "No" (por ejemplo uno de otra
+        licitación, si la empresa ya consiguió la certificación) sin detener y
+        reanudar. El resto de la cola espera a que se resuelva la discrepancia.
+        """
+        corrige_la_pausa = (
+            self.status == "PAUSED" and question_id == self._pregunta_en_pausa()
+        )
+        if not corrige_la_pausa:
+            self._exigir("FEASIBILITY", accion="responder")
         nuevo_estado = _ESTADO_POR_POLARIDAD[polarity]
         tocadas = [
             r for r in self.requirements if r.capability_question_id == question_id
@@ -252,6 +270,11 @@ class ProposalDraft(BaseModel):
             self.warnings = [
                 w for w in self.warnings if w.requirement_id != requirement.id
             ]
+        if corrige_la_pausa:
+            # Se vuelve a evaluar desde cero: un "No" pausa otra vez en la misma
+            # exigencia; un "Sí" puede dejar al descubierto otra sin decidir.
+            self.status = "FEASIBILITY"
+            self.paused_requirement_id = None
         self._pausar_si_corresponde()
         self._tocar()
 

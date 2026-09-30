@@ -3,6 +3,7 @@
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
 PAUSED ──continuar con advertencia──▶ FEASIBILITY
+PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin pendientes + generar──▶ READY
 ```
@@ -143,13 +144,83 @@ class TestResponder:
         assert borrador.status == "FEASIBILITY"
         assert len(borrador.pending_requirements()) == 2
 
-    @pytest.mark.parametrize("estado", ["PAUSED", "STOPPED", "READY"])
-    def test_solo_se_responde_en_factibilidad(self, estado):
+    @pytest.mark.parametrize("estado", ["STOPPED", "READY"])
+    def test_detenido_o_listo_no_se_responde(self, estado):
         borrador = _borrador()
         borrador.status = estado
 
         with pytest.raises(InvalidProposalTransition):
             borrador.record_answer(SEC_Q, "afirmativa")
+
+
+class TestActualizarRespuestaEnPausa:
+    """En pausa se puede corregir la respuesta de la exigencia pausada.
+
+    Sin esto, cambiar un "No" viejo (la empresa ya consiguió la certificación)
+    obligaba a detener, reanudar y responder de nuevo.
+    """
+
+    def _pausado(self) -> ProposalDraft:
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "negativa")
+        assert borrador.status == "PAUSED"
+        return borrador
+
+    def test_un_si_resuelve_la_pausa(self):
+        borrador = self._pausado()
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert borrador.status == "FEASIBILITY"
+        assert borrador.paused_requirement_id is None
+        assert _requisito(borrador, "req-sec").status == "cumple"
+        assert borrador.discrepancy_decisions == []
+
+    def test_una_neutra_tambien_resuelve_la_pausa(self):
+        borrador = self._pausado()
+
+        borrador.record_answer(SEC_Q, "neutra")
+
+        assert borrador.status == "FEASIBILITY"
+        assert _requisito(borrador, "req-sec").status == "parcial"
+
+    def test_un_no_mantiene_la_pausa_en_la_misma_exigencia(self):
+        borrador = self._pausado()
+
+        borrador.record_answer(SEC_Q, "negativa")
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-sec"
+
+    def test_no_se_puede_responder_otra_pregunta_en_pausa(self):
+        """Primero se resuelve la discrepancia; el resto de la cola espera."""
+        borrador = self._pausado()
+
+        with pytest.raises(InvalidProposalTransition):
+            borrador.record_answer(VIALES_Q, "afirmativa")
+
+    def test_un_si_pausa_en_la_siguiente_excluyente_sin_decidir(self):
+        exigencias = _exigencias()
+        otra_q = uuid4()
+        exigencias[0] = exigencias[0].model_copy(update={"status": "no_cumple"})
+        exigencias.append(
+            Requirement(
+                id="req-mop",
+                text="Deberá estar inscrito en el registro MOP.",
+                kind="certificacion",
+                mandatory=True,
+                origin="Descripción",
+                status="no_cumple",
+                capability_question_id=otra_q,
+            )
+        )
+        borrador = ProposalDraft(supplier_id=uuid4(), tender_id=uuid4())
+        borrador.load_requirements(exigencias)
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-mop"
 
 
 class TestDecidir:
