@@ -160,7 +160,7 @@ Si `Tender.esta_cerrada()`, todos los endpoints que escriben responden **409** c
 
 Se agrega el permiso `generate_proposal` para ADMIN y MEMBER. VIEWER puede ver el borrador y exportarlo, pero no escribir.
 
-- **Dónde agregarlo:** en `_ROLE_PERMISSIONS` (`domain/entities/supplier_member.py`) y en las listas de permisos duplicadas de `infrastructure/auth/dependencies.py` (dos listas) y `use_cases/workspace/switch_workspace.py`. Si falta en alguna, el permiso no llega al `WorkspaceContext`.
+- **Dónde agregarlo:** en `_ROLE_PERMISSIONS` y en `ALL_PERMISSIONS` (`domain/entities/supplier_member.py`). Antes había tres listas copiadas a mano (`infrastructure/auth/dependencies.py`, dos veces, y `use_cases/workspace/switch_workspace.py`) y un permiso que faltara en una no llegaba al `WorkspaceContext`. En B0b esas tres listas pasaron a leer `ALL_PERMISSIONS`, y un test verifica que cubre todos los permisos de los roles.
 - **Backend:** los endpoints que escriben responden **403** sin el permiso, con el mismo patrón que `routers/supplier.py` usa para `edit_company_profile`.
 - **Frontend:** se usa `hasPermission("generate_proposal")` de `WorkspaceContext.tsx`.
 
@@ -173,19 +173,28 @@ Se agrega el permiso `generate_proposal` para ADMIN y MEMBER. VIEWER puede ver e
 
 ### 2.10 Endpoints
 
-Van en un router nuevo, `infrastructure/routers/proposal.py`, con el prefijo `/api/v1/tenders/{tender_id}/proposal`. Todos declaran `summary`, `response_model` y `tags`, y usan la empresa activa.
+Van en un router nuevo, `infrastructure/routers/proposal.py`, con el prefijo `/tenders/{tender_id}/proposal`. Todos declaran `summary`, `response_model` y `tags`, y usan la empresa activa.
 
 | Método y ruta | Qué hace | CA | Permiso |
 |---|---|---|---|
 | `GET ""` | Estado, exigencias, preguntas, contenido y si está vencida | CA2, CA5, CA9 | ver |
 | `POST /feasibility` | Crea o recupera el borrador y corre el análisis | CA6, CA7 | `generate_proposal` |
 | `POST /questions/{capability_question_id}/answer` | Responde la pregunta de capacidad de la empresa activa; si la respuesta es negativa y la exigencia es excluyente, pasa a `PAUSED` | CA7 | `generate_proposal` |
-| `POST /questions/{capability_question_id}/evidence` | Agrega un proyecto que respalda un "Sí" de experiencia | CA5 | `generate_proposal` |
 | `POST /discrepancy` | `{requirement_id, action: continue \| stop}` | CA8, CA9 | `generate_proposal` |
 | `POST /resume` | `STOPPED` → `FEASIBILITY` | CA9 | `generate_proposal` |
 | `POST /generate` | Redacta el borrador | CA1, CA2, CA5, CA6 | `generate_proposal` |
 | `POST /regenerate` | `{instructions}` | CA4 | `generate_proposal` |
 | `GET /export.docx` | Descarga el Word | CA3 | ver |
+
+**Router del banco de capacidades (`/capabilities`, B0b).** Opera sobre la empresa activa y es independiente de una postulación, así que el flujo de propuesta lo reutiliza:
+
+| Método y ruta | Qué hace | Permiso |
+|---|---|---|
+| `GET /catalog` | Catálogo de experiencia con ids estables | ver |
+| `POST /questions/{question_id}/answer` | Responde o corrige; guarda quién respondió y la vigencia | `generate_proposal` |
+| `POST /questions/{question_id}/evidence` | Agrega un proyecto a un "Sí" de experiencia (409 si no hay "Sí") | `generate_proposal` |
+
+El `POST /questions/{capability_question_id}/answer` del router de propuestas usa el mismo caso de uso y además actualiza el estado del borrador (puede pasarlo a `PAUSED`).
 
 ### 2.11 Frontend
 
@@ -199,20 +208,20 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 
 ### Backend (`monorepo/backend`)
 
-- [ ] **B0. Banco de capacidades** (§2.1, §2.8). Se rescata el diseño de `230-hu-20-1-banco-de-capacidades` copiando archivos puntuales (`git show <rama>:<ruta>`), no con merge ni cherry-pick. Se entrega en dos PRs.
+- [x] **B0. Banco de capacidades** (§2.1, §2.8). Se rescata el diseño de `230-hu-20-1-banco-de-capacidades` copiando archivos puntuales (`git show <rama>:<ruta>`), no con merge ni cherry-pick. Se entrega en dos PRs.
   - [x] **B0a. Dominio y esquema** (PR propio y temprano, porque lleva migración)
     - [x] [Red] Entidades rescatadas: `CapabilityQuestion` (coherencia `kind`/`work_type`, opciones sin repetir, `polarity_of`), `CapabilityAnswer` (no respondida y omitida a la vez) y `question_leaks_supplier_data` (razón social, nombre de fantasía y RUT en cualquier formato). Se traen también sus tests de la rama.
     - [x] [Red] Nuevo: `CapabilityEvidence` exige título y año válido. Si tiene `answer_id`, solo se asocia a respuestas `afirmativa` de tipo `experiencia_proyecto` de esa misma pregunta y hereda su `work_type` (`evidence_for_answer`); sin `answer_id`, `work_type` se indica a mano. Siempre es obligatorio. `origin` vale `manual` por defecto y solo acepta `manual` o `mercado_publico`. Una respuesta con `valid_until` vencido no cuenta como vigente.
     - [x] [Green] Entidades, `capability_model.py` con `answered_by_user_id`, `valid_until` y la tabla `capability_evidence` (`answer_id` nullable con `SET NULL`, `origin` con `CHECK` y default `manual`), y una **migración nueva** desde la cabeza de `develop`, sin reutilizar `d9d22b5370ff` (quedó como `eead2dba418a`).
     - [x] [Green] Repositorio `ICapabilityRepository` / `SqlCapabilityRepository`, rescatado y ampliado con evidencias. Test de integración: la restricción única (`category`, `target_field`) deduplica y el `CHECK` de estado se cumple.
     - [x] `python -m scripts.migraciones` debe devolver una sola cabeza.
-  - [ ] **B0b. Casos de uso, catálogo y permiso**
-    - [ ] [Red] `BuildExperienceCatalog` (rescatado): los ids estables `perfil:…`, `capacidad:…` y `evidencia:…`, excluye las respuestas vencidas, **excluye las evidencias que no sean `manual`** y calcula `last_changed_at`.
-    - [ ] [Red] `RegisterCapabilityQuestion` (rescatado): rechaza enunciados que filtran datos de la empresa y, si la clave ya existe, devuelve la pregunta existente.
-    - [ ] [Red] `AnswerCapabilityQuestion` (rescatado y ampliado): guarda `answered_by_user_id` y no toca `keywords` ni `certifications`. Nuevo `AddCapabilityEvidence`.
-    - [ ] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
-    - [ ] [Red] Regresión: `GET /questions` y `SmartQuestionsBanner` siguen funcionando igual con `profile_question`.
-    - [ ] [Green] Casos de uso y permiso `generate_proposal` en el dominio y en las tres listas duplicadas (§2.8).
+  - [x] **B0b. Casos de uso, catálogo, permiso y router `/capabilities`**
+    - [x] [Red] `BuildExperienceCatalog` (rescatado): los ids estables `perfil:…` (incluye regiones), `capacidad:…` y `evidencia:…`, excluye las respuestas vencidas y **las evidencias que no sean `manual`**, y calcula `last_changed_at`.
+    - [x] [Red] `RegisterCapabilityQuestion` (rescatado): rechaza enunciados que filtran datos de la empresa y, si la clave ya existe, devuelve la pregunta existente.
+    - [x] [Red] `AnswerCapabilityQuestion` (rescatado y ampliado): resuelve la empresa activa, guarda `answered_by_user_id`, vigencia y licitación de origen (que no cambia al corregir), y no toca `keywords` ni `certifications`. Nuevo `AddCapabilityEvidence`.
+    - [x] [Red] Por empresa: un miembro ve las respuestas y evidencias de otro miembro de la misma empresa, y otra empresa no las ve. Sin `generate_proposal` se recibe 403; VIEWER no lo tiene.
+    - [x] [Red] Regresión: `GET /questions` y el banner del home no se tocan; la suite existente sigue en verde.
+    - [x] [Green] Casos de uso, permiso `generate_proposal` y `ALL_PERMISSIONS` como única lista (§2.8), router `/capabilities` (§2.10) cableado en `bootstrap.py`, y test e2e `tests/e2e/api/test_capability_api.py`.
 - [ ] **B1. `ProposalDraft`** (§2.2)
   - [ ] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY`; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED`.
   - [ ] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible.

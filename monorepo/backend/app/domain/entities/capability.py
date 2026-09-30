@@ -31,6 +31,7 @@ QuestionOrigin = Literal["semilla", "ia"]
 # `mercado_publico` queda reservado para importar órdenes de compra adjudicadas
 # (plan 230, §5 punto 10). Se admite desde ya para no migrar la columna después.
 EvidenceOrigin = Literal["manual", "mercado_publico"]
+ExperienceOrigin = Literal["perfil", "capacidad", "evidencia"]
 
 # Antes de esto no hay compras públicas registradas que valga la pena citar; el
 # límite solo ataja errores de tipeo como "224" o "20024".
@@ -222,6 +223,38 @@ def evidence_for_answer(
         description=description,
         created_by_user_id=created_by_user_id,
     )
+
+
+class ExperienceItem(BaseModel):
+    """Un elemento del catálogo de experiencia de una empresa.
+
+    `id` es estable y se compone del origen y una clave: `perfil:certificacion:
+    iso-9001`, `capacidad:<id de la pregunta>` o `evidencia:<id>`. Es lo que el
+    borrador de postulación guarda para citar la fuente de un párrafo (CA5).
+    """
+
+    id: str
+    origin: ExperienceOrigin
+    kind: str
+    title: str
+    detail: str
+    polarity: Polarity | None = None
+    # Solo en las respuestas: quién respondió y qué licitación motivó la pregunta.
+    answered_by_user_id: UUID | None = None
+    tender_id: UUID | None = None
+
+
+class ExperienceCatalog(BaseModel):
+    """Lo que el sistema sabe que la empresa puede acreditar.
+
+    No se guarda: se compone al leer, juntando el perfil, las respuestas vigentes
+    y los proyectos. Copiarlo obligaría a mantenerlo sincronizado.
+    """
+
+    items: list[ExperienceItem] = Field(default_factory=list)
+    # El último cambio de cualquiera de sus fuentes. Sirve para avisar que un
+    # borrador escrito antes quedó desactualizado.
+    last_changed_at: UtcDateTime | None = None
 
 
 def _plegar(text: str) -> str:

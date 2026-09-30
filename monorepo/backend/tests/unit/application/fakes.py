@@ -3,6 +3,11 @@
 from datetime import datetime
 from uuid import UUID
 
+from app.application.repositories.capability_repository import (
+    ICapabilityAnswerRepository,
+    ICapabilityEvidenceRepository,
+    ICapabilityQuestionRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -32,6 +37,11 @@ from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
+from app.domain.entities.capability import (
+    CapabilityAnswer,
+    CapabilityEvidence,
+    CapabilityQuestion,
+)
 from app.domain.entities.company_profile import CompanyRecord
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.matching_result import MatchingResult
@@ -45,13 +55,13 @@ from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import UserAlreadyExists
+from app.domain.errors.capability_errors import DuplicateCapabilityQuestion
 from app.domain.errors.notification_errors import (
     PermanentEmailError,
     TransientEmailError,
 )
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
-    UserAlreadyHasSupplier,
 )
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 
@@ -173,7 +183,6 @@ from app.domain.entities.supplier_invitation import (
     SupplierInvitation,
 )
 from app.domain.entities.supplier_member import (
-    MemberRole,
     MemberStatus,
     SupplierMember,
     UserWorkspaceSummary,
@@ -896,3 +905,76 @@ class FakeWeightingService(IWeightingService):
     ) -> list[tuple[UUID, float]]:
         self.calls.append(list(candidates))
         return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
+
+
+class InMemoryCapabilityQuestionRepository(ICapabilityQuestionRepository):
+    def __init__(self, preguntas: list[CapabilityQuestion] | None = None) -> None:
+        self._por_id: dict[UUID, CapabilityQuestion] = {}
+        for pregunta in preguntas or []:
+            self._por_id[pregunta.id] = pregunta
+
+    async def get(self, question_id: UUID) -> CapabilityQuestion | None:
+        return self._por_id.get(question_id)
+
+    async def get_by_key(
+        self, category: str, target_field: str
+    ) -> CapabilityQuestion | None:
+        return next(
+            (
+                q
+                for q in self._por_id.values()
+                if q.category == category and q.target_field == target_field
+            ),
+            None,
+        )
+
+    async def list_active(self, categories: set[str]) -> list[CapabilityQuestion]:
+        return [
+            q for q in self._por_id.values() if q.active and q.category in categories
+        ]
+
+    async def list_by_ids(self, question_ids: list[UUID]) -> list[CapabilityQuestion]:
+        return [self._por_id[i] for i in question_ids if i in self._por_id]
+
+    async def add(self, question: CapabilityQuestion) -> CapabilityQuestion:
+        existente = await self.get_by_key(question.category, question.target_field)
+        if existente is not None:
+            raise DuplicateCapabilityQuestion(existente)
+        self._por_id[question.id] = question
+        return question
+
+
+class InMemoryCapabilityAnswerRepository(ICapabilityAnswerRepository):
+    def __init__(self) -> None:
+        self._filas: dict[tuple[UUID, UUID], CapabilityAnswer] = {}
+
+    async def get(
+        self, supplier_id: UUID, question_id: UUID
+    ) -> CapabilityAnswer | None:
+        return self._filas.get((supplier_id, question_id))
+
+    async def list_by_supplier(self, supplier_id: UUID) -> list[CapabilityAnswer]:
+        return [a for (s, _), a in self._filas.items() if s == supplier_id]
+
+    async def save(self, answer: CapabilityAnswer) -> CapabilityAnswer:
+        clave = (answer.supplier_id, answer.question_id)
+        previa = self._filas.get(clave)
+        if previa is not None:
+            # Igual que el upsert real: se conservan id y fecha de generación.
+            answer = answer.model_copy(
+                update={"id": previa.id, "generated_at": previa.generated_at}
+            )
+        self._filas[clave] = answer
+        return answer
+
+
+class InMemoryCapabilityEvidenceRepository(ICapabilityEvidenceRepository):
+    def __init__(self) -> None:
+        self.filas: list[CapabilityEvidence] = []
+
+    async def add(self, evidence: CapabilityEvidence) -> CapabilityEvidence:
+        self.filas.append(evidence)
+        return evidence
+
+    async def list_by_supplier(self, supplier_id: UUID) -> list[CapabilityEvidence]:
+        return [e for e in self.filas if e.supplier_id == supplier_id]

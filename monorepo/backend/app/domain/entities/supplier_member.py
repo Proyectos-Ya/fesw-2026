@@ -28,17 +28,36 @@ _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
     },
     MemberRole.MEMBER: {
         "view_matches",
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
     },
     MemberRole.VIEWER: {
         "view_matches",
     },
 }
+
+
+# Todos los permisos, en el orden en que se listan en el `WorkspaceContext`. Es la
+# única lista: las dependencias de auth y el cambio de espacio de trabajo filtran
+# esta por `has_permission`, así que un permiso nuevo solo se agrega en los roles
+# de arriba y aquí.
+ALL_PERMISSIONS: tuple[str, ...] = (
+    "invite_members",
+    "remove_members",
+    "edit_company_profile",
+    "manage_tenders",
+    "view_matches",
+    "save_tenders",
+    "chat_assistant",
+    "deep_analysis",
+    "generate_proposal",
+)
 
 
 class SupplierMember(BaseModel):

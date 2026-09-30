@@ -45,9 +45,10 @@ class QuestionLeaksSupplierData(Exception):
 class EvidenceNeedsAffirmativeProjectAnswer(Exception):
     """Un proyecto solo respalda un "Sí" a una pregunta de experiencia en proyectos."""
 
-    def __init__(self, answer_id: UUID):
+    def __init__(self, answer_id: UUID | None):
         super().__init__(
             "Solo se puede agregar un proyecto a una respuesta afirmativa de "
             "experiencia en proyectos."
         )
+        # Nulo cuando la empresa ni siquiera respondió la pregunta.
         self.answer_id = answer_id
