@@ -383,6 +383,52 @@ def create_proposal_router(
             ) from error
 
     @router.post(
+        "/{tender_id}/proposal/technical-document",
+        response_model=ProposalDraft,
+        summary="Generar el documento técnico aunque no se detectó en las bases",
+        responses={
+            **_ERRORES_DE_ESCRITURA,
+            409: {
+                "description": "Quedan preguntas, hay una pausa, está detenido "
+                "o la licitación cerró"
+            },
+            502: {"description": "La IA no respondió o respondió algo inválido"},
+        },
+    )
+    async def request_technical_document(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> ProposalDraft:
+        """La empresa pide el documento técnico aunque el análisis no lo detectó
+        en las bases: se marca como pedido y se redacta el borrador incluyéndolo,
+        con la plantilla fija."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+                request_technical_document=True,
+            )
+        except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
+            raise _traducir(error) from error
+        except ProposalAIServiceError as error:
+            logger.warning(
+                "Falló el documento técnico de la licitación %s: %s", tender_id, error
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "No fue posible redactar el documento técnico en este momento. "
+                "Intenta de nuevo.",
+            ) from error
+
+    @router.post(
         "/{tender_id}/proposal/regenerate",
         response_model=ProposalDraft,
         summary="Regenerar el borrador con instrucciones libres",

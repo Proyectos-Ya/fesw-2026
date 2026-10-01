@@ -464,3 +464,45 @@ class TestPlantillaDelDocumentoTecnico:
             ]
         )
         assert documento.sections[0].title == "Metodología"
+
+
+class TestPreguntasSugeridas:
+    """Preguntas para fortalecer la oferta: no vienen de una exigencia de las bases."""
+
+    def _con_sugerida(self) -> ProposalDraft:
+        borrador = ProposalDraft(supplier_id=uuid4(), tender_id=uuid4())
+        borrador.load_requirements(
+            [
+                Requirement(
+                    id="sug-1",
+                    text="Experiencia en suministros a municipios",
+                    kind="experiencia",
+                    mandatory=False,
+                    origin="Sugerida para fortalecer la oferta",
+                    suggested=True,
+                    capability_question_id=VIALES_Q,
+                )
+            ]
+        )
+        return borrador
+
+    def test_mientras_no_se_responda_bloquea_la_redaccion(self):
+        assert not self._con_sugerida().can_generate()
+
+    def test_un_no_no_pausa(self):
+        borrador = self._con_sugerida()
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.status == "FEASIBILITY"
+        assert borrador.can_generate()
+
+
+class TestDocumentoTecnicoAPedido:
+    def test_la_empresa_puede_pedirlo_aunque_no_se_detecto(self):
+        borrador = _borrador()
+
+        borrador.request_technical_document()
+
+        assert borrador.requires_technical_document is True
+        assert "no se detectó" in (borrador.technical_document_reason or "")

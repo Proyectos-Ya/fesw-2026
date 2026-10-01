@@ -53,6 +53,9 @@ class FeasibilityRequirementDTO(BaseModel):
 
 class FeasibilityResultDTO(BaseModel):
     requirements: list[FeasibilityRequirementDTO] = Field(default_factory=list)
+    # Hasta 3 preguntas que, respondidas, fortalecerían la descripción de la
+    # oferta: no las piden las bases, pero dan datos de la empresa para redactar.
+    offer_questions: list[FeasibilityRequirementDTO] = Field(default_factory=list)
     requires_technical_document: bool = False
     technical_document_reason: str | None = None
 

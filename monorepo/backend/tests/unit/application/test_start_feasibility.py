@@ -659,3 +659,82 @@ class TestVolverAAnalizar:
                 force=True,
             )
         assert len(e.ai.llamadas) == 1
+
+
+class TestPreguntasSugeridasEnLaFactibilidad:
+    """Hasta 3 preguntas para fortalecer la oferta, solo de lo que no se sabe."""
+
+    def _sugerida(self, **kwargs) -> FeasibilityRequirementDTO:
+        datos = dict(
+            text="Experiencia en suministros a municipios",
+            kind="experiencia",
+            mandatory=True,  # la IA podría marcarla; una sugerida nunca es excluyente
+            origin="IA",
+            new_question=NewQuestionDTO(
+                question="¿Tiene experiencia suministrando materiales a municipios?",
+                target_field="experiencia:suministro-municipios",
+                kind="experiencia_proyecto",
+                work_type="suministro a municipios",
+            ),
+        )
+        datos.update(kwargs)
+        return FeasibilityRequirementDTO(**datos)
+
+    async def test_se_agregan_como_preguntas_no_excluyentes(self):
+        e = Escenario()
+        e.ai.resultado = FeasibilityResultDTO(offer_questions=[self._sugerida()])
+        await e.preparar()
+
+        borrador = await e.ejecutar()
+
+        [sug] = borrador.requirements
+        assert sug.suggested is True
+        assert sug.mandatory is False
+        assert sug.id == "sug-1"
+        assert sug.status == "desconocido"
+        assert not borrador.can_generate()
+
+    async def test_maximo_tres(self):
+        e = Escenario()
+        e.ai.resultado = FeasibilityResultDTO(
+            offer_questions=[
+                self._sugerida(
+                    new_question=NewQuestionDTO(
+                        question=f"¿Pregunta {i}?",
+                        target_field=f"sug_{i}",
+                        kind="capacidad",
+                    )
+                )
+                for i in range(5)
+            ]
+        )
+        await e.preparar()
+
+        borrador = await e.ejecutar()
+
+        assert len([r for r in borrador.requirements if r.suggested]) == 3
+
+    async def test_lo_que_la_empresa_ya_respondio_no_se_sugiere(self):
+        e = Escenario()
+        e.ai.resultado = FeasibilityResultDTO(
+            offer_questions=[
+                self._sugerida(new_question=None, question_key="registro_mop")
+            ]
+        )
+        await e.preparar()
+        await e.responde(MOP, "Sí")
+
+        borrador = await e.ejecutar()
+
+        assert borrador.requirements == []
+
+    async def test_una_condicion_o_un_documento_no_se_sugiere(self):
+        e = Escenario()
+        e.ai.resultado = FeasibilityResultDTO(
+            offer_questions=[self._sugerida(kind="condicion", new_question=None)]
+        )
+        await e.preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.requirements == []

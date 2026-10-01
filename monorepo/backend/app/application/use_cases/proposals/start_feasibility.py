@@ -64,6 +64,8 @@ _ESTADO_POR_POLARIDAD: dict[str | None, RequirementStatus] = {
     None: "cumple",
 }
 _PREFIJO_CAPACIDAD = "capacidad:"
+# Pocas y útiles: más preguntas cansan sin mejorar mucho la redacción.
+_MAX_SUGERIDAS = 3
 
 
 def huella_del_analisis(
@@ -194,6 +196,9 @@ class StartFeasibilityUseCase:
             await self._exigencia(indice, dto, supplier, tender, catalog, categoria)
             for indice, dto in enumerate(resultado.requirements, start=1)
         ]
+        requirements += await self._sugeridas(
+            resultado.offer_questions, supplier, tender, catalog, categoria
+        )
 
         draft = ProposalDraft(
             supplier_id=supplier.id,
@@ -268,6 +273,46 @@ class StartFeasibilityUseCase:
         return base.model_copy(
             update={"status": status, "capability_question_id": pregunta.id}
         )
+
+    async def _sugeridas(
+        self,
+        dtos: list[FeasibilityRequirementDTO],
+        supplier: Supplier,
+        tender: Tender,
+        catalog: ExperienceCatalog,
+        categoria: str,
+    ) -> list[Requirement]:
+        """Preguntas para fortalecer la oferta: solo las que quedan por responder.
+
+        Lo que la empresa ya respondió o el catálogo ya cubre no se sugiere, y
+        una condición del servicio o un documento no describen a la empresa.
+        """
+        sugeridas: list[Requirement] = []
+        for dto in dtos:
+            if len(sugeridas) == _MAX_SUGERIDAS:
+                break
+            if dto.kind in KINDS_SIN_PREGUNTA:
+                continue
+            requisito = await self._exigencia(
+                len(sugeridas) + 1,
+                dto.model_copy(update={"mandatory": False, "catalog_item_id": None}),
+                supplier,
+                tender,
+                catalog,
+                categoria,
+            )
+            if requisito.status != "desconocido":
+                continue
+            sugeridas.append(
+                requisito.model_copy(
+                    update={
+                        "id": f"sug-{len(sugeridas) + 1}",
+                        "suggested": True,
+                        "origin": "Sugerida para fortalecer la oferta",
+                    }
+                )
+            )
+        return sugeridas
 
     async def _pregunta(
         self, dto: FeasibilityRequirementDTO, supplier: Supplier, categoria: str

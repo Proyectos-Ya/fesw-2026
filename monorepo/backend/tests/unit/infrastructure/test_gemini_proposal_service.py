@@ -419,3 +419,33 @@ async def test_redaccion_trata_las_instrucciones_como_datos_de_baja_prioridad():
 async def test_redaccion_con_json_invalido_es_error_del_servicio():
     with pytest.raises(ProposalAIServiceError):
         await _redactar(_respuesta({"offer_name": "no es una sección"}))
+
+
+async def test_factibilidad_pide_hasta_tres_preguntas_para_fortalecer_la_oferta():
+    con_sugeridas = {
+        **RESULTADO,
+        "offer_questions": [
+            {
+                "text": "Experiencia en suministros a municipios",
+                "kind": "experiencia",
+                "mandatory": False,
+                "origin": "Sugerida",
+                "new_question": {
+                    "question": "¿Tiene experiencia suministrando a municipios?",
+                    "target_field": "experiencia:suministro-municipios",
+                    "kind": "experiencia_proyecto",
+                    "work_type": "suministro a municipios",
+                },
+            }
+        ],
+    }
+
+    resultado, post = await _analizar(_respuesta(con_sugeridas))
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    assert "offer_questions" in esquema["properties"]
+    texto = " ".join(
+        p.get("text", "") for p in post.call_args.kwargs["json"]["contents"][0]["parts"]
+    )
+    assert "offer_questions" in texto
+    assert len(resultado.offer_questions) == 1

@@ -163,6 +163,7 @@ class GenerateProposalUseCase:
         tender_id: UUID,
         instructions: str | None = None,
         require_ready: bool = False,
+        request_technical_document: bool = False,
     ) -> ProposalDraft:
         postulacion = await postulacion_abierta(
             self.supplier_repo,
@@ -178,6 +179,9 @@ class GenerateProposalUseCase:
             raise InvalidProposalTransition(draft.status, "regenerar")
         if not draft.can_generate():
             raise InvalidProposalTransition(draft.status, "redactar")
+        if request_technical_document:
+            # La empresa lo pide aunque el análisis no lo detectó en las bases.
+            draft.request_technical_document()
 
         catalog = await self.catalog_use_case.execute(
             user_id=user_id, supplier_id=postulacion.supplier.id

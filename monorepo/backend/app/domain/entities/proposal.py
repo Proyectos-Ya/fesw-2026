@@ -77,6 +77,9 @@ class Requirement(BaseModel):
     catalog_item_id: str | None = None
     # La pregunta del banco que la empresa tiene que responder, si hace falta una.
     capability_question_id: UUID | None = None
+    # Sugerida para fortalecer la oferta: no la piden las bases, pero su respuesta
+    # le da a la redacción datos de la empresa. Nunca es excluyente.
+    suggested: bool = False
 
 
 class DiscrepancyDecision(BaseModel):
@@ -359,6 +362,14 @@ class ProposalDraft(BaseModel):
         """Vuelve a factibilidad para poder cambiar la respuesta (CA9)."""
         self._exigir("STOPPED", accion="reanudar")
         self.status = "FEASIBILITY"
+        self._tocar()
+
+    def request_technical_document(self) -> None:
+        """La empresa pide el documento técnico aunque no se detectó en las bases."""
+        self.requires_technical_document = True
+        self.technical_document_reason = (
+            "Lo pidió la empresa: no se detectó que las bases lo exijan."
+        )
         self._tocar()
 
     def mark_ready(self, content: DraftContent, instructions: str | None) -> None:

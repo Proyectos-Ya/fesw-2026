@@ -577,3 +577,25 @@ async def test_un_viewer_no_vuelve_a_analizar(api: AsyncClient, entorno, empresa
     resp = await api.post(f"/tenders/{tender_id}/proposal/reanalyze", headers=headers_c)
 
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_pedir_el_documento_tecnico_aunque_no_se_detecto(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/technical-document", headers=headers_a
+    )
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["requires_technical_document"] is True
+    assert cuerpo["content"]["technical_document"] is not None
+    descarga = await api.get(
+        f"/tenders/{tender_id}/proposal/export.docx", headers=headers_a
+    )
+    assert descarga.status_code == 200

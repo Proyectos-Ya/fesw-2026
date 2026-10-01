@@ -78,6 +78,15 @@ Si una exigencia contradice el catálogo (por ejemplo, entrega en una región
 donde la empresa no opera), no la des por cubierta: usa question_key o
 new_question para preguntarle a la empresa si puede cumplirla.
 
+Además, en offer_questions, hasta 3 preguntas que fortalecerían la descripción
+de la oferta aunque las bases no las exijan: experiencia en trabajos parecidos,
+cobertura en la comuna o región de entrega, plazos o capacidad de entrega.
+Solo sobre lo que el CATÁLOGO DE LA EMPRESA no responde, y sin repetir una
+exigencia de requirements. Tienen que responderse con Sí o No ("¿Puede entregar
+en un plazo de 5 días hábiles?"), nunca abiertas ("¿Cuál es su plazo?"). Cada una con question_key o new_question (mismas
+reglas que arriba), kind certificacion | experiencia | disponibilidad | otro y
+mandatory false. Si el catálogo ya dice lo importante, déjala vacía.
+
 Indica además si las bases exigen un DOCUMENTO TÉCNICO en
 requires_technical_document, y por qué en technical_document_reason. Un
 documento técnico es una propuesta técnica redactada por el proveedor: memoria
@@ -146,6 +155,8 @@ _SCHEMA = {
     },
     "required": ["requirements", "requires_technical_document"],
 }
+# Mismo formato que una exigencia: así pasan por los mismos guardrails.
+_SCHEMA["properties"]["offer_questions"] = _SCHEMA["properties"]["requirements"]
 
 
 def _ficha(tender: Tender) -> str:

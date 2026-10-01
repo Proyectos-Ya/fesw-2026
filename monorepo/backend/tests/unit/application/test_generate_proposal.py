@@ -466,3 +466,43 @@ class TestPausaDeLaRedaccion:
         with pytest.raises(ProposalAIServiceError):
             await e.redactar()
         assert (await e.borrador()).status == "FEASIBILITY"
+
+
+class TestDocumentoTecnicoAPedido:
+    """La empresa lo pide aunque no se detectó en las bases: se redacta con la plantilla."""
+
+    async def test_redacta_incluyendo_el_documento_tecnico(self):
+        e = await Escenario().preparar(requiere_tecnico=False)
+        await e.redactar()
+
+        borrador = await e.caso().execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            tender_id=e.tender_id,
+            request_technical_document=True,
+        )
+
+        assert borrador.requires_technical_document is True
+        assert borrador.content.technical_document is not None  # type: ignore[union-attr]
+        assert e.ai.redacciones[-1]["include_technical_document"] is True
+        assert "no se detectó" in (borrador.technical_document_reason or "")
+
+    async def test_sin_poder_redactar_no_se_pide(self):
+        pendiente = Requirement(
+            id="req-5",
+            text="Deberá contar con SEC.",
+            kind="certificacion",
+            mandatory=True,
+            origin="Descripción",
+            capability_question_id=SEC_Q,
+        )
+        e = await Escenario().preparar(otras=[pendiente])
+
+        with pytest.raises(InvalidProposalTransition):
+            await e.caso().execute(
+                user_id=e.user_id,
+                supplier_id=e.empresa.id,
+                tender_id=e.tender_id,
+                request_technical_document=True,
+            )
+        assert (await e.borrador()).requires_technical_document is False
