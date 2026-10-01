@@ -137,7 +137,13 @@ def entorno(api: AsyncClient):
         )
     )
     app.dependency_overrides[bootstrap.get_proposal_use_case] = lambda: (
-        GetProposalUseCase(suppliers, tenders, drafts)
+        GetProposalUseCase(
+            suppliers,
+            tenders,
+            drafts,
+            questions,
+            BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences),
+        )
     )
     app.dependency_overrides[bootstrap.get_answer_proposal_question_use_case] = lambda: (
         AnswerProposalQuestionUseCase(
@@ -528,3 +534,19 @@ async def test_exportar_sin_redactar_es_409(api: AsyncClient, entorno, empresas)
     )
 
     assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_la_vista_trae_las_preguntas_de_las_exigencias(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    [pregunta] = resp.json()["questions"]
+    assert pregunta["id"] == str(SEC.id)
+    assert [o["label"] for o in pregunta["options"]] == ["Sí", "No"]
+    assert resp.json()["catalog_items"] == []

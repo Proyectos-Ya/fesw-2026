@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.entities.capability import CapabilityQuestion, ExperienceItem
 from app.domain.entities.proposal import DecisionAction, ProposalDraft
 
 
@@ -12,6 +13,10 @@ class ProposalDraftView(ProposalDraft):
     """
 
     is_expired: bool = False
+    # Las preguntas a las que apuntan las exigencias, con enunciado y opciones.
+    questions: list[CapabilityQuestion] = Field(default_factory=list)
+    # Los elementos del catálogo que cubren alguna exigencia: explican una pausa.
+    catalog_items: list[ExperienceItem] = Field(default_factory=list)
 
 
 class AnswerProposalQuestionInput(BaseModel):

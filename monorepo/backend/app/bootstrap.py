@@ -864,10 +864,19 @@ def get_start_feasibility_use_case(
 def get_proposal_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GetProposalUseCase:
+    supplier_repo = SupplierRepository(session)
+    question_repo = SqlCapabilityQuestionRepository(session)
     return GetProposalUseCase(
-        SupplierRepository(session),
+        supplier_repo,
         TenderRepository(session),
         SqlProposalDraftRepository(session),
+        question_repo,
+        BuildExperienceCatalogUseCase(
+            supplier_repo,
+            question_repo,
+            SqlCapabilityAnswerRepository(session),
+            SqlCapabilityEvidenceRepository(session),
+        ),
     )
 
 
