@@ -293,26 +293,14 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 
 ### Frontend (`monorepo/frontend`)
 
-- [ ] **F1. Tipos y servicio**
-  - [ ] [Red/Green] `features/proposals/types.ts`, `services/proposalService.ts` y `hooks/useProposal.ts`.
-- [ ] **F2. Entrada desde la ficha**
-  - [ ] [Red] En `TenderDetailView`, el botón muestra "Generar postulación", "Continuar" o "Reanudar" según el estado. Queda deshabilitado con tooltip si la licitación está cerrada y oculto sin el permiso `generate_proposal`.
-  - [ ] [Green] Botón y ruta `app/(app)/matches/[id]/postulacion/page.tsx`.
-- [ ] **F3. Factibilidad (CA6)**
-  - [ ] [Red] `ProposalStepper` muestra "Analizando bases y experiencia" mientras carga. `FeasibilityStep` lista las exigencias con su estado, las preguntas con sus opciones, el formulario opcional de proyecto tras un "Sí" de experiencia, y los adjuntos con un botón para subir más.
-  - [ ] [Green] Implementación.
-- [ ] **F4. Discrepancias (CA7, CA8, CA9)**
-  - [ ] [Red] `DiscrepancyModal` muestra la cláusula, la recomendación y, si el "No" es de una respuesta anterior, su origen (fecha, quién, licitación). Los botones "Actualizar respuesta", "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
-  - [ ] [Green] Implementación.
-- [ ] **F5. Redacción (CA6)**
-  - [ ] [Red/Green] `GeneratingLoader` con la etapa "Redactando nombre, descripción y documentos".
-- [ ] **F6. Borrador (CA1, CA2, CA3, CA4, CA5)**
-  - [ ] [Red] `ProposalDraftViewer` muestra las secciones, con el documento técnico solo si corresponde, y los placeholders destacados.
-  - [ ] [Red] Al hacer clic en un párrafo se abre `SourcePanel` con el elemento del catálogo que lo respalda: el proyecto (mandante, año, monto), la capacidad (pregunta, respuesta, quién respondió y licitación de origen) o el campo del perfil.
-  - [ ] [Green] `ProposalDraftViewer`, `SourcePanel`, `RegenerateDialog` y el botón "Exportar documento técnico (.docx)", visible solo si `content.technical_document` existe. La pestaña muestra nombre, descripción, documentos y advertencias para copiarlos al formulario; el documento técnico se descarga.
-  - [ ] Playwright para el flujo crítico: factibilidad → discrepancia → continuar → borrador → exportar.
-
----
+- [x] **F1. Tipos, servicio y hook** (`features/proposals/`): `types.ts`, `services/proposalService.ts` (las 8 rutas), `hooks/useProposal.ts` (estado, acciones, etapa del CA6 y descarga) y `utils/proposal.ts` (`canGenerate` replica la regla del backend). Para descargar el Word, `apiDownload` en `shared/api/client.ts`. Para mostrar cada pregunta con sus opciones y explicar una pausa, el `GET` del borrador suma `questions` y `catalog_items` (backend, `bcc0578`).
+- [x] **F2. Entrada desde la ficha:** `ProposalEntryCard` en `TenderDetailView`, con un texto y una acción según el estado ("Generar postulación", "Continuar postulación", "Revisar", "Reanudar", "Ver borrador"). No ofrece generar si la licitación cerró o si falta el permiso. Ruta `app/(app)/matches/[id]/postulacion/page.tsx`.
+- [x] **F3. Factibilidad (CA6):** `ProposalStepper` con la etapa en curso y `FeasibilityStep`, que muestra las preguntas pendientes con sus opciones, las exigencias evaluadas, las condiciones del servicio y los documentos (estos dos sin preguntar), y si se exige documento técnico. Los adjuntos se suben con `ProposalAttachments`, que reutiliza el gestor del asistente.
+- [x] **F4. Discrepancias (CA7–CA9):** `DiscrepancyModal` con la exigencia, la recomendación y el origen del "No" si vino de una respuesta anterior; "Actualizar respuesta" (solo opciones que no son "No"), "Continuar con advertencia" y "Detener". La vista `STOPPED` ofrece "Reanudar".
+- [x] **F5. Redacción (CA6):** la etapa "Redactando nombre, descripción y documentos…" en el stepper mientras corre `generate` o `regenerate`.
+- [x] **F6. Borrador (CA1–CA5):** `ProposalDraftViewer` con nombre, descripción y documentos, cada uno con su botón "Copiar" para pegar en el formulario; las advertencias; los vacíos resaltados; el panel de fuentes al elegir un párrafo; `RegenerateDialog`; y el documento técnico con "Exportar a .docx", visible solo si existe.
+- Sin el permiso `generate_proposal`, la pantalla es de solo lectura: se puede ver y exportar, pero no responder, decidir ni redactar.
+- **Pendiente:** verificar el flujo completo en el navegador con el backend y Supabase arriba, y decidir si hace falta un e2e de Playwright (la regla pide uno para flujos críticos).
 
 ## 4. Matriz de Cobertura de Criterios de Aceptación
 
