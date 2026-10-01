@@ -21,6 +21,7 @@ que ninguna lectura tenga que escribir.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID, uuid4
@@ -147,14 +148,47 @@ class DraftSection(BaseModel):
     paragraphs: list[DraftParagraph] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TechnicalSectionTemplate:
+    key: str
+    title: str
+    # Opcional: se incluye solo si hay contenido. Las demás siempre van, con un
+    # vacío por completar si la IA no tuvo de dónde sacar el texto.
+    optional: bool = False
+
+
+# Plantilla fija del documento técnico, acordada con el equipo (plan 230, §2.6).
+# Es lo único del borrador que se exporta a Word: nombre, descripción y
+# documentos se copian desde la pestaña del borrador al formulario de la
+# Compra Ágil.
+TECHNICAL_SECTIONS: tuple[TechnicalSectionTemplate, ...] = (
+    TechnicalSectionTemplate("antecedentes", "Antecedentes de la empresa"),
+    TechnicalSectionTemplate("comprension", "Comprensión del requerimiento"),
+    TechnicalSectionTemplate("metodologia", "Metodología"),
+    TechnicalSectionTemplate("plan_de_trabajo", "Plan de trabajo y plazos"),
+    TechnicalSectionTemplate("equipo", "Equipo de trabajo"),
+    TechnicalSectionTemplate("otros", "Otros requisitos de las bases", optional=True),
+)
+
+
+class TechnicalSection(BaseModel):
+    key: str
+    title: str
+    paragraphs: list[DraftParagraph] = Field(default_factory=list)
+
+
+class TechnicalDocument(BaseModel):
+    sections: list[TechnicalSection] = Field(default_factory=list)
+
+
 class DraftContent(BaseModel):
     """Plantilla fija de Compra Ágil (CA1)."""
 
     offer_name: DraftSection
     offer_description: DraftSection
     required_documents: DraftSection
-    # Solo si las bases lo exigen.
-    technical_document: DraftSection | None = None
+    # Solo si las bases lo exigen; con las secciones de `TECHNICAL_SECTIONS`.
+    technical_document: TechnicalDocument | None = None
 
 
 class ProposalDraft(BaseModel):

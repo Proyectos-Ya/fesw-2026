@@ -50,6 +50,7 @@ from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
     ProposalDraftNotFound,
     QuestionNotInProposal,
+    TechnicalDocumentNotRequired,
 )
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFound
@@ -385,15 +386,18 @@ def create_proposal_router(
 
     @router.get(
         "/{tender_id}/proposal/export.docx",
-        summary="Descargar el borrador como Word",
+        summary="Descargar el documento técnico como Word",
         response_class=Response,
         responses={
             200: {
                 "content": {_MIME_DOCX: {}},
-                "description": "El borrador en Word, con los puntos a revisar destacados",
+                "description": "El documento técnico en Word, con los vacíos a revisar destacados",
             },
             404: {"description": "No hay licitación, empresa o postulación"},
-            409: {"description": "El borrador todavía no está redactado"},
+            409: {
+                "description": "El borrador no está redactado o no requiere "
+                "documento técnico"
+            },
         },
     )
     async def export_docx(
@@ -406,15 +410,18 @@ def create_proposal_router(
             WorkspaceContext | None, Depends(workspace_context_dep)
         ],
     ) -> Response:
-        """Word con título, secciones, documentos como viñetas y bloques
-        "Revisar" para vacíos y advertencias (CA3). Cualquier miembro puede
-        descargarlo, también con la licitación cerrada."""
+        """Solo el documento técnico, con un título por sección de la plantilla y
+        bloques "Revisar" para los vacíos (CA3). Lo demás del borrador se copia
+        desde su pestaña. Cualquier miembro puede descargarlo, también con la
+        licitación cerrada."""
         try:
             archivo = await use_case.execute(
                 user_id=user.id,
                 supplier_id=_empresa_activa(workspace_context),
                 tender_id=tender_id,
             )
+        except TechnicalDocumentNotRequired as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except (*_NO_ENCONTRADO, InvalidProposalTransition) as error:
             raise _traducir(error) from error
         return Response(

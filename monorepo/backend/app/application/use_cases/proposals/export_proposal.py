@@ -13,6 +13,7 @@ from app.application.use_cases.capabilities._empresa import empresa_o_error
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
     ProposalDraftNotFound,
+    TechnicalDocumentNotRequired,
 )
 from app.domain.errors.tender_errors import TenderNotFound
 
@@ -26,14 +27,15 @@ class ExportedFile:
 def _nombre_de_archivo(codigo: str) -> str:
     """Solo letras, números, puntos y guiones: va en el Content-Disposition."""
     seguro = re.sub(r"[^A-Za-z0-9.-]+", "-", codigo).strip("-")
-    return f"postulacion-{seguro or 'compra-agil'}.docx"
+    return f"documento-tecnico-{seguro or 'compra-agil'}.docx"
 
 
 class ExportProposalDocxUseCase:
-    """Descarga el borrador redactado como Word (CA3).
+    """Descarga el documento técnico del borrador como Word (CA3).
 
-    Es una lectura: funciona aunque la licitación haya cerrado, como el GET del
-    borrador. Exige que esté redactado.
+    Solo existe si las bases lo exigen: lo demás se copia desde la pestaña del
+    borrador. Es una lectura, así que funciona aunque la licitación haya
+    cerrado, como el GET del borrador. Exige que esté redactado.
     """
 
     def __init__(
@@ -61,6 +63,8 @@ class ExportProposalDocxUseCase:
             raise ProposalDraftNotFound(tender.id)
         if draft.content is None:
             raise InvalidProposalTransition(draft.status, "exportar")
+        if draft.content.technical_document is None:
+            raise TechnicalDocumentNotRequired(tender.id)
         return ExportedFile(
             filename=_nombre_de_archivo(tender.code),
             content=self.exporter.to_docx(draft, tender),

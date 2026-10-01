@@ -77,12 +77,29 @@ class DraftSectionDTO(BaseModel):
     paragraphs: list[DraftParagraphDTO] = Field(default_factory=list)
 
 
+class TechnicalDocumentDTO(BaseModel):
+    """Documento técnico con las secciones de `TECHNICAL_SECTIONS`.
+
+    Un campo por sección y no una lista libre: la plantilla es fija y así la IA
+    no puede inventar ni renombrar secciones. Una sección que no venga queda
+    como vacío por completar.
+    """
+
+    antecedentes: DraftSectionDTO | None = None
+    comprension: DraftSectionDTO | None = None
+    metodologia: DraftSectionDTO | None = None
+    plan_de_trabajo: DraftSectionDTO | None = None
+    equipo: DraftSectionDTO | None = None
+    # Solo si las bases piden algo que no calza en las anteriores.
+    otros: DraftSectionDTO | None = None
+
+
 class DraftContentDTO(BaseModel):
     offer_name: DraftSectionDTO
     offer_description: DraftSectionDTO
     # Documentos que la IA encuentre además de los detectados en la factibilidad.
     required_documents: DraftSectionDTO = Field(default_factory=DraftSectionDTO)
-    technical_document: DraftSectionDTO | None = None
+    technical_document: TechnicalDocumentDTO | None = None
 
 
 class ProposalAIServiceError(Exception):

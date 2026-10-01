@@ -17,6 +17,7 @@ from app.application.services.proposal_ai_service import (
     FeasibilityRequirementDTO,
     FeasibilityResultDTO,
     ProposalAIServiceError,
+    TechnicalDocumentDTO,
 )
 from app.application.use_cases.capabilities.answer_capability_question import (
     AnswerCapabilityQuestionUseCase,
@@ -475,11 +476,17 @@ async def test_regenerar_sin_redactar_es_409(api: AsyncClient, entorno, empresas
 
 
 @pytest.mark.asyncio
-async def test_un_viewer_descarga_el_word_del_borrador(
+async def test_un_viewer_descarga_el_documento_tecnico(
     api: AsyncClient, entorno, empresas
 ):
-    tender_id, *_ = entorno
+    tender_id, *_, ia = entorno
     headers_a, _, headers_c, _ = empresas
+    ia["servicio"].resultado.requires_technical_document = True
+    ia["servicio"].borrador.technical_document = TechnicalDocumentDTO(
+        metodologia=DraftSectionDTO(
+            paragraphs=[DraftParagraphDTO(text="Clases presenciales.")]
+        )
+    )
     await _redactado(api, tender_id, headers_a)
 
     resp = await api.get(
@@ -491,9 +498,23 @@ async def test_un_viewer_descarga_el_word_del_borrador(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
     assert resp.headers["content-disposition"] == (
-        f'attachment; filename="postulacion-COT-{tender_id}.docx"'
+        f'attachment; filename="documento-tecnico-COT-{tender_id}.docx"'
     )
     assert resp.content[:2] == b"PK"  # un .docx es un zip
+
+
+@pytest.mark.asyncio
+async def test_sin_documento_tecnico_no_hay_word(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/export.docx", headers=headers_a
+    )
+
+    assert resp.status_code == 409
+    assert "documento técnico" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio

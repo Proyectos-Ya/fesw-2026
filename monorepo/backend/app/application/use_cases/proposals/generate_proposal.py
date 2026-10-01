@@ -13,6 +13,7 @@ from app.application.services.proposal_ai_service import (
     DraftParagraphDTO,
     DraftSectionDTO,
     IProposalAIService,
+    TechnicalDocumentDTO,
 )
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
@@ -21,16 +22,18 @@ from app.application.use_cases.proposals._documentos import adjuntos_del_usuario
 from app.application.use_cases.proposals._postulacion import postulacion_abierta
 from app.domain.entities.capability import ExperienceCatalog, ExperienceItem
 from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
     DraftContent,
     DraftParagraph,
     DraftSection,
     DraftSource,
     ProposalDraft,
+    TechnicalDocument,
+    TechnicalSection,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
 
 _VACIO_SIN_RESPALDO = "[[INSERTAR: respaldo de esta afirmación]]"
-_VACIO_DOCUMENTO_TECNICO = "[[INSERTAR: contenido del documento técnico]]"
 
 
 def _clave(texto: str) -> str:
@@ -78,19 +81,41 @@ def _documentos_necesarios(draft: ProposalDraft, dto: DraftSectionDTO) -> DraftS
     )
 
 
+# Qué dato pedir cuando una sección del documento técnico viene vacía. Por
+# defecto, el título de la sección; el equipo casi nunca está en el catálogo.
+_VACIO_POR_SECCION = {"equipo": "nombre y experiencia del equipo"}
+
+
 def _documento_tecnico(
-    draft: ProposalDraft, dto: DraftSectionDTO | None, items: dict[str, ExperienceItem]
-) -> DraftSection | None:
-    """Solo si las bases lo exigen (CA1), diga lo que diga la IA."""
+    draft: ProposalDraft,
+    dto: TechnicalDocumentDTO | None,
+    items: dict[str, ExperienceItem],
+) -> TechnicalDocument | None:
+    """Plantilla fija, solo si las bases lo exigen (CA1), diga lo que diga la IA.
+
+    Las secciones obligatorias van siempre: si la IA no las escribió, con un
+    vacío en vez de texto inventado. "Otros requisitos" va solo si tiene algo.
+    """
     if not draft.requires_technical_document:
         return None
-    if dto is None or not dto.paragraphs:
-        return DraftSection(
-            paragraphs=[
-                DraftParagraph.from_ai_text(_VACIO_DOCUMENTO_TECNICO, sources=[])
+    secciones: list[TechnicalSection] = []
+    for plantilla in TECHNICAL_SECTIONS:
+        redactada = getattr(dto, plantilla.key, None) if dto else None
+        if redactada is not None and redactada.paragraphs:
+            parrafos = _seccion(redactada, items).paragraphs
+        elif plantilla.optional:
+            continue
+        else:
+            dato = _VACIO_POR_SECCION.get(plantilla.key, plantilla.title.lower())
+            parrafos = [
+                DraftParagraph.from_ai_text(f"[[INSERTAR: {dato}]]", sources=[])
             ]
+        secciones.append(
+            TechnicalSection(
+                key=plantilla.key, title=plantilla.title, paragraphs=parrafos
+            )
         )
-    return _seccion(dto, items)
+    return TechnicalDocument(sections=secciones)
 
 
 def armar_contenido(

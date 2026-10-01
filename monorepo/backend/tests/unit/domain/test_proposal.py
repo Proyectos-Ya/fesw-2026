@@ -14,11 +14,14 @@ from uuid import uuid4
 import pytest
 
 from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
     DraftContent,
     DraftParagraph,
     DraftSection,
     ProposalDraft,
     Requirement,
+    TechnicalDocument,
+    TechnicalSection,
     render_placeholders,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
@@ -431,3 +434,33 @@ class TestVacios:
             == "Experiencia de (Por favor, inserte aquí el valor años) años."
         )
         assert parrafo.placeholders == ["años"]
+
+
+class TestPlantillaDelDocumentoTecnico:
+    """Plantilla fija acordada con el equipo (plan 230, §2.6)."""
+
+    def test_las_secciones_en_orden(self):
+        assert [(s.key, s.title) for s in TECHNICAL_SECTIONS] == [
+            ("antecedentes", "Antecedentes de la empresa"),
+            ("comprension", "Comprensión del requerimiento"),
+            ("metodologia", "Metodología"),
+            ("plan_de_trabajo", "Plan de trabajo y plazos"),
+            ("equipo", "Equipo de trabajo"),
+            ("otros", "Otros requisitos de las bases"),
+        ]
+
+    def test_solo_otros_requisitos_es_opcional(self):
+        opcionales = [s.key for s in TECHNICAL_SECTIONS if s.optional]
+        assert opcionales == ["otros"]
+
+    def test_el_documento_tecnico_es_una_lista_de_subsecciones(self):
+        documento = TechnicalDocument(
+            sections=[
+                TechnicalSection(
+                    key="metodologia",
+                    title="Metodología",
+                    paragraphs=[DraftParagraph(text="Clases presenciales.")],
+                )
+            ]
+        )
+        assert documento.sections[0].title == "Metodología"

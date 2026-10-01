@@ -157,10 +157,9 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
 ### 2.6 Exportar a .docx (CA3)
 
 - **Dependencia nueva, aprobada:** `python-docx`, en `requirements.txt`.
-- **Estructura del archivo:**
-  - H1 con el nombre de la oferta y un H2 por sección.
-  - Los documentos necesarios como viñetas.
-  - Los placeholders y las advertencias como **bloques destacados**: un párrafo sombreado con la etiqueta "Revisar". Se eligió esto en vez de comentarios nativos de Word porque es más simple de implementar.
+- **El Word es solo el documento técnico** (decisión del 2026-10-01). Es lo único que se sube como archivo. El nombre, la descripción, los documentos necesarios y las advertencias se ven en la pestaña del borrador y se copian desde ahí al formulario de la Compra Ágil. Si las bases no exigen documento técnico, no hay Word: la API responde 409 y el frontend no muestra el botón.
+- **Plantilla fija del documento técnico** (`TECHNICAL_SECTIONS`), en este orden: Antecedentes de la empresa, Comprensión del requerimiento, Metodología, Plan de trabajo y plazos, Equipo de trabajo y, solo si las bases piden algo que no calza en las anteriores, Otros requisitos de las bases. Una sección sin contenido queda con un vacío por completar en vez de texto inventado.
+- **Estructura del archivo:** H1 "Documento técnico", una línea con la oferta y la licitación, y un H2 por sección. Los vacíos van resaltados y seguidos de un **bloque destacado**: un párrafo sombreado con la etiqueta "Revisar". Se eligió esto en vez de comentarios nativos de Word porque es más simple de implementar. Las fuentes no se exportan.
 
 ### 2.7 Licitación cerrada
 
@@ -283,11 +282,11 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/regenerate` con `{instructions}`; 400 ante inyección, como en el análisis profundo. La redacción usa `temperature: 0.4` para que regenerar dé otro texto.
   - El asistente (`AskTenderAssistantUseCase.FORBIDDEN_PROMPT_PATTERNS`) mantiene su propia lista; unificarlas queda fuera de esta HdU.
 - [x] **B6. Exportar a .docx (CA3)** (§2.6)
-  - [x] [Red] `tests/unit/infrastructure/test_docx_proposal_exporter.py` abre el `.docx` y verifica: H1 con el nombre de la oferta y un H2 por sección; documentos necesarios como viñetas; documento técnico solo si existe; vacíos resaltados en amarillo y seguidos de un bloque "Revisar: completar X" sombreado; advertencias al inicio como bloques "Revisar"; sin las fuentes internas; con el código de la licitación y la marca de borrador. `tests/unit/application/test_export_proposal.py`: un borrador sin redactar da 409, con la licitación cerrada se sigue exportando y el nombre de archivo se sanea.
-  - [x] [Green] `python-docx==1.2.0` en `requirements.txt` (dependencia aprobada en el plan), puerto `IProposalExporter`, `DocxProposalExporter` y `ExportProposalDocxUseCase`.
-  - [x] Ruta (adelantada de B7): `GET /tenders/{id}/proposal/export.docx`, que cualquier miembro puede usar, también un VIEWER.
-  - **Las fuentes no se exportan:** sirven para revisar en Chiripa, pero el archivo es lo que la empresa termina enviando al comprador.
-  - **La imagen de Docker hay que reconstruirla** (`docker compose up -d --build api`), porque el `requirements.txt` cambió. El contenedor con `--reload` no instala dependencias.
+  - [x] [Red] `tests/unit/infrastructure/test_docx_proposal_exporter.py` abre el `.docx` y verifica: H1 "Documento técnico" y un H2 por sección de la plantilla; la oferta, la licitación y la marca de borrador en el encabezado; **no** incluye la descripción, los documentos, las advertencias ni las fuentes; vacíos resaltados y seguidos de un bloque "Revisar" sombreado. `tests/unit/application/test_export_proposal.py`: sin documento técnico, 409 (`TechnicalDocumentNotRequired`); sin redactar, 409; con la licitación cerrada se sigue exportando; nombre de archivo `documento-tecnico-<código>.docx` saneado.
+  - [x] [Green] `python-docx==1.2.0`, puerto `IProposalExporter`, `DocxProposalExporter` y `ExportProposalDocxUseCase`. La plantilla del documento técnico vive en el dominio (`TECHNICAL_SECTIONS`, `TechnicalDocument`); la IA responde un campo por sección (`TechnicalDocumentDTO`), y la redacción la completa con vacíos donde falte.
+  - [x] Ruta: `GET /tenders/{id}/proposal/export.docx`, que cualquier miembro puede usar, también un VIEWER.
+  - **Probado con Gemini real** (657-70-COT26 con documento técnico): acepta el esquema y llena las cinco secciones; el equipo queda como vacío. Gemini adornó una fuente ("especializándonos en capacitación" citando solo "8 años de experiencia"). El guardrail verifica que haya fuente, no que respalde cada frase, así que se endureció el prompt: citar una fuente no autoriza a describir el rubro o la especialidad más allá de lo que dice.
+  - **La imagen de Docker hay que reconstruirla** (`docker compose up -d --build api`), porque cambió `requirements.txt`.
 - [x] **B7. Router** (§2.10). Se fue armando en B2–B6: cada etapa sumó sus rutas con su e2e, para poder probarla.
   - [x] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo (factibilidad → responder → pausa → continuar o detener y reanudar → redactar → regenerar → exportar), empresa activa compartida entre miembros, 403 sin permiso, 409 con la licitación cerrada o ante una acción que no corresponde al estado, 502 si falla la IA.
   - [x] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags` en las 8 rutas (`GET` del borrador, `feasibility`, `questions/{id}/answer`, `discrepancy`, `resume`, `generate`, `regenerate` y `export.docx`), más `GET /capabilities/questions/pending`, todo cableado en `bootstrap.py`.
@@ -310,7 +309,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 - [ ] **F6. Borrador (CA1, CA2, CA3, CA4, CA5)**
   - [ ] [Red] `ProposalDraftViewer` muestra las secciones, con el documento técnico solo si corresponde, y los placeholders destacados.
   - [ ] [Red] Al hacer clic en un párrafo se abre `SourcePanel` con el elemento del catálogo que lo respalda: el proyecto (mandante, año, monto), la capacidad (pregunta, respuesta, quién respondió y licitación de origen) o el campo del perfil.
-  - [ ] [Green] `ProposalDraftViewer`, `SourcePanel`, `RegenerateDialog` y el botón "Exportar a .docx".
+  - [ ] [Green] `ProposalDraftViewer`, `SourcePanel`, `RegenerateDialog` y el botón "Exportar documento técnico (.docx)", visible solo si `content.technical_document` existe. La pestaña muestra nombre, descripción, documentos y advertencias para copiarlos al formulario; el documento técnico se descarga.
   - [ ] Playwright para el flujo crítico: factibilidad → discrepancia → continuar → borrador → exportar.
 
 ---
@@ -321,7 +320,7 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 |---|---|---|---|
 | **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_con_y_sin_documento_tecnico` / `ProposalDraftViewer.test.tsx` |
 | **CA2** Vacíos marcados | Parser `[[INSERTAR]]`, `placeholders` | `ProposalDraftViewer` (destacado) | `test_parser_insertar` / `ProposalDraftViewer.test.tsx` |
-| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` (`python-docx`) | Botón "Exportar a .docx" | `test_export_docx_titulos_y_bloques_revisar` |
+| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` + `DocxProposalExporter` (solo el documento técnico, plantilla fija) | Botón "Exportar documento técnico" | `test_docx_proposal_exporter.py`, `test_export_proposal.py` |
 | **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + helper anti-injection | `RegenerateDialog` | `test_regenerate_incorpora_instrucciones` |
 | **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog`, `capability_evidence` | `SourcePanel` | `test_fuentes_inexistentes_se_descartan` / `SourcePanel.test.tsx` |
 | **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `ProposalStepper`, `GeneratingLoader` | `ProposalStepper.test.tsx` |

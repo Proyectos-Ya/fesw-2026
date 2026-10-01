@@ -1,4 +1,4 @@
-"""Exportar el borrador a Word (HU-20, B6, CA3)."""
+"""Exportar el documento técnico a Word (HU-20, B6, CA3)."""
 
 from io import BytesIO
 
@@ -11,6 +11,7 @@ from app.application.use_cases.proposals.export_proposal import (
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
     ProposalDraftNotFound,
+    TechnicalDocumentNotRequired,
 )
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.shared.constants import TENDER_STATUSES
@@ -30,19 +31,28 @@ async def _exportar(e: Escenario):
     )
 
 
-async def test_exporta_el_borrador_redactado_con_nombre_de_archivo():
-    e = await Escenario().preparar()
+async def test_exporta_el_documento_tecnico_con_nombre_de_archivo():
+    e = await Escenario().preparar(requiere_tecnico=True)
     await e.redactar()
 
     archivo = await _exportar(e)
 
-    assert archivo.filename == f"postulacion-COT-{e.tender_id}.docx"
+    assert archivo.filename == f"documento-tecnico-COT-{e.tender_id}.docx"
     documento = Document(BytesIO(archivo.content))
-    assert documento.paragraphs[0].text == "Capacitación PAC en Coyhaique"
+    assert documento.paragraphs[0].text == "Documento técnico"
+
+
+async def test_sin_documento_tecnico_no_hay_word():
+    """Si las bases no lo exigen, todo se copia desde la pestaña del borrador."""
+    e = await Escenario().preparar(requiere_tecnico=False)
+    await e.redactar()
+
+    with pytest.raises(TechnicalDocumentNotRequired):
+        await _exportar(e)
 
 
 async def test_un_borrador_sin_redactar_no_se_exporta():
-    e = await Escenario().preparar()
+    e = await Escenario().preparar(requiere_tecnico=True)
 
     with pytest.raises(InvalidProposalTransition):
         await _exportar(e)
@@ -50,7 +60,7 @@ async def test_un_borrador_sin_redactar_no_se_exporta():
 
 async def test_con_la_licitacion_cerrada_se_sigue_exportando():
     """Exportar es leer: lo redactado se puede descargar aunque ya no se postule."""
-    e = await Escenario().preparar()
+    e = await Escenario().preparar(requiere_tecnico=True)
     await e.redactar()
     e.tenders.tenders[e.tender_id] = crear_licitacion(
         e.tender_id, status_code=TENDER_STATUSES["CLOSED"]
@@ -70,11 +80,11 @@ async def test_sin_borrador():
 
 
 async def test_el_nombre_de_archivo_no_lleva_caracteres_peligrosos():
-    e = await Escenario().preparar()
+    e = await Escenario().preparar(requiere_tecnico=True)
     await e.redactar()
     tender = e.tenders.tenders[e.tender_id]
     tender.code = 'a/b\\c"d 1057-COT26'
 
     archivo = await _exportar(e)
 
-    assert archivo.filename == "postulacion-a-b-c-d-1057-COT26.docx"
+    assert archivo.filename == "documento-tecnico-a-b-c-d-1057-COT26.docx"

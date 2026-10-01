@@ -20,7 +20,11 @@ from app.application.services.proposal_ai_service import (
 )
 from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.capability import CapabilityQuestion, ExperienceCatalog
-from app.domain.entities.proposal import ProposalWarning, Requirement
+from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
+    ProposalWarning,
+    Requirement,
+)
 from app.domain.entities.tender import Tender
 
 # Con adjuntos, Gemini tarda más que en el análisis profundo (30 s).
@@ -224,7 +228,9 @@ Reglas para no inventar:
    (experiencia, certificaciones, cobertura, capacidad). Un párrafo así DEBE
    citar al menos un id del catálogo.
 3. Nunca afirmes lo que el catálogo no respalda, ni lo que la empresa respondió
-   que NO tiene (respuesta negativa). Si falta un dato concreto (un nombre, un
+   que NO tiene (respuesta negativa). Citar una fuente no autoriza a adornarla:
+   no describas el rubro, la especialidad ni los servicios de la empresa más
+   allá de lo que dice ese elemento del catálogo. Si falta un dato concreto (un nombre, un
    número, una fecha, un precio), escribe [[INSERTAR: nombre del dato]] en su
    lugar; el usuario lo completará.
 4. Si hay ADVERTENCIAS, no las ocultes ni las contradigas en el texto: se
@@ -259,7 +265,15 @@ _SCHEMA_REDACCION = {
         "offer_name": _SECCION,
         "offer_description": _SECCION,
         "required_documents": _SECCION,
-        "technical_document": {**_SECCION, "nullable": True},
+        "technical_document": {
+            "type": "OBJECT",
+            "nullable": True,
+            # Un campo por sección de la plantilla fija (`TECHNICAL_SECTIONS`).
+            "properties": {
+                plantilla.key: {**_SECCION, "nullable": True}
+                for plantilla in TECHNICAL_SECTIONS
+            },
+        },
     },
     "required": ["offer_name", "offer_description"],
 }
@@ -291,15 +305,31 @@ def _advertencias(warnings: list[ProposalWarning]) -> str:
 
 
 def _indicacion_tecnica(incluir: bool) -> str:
-    if incluir:
+    if not incluir:
         return (
-            "## DOCUMENTO TÉCNICO\nLas bases lo exigen: SÍ redacta el documento "
-            "técnico en technical_document (metodología, plan de trabajo y "
-            "especificaciones de lo ofertado), con [[INSERTAR: X]] donde falten datos."
+            "## DOCUMENTO TÉCNICO\nLas bases no lo exigen: NO redactes documento "
+            "técnico; deja technical_document en null."
         )
+    secciones = "\n".join(
+        f"  - {p.key}: {p.title}" + (" (opcional)" if p.optional else "")
+        for p in TECHNICAL_SECTIONS
+    )
     return (
-        "## DOCUMENTO TÉCNICO\nLas bases no lo exigen: NO redactes documento "
-        "técnico; deja technical_document en null."
+        "## DOCUMENTO TÉCNICO\nLas bases lo exigen: SÍ redacta el documento "
+        "técnico en technical_document, con estas secciones fijas:\n"
+        f"{secciones}\n"
+        "Qué va en cada una:\n"
+        "  - antecedentes: experiencia y capacidades de la empresa relacionadas, "
+        "solo lo que respalda el catálogo y citando sus ids.\n"
+        "  - comprension: qué pide el comprador, en palabras de la empresa.\n"
+        "  - metodologia: cómo se ejecutará el servicio o entregará el producto.\n"
+        "  - plan_de_trabajo: etapas, fechas y duración, a partir de las "
+        "condiciones del servicio.\n"
+        "  - equipo: quiénes participan y su experiencia; si el catálogo no lo "
+        "dice, usa [[INSERTAR: nombre y experiencia del equipo]].\n"
+        "  - otros: solo si las bases piden algo que no calza en las anteriores; "
+        "si no, déjala en null.\n"
+        "Usa [[INSERTAR: X]] donde falten datos; no inventes."
     )
 
 

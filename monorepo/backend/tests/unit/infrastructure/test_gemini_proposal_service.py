@@ -377,6 +377,37 @@ async def test_redaccion_pide_documento_tecnico_solo_si_corresponde():
     assert "SÍ redacta el documento técnico" in _texto_del_prompt(con)
 
 
+async def test_redaccion_pide_las_secciones_fijas_del_documento_tecnico():
+    con_tecnico = {
+        **REDACCION,
+        "technical_document": {
+            "metodologia": {"paragraphs": [{"text": "Clases presenciales."}]},
+            "otros": None,
+        },
+    }
+
+    resultado, post = await _redactar(
+        _respuesta(con_tecnico), include_technical_document=True
+    )
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    claves = esquema["properties"]["technical_document"]["properties"]
+    assert list(claves) == [
+        "antecedentes",
+        "comprension",
+        "metodologia",
+        "plan_de_trabajo",
+        "equipo",
+        "otros",
+    ]
+    assert "plan_de_trabajo: Plan de trabajo y plazos" in _texto_del_prompt(post)
+    tecnico = resultado.technical_document
+    assert tecnico is not None
+    assert tecnico.metodologia is not None
+    assert tecnico.metodologia.paragraphs[0].text == "Clases presenciales."
+    assert tecnico.equipo is None
+
+
 async def test_redaccion_trata_las_instrucciones_como_datos_de_baja_prioridad():
     _, post = await _redactar(_respuesta(REDACCION), instructions="Tono más formal")
 

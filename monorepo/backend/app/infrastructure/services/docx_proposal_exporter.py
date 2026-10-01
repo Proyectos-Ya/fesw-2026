@@ -1,10 +1,13 @@
-"""Exportación del borrador de postulación a Word con python-docx (HU-20, CA3).
+"""Exportación del documento técnico a Word con python-docx (HU-20, CA3).
 
-Estructura: título con el nombre de la oferta, un H2 por sección y los
-documentos necesarios como viñetas. Lo que hay que revisar antes de enviar va
-como bloques "Revisar" sombreados: las advertencias al inicio y, después de cada
-párrafo con vacíos, qué datos completar. Los vacíos además quedan resaltados en
-el texto.
+El Word lleva **solo el documento técnico**, que es lo único que se sube como
+archivo a la Compra Ágil. El nombre, la descripción y los documentos necesarios
+se copian desde la pestaña del borrador al formulario de la plataforma, igual
+que las advertencias, que se ven allí.
+
+Estructura: título "Documento técnico", una línea con la oferta y la licitación,
+y un H2 por cada sección de la plantilla fija. Los vacíos van resaltados y
+seguidos de un bloque "Revisar" sombreado que dice qué completar.
 
 Las fuentes de cada párrafo **no** se exportan: sirven para revisar en Chiripa,
 pero el archivo es el que la empresa termina enviando al comprador.
@@ -22,7 +25,7 @@ from docx.shared import Pt, RGBColor
 from docx.text.paragraph import Paragraph
 
 from app.application.services.proposal_exporter import IProposalExporter
-from app.domain.entities.proposal import DraftParagraph, DraftSection, ProposalDraft
+from app.domain.entities.proposal import DraftParagraph, ProposalDraft
 from app.domain.entities.tender import Tender
 
 # Lo que `render_placeholders` deja visible en el texto.
@@ -66,47 +69,28 @@ def _parrafo(
         _revisar(documento, f"completar {', '.join(parrafo.placeholders)}.")
 
 
-def _seccion(
-    documento: DocumentoWord,
-    titulo: str,
-    seccion: DraftSection,
-    estilo: str | None = None,
-) -> None:
-    documento.add_heading(titulo, level=2)
-    for parrafo in seccion.paragraphs:
-        _parrafo(documento, parrafo, estilo)
-
-
 class DocxProposalExporter(IProposalExporter):
     def to_docx(self, draft: ProposalDraft, tender: Tender) -> bytes:
-        if draft.content is None:
-            raise ValueError("El borrador todavía no está redactado.")
         contenido = draft.content
+        if contenido is None or contenido.technical_document is None:
+            raise ValueError("El borrador no tiene documento técnico que exportar.")
         documento = Document()
 
+        documento.add_heading("Documento técnico", level=1)
         nombre = " ".join(p.text for p in contenido.offer_name.paragraphs).strip()
-        documento.add_heading(nombre or "Oferta", level=1)
         encabezado = documento.add_paragraph(
-            f"Borrador de postulación para la Compra Ágil {tender.code} — "
-            f"{tender.name}. Revisar antes de enviar."
+            f"Oferta: {nombre or tender.name}. Compra Ágil {tender.code} — "
+            f"{tender.name}. Borrador generado en Chiripa: revisar antes de enviar."
         )
         for run in encabezado.runs:
             run.italic = True
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(0x59, 0x59, 0x59)
 
-        for advertencia in draft.warnings:
-            _revisar(documento, advertencia.text)
-
-        _seccion(documento, "Descripción de la oferta", contenido.offer_description)
-        _seccion(
-            documento,
-            "Documentos necesarios",
-            contenido.required_documents,
-            estilo="List Bullet",
-        )
-        if contenido.technical_document is not None:
-            _seccion(documento, "Documento técnico", contenido.technical_document)
+        for seccion in contenido.technical_document.sections:
+            documento.add_heading(seccion.title, level=2)
+            for parrafo in seccion.paragraphs:
+                _parrafo(documento, parrafo)
 
         salida = BytesIO()
         documento.save(salida)

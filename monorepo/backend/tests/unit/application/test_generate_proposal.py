@@ -16,6 +16,7 @@ from app.application.services.proposal_ai_service import (
     DraftSectionDTO,
     FeasibilityResultDTO,
     ProposalAIServiceError,
+    TechnicalDocumentDTO,
 )
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
@@ -301,34 +302,103 @@ class TestDocumentos:
         ]
 
 
+def _tecnico(**secciones: DraftSectionDTO) -> TechnicalDocumentDTO:
+    return TechnicalDocumentDTO(**secciones)
+
+
+def _secciones(borrador) -> dict:
+    tecnico = borrador.content.technical_document
+    assert tecnico is not None
+    return {s.key: s for s in tecnico.sections}
+
+
 class TestDocumentoTecnico:
-    async def test_se_incluye_si_las_bases_lo_exigen(self):
+    """Plantilla fija: cinco secciones siempre y "Otros requisitos" si hay algo."""
+
+    async def test_se_arma_con_la_plantilla_si_las_bases_lo_exigen(self):
         e = await Escenario(
-            _redaccion(technical_document=_seccion(_parrafo("Metodología: ...")))
+            _redaccion(
+                technical_document=_tecnico(
+                    metodologia=_seccion(
+                        _parrafo("Clases presenciales con casos prácticos.")
+                    )
+                )
+            )
         ).preparar(requiere_tecnico=True)
-
-        borrador = await e.redactar()
-
-        assert borrador.content.technical_document is not None  # type: ignore[union-attr]
-        assert e.ai.redacciones[0]["include_technical_document"] is True
-
-    async def test_no_se_incluye_si_no_lo_exigen_aunque_la_ia_lo_escriba(self):
-        e = await Escenario(
-            _redaccion(technical_document=_seccion(_parrafo("Metodología: ...")))
-        ).preparar(requiere_tecnico=False)
-
-        borrador = await e.redactar()
-
-        assert borrador.content.technical_document is None  # type: ignore[union-attr]
-
-    async def test_si_lo_exigen_y_la_ia_no_lo_escribe_queda_como_vacio(self):
-        e = await Escenario().preparar(requiere_tecnico=True)
 
         borrador = await e.redactar()
 
         tecnico = borrador.content.technical_document  # type: ignore[union-attr]
         assert tecnico is not None
-        assert tecnico.paragraphs[0].placeholders == ["contenido del documento técnico"]
+        assert [s.key for s in tecnico.sections] == [
+            "antecedentes",
+            "comprension",
+            "metodologia",
+            "plan_de_trabajo",
+            "equipo",
+        ]
+        assert _secciones(borrador)["metodologia"].paragraphs[0].text == (
+            "Clases presenciales con casos prácticos."
+        )
+        assert e.ai.redacciones[0]["include_technical_document"] is True
+
+    async def test_una_seccion_sin_contenido_queda_como_vacio(self):
+        e = await Escenario().preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        equipo = _secciones(borrador)["equipo"]
+        assert equipo.title == "Equipo de trabajo"
+        assert equipo.paragraphs[0].placeholders == ["nombre y experiencia del equipo"]
+        assert _secciones(borrador)["metodologia"].paragraphs[0].placeholders == [
+            "metodología"
+        ]
+
+    async def test_otros_requisitos_solo_si_hay_contenido(self):
+        sin = await Escenario().preparar(requiere_tecnico=True)
+        con = await Escenario(
+            _redaccion(
+                technical_document=_tecnico(
+                    otros=_seccion(_parrafo("Plan de mitigación de riesgos: ..."))
+                )
+            )
+        ).preparar(requiere_tecnico=True)
+
+        assert "otros" not in _secciones(await sin.redactar())
+        otros = _secciones(await con.redactar())["otros"]
+        assert otros.title == "Otros requisitos de las bases"
+
+    async def test_las_fuentes_del_tecnico_tambien_se_validan(self):
+        e = await Escenario(
+            _redaccion(
+                technical_document=_tecnico(
+                    antecedentes=_seccion(
+                        _parrafo(
+                            "Operamos en Aysén y tenemos 20 años de experiencia.",
+                            "perfil:region:aysen",
+                            "capacidad:inventada",
+                            afirma=True,
+                        )
+                    )
+                )
+            )
+        ).preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        [parrafo] = _secciones(borrador)["antecedentes"].paragraphs
+        assert [f.id for f in parrafo.sources] == ["perfil:region:aysen"]
+
+    async def test_no_se_incluye_si_no_lo_exigen_aunque_la_ia_lo_escriba(self):
+        e = await Escenario(
+            _redaccion(
+                technical_document=_tecnico(metodologia=_seccion(_parrafo("...")))
+            )
+        ).preparar(requiere_tecnico=False)
+
+        borrador = await e.redactar()
+
+        assert borrador.content.technical_document is None  # type: ignore[union-attr]
 
 
 class TestPausaDeLaRedaccion:
