@@ -93,8 +93,9 @@ export function FeasibilityStep({
                     {pregunta?.question ?? r.text}
                   </p>
                   <p className="mt-1 text-xs text-text-muted">
-                    Las bases dicen: {r.text}
-                    {r.mandatory ? " (excluyente)" : " (deseable)"}
+                    {r.suggested
+                      ? "Sugerida para fortalecer tu oferta: la respuesta se usa al redactar la descripción."
+                      : `Las bases dicen: ${r.text}${r.mandatory ? " (excluyente)" : " (deseable)"}`}
                   </p>
                   {pregunta && (
                     <div className="mt-3 flex flex-wrap gap-2">

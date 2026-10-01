@@ -247,6 +247,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
               busy={busy}
               onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
               onDownload={() => void proposal.download()}
+              onRequestTechnical={() => void proposal.requestTechnical()}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-border-default bg-white p-6 text-sm text-text-muted">

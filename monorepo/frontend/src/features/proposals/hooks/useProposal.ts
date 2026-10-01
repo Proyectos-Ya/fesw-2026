@@ -10,6 +10,7 @@ import {
   getProposal,
   reanalyzeProposal,
   regenerateProposal,
+  requestTechnicalDocument,
   resumeProposal,
   startFeasibility,
 } from "../services/proposalService";
@@ -114,6 +115,10 @@ export function useProposal(tenderId: string) {
     () => ejecutar(() => generateProposal(tenderId), "drafting"),
     [ejecutar, tenderId],
   );
+  const requestTechnical = useCallback(
+    () => ejecutar(() => requestTechnicalDocument(tenderId), "drafting"),
+    [ejecutar, tenderId],
+  );
   const regenerate = useCallback(
     (instructions: string) =>
       ejecutar(() => regenerateProposal(tenderId, instructions), "drafting"),
@@ -151,6 +156,7 @@ export function useProposal(tenderId: string) {
     resume,
     generate,
     regenerate,
+    requestTechnical,
     download,
   };
 }

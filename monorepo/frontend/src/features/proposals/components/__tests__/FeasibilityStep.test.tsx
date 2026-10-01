@@ -32,6 +32,23 @@ describe("FeasibilityStep", () => {
     expect(onAnswer).toHaveBeenCalledWith(SEC.id, "No");
   });
 
+  it("una pregunta sugerida dice que es para fortalecer la oferta", () => {
+    renderStep({
+      requirements: [
+        requisito({
+          id: "sug-1",
+          text: "Entrega en la comuna de Pica",
+          kind: "disponibilidad",
+          mandatory: false,
+          suggested: true,
+        }),
+      ],
+    });
+
+    expect(screen.getByText(/Sugerida para fortalecer tu oferta/)).toBeInTheDocument();
+    expect(screen.queryByText(/Las bases dicen/)).not.toBeInTheDocument();
+  });
+
   it("las condiciones del servicio se muestran sin preguntarlas", () => {
     renderStep();
 

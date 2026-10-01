@@ -37,6 +37,7 @@ export function requisito(overrides: Partial<Requirement> = {}): Requirement {
     status: "desconocido",
     catalog_item_id: null,
     capability_question_id: SEC.id,
+    suggested: false,
     ...overrides,
   };
 }

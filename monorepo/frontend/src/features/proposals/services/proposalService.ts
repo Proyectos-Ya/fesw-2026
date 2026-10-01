@@ -53,6 +53,13 @@ export function generateProposal(tenderId: string): Promise<ProposalDraft> {
   return apiFetch<ProposalDraft>(`${base(tenderId)}/generate`, { method: "POST" });
 }
 
+/** Redacta incluyendo el documento técnico aunque no se detectó en las bases. */
+export function requestTechnicalDocument(tenderId: string): Promise<ProposalDraft> {
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/technical-document`, {
+    method: "POST",
+  });
+}
+
 /** CA4: vuelve a redactar con instrucciones libres. */
 export function regenerateProposal(
   tenderId: string,

@@ -34,6 +34,7 @@ function listo(overrides: Partial<ProposalView> = {}): ProposalView {
 function renderViewer(view = listo(), canWrite = true) {
   const onRegenerate = vi.fn();
   const onDownload = vi.fn();
+  const onRequestTechnical = vi.fn();
   render(
     <ProposalDraftViewer
       view={view}
@@ -41,9 +42,10 @@ function renderViewer(view = listo(), canWrite = true) {
       busy={false}
       onRegenerate={onRegenerate}
       onDownload={onDownload}
+      onRequestTechnical={onRequestTechnical}
     />,
   );
-  return { onRegenerate, onDownload };
+  return { onRegenerate, onDownload, onRequestTechnical };
 }
 
 beforeEach(() => {
@@ -111,10 +113,33 @@ describe("ProposalDraftViewer", () => {
     expect(onRegenerate).toHaveBeenCalledWith("Tono más formal");
   });
 
-  it("sin documento técnico no hay botón de exportar (CA3)", () => {
-    renderViewer();
+  it("sin documento técnico avisa que no se detectó y no deja exportar (CA3)", () => {
+    renderViewer(
+      listo({ technical_document_reason: "La ficha solo pide una cotización." }),
+    );
 
+    const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).toHaveTextContent(
+      "No se detectó que esta licitación pida un documento técnico",
+    );
+    expect(bloque).toHaveTextContent("La ficha solo pide una cotización.");
     expect(screen.queryByRole("button", { name: /Exportar a .docx/ })).not.toBeInTheDocument();
+  });
+
+  it("se puede generar el documento técnico de todas formas", async () => {
+    const { onRequestTechnical } = renderViewer();
+
+    await userEvent.click(screen.getByRole("button", { name: /Generar de todas formas/ }));
+
+    expect(onRequestTechnical).toHaveBeenCalled();
+  });
+
+  it("sin permiso no ofrece generarlo", () => {
+    renderViewer(listo(), false);
+
+    expect(
+      screen.queryByRole("button", { name: /Generar de todas formas/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("con documento técnico lo muestra y deja exportarlo (CA3)", async () => {

@@ -28,6 +28,8 @@ export interface Requirement {
   status: RequirementStatus;
   catalog_item_id: string | null;
   capability_question_id: string | null;
+  /** Sugerida para fortalecer la oferta: no la piden las bases. */
+  suggested: boolean;
 }
 
 export interface DiscrepancyDecision {

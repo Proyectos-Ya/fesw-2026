@@ -15,6 +15,7 @@ interface ProposalDraftViewerProps {
   busy: boolean;
   onRegenerate: (instructions: string) => void;
   onDownload: () => void;
+  onRequestTechnical: () => void;
 }
 
 function textoDe(seccion: DraftSection): string {
@@ -110,6 +111,7 @@ export function ProposalDraftViewer({
   busy,
   onRegenerate,
   onDownload,
+  onRequestTechnical,
 }: ProposalDraftViewerProps) {
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [regenerando, setRegenerando] = useState(false);
@@ -204,6 +206,33 @@ export function ProposalDraftViewer({
               </ul>
             )}
           </section>
+
+          {!contenido.technical_document && (
+            <section
+              aria-label="Documento técnico"
+              className="rounded-lg border border-warning/30 bg-warning-soft/30 p-4 text-sm"
+            >
+              <h3 className="mb-1 text-sm font-bold text-text-strong">Documento técnico</h3>
+              <p className="text-text-body">
+                No se detectó que esta licitación pida un documento técnico.
+                {view.technical_document_reason ? ` ${view.technical_document_reason}` : ""}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                Si las bases sí lo piden, sube las bases y vuelve a analizar, o genéralo igual.
+              </p>
+              {canWrite && !view.is_expired && (
+                <Button
+                  variant="ghost"
+                  className="mt-3 border border-border-strong bg-white"
+                  disabled={busy}
+                  onClick={onRequestTechnical}
+                >
+                  <Icon name="file-plus" size={16} />
+                  Generar de todas formas
+                </Button>
+              )}
+            </section>
+          )}
 
           {contenido.technical_document && (
             <section

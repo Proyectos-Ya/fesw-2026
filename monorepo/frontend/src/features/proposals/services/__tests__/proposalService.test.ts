@@ -8,6 +8,7 @@ import {
   getProposal,
   reanalyzeProposal,
   regenerateProposal,
+  requestTechnicalDocument,
   resumeProposal,
   startFeasibility,
 } from "../proposalService";
@@ -75,6 +76,14 @@ describe("proposalService", () => {
     ]);
     const init = fetchMock.mock.calls[2][1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({ instructions: "Más formal" });
+  });
+
+  it("pide el documento técnico aunque no se detectó", async () => {
+    await requestTechnicalDocument("t-1");
+    expect(llamada()).toEqual([
+      "/tenders/t-1/proposal/technical-document",
+      { method: "POST" },
+    ]);
   });
 
   it("descarga el documento técnico", async () => {

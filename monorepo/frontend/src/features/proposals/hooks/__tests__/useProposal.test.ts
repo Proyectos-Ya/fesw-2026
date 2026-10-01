@@ -14,6 +14,7 @@ vi.mock("../../services/proposalService", () => ({
   resumeProposal: vi.fn(),
   generateProposal: vi.fn(),
   regenerateProposal: vi.fn(),
+  requestTechnicalDocument: vi.fn(),
   downloadTechnicalDocument: vi.fn(),
 }));
 
@@ -97,6 +98,16 @@ describe("useProposal", () => {
     });
 
     expect(result.current.stage).toBeNull();
+  });
+
+  it("pedir el documento técnico muestra la etapa de redacción", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    svc.requestTechnicalDocument.mockResolvedValue(vista());
+    const { result } = await montado();
+
+    await act(() => result.current.requestTechnical());
+
+    expect(svc.requestTechnicalDocument).toHaveBeenCalledWith("t-1");
   });
 
   it("responder llama al servicio y recarga", async () => {
