@@ -550,3 +550,30 @@ async def test_la_vista_trae_las_preguntas_de_las_exigencias(
     assert pregunta["id"] == str(SEC.id)
     assert [o["label"] for o in pregunta["options"]] == ["Sí", "No"]
     assert resp.json()["catalog_items"] == []
+
+
+@pytest.mark.asyncio
+async def test_volver_a_analizar_sin_cambios_mantiene_el_borrador(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_, ia = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+    llamadas = len(ia["servicio"].llamadas)
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/reanalyze", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "READY"
+    assert len(ia["servicio"].llamadas) == llamadas
+
+
+@pytest.mark.asyncio
+async def test_un_viewer_no_vuelve_a_analizar(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.post(f"/tenders/{tender_id}/proposal/reanalyze", headers=headers_c)
+
+    assert resp.status_code == 403

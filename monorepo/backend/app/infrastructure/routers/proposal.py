@@ -171,6 +171,52 @@ def create_proposal_router(
                 "No fue posible analizar las bases en este momento. Intenta de nuevo.",
             ) from error
 
+    @router.post(
+        "/{tender_id}/proposal/reanalyze",
+        response_model=ProposalDraft,
+        summary="Volver a analizar las bases de la postulación",
+        responses={
+            403: {"description": "Falta el permiso generate_proposal"},
+            404: {"description": "La licitación o la empresa no existen"},
+            409: {"description": "La licitación está cerrada para postulaciones"},
+            502: {"description": "La IA no respondió o respondió algo inválido"},
+        },
+    )
+    async def reanalyze(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            StartFeasibilityUseCase, Depends(get_start_feasibility_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> ProposalDraft:
+        """Repite la factibilidad, por ejemplo después de subir las bases. Solo si
+        cambió algo (adjuntos, perfil o respuestas de la empresa, o la ficha) se
+        rehacen las exigencias y se descarta el borrador redactado; si no, se
+        devuelve el mismo borrador sin llamar a la IA."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+                force=True,
+            )
+        except (TenderNotFound, SupplierNotFoundForUser) as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+        except TenderClosedForProposal as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        except ProposalAIServiceError as error:
+            logger.warning(
+                "Falló el nuevo análisis de la licitación %s: %s", tender_id, error
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "No fue posible analizar las bases en este momento. Intenta de nuevo.",
+            ) from error
+
     _NO_ENCONTRADO = (
         TenderNotFound,
         SupplierNotFoundForUser,

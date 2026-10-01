@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from app.application.services.proposal_ai_service import (
     IProposalAIService,
     NewQuestionDTO,
 )
+from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.application.use_cases.capabilities._empresa import empresa_o_error
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
@@ -62,6 +64,27 @@ _ESTADO_POR_POLARIDAD: dict[str | None, RequirementStatus] = {
     None: "cumple",
 }
 _PREFIJO_CAPACIDAD = "capacidad:"
+
+
+def huella_del_analisis(
+    tender: Tender, supplier: Supplier, documentos: list[DocumentContextDTO]
+) -> str:
+    """Resume lo que usa la factibilidad, para saber si volver a analizar cambia algo.
+
+    Cuenta la ficha y el perfil de la empresa (sus últimas modificaciones) y el
+    contenido de cada adjunto. **No** cuenta las respuestas al banco: las de la
+    propia postulación las pidió este análisis, y si se cuentan, responder las
+    preguntas ya bastaría para descartar el borrador. Tampoco la respuesta de la
+    IA, que puede variar con las mismas entradas.
+    """
+    partes = [
+        f"ficha:{tender.last_change_at.isoformat()}",
+        f"perfil:{supplier.updated_at.isoformat()}",
+    ]
+    for doc in sorted(documentos, key=lambda d: d.document_name):
+        contenido = hashlib.sha256(doc.file_bytes).hexdigest()
+        partes.append(f"adjunto:{doc.document_name}:{doc.is_corrupted}:{contenido}")
+    return hashlib.sha256("\n".join(partes).encode()).hexdigest()
 
 
 def categoria_de(supplier: Supplier) -> str:
@@ -124,13 +147,24 @@ class StartFeasibilityUseCase:
         self.validator_service = validator_service
 
     async def execute(
-        self, user_id: UUID, supplier_id: UUID | None, tender_id: UUID
+        self,
+        user_id: UUID,
+        supplier_id: UUID | None,
+        tender_id: UUID,
+        force: bool = False,
     ) -> ProposalDraft:
+        """Con `force`, vuelve a analizar aunque ya haya borrador.
+
+        Sirve para cuando se subieron bases que faltaban. El borrador se rehace
+        sobre el mismo id (una fila por empresa y licitación): exigencias nuevas,
+        sin texto redactado ni decisiones. Las respuestas de la empresa siguen en
+        el banco, así que lo ya respondido no se vuelve a preguntar.
+        """
         supplier = await empresa_o_error(self.supplier_repo, user_id, supplier_id)
         tender = await self._licitacion(tender_id)
 
         existente = await self.draft_repo.get(supplier.id, tender.id)
-        if existente is not None:
+        if existente is not None and not force:
             return existente
         if tender.esta_cerrada():
             raise TenderClosedForProposal(tender.id)
@@ -138,11 +172,16 @@ class StartFeasibilityUseCase:
         catalog = await self.catalog_use_case.execute(
             user_id=user_id, supplier_id=supplier.id
         )
-        categoria = categoria_de(supplier)
-        banco = await self.question_repo.list_active({categoria})
         documentos = await adjuntos_del_usuario(
             self.chat_repo, self.validator_service, user_id, tender.id
         )
+        huella = huella_del_analisis(tender, supplier, documentos)
+        if existente is not None and existente.analysis_fingerprint == huella:
+            # Nada cambió desde el análisis anterior: el borrador sigue sirviendo.
+            return existente
+
+        categoria = categoria_de(supplier)
+        banco = await self.question_repo.list_active({categoria})
 
         resultado = await self.ai_service.analyze_feasibility(
             tender=tender,
@@ -161,8 +200,14 @@ class StartFeasibilityUseCase:
             tender_id=tender.id,
             requires_technical_document=resultado.requires_technical_document,
             technical_document_reason=resultado.technical_document_reason,
+            analysis_fingerprint=huella,
             created_by_user_id=user_id,
         )
+        if existente is not None:
+            # Mismo id: se actualiza la fila en vez de chocar con la restricción
+            # única (`supplier_id`, `tender_id`).
+            draft.id = existente.id
+            draft.created_at = existente.created_at
         draft.load_requirements(requirements)
         return await self.draft_repo.save(draft)
 

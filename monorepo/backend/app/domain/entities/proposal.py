@@ -205,6 +205,9 @@ class ProposalDraft(BaseModel):
     discrepancy_decisions: list[DiscrepancyDecision] = Field(default_factory=list)
     content: DraftContent | None = None
     last_instructions: str | None = None
+    # Huella de lo que se usó en el análisis (adjuntos, catálogo y ficha). Al
+    # volver a analizar, si no cambió, el borrador se mantiene tal cual.
+    analysis_fingerprint: str | None = None
     created_by_user_id: UUID | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)

@@ -5,6 +5,7 @@ del catálogo, reutiliza o registra preguntas del banco, crea las respuestas
 pendientes de la empresa y deja el borrador listo (o pausado).
 """
 
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -32,6 +33,7 @@ from app.domain.entities.capability import (
     CapabilityQuestion,
     ExperienceCatalog,
 )
+from app.domain.entities.proposal import DraftContent, DraftSection
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatDocument
@@ -490,3 +492,170 @@ class TestDocumentosNecesarios:
         assert req.status == "cumple"
         assert req.capability_question_id is None
         assert await e.questions.get_by_key(CATEGORIA, "cotizacion_formulario") is None
+
+
+async def _subir_bases(e: "Escenario", nombre: str = "bases.pdf") -> None:
+    await e.chat.save_document(
+        TenderChatDocument(
+            tender_id=e.tender_id,
+            user_id=e.user_id,
+            file_name=nombre,
+            file_type="pdf",
+            file_size_bytes=4,
+            storage_path=f"x/{nombre}",
+        ),
+        b"%PDF",
+    )
+
+
+class TestVolverAAnalizar:
+    """Rehacer la factibilidad, por ejemplo tras subir las bases que faltaban.
+
+    Solo si algo cambió desde el análisis anterior (adjuntos, catálogo de la
+    empresa o la ficha). Si nada cambió, el borrador se mantiene tal cual.
+    """
+
+    async def _rehacer(self, e: "Escenario"):
+        return await e.caso().execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            tender_id=e.tender_id,
+            force=True,
+        )
+
+    async def test_sin_cambios_mantiene_el_borrador_redactado_sin_llamar_a_la_ia(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        borrador = await e.ejecutar()
+        # Redactado sin tocar el banco: el catálogo de la empresa no cambia.
+        borrador.record_answer(MOP.id, "afirmativa")
+        borrador.mark_ready(
+            DraftContent(
+                offer_name=DraftSection(),
+                offer_description=DraftSection(),
+                required_documents=DraftSection(),
+            ),
+            instructions=None,
+        )
+        await e.drafts.save(borrador)
+
+        mismo = await self._rehacer(e)
+
+        assert mismo.status == "READY"
+        assert mismo.content is not None
+        assert len(e.ai.llamadas) == 1
+
+    async def test_subir_bases_nuevas_cuenta_como_cambio(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        await _subir_bases(e)
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 2
+        assert [d.document_name for d in e.ai.llamadas[1]["documents"]] == ["bases.pdf"]
+
+    async def test_vuelve_a_llamar_a_la_ia_y_reemplaza_las_exigencias(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        primero = await e.ejecutar()
+        await _subir_bases(e)
+        e.ai.resultado = FeasibilityResultDTO(
+            requirements=[
+                _exigencia(question_key="registro_mop"),
+                _exigencia(kind="documento", text="Adjuntar cotización"),
+            ],
+            requires_technical_document=True,
+        )
+
+        segundo = await e.caso().execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            tender_id=e.tender_id,
+            force=True,
+        )
+
+        assert len(e.ai.llamadas) == 2
+        assert segundo.id == primero.id
+        assert [r.kind for r in segundo.requirements] == ["certificacion", "documento"]
+        assert segundo.requires_technical_document is True
+        assert await e.drafts.get(e.empresa.id, e.tender_id) == segundo
+
+    async def test_descarta_el_borrador_redactado_y_las_decisiones(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        borrador = await e.ejecutar()
+        await e.responde(MOP, "Sí")
+        await _subir_bases(e)
+        borrador.record_answer(MOP.id, "afirmativa")
+        borrador.mark_ready(
+            DraftContent(
+                offer_name=DraftSection(),
+                offer_description=DraftSection(),
+                required_documents=DraftSection(),
+            ),
+            instructions="Más formal",
+        )
+        await e.drafts.save(borrador)
+
+        nuevo = await e.caso().execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            tender_id=e.tender_id,
+            force=True,
+        )
+
+        assert nuevo.status == "FEASIBILITY"
+        assert nuevo.content is None
+        assert nuevo.last_instructions is None
+        assert nuevo.discrepancy_decisions == []
+
+    async def test_reutiliza_las_respuestas_que_la_empresa_ya_dio(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        await e.responde(MOP, "Sí")
+        await _subir_bases(e)
+
+        nuevo = await e.caso().execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            tender_id=e.tender_id,
+            force=True,
+        )
+
+        assert nuevo.requirements[0].status == "cumple"
+
+    async def test_responder_las_preguntas_no_cuenta_como_cambio(self):
+        """Si contara, responder la postulación ya bastaría para descartarla."""
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        await e.responde(MOP, "Sí")
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 1
+
+    async def test_cambiar_el_perfil_cuenta_como_cambio(self):
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        empresa = await e.suppliers.get_by_id(e.empresa.id)
+        assert empresa is not None
+        empresa.updated_at = empresa.updated_at + timedelta(minutes=1)
+        await e.suppliers.save(empresa)
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 2
+
+    async def test_con_la_licitacion_cerrada_no_se_vuelve_a_analizar(self):
+        e = await Escenario().preparar()
+        await e.ejecutar()
+        e.tenders.tenders[e.tender_id] = crear_licitacion(
+            e.tender_id, status_code=TENDER_STATUSES["CLOSED"]
+        )
+
+        with pytest.raises(TenderClosedForProposal):
+            await e.caso().execute(
+                user_id=e.user_id,
+                supplier_id=e.empresa.id,
+                tender_id=e.tender_id,
+                force=True,
+            )
+        assert len(e.ai.llamadas) == 1
