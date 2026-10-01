@@ -67,17 +67,12 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de Chiripa.
+ * Hace la petición contra la API y devuelve la respuesta ya validada.
  * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
- * que vienen como `{ detail: string }`.
- *
- * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
- * agrega esta función.
+ * que vienen como `{ detail: string }`. Lo comparten `apiFetch` (JSON) y
+ * `apiDownload` (archivos).
  */
-export async function apiFetch<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
+async function solicitar(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -133,10 +128,48 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail);
   }
 
+  return response;
+}
+
+/**
+ * Cliente fetch tipado contra la API de Chiripa.
+ *
+ * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
+ * agrega esta función.
+ */
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await solicitar(path, options);
+
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
   if (response.status === 204) {
     return undefined as T;
   }
 
   return response.json() as Promise<T>;
+}
+
+/** Un archivo descargado de la API. */
+export interface ArchivoDescargado {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Descarga un archivo de la API (por ejemplo, un `.docx`). El nombre sale del
+ * `Content-Disposition`; si no viene, se usa `nombrePorDefecto`.
+ */
+export async function apiDownload(
+  path: string,
+  nombrePorDefecto = "archivo",
+): Promise<ArchivoDescargado> {
+  const response = await solicitar(path);
+  const disposicion = response.headers.get("Content-Disposition") ?? "";
+  const coincidencia = /filename="?([^";]+)"?/i.exec(disposicion);
+  return {
+    blob: await response.blob(),
+    filename: coincidencia?.[1] ?? nombrePorDefecto,
+  };
 }
