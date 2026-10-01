@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { compraAgilFichaUrl } from "@/features/matches/utils/links";
 import { Icon } from "@/features/shared/components/Icon";
 import type { ProposalView } from "../types";
@@ -56,13 +55,10 @@ export function NextSteps({ view, tenderCode }: NextStepsProps) {
               <>
                 {" "}
                 Para la cotización puedes usar el{" "}
-                <Link
-                  href={`/matches/${view.tender_id}`}
-                  className="font-semibold text-primary underline"
-                >
-                  cotizador de la licitación
-                </Link>
-                .
+                <a href="#cotizacion" className="font-semibold text-primary underline">
+                  cotizador
+                </a>{" "}
+                de esta página.
               </>
             )}
           </li>

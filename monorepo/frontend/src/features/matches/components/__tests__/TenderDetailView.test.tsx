@@ -129,7 +129,8 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     });
 
     const saveButton = screen.getByRole("button", { name: "Guardar licitación" });
-    expect(screen.getByRole("button", { name: "Generar cotización" })).toBeInTheDocument();
+    // El cotizador vive en la postulación (HU-20), no en la ficha.
+    expect(screen.queryByRole("button", { name: "Generar cotización" })).not.toBeInTheDocument();
     await user.click(saveButton);
 
     const alert = await screen.findByText(SAVED_TENDERS_ERRORS.SAVE_FAILED);

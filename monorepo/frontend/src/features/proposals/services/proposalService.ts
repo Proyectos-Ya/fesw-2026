@@ -13,6 +13,14 @@ export function startFeasibility(tenderId: string): Promise<ProposalDraft> {
   return apiFetch<ProposalDraft>(`${base(tenderId)}/feasibility`, { method: "POST" });
 }
 
+/**
+ * Repite la factibilidad, por ejemplo tras subir las bases. Si nada cambió
+ * (adjuntos, perfil o ficha), el backend devuelve el mismo borrador.
+ */
+export function reanalyzeProposal(tenderId: string): Promise<ProposalDraft> {
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/reanalyze`, { method: "POST" });
+}
+
 export function answerProposalQuestion(
   tenderId: string,
   questionId: string,

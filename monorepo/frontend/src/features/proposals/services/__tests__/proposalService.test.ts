@@ -6,6 +6,7 @@ import {
   downloadTechnicalDocument,
   generateProposal,
   getProposal,
+  reanalyzeProposal,
   regenerateProposal,
   resumeProposal,
   startFeasibility,
@@ -36,6 +37,11 @@ describe("proposalService", () => {
   it("inicia la factibilidad", async () => {
     await startFeasibility("t-1");
     expect(llamada()).toEqual(["/tenders/t-1/proposal/feasibility", { method: "POST" }]);
+  });
+
+  it("vuelve a analizar", async () => {
+    await reanalyzeProposal("t-1");
+    expect(llamada()).toEqual(["/tenders/t-1/proposal/reanalyze", { method: "POST" }]);
   });
 
   it("responde una pregunta de la postulación", async () => {

@@ -8,6 +8,7 @@ import { vista } from "../../testing/fixtures";
 vi.mock("../../services/proposalService", () => ({
   getProposal: vi.fn(),
   startFeasibility: vi.fn(),
+  reanalyzeProposal: vi.fn(),
   answerProposalQuestion: vi.fn(),
   decideDiscrepancy: vi.fn(),
   resumeProposal: vi.fn(),
@@ -120,6 +121,29 @@ describe("useProposal", () => {
 
     expect(result.current.actionError).toBe("La pausa ya no es esa exigencia");
     expect(result.current.state.kind).toBe("ready");
+  });
+
+  it("volver a analizar sin cambios lo avisa y mantiene el borrador", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    svc.reanalyzeProposal.mockResolvedValue(vista({ status: "READY" }));
+    const { result } = await montado();
+
+    await act(() => result.current.reanalyze());
+
+    expect(result.current.notice).toMatch(/No hubo cambios/);
+  });
+
+  it("volver a analizar con cambios no deja aviso", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    svc.reanalyzeProposal.mockResolvedValue(
+      vista({ updated_at: "2026-10-02T10:00:00Z" }),
+    );
+    const { result } = await montado();
+
+    await act(() => result.current.reanalyze());
+
+    expect(svc.reanalyzeProposal).toHaveBeenCalledWith("t-1");
+    expect(result.current.notice).toBeNull();
   });
 
   it("descarga el documento técnico con su nombre", async () => {

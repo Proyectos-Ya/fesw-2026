@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
@@ -9,6 +9,7 @@ import { requisito, vista } from "../../testing/fixtures";
 vi.mock("../../services/proposalService", () => ({
   getProposal: vi.fn(),
   startFeasibility: vi.fn(),
+  reanalyzeProposal: vi.fn(),
   answerProposalQuestion: vi.fn(),
   decideDiscrepancy: vi.fn(),
   resumeProposal: vi.fn(),
@@ -19,13 +20,18 @@ vi.mock("../../services/proposalService", () => ({
 
 vi.mock("@/features/matches/services/tenderService", () => ({
   getTenderDetail: vi.fn().mockResolvedValue({
-    tender: { id: "t-1", code: "657-70-COT26", name: "Capacitación PAC" },
+    tender: { id: "t-1", code: "657-70-COT26", name: "Capacitación PAC", items: [] },
     is_closed: false,
     score_pct: null,
   }),
 }));
 
 vi.mock("../ProposalAttachments", () => ({ ProposalAttachments: () => null }));
+vi.mock("@/features/quotations/QuotationEditor", () => ({
+  QuotationEditor: ({ tenderCode }: { tenderCode: string }) => (
+    <div data-testid="cotizador">{tenderCode}</div>
+  ),
+}));
 
 const permiso = { activo: { id: "w" } as object | null, puede: true };
 vi.mock("@/features/workspaces/WorkspaceContext", () => ({
@@ -52,13 +58,48 @@ describe("ProposalView", () => {
     render(<ProposalView tenderId="t-1" />);
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Iniciar análisis de factibilidad/ }),
+      await screen.findByRole("button", { name: /Iniciar análisis/ }),
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Analizando bases y experiencia",
     );
     expect(svc.startFeasibility).toHaveBeenCalledWith("t-1");
+  });
+
+  it("es una sola página con análisis, borrador y cotización", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(await screen.findByRole("region", { name: "Análisis de las bases" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Borrador de la oferta" })).toHaveTextContent(
+      "Responde las preguntas",
+    );
+    expect(await screen.findByTestId("cotizador")).toHaveTextContent("657-70-COT26");
+    expect(screen.queryByRole("list", { name: /Etapas/ })).not.toBeInTheDocument();
+  });
+
+  it("volver a analizar con borrador redactado pide confirmación", async () => {
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "READY",
+        content: {
+          offer_name: { paragraphs: [] },
+          offer_description: { paragraphs: [] },
+          required_documents: { paragraphs: [] },
+          technical_document: null,
+        },
+      }),
+    );
+    svc.reanalyzeProposal.mockResolvedValue(vista({ status: "READY" }));
+    render(<ProposalView tenderId="t-1" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Volver a analizar/ }));
+    const dialogo = screen.getByRole("dialog");
+    expect(dialogo).toHaveTextContent("el borrador redactado se descartará");
+    await userEvent.click(within(dialogo).getByRole("button", { name: "Volver a analizar" }));
+
+    expect(svc.reanalyzeProposal).toHaveBeenCalledWith("t-1");
   });
 
   it("muestra el encabezado con la licitación", async () => {
@@ -135,7 +176,7 @@ describe("ProposalView", () => {
 
     expect(await screen.findByText(/Solo quienes pueden generar/)).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Iniciar análisis de factibilidad/ }),
+      screen.queryByRole("button", { name: /Iniciar análisis/ }),
     ).not.toBeInTheDocument();
   });
 });

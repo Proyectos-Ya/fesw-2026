@@ -24,12 +24,12 @@ describe("NextSteps", () => {
     );
   });
 
-  it("si piden cotización enlaza el cotizador de la licitación", () => {
+  it("si piden cotización enlaza el cotizador de la misma página", () => {
     render(<NextSteps view={vista({ status: "READY", content: contenido() })} tenderCode={null} />);
 
-    expect(screen.getByRole("link", { name: "cotizador de la licitación" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "cotizador" })).toHaveAttribute(
       "href",
-      "/matches/t-1",
+      "#cotizacion",
     );
   });
 

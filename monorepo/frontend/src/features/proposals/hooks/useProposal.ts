@@ -8,6 +8,7 @@ import {
   downloadTechnicalDocument,
   generateProposal,
   getProposal,
+  reanalyzeProposal,
   regenerateProposal,
   resumeProposal,
   startFeasibility,
@@ -37,6 +38,7 @@ export function useProposal(tenderId: string) {
   const [stage, setStage] = useState<ProposalStage>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -61,6 +63,7 @@ export function useProposal(tenderId: string) {
   const ejecutar = useCallback(
     async (accion: () => Promise<unknown>, etapa: ProposalStage = null) => {
       setActionError(null);
+      setNotice(null);
       setBusy(true);
       setStage(etapa);
       try {
@@ -79,6 +82,19 @@ export function useProposal(tenderId: string) {
   const start = useCallback(
     () => ejecutar(() => startFeasibility(tenderId), "analyzing"),
     [ejecutar, tenderId],
+  );
+  const reanalyze = useCallback(
+    () =>
+      ejecutar(async () => {
+        const antes = state.kind === "ready" ? state.view.updated_at : null;
+        const despues = await reanalyzeProposal(tenderId);
+        if (antes !== null && despues.updated_at === antes) {
+          setNotice(
+            "No hubo cambios en las bases, el perfil ni la ficha desde el último análisis: el borrador se mantiene.",
+          );
+        }
+      }, "analyzing"),
+    [ejecutar, tenderId, state],
   );
   const answer = useCallback(
     (questionId: string, label: string) =>
@@ -125,6 +141,9 @@ export function useProposal(tenderId: string) {
     busy,
     actionError,
     clearActionError: () => setActionError(null),
+    notice,
+    clearNotice: () => setNotice(null),
+    reanalyze,
     reload,
     start,
     answer,
