@@ -282,12 +282,15 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] [Green] `app/shared/prompt_guard.py` (`frase_de_inyeccion`): la lista de frases que estaba dentro de `GeminiDeepAnalysisService`, ahora compartida, sin cambiar su comportamiento. `RegenerateProposalUseCase` delega en la redacción de B4 con `require_ready=True`.
   - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/regenerate` con `{instructions}`; 400 ante inyección, como en el análisis profundo. La redacción usa `temperature: 0.4` para que regenerar dé otro texto.
   - El asistente (`AskTenderAssistantUseCase.FORBIDDEN_PROMPT_PATTERNS`) mantiene su propia lista; unificarlas queda fuera de esta HdU.
-- [ ] **B6. Exportar a .docx (CA3)** (§2.6)
-  - [ ] [Red] El test abre el `.docx` generado y verifica el H1 y los H2, las viñetas de documentos y los bloques "Revisar".
-  - [ ] [Green] `python-docx` en `requirements.txt` y `ExportProposalDocxUseCase`.
-- [ ] **B7. Router** (§2.10)
-  - [ ] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo, empresa activa, 403 sin permiso y 409 con la licitación cerrada.
-  - [ ] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags`, y el cableado en `bootstrap.py`.
+- [x] **B6. Exportar a .docx (CA3)** (§2.6)
+  - [x] [Red] `tests/unit/infrastructure/test_docx_proposal_exporter.py` abre el `.docx` y verifica: H1 con el nombre de la oferta y un H2 por sección; documentos necesarios como viñetas; documento técnico solo si existe; vacíos resaltados en amarillo y seguidos de un bloque "Revisar: completar X" sombreado; advertencias al inicio como bloques "Revisar"; sin las fuentes internas; con el código de la licitación y la marca de borrador. `tests/unit/application/test_export_proposal.py`: un borrador sin redactar da 409, con la licitación cerrada se sigue exportando y el nombre de archivo se sanea.
+  - [x] [Green] `python-docx==1.2.0` en `requirements.txt` (dependencia aprobada en el plan), puerto `IProposalExporter`, `DocxProposalExporter` y `ExportProposalDocxUseCase`.
+  - [x] Ruta (adelantada de B7): `GET /tenders/{id}/proposal/export.docx`, que cualquier miembro puede usar, también un VIEWER.
+  - **Las fuentes no se exportan:** sirven para revisar en Chiripa, pero el archivo es lo que la empresa termina enviando al comprador.
+  - **La imagen de Docker hay que reconstruirla** (`docker compose up -d --build api`), porque el `requirements.txt` cambió. El contenedor con `--reload` no instala dependencias.
+- [x] **B7. Router** (§2.10). Se fue armando en B2–B6: cada etapa sumó sus rutas con su e2e, para poder probarla.
+  - [x] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo (factibilidad → responder → pausa → continuar o detener y reanudar → redactar → regenerar → exportar), empresa activa compartida entre miembros, 403 sin permiso, 409 con la licitación cerrada o ante una acción que no corresponde al estado, 502 si falla la IA.
+  - [x] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags` en las 8 rutas (`GET` del borrador, `feasibility`, `questions/{id}/answer`, `discrepancy`, `resume`, `generate`, `regenerate` y `export.docx`), más `GET /capabilities/questions/pending`, todo cableado en `bootstrap.py`.
 
 ### Frontend (`monorepo/frontend`)
 

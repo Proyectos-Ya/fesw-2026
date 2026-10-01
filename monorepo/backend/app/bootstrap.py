@@ -66,6 +66,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
 )
+from app.application.use_cases.proposals.export_proposal import (
+    ExportProposalDocxUseCase,
+)
 from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
@@ -286,6 +289,7 @@ from app.infrastructure.services.document_validator_service import (
 )
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.application.services.proposal_ai_service import IProposalAIService
+from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.infrastructure.services.gemini_proposal_service import GeminiProposalService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
@@ -927,6 +931,17 @@ def get_regenerate_proposal_use_case(
     return RegenerateProposalUseCase(generate_use_case)
 
 
+def get_export_proposal_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ExportProposalDocxUseCase:
+    return ExportProposalDocxUseCase(
+        SupplierRepository(session),
+        TenderRepository(session),
+        SqlProposalDraftRepository(session),
+        DocxProposalExporter(),
+    )
+
+
 def get_resume_proposal_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ResumeProposalUseCase:
@@ -1507,6 +1522,7 @@ def bootstrap(app: FastAPI) -> None:
             get_resume_proposal_use_case=get_resume_proposal_use_case,
             get_generate_proposal_use_case=get_generate_proposal_use_case,
             get_regenerate_proposal_use_case=get_regenerate_proposal_use_case,
+            get_export_proposal_use_case=get_export_proposal_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

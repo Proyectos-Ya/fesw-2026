@@ -30,6 +30,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
 )
+from app.application.use_cases.proposals.export_proposal import (
+    ExportProposalDocxUseCase,
+)
 from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
@@ -39,6 +42,7 @@ from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
+from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.main import app
 from app.shared.constants import TENDER_STATUSES
 from tests.e2e.api.test_empresa_activa_api import (
@@ -150,6 +154,9 @@ def entorno(api: AsyncClient):
     )
     app.dependency_overrides[bootstrap.get_resume_proposal_use_case] = lambda: (
         ResumeProposalUseCase(suppliers, tenders, drafts)
+    )
+    app.dependency_overrides[bootstrap.get_export_proposal_use_case] = lambda: (
+        ExportProposalDocxUseCase(suppliers, tenders, drafts, DocxProposalExporter())
     )
     app.dependency_overrides[bootstrap.get_generate_proposal_use_case] = lambda: (
         GenerateProposalUseCase(
@@ -462,6 +469,41 @@ async def test_regenerar_sin_redactar_es_409(api: AsyncClient, entorno, empresas
         f"/tenders/{tender_id}/proposal/regenerate",
         json={"instructions": "Más formal"},
         headers=headers_a,
+    )
+
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_un_viewer_descarga_el_word_del_borrador(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/export.docx", headers=headers_c
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert resp.headers["content-disposition"] == (
+        f'attachment; filename="postulacion-COT-{tender_id}.docx"'
+    )
+    assert resp.content[:2] == b"PK"  # un .docx es un zip
+
+
+@pytest.mark.asyncio
+async def test_exportar_sin_redactar_es_409(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/export.docx", headers=headers_a
     )
 
     assert resp.status_code == 409

@@ -1,7 +1,7 @@
 """Postulación a una Compra Ágil: borrador de la empresa activa (HU-20).
 
 B2 expone la factibilidad y la lectura del borrador; B3, responder, decidir ante
-una discrepancia y reanudar; B4, redactar; B5, regenerar. Exportar llega después.
+una discrepancia y reanudar; B4, redactar; B5, regenerar; B6, exportar a Word.
 """
 
 import logging
@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.application.schemas.proposal_schema import (
     AnswerProposalQuestionInput,
@@ -23,6 +23,9 @@ from app.application.use_cases.proposals.answer_proposal_question import (
 )
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
+)
+from app.application.use_cases.proposals.export_proposal import (
+    ExportProposalDocxUseCase,
 )
 from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
@@ -54,6 +57,7 @@ from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFo
 logger = logging.getLogger(__name__)
 
 PERMISO_ESCRITURA = "generate_proposal"
+_MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def create_proposal_router(
@@ -65,6 +69,7 @@ def create_proposal_router(
     get_resume_proposal_use_case: Callable,
     get_generate_proposal_use_case: Callable,
     get_regenerate_proposal_use_case: Callable,
+    get_export_proposal_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(
@@ -377,5 +382,47 @@ def create_proposal_router(
                 status.HTTP_502_BAD_GATEWAY,
                 "No fue posible regenerar el borrador en este momento. Intenta de nuevo.",
             ) from error
+
+    @router.get(
+        "/{tender_id}/proposal/export.docx",
+        summary="Descargar el borrador como Word",
+        response_class=Response,
+        responses={
+            200: {
+                "content": {_MIME_DOCX: {}},
+                "description": "El borrador en Word, con los puntos a revisar destacados",
+            },
+            404: {"description": "No hay licitación, empresa o postulación"},
+            409: {"description": "El borrador todavía no está redactado"},
+        },
+    )
+    async def export_docx(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ExportProposalDocxUseCase, Depends(get_export_proposal_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> Response:
+        """Word con título, secciones, documentos como viñetas y bloques
+        "Revisar" para vacíos y advertencias (CA3). Cualquier miembro puede
+        descargarlo, también con la licitación cerrada."""
+        try:
+            archivo = await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+            )
+        except (*_NO_ENCONTRADO, InvalidProposalTransition) as error:
+            raise _traducir(error) from error
+        return Response(
+            content=archivo.content,
+            media_type=_MIME_DOCX,
+            headers={
+                "Content-Disposition": f'attachment; filename="{archivo.filename}"'
+            },
+        )
 
     return router
