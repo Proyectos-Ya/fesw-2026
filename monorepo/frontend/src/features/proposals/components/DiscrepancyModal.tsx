@@ -76,7 +76,6 @@ export function DiscrepancyModal({
             )}
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="accent"
                 disabled={busy}
                 onClick={() => onDecide(requisito.id, "continue")}
               >

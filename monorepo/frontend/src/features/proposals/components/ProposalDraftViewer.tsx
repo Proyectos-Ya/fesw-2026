@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
+import { NextSteps } from "./NextSteps";
 import { RegenerateDialog } from "./RegenerateDialog";
 import type { DraftParagraph, DraftSection, ProposalView } from "../types";
 
 interface ProposalDraftViewerProps {
   view: ProposalView;
+  tenderCode?: string | null;
   canWrite: boolean;
   busy: boolean;
   onRegenerate: (instructions: string) => void;
@@ -103,6 +105,7 @@ function SourcePanel({ parrafo }: { parrafo: DraftParagraph | null }) {
  */
 export function ProposalDraftViewer({
   view,
+  tenderCode = null,
   canWrite,
   busy,
   onRegenerate,
@@ -128,6 +131,7 @@ export function ProposalDraftViewer({
 
   return (
     <div>
+      <NextSteps view={view} tenderCode={tenderCode} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-text-muted">
           Copia cada sección al formulario de la Compra Ágil. Revisa lo resaltado antes de

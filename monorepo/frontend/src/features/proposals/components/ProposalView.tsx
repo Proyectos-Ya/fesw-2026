@@ -155,7 +155,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       {view && view.status === "PAUSED" && !avisoAbierto && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft/30 p-4 text-sm">
           <span>Hay una exigencia excluyente que la empresa declaró no cumplir.</span>
-          <Button variant="accent" onClick={() => setAvisoAbierto(true)}>
+          <Button onClick={() => setAvisoAbierto(true)}>
             Revisar
           </Button>
         </div>
@@ -177,6 +177,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       {view && view.status === "READY" && (
         <ProposalDraftViewer
           view={view}
+          tenderCode={tender?.data.code ?? null}
           canWrite={canWrite}
           busy={busy}
           onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
