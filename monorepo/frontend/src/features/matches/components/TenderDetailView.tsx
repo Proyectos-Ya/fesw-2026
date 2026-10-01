@@ -28,6 +28,7 @@ import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { ProposalEntryCard } from "@/features/proposals/components/ProposalEntryCard";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import {
   daysUntilClosing,
@@ -516,6 +517,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           )}
         </div>
       </div>
+
+      <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
       {/* El desfase se avisa, no se corrige solo: regenerar cuesta una llamada
           a la IA, así que la decisión es del usuario. */}
