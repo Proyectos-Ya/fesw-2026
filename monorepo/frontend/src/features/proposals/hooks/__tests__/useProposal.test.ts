@@ -15,6 +15,7 @@ vi.mock("../../services/proposalService", () => ({
   generateProposal: vi.fn(),
   regenerateProposal: vi.fn(),
   requestTechnicalDocument: vi.fn(),
+  syncProposalAnswers: vi.fn(),
   downloadTechnicalDocument: vi.fn(),
 }));
 
@@ -108,6 +109,17 @@ describe("useProposal", () => {
     await act(() => result.current.requestTechnical());
 
     expect(svc.requestTechnicalDocument).toHaveBeenCalledWith("t-1");
+  });
+
+  it("aplicar las respuestas cambiadas llama al servicio y recarga", async () => {
+    svc.getProposal.mockResolvedValue(vista({ changed_requirement_ids: ["req-1"] }));
+    svc.syncProposalAnswers.mockResolvedValue(vista());
+    const { result } = await montado();
+
+    await act(() => result.current.syncAnswers());
+
+    expect(svc.syncProposalAnswers).toHaveBeenCalledWith("t-1");
+    expect(svc.getProposal).toHaveBeenCalledTimes(2);
   });
 
   it("responder llama al servicio y recarga", async () => {

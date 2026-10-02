@@ -75,6 +75,8 @@ export interface DraftContent {
   offer_description: DraftSection;
   required_documents: DraftSection;
   technical_document: TechnicalDocument | null;
+  /** Cuándo se redactó; `null` en los borradores anteriores a este dato. */
+  generated_at?: string | null;
 }
 
 export interface CapabilityOption {
@@ -127,6 +129,8 @@ export interface ProposalView extends ProposalDraft {
   is_expired: boolean;
   questions: CapabilityQuestion[];
   catalog_items: ExperienceItem[];
+  /** Exigencias cuya respuesta en el banco cambió desde que se usó. */
+  changed_requirement_ids: string[];
 }
 
 /** Etapa en curso, para el indicador del CA6. */

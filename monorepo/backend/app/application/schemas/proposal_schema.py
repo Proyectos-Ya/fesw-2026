@@ -17,6 +17,9 @@ class ProposalDraftView(ProposalDraft):
     questions: list[CapabilityQuestion] = Field(default_factory=list)
     # Los elementos del catálogo que cubren alguna exigencia: explican una pausa.
     catalog_items: list[ExperienceItem] = Field(default_factory=list)
+    # Exigencias cuya respuesta en el banco cambió desde que se usó (por ejemplo
+    # corregida en otra pantalla). Se aplican con `POST /sync-answers`.
+    changed_requirement_ids: list[str] = Field(default_factory=list)
 
 
 class AnswerProposalQuestionInput(BaseModel):

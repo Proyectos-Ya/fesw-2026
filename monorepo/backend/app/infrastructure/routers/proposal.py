@@ -38,6 +38,9 @@ from app.application.use_cases.proposals.resume_proposal import ResumeProposalUs
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
+from app.application.use_cases.proposals.sync_proposal_answers import (
+    SyncProposalAnswersUseCase,
+)
 from app.domain.entities.proposal import ProposalDraft
 from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
@@ -68,6 +71,7 @@ def create_proposal_router(
     get_answer_proposal_question_use_case: Callable,
     get_decide_discrepancy_use_case: Callable,
     get_resume_proposal_use_case: Callable,
+    get_sync_proposal_answers_use_case: Callable,
     get_generate_proposal_use_case: Callable,
     get_regenerate_proposal_use_case: Callable,
     get_export_proposal_use_case: Callable,
@@ -336,6 +340,48 @@ def create_proposal_router(
             )
         except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
             raise _traducir(error) from error
+
+    @router.post(
+        "/{tender_id}/proposal/sync-answers",
+        response_model=ProposalDraft,
+        summary="Aplicar las respuestas del banco que cambiaron",
+        responses={
+            **_ERRORES_DE_ESCRITURA,
+            409: {"description": "Está en pausa, detenida o la licitación cerró"},
+            502: {"description": "La IA no respondió o respondió algo inválido"},
+        },
+    )
+    async def sync_proposal_answers(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            SyncProposalAnswersUseCase, Depends(get_sync_proposal_answers_use_case)
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> ProposalDraft:
+        """Aplica a las exigencias las respuestas que la empresa corrigió desde que
+        se usaron (las que lista `changed_requirement_ids`). Si el borrador tenía
+        texto, se vuelve a redactar con las mismas instrucciones; un "No" a una
+        exigencia excluyente lo deja en pausa sin redactar."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+            )
+        except (*_NO_ENCONTRADO, *_CONFLICTO) as error:
+            raise _traducir(error) from error
+        except ProposalAIServiceError as error:
+            logger.warning(
+                "Falló la redacción de la licitación %s: %s", tender_id, error
+            )
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "No fue posible redactar el borrador en este momento. Intenta de nuevo.",
+            ) from error
 
     @router.post(
         "/{tender_id}/proposal/generate",

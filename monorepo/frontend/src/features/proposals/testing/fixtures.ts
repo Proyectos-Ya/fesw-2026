@@ -90,6 +90,7 @@ export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
     is_expired: false,
     questions: [SEC, VIALES],
     catalog_items: [],
+    changed_requirement_ids: [],
     ...overrides,
   };
 }

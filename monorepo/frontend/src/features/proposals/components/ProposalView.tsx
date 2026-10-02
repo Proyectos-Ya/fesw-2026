@@ -11,6 +11,7 @@ import { Icon } from "@/features/shared/components/Icon";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
 import { useProposal } from "../hooks/useProposal";
 import { pendingRequirements } from "../utils/proposal";
+import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
 import { FeasibilityStep } from "./FeasibilityStep";
 import { ProposalAttachments } from "./ProposalAttachments";
@@ -134,6 +135,15 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       )}
 
       <StageNotice stage={stage} />
+
+      {view && (
+        <ChangedAnswersNotice
+          view={view}
+          canWrite={puedeAvanzar}
+          busy={busy}
+          onSync={() => void proposal.syncAnswers()}
+        />
+      )}
 
       {state.kind === "loading" && (
         <p className="text-sm text-text-muted">Cargando postulación…</p>

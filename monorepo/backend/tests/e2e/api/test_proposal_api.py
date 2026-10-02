@@ -42,6 +42,9 @@ from app.application.use_cases.proposals.resume_proposal import ResumeProposalUs
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
+from app.application.use_cases.proposals.sync_proposal_answers import (
+    SyncProposalAnswersUseCase,
+)
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.main import app
@@ -175,6 +178,18 @@ def entorno(api: AsyncClient):
             ),
             chat_repo=InMemoryTenderChatRepository(),
             ai_service=ia["servicio"],
+        )
+    )
+    app.dependency_overrides[bootstrap.get_answer_capability_question_use_case] = (
+        lambda: AnswerCapabilityQuestionUseCase(suppliers, questions, answers)
+    )
+    app.dependency_overrides[bootstrap.get_sync_proposal_answers_use_case] = lambda: (
+        SyncProposalAnswersUseCase(
+            suppliers,
+            tenders,
+            drafts,
+            BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences),
+            app.dependency_overrides[bootstrap.get_generate_proposal_use_case](),
         )
     )
 
@@ -599,3 +614,43 @@ async def test_pedir_el_documento_tecnico_aunque_no_se_detecto(
         f"/tenders/{tender_id}/proposal/export.docx", headers=headers_a
     )
     assert descarga.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_corregir_una_respuesta_en_el_banco_se_avisa_y_se_aplica(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+    corregida = await api.post(
+        f"/capabilities/questions/{SEC.id}/answer",
+        json={"answer": "No"},
+        headers=headers_a,
+    )
+    assert corregida.status_code == 200, corregida.text
+
+    vista = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+    assert vista.json()["changed_requirement_ids"] != []
+
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/sync-answers", headers=headers_a
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "PAUSED"
+    vista = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+    assert vista.json()["changed_requirement_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_un_viewer_no_aplica_las_respuestas(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/sync-answers", headers=headers_c
+    )
+
+    assert resp.status_code == 403

@@ -192,6 +192,15 @@ class DraftContent(BaseModel):
     required_documents: DraftSection
     # Solo si las bases lo exigen; con las secciones de `TECHNICAL_SECTIONS`.
     technical_document: TechnicalDocument | None = None
+    # Cuándo se redactó. Una respuesta del banco modificada después deja el texto
+    # desactualizado. Es `None` en los borradores redactados antes de existir.
+    generated_at: UtcDateTime | None = None
+
+    @field_validator("generated_at")
+    @classmethod
+    def _redactado_en_utc_naive(cls, value: datetime | None) -> datetime | None:
+        # Viaja dentro del JSONB y vuelve con zona: se normaliza como el resto.
+        return aware_to_utc_naive(value)
 
 
 class ProposalDraft(BaseModel):
@@ -243,6 +252,40 @@ class ProposalDraft(BaseModel):
             )
         ]
 
+    def _estado_actual(self, polarity: Polarity | None) -> RequirementStatus:
+        # Sin polaridad: la respuesta ya no está vigente y se vuelve a preguntar.
+        return _ESTADO_POR_POLARIDAD[polarity] if polarity else "desconocido"
+
+    def changed_answers(
+        self, current: dict[UUID, tuple[Polarity | None, datetime | None]]
+    ) -> list[str]:
+        """Exigencias cuya respuesta en el banco cambió desde que se usó.
+
+        `current` trae, por pregunta, la polaridad vigente (o `None` si ya no
+        hay respuesta vigente) y cuándo se respondió. Cambió si el estado que
+        daría hoy no calza con el guardado, o si se respondió después de
+        redactar: el texto puede citar lo anterior. No modifica nada.
+
+        En pausa o detenida no avisa: ahí la respuesta se corrige en el aviso
+        de discrepancia o al reanudar, y `sync_answers` no aplica.
+        """
+        if self.status not in ("FEASIBILITY", "READY"):
+            return []
+        redactado = self.content.generated_at if self.content else None
+        cambiadas: list[str] = []
+        for requirement in self.requirements:
+            question_id = requirement.capability_question_id
+            if question_id is None or question_id not in current:
+                continue
+            polarity, answered_at = current[question_id]
+            if self._estado_actual(polarity) != requirement.status or (
+                redactado is not None
+                and answered_at is not None
+                and answered_at > redactado
+            ):
+                cambiadas.append(requirement.id)
+        return cambiadas
+
     def can_generate(self) -> bool:
         """¿Se puede redactar? La "pausa" de la generación del CA7."""
         return (
@@ -290,6 +333,17 @@ class ProposalDraft(BaseModel):
         )
         return pausada.capability_question_id if pausada else None
 
+    def _cambiar_estado(
+        self, requirement: Requirement, status: RequirementStatus
+    ) -> None:
+        requirement.status = status
+        # Una respuesta nueva reemplaza la anterior: su decisión y su
+        # advertencia dejan de valer. Si vuelve a ser "No", se pregunta otra vez.
+        self.discrepancy_decisions = [
+            d for d in self.discrepancy_decisions if d.requirement_id != requirement.id
+        ]
+        self.warnings = [w for w in self.warnings if w.requirement_id != requirement.id]
+
     def record_answer(self, question_id: UUID, polarity: Polarity) -> None:
         """Aplica la respuesta de la empresa a las exigencias que la esperaban.
 
@@ -308,22 +362,36 @@ class ProposalDraft(BaseModel):
             r for r in self.requirements if r.capability_question_id == question_id
         ]
         for requirement in tocadas:
-            requirement.status = nuevo_estado
-            # Una respuesta nueva reemplaza la anterior: su decisión y su
-            # advertencia dejan de valer. Si vuelve a ser "No", se pregunta otra vez.
-            self.discrepancy_decisions = [
-                d
-                for d in self.discrepancy_decisions
-                if d.requirement_id != requirement.id
-            ]
-            self.warnings = [
-                w for w in self.warnings if w.requirement_id != requirement.id
-            ]
+            self._cambiar_estado(requirement, nuevo_estado)
         if corrige_la_pausa:
             # Se vuelve a evaluar desde cero: un "No" pausa otra vez en la misma
             # exigencia; un "Sí" puede dejar al descubierto otra sin decidir.
             self.status = "FEASIBILITY"
             self.paused_requirement_id = None
+        self._pausar_si_corresponde()
+        self._tocar()
+
+    def sync_answers(self, polarities: dict[UUID, Polarity | None]) -> None:
+        """Aplica las respuestas vigentes del banco a las exigencias que las usan.
+
+        Sirve cuando la empresa corrigió una respuesta fuera de esta postulación.
+        Un "No" excluyente pausa como en la factibilidad; una respuesta vencida
+        vuelve a quedar pendiente. El texto redactado se conserva hasta que se
+        vuelva a redactar. En pausa o detenida no se aplica: primero se resuelve
+        la discrepancia.
+        """
+        self._exigir("FEASIBILITY", "READY", accion="actualizar las respuestas de")
+        for requirement in self.requirements:
+            question_id = requirement.capability_question_id
+            if question_id is None or question_id not in polarities:
+                continue
+            nuevo = self._estado_actual(polarities[question_id])
+            if nuevo != requirement.status:
+                self._cambiar_estado(requirement, nuevo)
+        if self.status == "READY" and (
+            self.pending_requirements() or self._sin_resolver()
+        ):
+            self.status = "FEASIBILITY"
         self._pausar_si_corresponde()
         self._tocar()
 
@@ -376,7 +444,7 @@ class ProposalDraft(BaseModel):
         """Guarda el contenido redactado o regenerado (CA1, CA4)."""
         if not self.can_generate():
             raise InvalidProposalTransition(self.status, "redactar")
-        self.content = content
+        self.content = content.model_copy(update={"generated_at": utc_now_naive()})
         self.last_instructions = instructions
         self.status = "READY"
         self._tocar()

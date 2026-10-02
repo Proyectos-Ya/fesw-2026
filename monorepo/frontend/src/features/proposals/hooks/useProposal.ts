@@ -13,6 +13,7 @@ import {
   requestTechnicalDocument,
   resumeProposal,
   startFeasibility,
+  syncProposalAnswers,
 } from "../services/proposalService";
 import type { DecisionAction, ProposalStage, ProposalView } from "../types";
 
@@ -119,6 +120,15 @@ export function useProposal(tenderId: string) {
     () => ejecutar(() => requestTechnicalDocument(tenderId), "drafting"),
     [ejecutar, tenderId],
   );
+  const syncAnswers = useCallback(
+    () =>
+      ejecutar(
+        () => syncProposalAnswers(tenderId),
+        // Con texto redactado se vuelve a redactar: es la etapa que se ve.
+        state.kind === "ready" && state.view.content ? "drafting" : null,
+      ),
+    [ejecutar, tenderId, state],
+  );
   const regenerate = useCallback(
     (instructions: string) =>
       ejecutar(() => regenerateProposal(tenderId, instructions), "drafting"),
@@ -157,6 +167,7 @@ export function useProposal(tenderId: string) {
     generate,
     regenerate,
     requestTechnical,
+    syncAnswers,
     download,
   };
 }

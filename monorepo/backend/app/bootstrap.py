@@ -77,6 +77,9 @@ from app.application.use_cases.proposals.regenerate_proposal import (
     RegenerateProposalUseCase,
 )
 from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
+from app.application.use_cases.proposals.sync_proposal_answers import (
+    SyncProposalAnswersUseCase,
+)
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
@@ -940,6 +943,24 @@ def get_regenerate_proposal_use_case(
     return RegenerateProposalUseCase(generate_use_case)
 
 
+def get_sync_proposal_answers_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    catalog_use_case: Annotated[
+        BuildExperienceCatalogUseCase, Depends(get_build_experience_catalog_use_case)
+    ],
+    generate_use_case: Annotated[
+        GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
+    ],
+) -> SyncProposalAnswersUseCase:
+    return SyncProposalAnswersUseCase(
+        SupplierRepository(session),
+        TenderRepository(session),
+        SqlProposalDraftRepository(session),
+        catalog_use_case,
+        generate_use_case,
+    )
+
+
 def get_export_proposal_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ExportProposalDocxUseCase:
@@ -1529,6 +1550,7 @@ def bootstrap(app: FastAPI) -> None:
             get_answer_proposal_question_use_case=get_answer_proposal_question_use_case,
             get_decide_discrepancy_use_case=get_decide_discrepancy_use_case,
             get_resume_proposal_use_case=get_resume_proposal_use_case,
+            get_sync_proposal_answers_use_case=get_sync_proposal_answers_use_case,
             get_generate_proposal_use_case=get_generate_proposal_use_case,
             get_regenerate_proposal_use_case=get_regenerate_proposal_use_case,
             get_export_proposal_use_case=get_export_proposal_use_case,

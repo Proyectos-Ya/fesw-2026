@@ -14,6 +14,7 @@ from app.application.use_cases.capabilities._empresa import empresa_o_error
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.proposals._postulacion import respuestas_vigentes
 from app.domain.errors.proposal_errors import ProposalDraftNotFound
 from app.domain.errors.tender_errors import TenderNotFound
 
@@ -24,7 +25,8 @@ class GetProposalUseCase:
     Además del borrador trae lo que la pantalla necesita para no pedir nada más:
     las preguntas a las que apuntan las exigencias (enunciado y opciones) y los
     elementos del catálogo que las cubren, con los que se explica el origen de
-    una pausa ("respondiste 'No' el 12-oct en otra licitación").
+    una pausa ("respondiste 'No' el 12-oct en otra licitación"). También avisa
+    qué exigencias usan una respuesta que cambió desde que se usó; no la aplica.
     """
 
     def __init__(
@@ -63,16 +65,20 @@ class GetProposalUseCase:
             await self.question_repo.list_by_ids(question_ids) if question_ids else []
         )
         item_ids = {r.catalog_item_id for r in draft.requirements if r.catalog_item_id}
+        item_ids |= {f"capacidad:{question_id}" for question_id in question_ids}
         catalog_items = []
+        changed: list[str] = []
         if item_ids:
             catalog = await self.catalog_use_case.execute(
                 user_id=user_id, supplier_id=supplier.id
             )
             catalog_items = [i for i in catalog.items if i.id in item_ids]
+            changed = draft.changed_answers(respuestas_vigentes(draft, catalog))
 
         return ProposalDraftView(
             **draft.model_dump(),
             is_expired=tenders[0].esta_cerrada(),
             questions=questions,
             catalog_items=catalog_items,
+            changed_requirement_ids=changed,
         )

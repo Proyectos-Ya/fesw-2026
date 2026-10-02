@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from app.application.repositories.proposal_repository import IProposalDraftRepository
@@ -8,6 +9,7 @@ from app.application.repositories.tender_repository import (
     TenderFilters,
 )
 from app.application.use_cases.capabilities._empresa import empresa_o_error
+from app.domain.entities.capability import ExperienceCatalog, Polarity
 from app.domain.entities.proposal import ProposalDraft
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -46,3 +48,24 @@ async def postulacion_abierta(
     if draft is None:
         raise ProposalDraftNotFound(tender.id)
     return Postulacion(supplier=supplier, tender=tender, draft=draft)
+
+
+def respuestas_vigentes(
+    draft: ProposalDraft, catalog: ExperienceCatalog
+) -> dict[UUID, tuple[Polarity | None, datetime | None]]:
+    """Por cada pregunta del borrador, su polaridad vigente y cuándo se respondió.
+
+    Una pregunta sin respuesta vigente en el catálogo (vencida o nunca
+    respondida) queda con `(None, None)`.
+    """
+    items = {item.id: item for item in catalog.items}
+    vigentes: dict[UUID, tuple[Polarity | None, datetime | None]] = {}
+    for requirement in draft.requirements:
+        question_id = requirement.capability_question_id
+        if question_id is None:
+            continue
+        item = items.get(f"capacidad:{question_id}")
+        vigentes[question_id] = (
+            (item.polarity, item.answered_at) if item is not None else (None, None)
+        )
+    return vigentes

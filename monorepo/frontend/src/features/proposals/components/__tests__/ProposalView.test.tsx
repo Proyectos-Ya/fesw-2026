@@ -15,6 +15,7 @@ vi.mock("../../services/proposalService", () => ({
   resumeProposal: vi.fn(),
   generateProposal: vi.fn(),
   regenerateProposal: vi.fn(),
+  syncProposalAnswers: vi.fn(),
   downloadTechnicalDocument: vi.fn(),
 }));
 
@@ -132,6 +133,18 @@ describe("ProposalView", () => {
     render(<ProposalView tenderId="t-1" />);
 
     expect(await screen.findByRole("dialog")).toHaveTextContent("Recomendamos no postular");
+  });
+
+  it("avisa las respuestas que cambiaron y las aplica", async () => {
+    svc.getProposal.mockResolvedValue(vista({ changed_requirement_ids: ["req-1"] }));
+    svc.syncProposalAnswers.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Aplicar las respuestas/ }),
+    );
+
+    expect(svc.syncProposalAnswers).toHaveBeenCalledWith("t-1");
   });
 
   it("detenida ofrece reanudar (CA9)", async () => {

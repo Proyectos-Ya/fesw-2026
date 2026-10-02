@@ -60,6 +60,15 @@ export function requestTechnicalDocument(tenderId: string): Promise<ProposalDraf
   });
 }
 
+/**
+ * Aplica las respuestas que la empresa corrigió en el banco desde que se usaron.
+ * Si había texto, se vuelve a redactar; un "No" excluyente deja la postulación
+ * en pausa.
+ */
+export function syncProposalAnswers(tenderId: string): Promise<ProposalDraft> {
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/sync-answers`, { method: "POST" });
+}
+
 /** CA4: vuelve a redactar con instrucciones libres. */
 export function regenerateProposal(
   tenderId: string,
