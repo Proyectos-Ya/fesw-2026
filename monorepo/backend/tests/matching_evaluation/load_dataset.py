@@ -16,12 +16,18 @@ tiene, sin una segunda interpretación del dataset.
 texto, el vector o el payload. Una copia paralela se desincroniza en cuanto
 alguien toca el original, y el síntoma sería un matching que empeora sin causa
 visible.
+
+**Es reanudable**: lo que ya está en Qdrant se omite (`--reindexar` lo fuerza), así
+que cargar un catálogo nuevo sobre uno existente solo calcula lo que falta y una
+caída a medias no obliga a empezar de cero.
 """
 
+import argparse
 import asyncio
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
@@ -42,7 +48,11 @@ from app.infrastructure.services.bge_m3_embedding_service import (  # noqa: E402
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID  # noqa: E402
 from app.shared.datetime_utils import to_utc_epoch  # noqa: E402
 
-LOTE = 32
+# Textos por llamada al modelo. Con lotes más grandes BGE-M3 rellena todo el lote hasta
+# el texto más largo —hay partidas de más de 10.000 caracteres— y el proceso muere por
+# memoria sin dejar un mensaje. Ordenados de corto a largo, los lotes chicos casi no
+# rellenan.
+LOTE = 8
 
 
 @dataclass
@@ -51,6 +61,35 @@ class _Simple:
 
     name: str
     description: str | None = None
+
+
+def seleccionar_pendientes(
+    textos: dict[UUID, str], ya_indexadas: set[UUID], reindexar: bool = False
+) -> list[UUID]:
+    """Ids a indexar, del texto más corto al más largo.
+
+    Se omiten los que ya están en Qdrant, salvo con `reindexar`. El orden por largo
+    agrupa textos parecidos en cada lote y deja para el final los que más memoria
+    piden, de modo que una caída por memoria se nota cuando ya hay casi todo hecho.
+    """
+    ids = [i for i in textos if reindexar or i not in ya_indexadas]
+    return sorted(ids, key=lambda i: len(textos[i]))
+
+
+async def _ids_ya_indexados(
+    cliente: AsyncQdrantClient, ids: list[UUID], coleccion: str = "tenders"
+) -> set[UUID]:
+    """Cuáles de estos ids ya tienen punto en la colección (consulta por lotes)."""
+    existentes: set[UUID] = set()
+    for inicio in range(0, len(ids), 256):
+        puntos = await cliente.retrieve(
+            collection_name=coleccion,
+            ids=[str(i) for i in ids[inicio : inicio + 256]],
+            with_payload=False,
+            with_vectors=False,
+        )
+        existentes.update(UUID(str(p.id)) for p in puntos)
+    return existentes
 
 
 async def _leer_licitaciones() -> list[dict]:
@@ -97,14 +136,14 @@ async def _leer_licitaciones() -> list[dict]:
     return list(por_id.values())
 
 
-async def main() -> None:
+async def main(reindexar: bool = False) -> None:
     licitaciones = await _leer_licitaciones()
     if not licitaciones:
         raise SystemExit(
             "No hay licitaciones en la base. Corre primero:\n"
             "  python tests/matching_evaluation/load_postgres_robust.py"
         )
-    print(f"[DB] {len(licitaciones)} licitaciones por indexar", flush=True)
+    print(f"[DB] {len(licitaciones)} licitaciones en la base", flush=True)
 
     constructor = TextBuilder()
     embeddings = BgeM3EmbeddingService()
@@ -117,21 +156,29 @@ async def main() -> None:
     # del buscador necesita. Sin ellos el filtro por fecha o monto no funciona.
     await repositorio.ensure_collection()
 
-    indexadas = 0
-    for inicio in range(0, len(licitaciones), LOTE):
-        lote = licitaciones[inicio : inicio + LOTE]
-        textos = [
-            constructor.build_from_tender(
-                tender=_Simple(name=t["name"], description=t["description"]),
-                items=t["items"],
-            )
-            for t in lote
-        ]
-        vectores = await embeddings.embed(textos)
+    por_id = {t["id"]: t for t in licitaciones}
+    textos = {
+        i: constructor.build_from_tender(
+            tender=_Simple(name=t["name"], description=t["description"]), items=t["items"]
+        )
+        for i, t in por_id.items()
+    }
+    ya = set() if reindexar else await _ids_ya_indexados(cliente, list(textos))
+    pendientes = seleccionar_pendientes(textos, ya, reindexar)
+    print(
+        f"[QDRANT] {len(ya)} ya indexadas (se omiten) | {len(pendientes)} por indexar",
+        flush=True,
+    )
 
-        for t, vector in zip(lote, vectores, strict=True):
+    indexadas = 0
+    for inicio in range(0, len(pendientes), LOTE):
+        ids = pendientes[inicio : inicio + LOTE]
+        vectores = await embeddings.embed([textos[i] for i in ids])
+
+        for i, vector in zip(ids, vectores, strict=True):
+            t = por_id[i]
             await repositorio.upsert(
-                tender_id=t["id"],
+                tender_id=i,
                 embedding=vector,
                 payload={
                     # El código semántico, no el numérico: es contra lo que
@@ -148,7 +195,11 @@ async def main() -> None:
             )
             indexadas += 1
 
-        print(f"  {indexadas}/{len(licitaciones)}", end="\r", flush=True)
+        # Una línea nueva cada ~100 y no sobrescribir la misma: en un log o en un
+        # pegado la sobrescritura borra el progreso, y cuando el proceso muere no
+        # queda rastro de hasta dónde llegó.
+        if indexadas % 96 < LOTE or inicio + LOTE >= len(pendientes):
+            print(f"  {indexadas}/{len(pendientes)}", flush=True)
 
     total = await repositorio.count()
     print(f"\n[LISTO] {total} licitaciones indexadas en Qdrant.", flush=True)
@@ -158,4 +209,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument(
+        "--reindexar",
+        action="store_true",
+        help="vuelve a calcular también lo que ya está en Qdrant",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(reindexar=args.reindexar))
