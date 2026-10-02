@@ -1525,6 +1525,7 @@ def bootstrap(app: FastAPI) -> None:
             get_download_export_file_use_case,
         )
     )
+    app.include_router(
         create_milestones_router(
             get_current_user,
             get_tender_milestones_use_case,

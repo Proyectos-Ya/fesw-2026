@@ -116,7 +116,6 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el statusText.
     }
-    throw new ApiError(response.status, detail, code);
     if (
       response.status === 403 &&
       detail.toLowerCase().includes("revocado") &&
@@ -124,7 +123,7 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
     ) {
       notificarRevocacionAcceso(detail);
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   return response;
