@@ -311,15 +311,15 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
 
 | CA (issue #230) | Backend | Frontend | Test |
 |---|---|---|---|
-| **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_con_y_sin_documento_tecnico` / `ProposalDraftViewer.test.tsx` |
-| **CA2** Vacíos marcados | Parser `[[INSERTAR]]`, `placeholders` | `ProposalDraftViewer` (destacado) | `test_parser_insertar` / `ProposalDraftViewer.test.tsx` |
-| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` + `DocxProposalExporter` (solo el documento técnico, plantilla fija) | Botón "Exportar documento técnico" | `test_docx_proposal_exporter.py`, `test_export_proposal.py` |
-| **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + helper anti-injection | `RegenerateDialog` | `test_regenerate_incorpora_instrucciones` |
-| **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog`, `capability_evidence` | `SourcePanel` | `test_fuentes_inexistentes_se_descartan` / `SourcePanel.test.tsx` |
-| **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `ProposalStepper`, `GeneratingLoader` | `ProposalStepper.test.tsx` |
-| **CA7** Pausa y pregunta ante contradicción | `StartFeasibilityUseCase`, `AnswerProposalQuestionUseCase` → `PAUSED` | `DiscrepancyModal` | `test_no_excluyente_pausa_borrador` / `DiscrepancyModal.test.tsx` |
-| **CA8** Continuar con advertencia | `DecideDiscrepancyUseCase(continue)` | Botón "Continuar con advertencia" | `test_continuar_guarda_decision_y_advertencia` |
-| **CA9** Detener y reanudar | `DecideDiscrepancyUseCase(stop)`, `ResumeProposalUseCase` | Botón "Detener", vista "Reanudar" | `test_stop_y_resume_permite_cambiar_respuesta` |
+| **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_proposal.py::test_deja_el_borrador_listo_con_la_plantilla_de_compra_agil`, `::test_se_arma_con_la_plantilla_si_las_bases_lo_exigen`, `::test_no_se_incluye_si_no_lo_exigen_aunque_la_ia_lo_escriba` / `ProposalDraftViewer.test.tsx` "muestra nombre, descripción y documentos (CA1)" |
+| **CA2** Vacíos marcados | `DraftParagraph.from_ai_text` (`[[INSERTAR]]`), `placeholders` | `HighlightedText` | `test_generate_proposal.py::test_convierte_los_vacios_en_texto_visible`, `test_proposal.py::TestVacios` / "un párrafo con vacíos dice qué completar (CA2)" |
+| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` + `DocxProposalExporter` (solo el documento técnico, plantilla fija) | Botón "Exportar documento técnico" | `test_docx_proposal_exporter.py::test_los_vacios_van_resaltados_y_con_un_bloque_revisar`, `test_export_proposal.py` / "con documento técnico lo muestra y deja exportarlo (CA3)" |
+| **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + `prompt_guard` | `RegenerateDialog` | `test_regenerate_proposal.py::test_redacta_de_nuevo_con_las_instrucciones_y_las_guarda`, `::test_rechaza_la_inyeccion_antes_de_llamar_a_la_ia` / "regenera con instrucciones (CA4)" |
+| **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog` | Panel de fuentes de `ProposalDraftViewer` | `test_generate_proposal.py::test_descarta_las_fuentes_inventadas`, `::test_una_afirmacion_sin_fuente_valida_recibe_un_vacio` / "al elegir un párrafo muestra sus fuentes (CA5)" |
+| **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `StageNotice` | `StageNotice.test.tsx`, `useProposal.test.ts` "iniciar muestra la etapa de análisis…", "redactar muestra la etapa de redacción (CA6)" |
+| **CA7** Pausa y pregunta ante contradicción | `StartFeasibilityUseCase`, `AnswerProposalQuestionUseCase` → `PAUSED` | `DiscrepancyModal` | `test_proposal_discrepancies.py::test_un_no_a_una_excluyente_pausa_el_borrador`, `test_generate_proposal.py::test_en_pausa_no_se_redacta` / `DiscrepancyModal.test.tsx` |
+| **CA8** Continuar con advertencia | `DecideDiscrepancyUseCase(continue)` | Botón "Continuar con advertencia" | `test_proposal_discrepancies.py::test_continuar_guarda_la_decision_y_la_advertencia` / "continuar con advertencia (CA8)" |
+| **CA9** Detener y reanudar | `DecideDiscrepancyUseCase(stop)`, `ResumeProposalUseCase` | Botón "Detener", "Reanudar" | `test_proposal_discrepancies.py::test_detener_deja_el_borrador_detenido`, `::test_vuelve_a_factibilidad`, e2e `test_detener_y_reanudar` / "detener (CA9)", `ProposalView.test.tsx` "detenida ofrece reanudar (CA9)" |
 
 ---
 
