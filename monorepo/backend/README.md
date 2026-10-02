@@ -382,6 +382,24 @@ resuelve—, así que el rebote es inmediato y genuino.
 
 ---
 
+## Compartir y exportar licitaciones (HdU 19)
+
+Desde la ficha de una licitación se puede compartir un **enlace público de 7 días**
+(revocable, sin cuenta para quien lo abre) y **exportar a PDF o Excel**. La guía completa
+—uso, API, migraciones y cómo comprobar cada criterio a mano— está en
+[`monorepo/TESTING-HU19.md`](../TESTING-HU19.md).
+
+| Variable | Default | Qué es |
+|---|---|---|
+| `EXPORT_INLINE_TIMEOUT_SECONDS` | `10` | Si generar el archivo tarda más, se responde de inmediato y se avisa por correo cuando esté listo |
+
+- El PDF se genera con **ReportLab** (`reportlab` en `requirements.txt`): es un wheel puro y
+  no necesita paquetes del sistema en la imagen.
+- Las exportaciones que pasan a segundo plano se guardan en la tabla `export_job` (el disco
+  del contenedor es efímero) y vencen a los 7 días. Como los bucles de alertas, asumen
+  **una sola instancia** de la API; al arrancar se marcan fallidas las que quedaron a medias.
+- El correo de "archivo listo" usa el mismo `SmtpEmailService` que las alertas, pero se
+  envía directo: no depende de `RUN_NOTIFICATION_SCAN` ni de las preferencias de alertas.
 ## Hitos y sincronización con Google Calendar (HU-16)
 
 La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que

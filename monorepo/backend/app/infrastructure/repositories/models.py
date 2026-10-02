@@ -21,6 +21,7 @@ from app.infrastructure.repositories.capability_model import (
 from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
+from app.infrastructure.repositories.export_job_model import ExportJobModel
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -64,6 +65,9 @@ from app.infrastructure.repositories.tender_model import (
     TenderModel,
     TenderStatusModel,
 )
+from app.infrastructure.repositories.tender_share_link_model import (
+    TenderShareLinkModel,
+)
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
@@ -78,6 +82,7 @@ __all__ = [
     "QuotationMaterialModel",
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
+    "ExportJobModel",
     "KanbanCardModel",
     "KanbanColumnModel",
     "MatchingResultModel",
@@ -99,5 +104,6 @@ __all__ = [
     "TenderChatDocumentModel",
     "TenderChatMessageModel",
     "TenderChatSessionModel",
+    "TenderShareLinkModel",
     "UserModel",
 ]

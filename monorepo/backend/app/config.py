@@ -214,6 +214,9 @@ class Settings(BaseSettings):
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
 
+    # HdU 19, criterios 8 y 9: si un PDF o Excel tarda más que esto, se responde
+    # de inmediato y se avisa por correo cuando esté listo.
+    export_inline_timeout_seconds: float = Field(default=10.0, gt=0)
     # --- Sincronización con Google Calendar (HU-16) ---
     # Opcional: sin el cliente configurado, el resto de la app funciona igual y
     # los endpoints de calendario responden que la sincronización no está
