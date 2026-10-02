@@ -637,12 +637,28 @@ class TestVolverAAnalizar:
         await e.ejecutar()
         empresa = await e.suppliers.get_by_id(e.empresa.id)
         assert empresa is not None
+        empresa.regions = [*(empresa.regions or []), "Aysén"]
         empresa.updated_at = empresa.updated_at + timedelta(minutes=1)
         await e.suppliers.save(empresa)
 
         await self._rehacer(e)
 
         assert len(e.ai.llamadas) == 2
+
+    async def test_tocar_la_empresa_sin_cambiar_lo_que_se_analiza_no_cuenta(self):
+        """El banner del home escribe `keywords` y mueve `updated_at`, pero la
+        factibilidad no usa las keywords: no hay nada nuevo que analizar."""
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        empresa = await e.suppliers.get_by_id(e.empresa.id)
+        assert empresa is not None
+        empresa.keywords = [*(empresa.keywords or []), "mop_registration:Sí"]
+        empresa.updated_at = empresa.updated_at + timedelta(minutes=1)
+        await e.suppliers.save(empresa)
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 1
 
     async def test_con_la_licitacion_cerrada_no_se_vuelve_a_analizar(self):
         e = await Escenario().preparar()

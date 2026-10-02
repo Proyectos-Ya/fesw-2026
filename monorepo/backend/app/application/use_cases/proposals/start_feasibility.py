@@ -69,20 +69,28 @@ _MAX_SUGERIDAS = 3
 
 
 def huella_del_analisis(
-    tender: Tender, supplier: Supplier, documentos: list[DocumentContextDTO]
+    tender: Tender,
+    catalog: ExperienceCatalog,
+    categoria: str,
+    documentos: list[DocumentContextDTO],
 ) -> str:
     """Resume lo que usa la factibilidad, para saber si volver a analizar cambia algo.
 
-    Cuenta la ficha y el perfil de la empresa (sus últimas modificaciones) y el
-    contenido de cada adjunto. **No** cuenta las respuestas al banco: las de la
-    propia postulación las pidió este análisis, y si se cuentan, responder las
-    preguntas ya bastaría para descartar el borrador. Tampoco la respuesta de la
-    IA, que puede variar con las mismas entradas.
+    Cuenta la ficha (su última modificación), los datos del perfil que recibe la
+    IA (los ítems `perfil:` del catálogo y el rubro) y el contenido de cada
+    adjunto. No usa `supplier.updated_at`: el banner del home lo mueve al guardar
+    `keywords`, que la factibilidad no lee, y descartaría el borrador sin motivo.
+
+    **No** cuenta las respuestas al banco: las de la propia postulación las pidió
+    este análisis, y si se cuentan, responder las preguntas ya bastaría para
+    descartar el borrador. Tampoco la respuesta de la IA, que puede variar con
+    las mismas entradas.
     """
-    partes = [
-        f"ficha:{tender.last_change_at.isoformat()}",
-        f"perfil:{supplier.updated_at.isoformat()}",
-    ]
+    partes = [f"ficha:{tender.last_change_at.isoformat()}", f"rubro:{categoria}"]
+    perfil = sorted(
+        (item.id, item.detail) for item in catalog.items if item.origin == "perfil"
+    )
+    partes += [f"perfil:{item_id}:{detalle}" for item_id, detalle in perfil]
     for doc in sorted(documentos, key=lambda d: d.document_name):
         contenido = hashlib.sha256(doc.file_bytes).hexdigest()
         partes.append(f"adjunto:{doc.document_name}:{doc.is_corrupted}:{contenido}")
@@ -177,12 +185,12 @@ class StartFeasibilityUseCase:
         documentos = await adjuntos_del_usuario(
             self.chat_repo, self.validator_service, user_id, tender.id
         )
-        huella = huella_del_analisis(tender, supplier, documentos)
+        categoria = categoria_de(supplier)
+        huella = huella_del_analisis(tender, catalog, categoria, documentos)
         if existente is not None and existente.analysis_fingerprint == huella:
             # Nada cambió desde el análisis anterior: el borrador sigue sirviendo.
             return existente
 
-        categoria = categoria_de(supplier)
         banco = await self.question_repo.list_active({categoria})
 
         resultado = await self.ai_service.analyze_feasibility(
