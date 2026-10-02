@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { formatDateTime } from "@/features/matches/utils/format";
 import { ApiError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
@@ -10,6 +11,7 @@ import {
   createInvitation,
   listWorkspaceInvitations,
   listWorkspaceMembers,
+  revokeWorkspaceMember,
 } from "@/features/workspaces/services/workspaceService";
 import type {
   MemberRole,
@@ -31,7 +33,7 @@ export function CompanyTeamSection({
   supplierId,
   supplierName,
 }: CompanyTeamSectionProps) {
-  const { isAdmin } = useWorkspace();
+  const { isAdmin, activeWorkspace } = useWorkspace();
   const [members, setMembers] = useState<WorkspaceMemberDetail[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<
     SupplierInvitation[]
@@ -48,6 +50,12 @@ export function CompanyTeamSection({
     useState<SupplierInvitation | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+
+  const [memberToRevoke, setMemberToRevoke] =
+    useState<WorkspaceMemberDetail | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+
+  const currentUserId = activeWorkspace?.user_id;
 
   const loadTeamData = useCallback(async () => {
     if (!supplierId) return;
@@ -163,6 +171,34 @@ export function CompanyTeamSection({
     }
   };
 
+  const handleConfirmRevokeMember = async () => {
+    if (!memberToRevoke) return;
+    setIsRevoking(true);
+    setFormError(null);
+    setFeedbackMessage(null);
+
+    try {
+      await revokeWorkspaceMember(supplierId, memberToRevoke.id);
+      const revokedName = memberToRevoke.full_name;
+      setMembers((prev) =>
+        prev.filter((item) => item.id !== memberToRevoke.id),
+      );
+      setMemberToRevoke(null);
+      setFeedbackMessage(
+        `Acceso de ${revokedName} revocado correctamente.`,
+      );
+    } catch (err: unknown) {
+      if (err instanceof ApiError || err instanceof Error) {
+        setFormError(err.message);
+      } else {
+        setFormError("No se pudo revocar el acceso del miembro.");
+      }
+      setMemberToRevoke(null);
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
   return (
     <section className="mt-8 rounded-lg bg-white p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
@@ -178,7 +214,7 @@ export function CompanyTeamSection({
         </div>
       </div>
 
-      {/* Formulario de invitación exclusivo para Administradores (CA1, CA2, CA3) */}
+      {/* Formulario de invitación exclusivo para Administradores */}
       {isAdmin && (
         <form
           onSubmit={(e) => void handleInviteSubmit(e)}
@@ -257,7 +293,7 @@ export function CompanyTeamSection({
         </form>
       )}
 
-      {/* Tabla de miembros actuales (visible para Administradores y Miembros) */}
+      {/* Tabla de miembros actuales (CA1, CA2, CA4, CA5) */}
       <div>
         <h3 className="text-xs font-bold uppercase tracking-caps text-text-subtle mb-3">
           Miembros actuales ({members.length})
@@ -276,30 +312,67 @@ export function CompanyTeamSection({
                   <th className="px-4 py-2.5">Nombre</th>
                   <th className="px-4 py-2.5">Correo</th>
                   <th className="px-4 py-2.5">Rol</th>
+                  <th className="px-4 py-2.5">Último acceso</th>
                   <th className="px-4 py-2.5">Estado</th>
+                  {isAdmin && (
+                    <th className="px-4 py-2.5 text-right">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
-                {members.map((member) => (
-                  <tr key={member.id}>
-                    <td className="px-4 py-3 font-medium text-text-strong">
-                      {member.full_name}
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">
-                      {member.email}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-semibold text-primary">
-                        {formatRoleLabel(member.role)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                        Activo
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {members.map((member) => {
+                  const isSelf = Boolean(
+                    currentUserId && member.user_id === currentUserId,
+                  );
+                  const rawLastAccess =
+                    member.last_access_at ??
+                    member.created_at ??
+                    member.joined_at ??
+                    null;
+
+                  return (
+                    <tr key={member.id}>
+                      <td className="px-4 py-3 font-medium text-text-strong">
+                        {member.full_name}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {member.email}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-semibold text-primary">
+                          {formatRoleLabel(member.role)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {formatDateTime(rawLastAccess)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                          Activo
+                        </span>
+                      </td>
+                      {isAdmin && (
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            aria-label={`Revocar acceso de ${member.full_name}`}
+                            disabled={isSelf}
+                            title={
+                              isSelf
+                                ? "No puedes revocar tu propio acceso"
+                                : `Revocar acceso de ${member.full_name}`
+                            }
+                            onClick={() => setMemberToRevoke(member)}
+                            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger-soft/40 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          >
+                            <Icon name="user-minus" size={14} />
+                            <span>Revocar acceso</span>
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -382,6 +455,56 @@ export function CompanyTeamSection({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Diálogo de confirmación de revocación de miembro (HU-13 CA2) */}
+      {isAdmin && memberToRevoke && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="revoke-member-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border-subtle">
+            <h4
+              id="revoke-member-title"
+              className="text-base font-bold text-text-strong"
+            >
+              ¿Revocar acceso al equipo?
+            </h4>
+            <p className="mt-2 text-sm text-text-muted">
+              El usuario{" "}
+              <span className="font-semibold text-text-strong">
+                {memberToRevoke.full_name}
+              </span>{" "}
+              ({memberToRevoke.email}) perderá inmediatamente el acceso a los
+              datos y licitaciones de{" "}
+              <span className="font-semibold text-text-strong">
+                {supplierName}
+              </span>
+              .
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMemberToRevoke(null)}
+                disabled={isRevoking}
+              >
+                Volver
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                isLoading={isRevoking}
+                onClick={() => void handleConfirmRevokeMember()}
+                className="bg-danger hover:bg-danger/90 font-bold"
+              >
+                Confirmar revocación
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

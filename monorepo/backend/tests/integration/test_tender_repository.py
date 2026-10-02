@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.application.repositories.tender_repository import TenderFilters
+from app.application.repositories.tender_repository import ClosingOrder, TenderFilters
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
@@ -257,6 +257,53 @@ async def test_search_ordena_por_fecha_de_cierre_ascendente(db_session: AsyncSes
     items, _ = await repo.search_tenders(TenderFilterCriteria(), limit=100)
 
     assert [t.code for t in items][:3] == ["RM-PRONTO", "RM-CERRADA", "RM-SIN-MONTO"]
+
+
+@pytest.mark.asyncio
+async def test_search_puede_ordenar_por_cierre_mas_reciente_primero(
+    db_session: AsyncSession,
+):
+    """Con cerradas en juego, lo que interesa es lo último que cerró."""
+    await _seed_para_busqueda(db_session)
+    repo = TenderRepository(db_session)
+
+    items, _ = await repo.search_tenders(
+        TenderFilterCriteria(), limit=100, closing_order=ClosingOrder.DESC
+    )
+
+    assert [t.code for t in items][:3] == ["RM-TARDE", "RM-MEDIO", "VALPO-1"]
+
+
+@pytest.mark.asyncio
+async def test_search_con_texto_desempata_en_el_sentido_pedido(
+    db_session: AsyncSession,
+):
+    """Todas se llaman "Licitación ...": empatan en relevancia y decide el cierre."""
+    await _seed_para_busqueda(db_session)
+    repo = TenderRepository(db_session)
+
+    items, _ = await repo.search_tenders(
+        TenderFilterCriteria(),
+        limit=100,
+        q="licitación",
+        closing_order=ClosingOrder.DESC,
+    )
+
+    assert [t.code for t in items][:3] == ["RM-TARDE", "RM-MEDIO", "VALPO-1"]
+
+
+@pytest.mark.asyncio
+async def test_get_inactive_ids_devuelve_solo_las_no_activas(
+    db_session: AsyncSession,
+):
+    """La purga del índice se guía por esto: todo lo que no esté publicado."""
+    await _seed_para_busqueda(db_session)
+    repo = TenderRepository(db_session)
+
+    inactivas = await repo.get_inactive_ids()
+    codigos = {t.code for t in await repo.get_tenders(TenderFilters(ids=inactivas))}
+
+    assert codigos == {"RM-CERRADA"}
 
 
 @pytest.mark.asyncio

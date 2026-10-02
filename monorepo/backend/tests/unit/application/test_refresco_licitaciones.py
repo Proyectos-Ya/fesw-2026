@@ -147,17 +147,14 @@ class TestCambioDeMetadatos:
 
         assert vec.payloads[repo.tender_id]["available_amount_clp"] == 2_000_000.0
 
-    async def test_un_cambio_de_estado_se_refleja_en_sql_y_en_el_payload(self):
+    async def test_un_cambio_de_monto_no_toca_el_estado_del_indice(self):
+        """Sigue activa: se actualiza el payload, no se borra ni se reindexa."""
         repo = RepoConLicitacion(_dto())
         emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
 
-        await _caso(repo, emb, vec).execute(
-            _dto(CodigoEstado=3, EstadoCodigo="cerrada")
-        )
+        await _caso(repo, emb, vec).execute(_dto(MontoEstimado=2_000_000.0))
 
-        assert repo.existente.status_id == 3
-        assert vec.payloads[repo.tender_id]["status_code"] == "cerrada"
-        assert emb.calls == []
+        assert vec.deleted == []
 
     async def test_un_cambio_de_fecha_de_cierre_se_propaga(self):
         repo = RepoConLicitacion(_dto())
@@ -235,6 +232,65 @@ class TestCambioSemantico:
         await _caso(repo, emb, vec).execute(_dto(items=dos_items))
 
         assert len(repo.items) == 2
+
+
+class TestIndiceSoloVigentes:
+    """Qdrant guarda solo activas: el estado nuevo decide si el punto existe."""
+
+    async def test_pasar_a_cerrada_saca_el_punto_del_indice(self):
+        repo = RepoConLicitacion(_dto())
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        resultado = await _caso(repo, emb, vec).execute(
+            _dto(CodigoEstado=3, EstadoCodigo="cerrada")
+        )
+
+        assert resultado["status"] == "updated"
+        assert repo.existente.status_id == 3
+        assert vec.deleted == [repo.tender_id]
+        assert vec.payloads == {}
+        assert emb.calls == []
+
+    async def test_una_cerrada_que_cambia_de_texto_no_paga_embedding(self):
+        """El texto se guarda en SQL, pero no hay punto que reescribir."""
+        repo = RepoConLicitacion(_dto(CodigoEstado=3, EstadoCodigo="cerrada"))
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(CodigoEstado=3, EstadoCodigo="cerrada", Descripcion="otra cosa")
+        )
+
+        assert emb.calls == []
+        assert vec.upserts == []
+        assert vec.deleted == [repo.tender_id]
+        assert repo.actualizada is True
+        assert repo.existente.description == "otra cosa"
+
+    async def test_una_que_vuelve_a_publicada_se_reindexa(self):
+        """Sin punto no hay `set_payload` posible: hay que escribirlo entero."""
+        repo = RepoConLicitacion(_dto(CodigoEstado=3, EstadoCodigo="cerrada"))
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(_dto())
+
+        assert len(emb.calls) == 1
+        assert [t for t, _, _ in vec.upserts] == [repo.tender_id]
+        _, _, payload = vec.upserts[0]
+        assert payload["status_code"] == "publicada"
+        assert vec.payloads == {}
+
+    async def test_reescribir_el_punto_conserva_comuna_y_provincia(self):
+        """`upsert` reemplaza el payload entero: si no llevara la ubicación, un
+        cambio de texto la borraba del índice y la licitación dejaba de calzar
+        con los filtros de comuna y provincia del buscador."""
+        repo = RepoConLicitacion(_dto())
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(_dto(Descripcion="otra cosa"))
+
+        _, _, payload = vec.upserts[0]
+        assert payload["comuna_id"] == 295
+        assert payload["provincia_id"] == 51
 
 
 class TestSinCambios:

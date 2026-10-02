@@ -15,9 +15,9 @@ vuelve a mirar.
 Qué hace, en orden
 ------------------
 0. **Cierra las corridas colgadas** y se niega si hay otra en curso (ver abajo).
-1. **Marca las vencidas.** Cuota cero: `closing_at` ya está en Postgres. Va
-   primero porque es lo que libera cupos del pre-filtrado, y porque conviene que
-   ocurra aunque la API esté caída.
+1. (Ya no marca vencidas: lo hace `sync_estados.py`, **después** de corregir los
+   cierres con el listado de cambios. Hecho acá, antes de esa corrección, una
+   licitación con el plazo ampliado se cerraba con la fecha vieja.)
 2. **Lista lo publicado en la ventana que dice el cursor** y encola lo que falte.
 3. **Vacía la cola**, bajando el detalle de cada licitación nueva.
 4. **Cierra la corrida** en `ingestion_run`. Solo `ok` mueve el cursor: una
@@ -69,17 +69,8 @@ from datetime import timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
-from qdrant_client import AsyncQdrantClient
-from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlmodel.ext.asyncio.session import AsyncSession
-
 from app.application.services.tender_ingestion_service import ITenderIngestionService
-from app.application.use_cases.mark_expired_tenders import MarkExpiredTendersUseCase
 from app.config import settings
-from app.infrastructure.repositories.qdrant_tender_repository import (
-    QdrantTenderRepository,
-)
-from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.shared.constants import TENDER_STATUSES
 from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import (
@@ -132,30 +123,11 @@ async def con_timeout(corutina: Coroutine[Any, Any, int], segundos: float) -> in
         return 1
 
 
-async def _marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int:
-    """Pasa a `cerrada` lo que venció y sigue figurando publicado.
-
-    Se marcan y **no se borran** del índice: el buscador expone un filtro por
-    estado que acepta `cerrada`, y borrando el punto esa búsqueda devolvería cero
-    para siempre. El cupo del pre-filtrado se libera igual, porque ese filtra por
-    `status_code` del payload.
-    """
-    async with AsyncSession(engine) as session:
-        caso = MarkExpiredTendersUseCase(
-            repository=TenderRepository(session),
-            tender_vector_repo=QdrantTenderRepository(
-                client=qdrant, vector_size=settings.embedding_vector_size
-            ),
-        )
-        return await caso.execute()
-
-
 async def sincronizar(
     args: argparse.Namespace,
     servicio: ITenderIngestionService,
     *,
     contar: Callable[[], Awaitable[int]],
-    marcar_vencidas: Callable[[], Awaitable[int]],
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
@@ -187,8 +159,10 @@ async def sincronizar(
         )
         return 1
 
-    if not args.sin_marcar:
-        print(f"--- Vencidas marcadas como cerradas: {await marcar_vencidas()} ---")
+    if getattr(args, "sin_marcar", False):
+        # Se acepta sin efecto por un despliegue: un `startCommand` configurado
+        # en el panel de Railway puede llevarla, y argparse fallaría sin ella.
+        print("--- --sin-marcar ya no tiene efecto: vencidas las marca sync_estados ---")
 
     desde, hasta = await servicio.ventana_a_sincronizar()
     print(f"--- Ventana: {desde.isoformat()} → {hasta.isoformat()} ---")
@@ -282,7 +256,6 @@ async def _correr(args: argparse.Namespace) -> int:
             args,
             servicio,
             contar=lambda: contar_pendientes(engine),
-            marcar_vencidas=lambda: _marcar_vencidas(engine, qdrant),
             preparar_destino=lambda: preparar_destino(engine, qdrant),
         )
     finally:
@@ -306,7 +279,7 @@ def main() -> None:
     p.add_argument(
         "--sin-marcar",
         action="store_true",
-        help="omitir el barrido de vencidas",
+        help="obsoleta, sin efecto: el barrido de vencidas lo hace sync_estados",
     )
     p.add_argument(
         "--confirmar-produccion",

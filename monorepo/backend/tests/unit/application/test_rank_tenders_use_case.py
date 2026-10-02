@@ -78,6 +78,9 @@ class InMemoryTenderRepository(ITenderRepository):
     async def get_expired_published_ids(self) -> list[UUID]:
         return []
 
+    async def get_inactive_ids(self) -> list[UUID]:
+        return []
+
     async def mark_as_closed(self, tender_ids: list[UUID]) -> None:
         self.cerradas.extend(tender_ids)
 
@@ -154,6 +157,13 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
 
     async def delete(self, tender_id: UUID) -> None:
         self.deleted.append(tender_id)
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
+    async def delete_by_status_not_in(self, status_codes: set[str]) -> None:
+        pass
 
     async def search_by_vector(
         self,

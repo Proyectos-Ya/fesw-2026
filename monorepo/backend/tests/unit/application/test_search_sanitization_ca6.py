@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.repositories.tender_repository import (
+    ClosingOrder,
     ITenderRepository,
     TenderFilters,
 )
@@ -48,6 +49,12 @@ class FakeTenderVectorRepo(ITenderVectorRepository):
     async def delete(self, tender_id) -> None:
         pass
 
+    async def delete_many(self, tender_ids) -> None:
+        pass
+
+    async def delete_by_status_not_in(self, status_codes) -> None:
+        pass
+
     async def search_by_vector(self, vector, limit, offset=0, criteria=None):
         self.searched_vectors.append(vector)
         return self.search_results
@@ -66,7 +73,12 @@ class FakeTenderRepo(InMemoryTenderRepository):
         return [self.tenders[i] for i in (filters.ids or []) if i in self.tenders]
 
     async def search_tenders(
-        self, criteria: TenderFilterCriteria, limit: int, offset: int = 0, q: str | None = None
+        self,
+        criteria: TenderFilterCriteria,
+        limit: int,
+        offset: int = 0,
+        q: str | None = None,
+        closing_order: ClosingOrder = ClosingOrder.ASC,  # noqa: ARG002
     ) -> tuple[list[Tender], int]:
         self.search_calls.append((criteria, limit, offset, q))
         if q:

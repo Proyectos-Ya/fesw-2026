@@ -46,7 +46,10 @@ function aviso(overrides: Partial<NotificationItem> = {}): NotificationItem {
   return {
     id: "n1",
     tender_id: "t1",
+    kind: "match",
     score_pct: 84,
+    date_changes: [],
+    milestone_reminders: [],
     read_at: null,
     created_at: "2026-08-26T12:00:00Z",
     is_closed: false,
@@ -141,6 +144,76 @@ describe("NotificationPanel", () => {
     expect(
       screen.queryByRole("button", { name: /Marcar todo como leído/ }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("aviso de fecha modificada (HU-16)", () => {
+    const cambio = aviso({
+      id: "n2",
+      kind: "date_changed",
+      score_pct: null,
+      date_changes: [
+        {
+          label: "Cierre de recepción de ofertas",
+          previous_at: "2026-10-20T18:00:00Z",
+          new_at: "2026-10-27T18:00:00Z",
+        },
+      ],
+    });
+
+    it("muestra qué fecha cambió, antes y después, en hora de Chile", async () => {
+      getNotifications.mockResolvedValue([cambio]);
+
+      render(<NotificationPanel />);
+
+      expect(await screen.findByText("Fecha modificada")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Cierre de recepción de ofertas: 20 oct 2026, 15:00 → 27 oct 2026, 15:00",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/%$/)).not.toBeInTheDocument();
+    });
+
+    it("enlaza a la ficha de la licitación", async () => {
+      getNotifications.mockResolvedValue([cambio]);
+
+      render(<NotificationPanel />);
+
+      const enlace = await screen.findByRole("link", { name: /Fecha modificada/ });
+      expect(enlace).toHaveAttribute("href", "/matches/t1");
+    });
+  });
+
+  describe("recordatorio de un hito (HU-16)", () => {
+    const recordatorio = aviso({
+      id: "n3",
+      kind: "milestone_reminder",
+      score_pct: null,
+      milestone_reminders: [
+        { milestone_id: "m1", title: "Visita técnica obligatoria", due_at: "2026-10-20T18:00:00Z" },
+      ],
+    });
+
+    it("muestra el hito y cuándo vence, en hora de Chile", async () => {
+      getNotifications.mockResolvedValue([recordatorio]);
+
+      render(<NotificationPanel />);
+
+      expect(await screen.findByText("Recordatorio")).toBeInTheDocument();
+      expect(
+        screen.getByText("Visita técnica obligatoria: 20 oct 2026, 15:00"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/%$/)).not.toBeInTheDocument();
+    });
+
+    it("enlaza a la ficha de la licitación", async () => {
+      getNotifications.mockResolvedValue([recordatorio]);
+
+      render(<NotificationPanel />);
+
+      const enlace = await screen.findByRole("link", { name: /Recordatorio/ });
+      expect(enlace).toHaveAttribute("href", "/matches/t1");
+    });
   });
 
   it("muestra un error con reintento si la carga falla", async () => {

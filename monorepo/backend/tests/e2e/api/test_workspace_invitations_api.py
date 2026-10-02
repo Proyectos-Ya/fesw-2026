@@ -413,3 +413,138 @@ async def test_hu12_cancel_and_reject_invitation_flows(api: AsyncClient):
     assert admin_invs_after.status_code == 200
     assert admin_invs_after.json() == []
 
+
+@pytest.mark.asyncio
+async def test_hu13_member_last_access_revocation_and_realtime_403_lockout(
+    api: AsyncClient,
+):
+    # 1. Crear Admin y su empresa
+    sub_admin = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    api.directorio_de_identidad.confirmar(sub_admin)
+    token_admin = api.claves.token(
+        sub=sub_admin,
+        email="admin_hu13@empresa.cl",
+        user_metadata={"full_name": "Admin HU13"},
+    )
+    headers_admin = {"Authorization": f"Bearer {token_admin}"}
+
+    sup_resp = await api.post(
+        "/suppliers",
+        json={
+            "rut": "78.111.222-4",
+            "legal_name": "Servicios del Pacífico SpA",
+            "trade_name": "Pacífico",
+            "description": "Empresa de mantenimiento y servicios industriales marítimos.",
+            "regions": ["Valparaíso"],
+            "sectors": ["Construcción"],
+            "years_experience": 8,
+            "num_employees": 35,
+        },
+        headers=headers_admin,
+    )
+    assert sup_resp.status_code == 201
+    supplier_id = sup_resp.json()["id"]
+
+    # 2. Invitar a un Representante y aceptar la invitación
+    inv_resp = await api.post(
+        "/workspaces/invitations",
+        json={
+            "supplier_id": supplier_id,
+            "email": "rep_hu13@empresa.cl",
+            "role": "member",
+        },
+        headers=headers_admin,
+    )
+    assert inv_resp.status_code == 201
+    inv_token = inv_resp.json()["token"]
+
+    sub_rep = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    api.directorio_de_identidad.confirmar(sub_rep)
+    token_rep = api.claves.token(
+        sub=sub_rep,
+        email="rep_hu13@empresa.cl",
+        user_metadata={"full_name": "Representante Pacífico"},
+    )
+    headers_rep = {
+        "Authorization": f"Bearer {token_rep}",
+        "X-Workspace-Id": supplier_id,
+    }
+
+    acc_resp = await api.post(
+        "/workspaces/invitations/accept",
+        json={"token": inv_token},
+        headers={"Authorization": f"Bearer {token_rep}"},
+    )
+    assert acc_resp.status_code == 200
+    rep_member_id = acc_resp.json()["id"]
+
+    # Representante accede a su espacio de trabajo activo (registra last_access_at)
+    curr_resp = await api.get("/workspaces/current", headers=headers_rep)
+    assert curr_resp.status_code == 200
+
+    # 3. CA1: Admin consulta listado de miembros y verifica last_access_at
+    members_resp = await api.get(
+        f"/workspaces/{supplier_id}/members",
+        headers=headers_admin,
+    )
+    assert members_resp.status_code == 200
+    members_list = members_resp.json()
+    assert len(members_list) == 2
+
+    admin_entry = next(m for m in members_list if m["email"] == "admin_hu13@empresa.cl")
+    rep_entry = next(m for m in members_list if m["email"] == "rep_hu13@empresa.cl")
+    assert rep_entry["id"] == rep_member_id
+    assert rep_entry["last_access_at"] is not None
+    assert admin_entry["last_access_at"] is not None
+
+    # 4. CA4: Admin intenta auto-revocarse -> 400 Bad Request
+    self_revoke_resp = await api.delete(
+        f"/workspaces/{supplier_id}/members/{admin_entry['id']}",
+        headers=headers_admin,
+    )
+    assert self_revoke_resp.status_code == 400
+
+    # 5. CA5: Representante intenta revocar al Admin -> 403 Forbidden
+    rep_revoke_resp = await api.delete(
+        f"/workspaces/{supplier_id}/members/{admin_entry['id']}",
+        headers=headers_rep,
+    )
+    assert rep_revoke_resp.status_code == 403
+
+    # 6. CA2: Admin revoca el acceso del Representante -> 200 OK y desaparece de activos
+    revoke_resp = await api.delete(
+        f"/workspaces/{supplier_id}/members/{rep_member_id}",
+        headers=headers_admin,
+    )
+    assert revoke_resp.status_code == 200
+    assert revoke_resp.json()["status"] == "inactive"
+
+    members_after_resp = await api.get(
+        f"/workspaces/{supplier_id}/members",
+        headers=headers_admin,
+    )
+    assert members_after_resp.status_code == 200
+    emails_after = [m["email"] for m in members_after_resp.json()]
+    assert "rep_hu13@empresa.cl" not in emails_after
+
+    # 7. CA3: Bloqueo en caliente para el Representante con sesión activa en esa empresa
+    locked_current = await api.get("/workspaces/current", headers=headers_rep)
+    assert locked_current.status_code == 403
+
+    locked_supplier_me = await api.get("/suppliers/me", headers=headers_rep)
+    assert locked_supplier_me.status_code == 403
+
+    locked_recommended = await api.get("/tenders/recommended", headers=headers_rep)
+    assert locked_recommended.status_code == 403
+
+    locked_team = await api.get(
+        f"/workspaces/{supplier_id}/members", headers=headers_rep
+    )
+    assert locked_team.status_code == 403
+
+    # 8. Limpiar cookie de workspace activo al volver al inicio
+    clear_resp = await api.post(
+        "/workspaces/clear-active",
+        headers={"Authorization": f"Bearer {token_rep}"},
+    )
+    assert clear_resp.status_code == 204

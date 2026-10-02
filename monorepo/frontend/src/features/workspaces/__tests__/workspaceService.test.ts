@@ -3,6 +3,7 @@ import * as client from "@/features/shared/api/client";
 import {
   acceptInvitation,
   cancelInvitation,
+  clearActiveWorkspace,
   createInvitation,
   getCurrentWorkspace,
   getMyInvitations,
@@ -10,6 +11,7 @@ import {
   listWorkspaceMembers,
   listWorkspaces,
   rejectInvitation,
+  revokeWorkspaceMember,
   switchWorkspace,
   verifyInvitation,
 } from "../services/workspaceService";
@@ -204,6 +206,7 @@ describe("workspaceService", () => {
         full_name: "Admin Uno",
         role: "admin" as const,
         status: "active" as const,
+        last_access_at: "2026-09-28T15:30:00Z",
         joined_at: "2026-09-01T00:00:00Z",
       },
     ];
@@ -233,5 +236,31 @@ describe("workspaceService", () => {
     const result = await listWorkspaceInvitations("s-1");
     expect(client.apiFetch).toHaveBeenCalledWith("/workspaces/s-1/invitations");
     expect(result).toEqual(mockPending);
+  });
+
+  it("revokeWorkspaceMember llama a DELETE /workspaces/{supplierId}/members/{memberId} (HU-13 CA2)", async () => {
+    const mockRevoked = {
+      id: "m-2",
+      user_id: "u-2",
+      supplier_id: "s-1",
+      role: "member" as const,
+      status: "inactive" as const,
+    };
+    vi.mocked(client.apiFetch).mockResolvedValueOnce(mockRevoked);
+
+    const result = await revokeWorkspaceMember("s-1", "m-2");
+    expect(client.apiFetch).toHaveBeenCalledWith("/workspaces/s-1/members/m-2", {
+      method: "DELETE",
+    });
+    expect(result).toEqual(mockRevoked);
+  });
+
+  it("clearActiveWorkspace llama a POST /workspaces/clear-active (HU-13 CA3)", async () => {
+    vi.mocked(client.apiFetch).mockResolvedValueOnce(undefined);
+
+    await clearActiveWorkspace();
+    expect(client.apiFetch).toHaveBeenCalledWith("/workspaces/clear-active", {
+      method: "POST",
+    });
   });
 });

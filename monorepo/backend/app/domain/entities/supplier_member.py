@@ -1,17 +1,18 @@
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID, uuid4
+
 from pydantic import BaseModel, Field
 
 from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 
 
-class MemberRole(str, Enum):
+class MemberRole(StrEnum):
     ADMIN = "admin"
     MEMBER = "member"
     VIEWER = "viewer"
 
 
-class MemberStatus(str, Enum):
+class MemberStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
@@ -27,17 +28,36 @@ _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
     },
     MemberRole.MEMBER: {
         "view_matches",
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
     },
     MemberRole.VIEWER: {
         "view_matches",
     },
 }
+
+
+# Todos los permisos, en el orden en que se listan en el `WorkspaceContext`. Es la
+# única lista: las dependencias de auth y el cambio de espacio de trabajo filtran
+# esta por `has_permission`, así que un permiso nuevo solo se agrega en los roles
+# de arriba y aquí.
+ALL_PERMISSIONS: tuple[str, ...] = (
+    "invite_members",
+    "remove_members",
+    "edit_company_profile",
+    "manage_tenders",
+    "view_matches",
+    "save_tenders",
+    "chat_assistant",
+    "deep_analysis",
+    "generate_proposal",
+)
 
 
 class SupplierMember(BaseModel):
@@ -46,6 +66,7 @@ class SupplierMember(BaseModel):
     supplier_id: UUID
     role: MemberRole = MemberRole.MEMBER
     status: MemberStatus = MemberStatus.ACTIVE
+    last_access_at: UtcDateTime | None = Field(default_factory=utc_now_naive)
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

@@ -126,11 +126,31 @@ Con la infraestructura arriba y `MERCADO_PUBLICO_API_KEY` en `monorepo/.env`:
 python -m scripts.sync_diaria --limite 100
 ```
 
-Es el mismo script que corre el cron de Railway: marca las vencidas, lista lo
-publicado en las últimas 24 h, baja el detalle y registra la corrida en
-`ingestion_run`. `--limite` acota cuántas se listan; con él la corrida termina
-`partial` (código 1), que es lo esperado en una prueba. El script se niega a
-correr contra una base que no sea local salvo con `--confirmar-produccion`.
+Es el mismo script que corre el cron nocturno de Railway: lista lo publicado
+desde la última corrida buena, baja el detalle de lo nuevo (y de lo reencolado)
+y registra la corrida en `ingestion_run`. `--limite` acota cuántas se listan;
+con él la corrida termina `partial` (código 1), que es lo esperado en una
+prueba. El script se niega a correr contra una base que no sea local salvo con
+`--confirmar-produccion`.
+
+Las licitaciones **ya guardadas** las mantiene al día otro cron,
+`sync_estados`, que corre cada hora:
+
+```bash
+python -m scripts.sync_estados --ventana-horas 0.25
+```
+
+Lista lo que cambió en la API en la ventana (sin pedir el detalle), escribe
+estado y fecha de cierre, saca del índice vectorial lo que dejó de estar activo,
+reencola las publicadas que cambiaron para que el nocturno baje su detalle, y al
+final marca las vencidas. La ventana, el tope de ítems y el tope de tiempo se
+ajustan con `SYNC_ESTADOS_VENTANA_HORAS`, `SYNC_ESTADOS_LIMITE` y
+`SYNC_ESTADOS_TIMEOUT_MINUTOS` (ver `monorepo/.env.example`). A mediodía hay del
+orden de 1.600 cambios por hora, así que en local conviene una ventana corta.
+
+Las dos ventanas se mandan a la API en hora de Chile aunque lleven "Z": la API
+guarda y compara hora de pared de Chile con etiqueta UTC (medido el 2026-09-29).
+Eso lo resuelve `mercado_publico_client.py`; el resto del sistema trabaja en UTC.
 
 No hay que deshacer nada del dump: los dos modos escriben en las mismas tablas e
 insertan con `ON CONFLICT DO NOTHING`, así que la ingesta agrega licitaciones nuevas
@@ -240,8 +260,10 @@ Tres bucles `asyncio` arrancan con la API, igual que los de ingesta
 | Entrega | 30 s | Vacía la cola de correos pendientes y reintenta los que fallaron |
 | Resumen | Diario, `NOTIFICATION_DIGEST_HOUR` (hora de Chile) | Agrupa en un correo los avisos de quienes eligieron resumen diario |
 
-La tabla `notification` tiene una constraint única `(user_id, tender_id)`: es el registro
-de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos avisos.
+La tabla `notification` tiene una constraint única `(user_id, tender_id, kind)`: es el
+registro de "ya avisé de esta licitación", y sin ella cada ciclo repetiría los mismos
+avisos. El escaneo solo mira los avisos `kind = 'match'`; los `date_changed` son los de
+"Fecha modificada" de la HU-16 (ver la sección siguiente).
 
 La cola de correos vive en `notification_delivery`. Si el servidor de correo no responde,
 la fila queda en `pending` con un backoff exponencial (2, 4, 8… minutos, con tope de 60) y
@@ -378,6 +400,39 @@ Desde la ficha de una licitación se puede compartir un **enlace público de 7 d
   **una sola instancia** de la API; al arrancar se marcan fallidas las que quedaron a medias.
 - El correo de "archivo listo" usa el mismo `SmtpEmailService` que las alertas, pero se
   envía directo: no depende de `RUN_NOTIFICATION_SCAN` ni de las preferencias de alertas.
+## Hitos y sincronización con Google Calendar (HU-16)
+
+La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que
+Gemini extrae de las bases que el usuario sube al asistente. Los elegidos se sincronizan
+con su Google Calendar y, si Mercado Público mueve una fecha, el evento se actualiza solo y
+llega un aviso **Fecha modificada** (en la app y por correo). Los hitos a 5 días o menos se
+destacan en la tabla, y cada uno admite un **recordatorio** propio —1, 3 o 7 días antes—
+que avisa en la app y por correo sin depender de haber sincronizado el calendario.
+
+La guía completa —cómo crear el cliente OAuth en Google Cloud, la llave de cifrado, los
+endpoints, las migraciones y cómo comprobar cada criterio a mano— está en
+[`monorepo/TESTING-HU16.md`](../TESTING-HU16.md). Lo mínimo para activarlo:
+
+| Variable | Qué es |
+|---|---|
+| `GOOGLE_CALENDAR_CLIENT_ID` / `GOOGLE_CALENDAR_CLIENT_SECRET` | Cliente OAuth web; redirect `APP_BASE_URL` + `/calendario/callback/google` |
+| `TOKEN_ENCRYPTION_KEY` | Llave Fernet con que se cifran los tokens en la base |
+| `RUN_MILESTONE_REFRESH` / `MILESTONE_REFRESH_INTERVAL_SECONDS` | Bucle que revisa cambios de fecha (por defecto cada 6 h) |
+
+Sin `GOOGLE_CALENDAR_CLIENT_ID` la sincronización queda apagada y el resto funciona igual.
+Con el ID puesto, el secreto y la llave son obligatorios: sin ellos la API no arranca.
+
+Los bucles de la HU-16 se suman a los de ingesta y alertas, con la misma premisa de
+**una sola instancia**:
+
+| Bucle | Cada cuánto | Qué hace |
+|---|---|---|
+| Cambios de fecha | `MILESTONE_REFRESH_INTERVAL_SECONDS` (6 h) | Refresca en Mercado Público las licitaciones abiertas con hitos sincronizados; si cambió la publicación o el cierre, actualiza el evento y avisa |
+| Recordatorios | fijo, 1 h (`REMINDER_LOOP_SECONDS`) | Busca los hitos cuya anticipación ya se cumplió y deja el aviso; la anticipación se elige en días, así que revisar cada hora alcanza |
+
+Los correos de "Fecha modificada" y de los recordatorios salen por la cola de las alertas,
+así que necesitan `RUN_NOTIFICATION_SCAN=true` — que además enciende el bucle de
+recordatorios.
 
 ---
 

@@ -1,11 +1,15 @@
 from uuid import uuid4
+
 import pytest
+
 from app.domain.entities.supplier_member import (
+    _ROLE_PERMISSIONS,
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     SupplierMember,
-    WorkspaceContext,
     UserWorkspaceSummary,
+    WorkspaceContext,
 )
 
 
@@ -120,3 +124,31 @@ def test_user_workspace_summary():
     assert summary.supplier_id == supplier_id
     assert summary.legal_name == "Empresa A"
     assert summary.is_active_context is True
+
+
+class TestPermisoGenerarPostulacion:
+    """HU-20: ADMIN y MEMBER pueden generar postulaciones; VIEWER solo mira."""
+
+    @pytest.mark.parametrize(
+        ("role", "esperado"),
+        [
+            (MemberRole.ADMIN, True),
+            (MemberRole.MEMBER, True),
+            (MemberRole.VIEWER, False),
+        ],
+    )
+    def test_por_rol(self, role, esperado):
+        member = SupplierMember(user_id=uuid4(), supplier_id=uuid4(), role=role)
+        assert member.has_permission("generate_proposal") is esperado
+
+
+def test_all_permissions_cubre_todos_los_permisos_de_los_roles():
+    """Las listas que arman el `WorkspaceContext` salen de acá.
+
+    Antes había tres listas copiadas a mano (dependencias de auth, dos veces, y
+    el cambio de espacio de trabajo): un permiso nuevo que faltara en una no
+    llegaba nunca al contexto, aunque el rol lo tuviera.
+    """
+    de_los_roles = set().union(*_ROLE_PERMISSIONS.values())
+    assert set(ALL_PERMISSIONS) == de_los_roles
+    assert len(ALL_PERMISSIONS) == len(de_los_roles)

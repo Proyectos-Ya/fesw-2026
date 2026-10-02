@@ -16,9 +16,12 @@ import { toSearchRegions } from "../data/profileRegions";
 import type { Tender } from "@/features/matches/tenderTypes";
 import type { TenderSearchParams } from "../types";
 import {
-  type AvailabilityFilter,
   DEBOUNCE_MS,
+  DEFAULT_STATUS_CODES,
+  isTenderStatusCode,
+  LEGACY_AVAILABILITY_STATUSES,
   PAGE_SIZE,
+  type TenderStatusCode,
 } from "../data/searchConstants";
 
 export const SEARCH_STORAGE_KEY = "proyectosya_last_search";
@@ -32,6 +35,26 @@ export const SEARCH_STORAGE_KEY = "proyectosya_last_search";
  * las regiones una y otra vez.
  */
 export const SEARCH_REGIONS_PREFILLED_KEY = "proyectosya_search_regions_prefilled";
+
+/**
+ * Estados que pide la URL. `status` manda; si no viene, se traduce el antiguo
+ * `availability`; si tampoco, el valor por defecto. Los desconocidos se ignoran
+ * en vez de mandarlos al backend, que respondería 422.
+ */
+function parseStatuses(searchParams: URLSearchParams): TenderStatusCode[] {
+  const fromUrl = searchParams.getAll("status").filter(isTenderStatusCode);
+  if (fromUrl.length > 0) return [...new Set(fromUrl)];
+
+  const legacy = LEGACY_AVAILABILITY_STATUSES[searchParams.get("availability") ?? ""];
+  return [...(legacy ?? DEFAULT_STATUS_CODES)];
+}
+
+function isDefaultStatuses(statuses: readonly TenderStatusCode[]): boolean {
+  return (
+    statuses.length === DEFAULT_STATUS_CODES.length &&
+    DEFAULT_STATUS_CODES.every((code) => statuses.includes(code))
+  );
+}
 
 export interface SearchState {
   items: Tender[];
@@ -102,11 +125,13 @@ export function useTenderSearch() {
   // 2. Parse params from URL
   const urlQuery = searchParams.get("q") ?? "";
   const urlRegions = useMemo(() => searchParams.getAll("regions"), [searchParams]);
-  const rawAvailability = searchParams.get("availability");
-  const urlAvailability: AvailabilityFilter =
-    rawAvailability === "vigentes" || rawAvailability === "cerradas"
-      ? rawAvailability
-      : null;
+  // La clave de texto estabiliza el arreglo entre renders: sin ella, cada
+  // render crearía uno nuevo y relanzaría la búsqueda.
+  const statusesKey = parseStatuses(searchParams).join(",");
+  const urlStatuses = useMemo(
+    () => statusesKey.split(",") as TenderStatusCode[],
+    [statusesKey],
+  );
 
   const urlMinAmount = searchParams.get("min_amount")
     ? Number(searchParams.get("min_amount"))
@@ -177,7 +202,7 @@ export function useTenderSearch() {
       regions?: string[];
       province_id?: number;
       commune_id?: number;
-      availability?: AvailabilityFilter;
+      statuses?: TenderStatusCode[];
       closing_from?: string;
       closing_to?: string;
       min_amount?: number;
@@ -191,10 +216,10 @@ export function useTenderSearch() {
         "province_id" in newParams ? newParams.province_id : urlProvinceId;
       const communeIdVal =
         "commune_id" in newParams ? newParams.commune_id : urlCommuneId;
-      const availabilityVal =
-        newParams.availability !== undefined
-          ? newParams.availability
-          : urlAvailability;
+      const statusesVal =
+        newParams.statuses !== undefined && newParams.statuses.length > 0
+          ? newParams.statuses
+          : urlStatuses;
       const closingFromVal =
         newParams.closing_from !== undefined
           ? newParams.closing_from
@@ -224,8 +249,10 @@ export function useTenderSearch() {
       if (communeIdVal !== undefined && communeIdVal !== null && !isNaN(communeIdVal)) {
         sp.set("commune_id", String(communeIdVal));
       }
-      if (availabilityVal) {
-        sp.set("availability", availabilityVal);
+      // Solo si difiere del valor por defecto, para no ensuciar la URL. El
+      // antiguo `availability` no se reescribe nunca: queda traducido acá.
+      if (!isDefaultStatuses(statusesVal)) {
+        for (const code of statusesVal) sp.append("status", code);
       }
       if (closingFromVal && closingFromVal.trim()) {
         sp.set("closing_from", closingFromVal.trim());
@@ -266,7 +293,7 @@ export function useTenderSearch() {
       urlRegions,
       urlProvinceId,
       urlCommuneId,
-      urlAvailability,
+      urlStatuses,
       urlClosingFrom,
       urlClosingTo,
       urlMinAmount,
@@ -300,6 +327,7 @@ export function useTenderSearch() {
     const params: TenderSearchParams = {
       limit: PAGE_SIZE,
       offset,
+      status_codes: urlStatuses,
     };
 
     if (urlQuery.trim()) {
@@ -315,22 +343,17 @@ export function useTenderSearch() {
       params.commune_id = urlCommuneId;
     }
 
-    // Temporal availability & explicit date range (CA-1)
-    const nowIso = new Date().toISOString();
+    // Rango explícito de fechas (CA-1). Vigente o cerrada lo decide el estado,
+    // no un rango de cierre calculado contra la hora del navegador.
     if (urlClosingFrom) {
       params.closing_from = urlClosingFrom.includes("T")
         ? urlClosingFrom
         : `${urlClosingFrom}T00:00:00Z`;
-    } else if (urlAvailability === "vigentes") {
-      params.closing_from = nowIso;
     }
-
     if (urlClosingTo) {
       params.closing_to = urlClosingTo.includes("T")
         ? urlClosingTo
         : `${urlClosingTo}T23:59:59Z`;
-    } else if (urlAvailability === "cerradas") {
-      params.closing_to = nowIso;
     }
 
     if (urlMinAmount !== undefined && !isNaN(urlMinAmount)) {
@@ -376,7 +399,7 @@ export function useTenderSearch() {
     urlRegions,
     urlProvinceId,
     urlCommuneId,
-    urlAvailability,
+    urlStatuses,
     urlClosingFrom,
     urlClosingTo,
     urlMinAmount,
@@ -407,9 +430,12 @@ export function useTenderSearch() {
     [updateUrl],
   );
 
-  const handleSetAvailability = useCallback(
-    (availability: AvailabilityFilter) => {
-      updateUrl({ availability, page: 1 });
+  const handleSetStatuses = useCallback(
+    (statuses: TenderStatusCode[]) => {
+      updateUrl({
+        statuses: statuses.length > 0 ? statuses : [...DEFAULT_STATUS_CODES],
+        page: 1,
+      });
     },
     [updateUrl],
   );
@@ -490,7 +516,7 @@ export function useTenderSearch() {
     urlRegions.length +
     (urlProvinceId !== undefined ? 1 : 0) +
     (urlCommuneId !== undefined ? 1 : 0) +
-    (urlAvailability !== null ? 1 : 0) +
+    (isDefaultStatuses(urlStatuses) ? 0 : 1) +
     (urlClosingFrom ? 1 : 0) +
     (urlClosingTo ? 1 : 0) +
     (urlMinAmount !== undefined ? 1 : 0) +
@@ -510,8 +536,8 @@ export function useTenderSearch() {
     setProvinceId: handleSetProvinceId,
     communeId: urlCommuneId,
     setCommuneId: handleSetCommuneId,
-    availability: urlAvailability,
-    setAvailability: handleSetAvailability,
+    statuses: urlStatuses,
+    setStatuses: handleSetStatuses,
     closingFrom: urlClosingFrom,
     closingTo: urlClosingTo,
     setClosingDateRange: handleSetClosingDateRange,

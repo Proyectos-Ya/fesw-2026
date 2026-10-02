@@ -41,6 +41,16 @@ export interface SupplierInvitation {
   created_at: string;
 }
 
+export interface WorkspaceMemberSummary {
+  id: string;
+  user_id: string;
+  supplier_id: string;
+  role: MemberRole;
+  status: MemberStatus;
+  last_access_at?: string | null;
+  created_at?: string | null;
+}
+
 export interface WorkspaceMemberDetail {
   id: string;
   user_id: string;
@@ -49,7 +59,9 @@ export interface WorkspaceMemberDetail {
   full_name: string;
   role: MemberRole;
   status: MemberStatus;
-  joined_at: string | null;
+  last_access_at?: string | null;
+  joined_at?: string | null;
+  created_at?: string | null;
 }
 
 export interface InvitationDetails {

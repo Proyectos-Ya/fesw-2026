@@ -4,6 +4,7 @@ from app.application.repositories.supplier_member_repository import (
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.schemas.workspace_schema import SwitchWorkspaceSchema
 from app.domain.entities.supplier_member import (
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     WorkspaceContext,
@@ -13,6 +14,7 @@ from app.domain.errors.membership_errors import (
     UnauthorizedWorkspaceAction,
 )
 from app.domain.errors.supplier_errors import SupplierNotFound
+from app.shared.datetime_utils import utc_now_naive
 
 
 class SwitchWorkspaceUseCase:
@@ -37,16 +39,7 @@ class SwitchWorkspaceUseCase:
             current_user.id, data.supplier_id
         )
 
-        all_perms = [
-            "invite_members",
-            "remove_members",
-            "edit_company_profile",
-            "manage_tenders",
-            "view_matches",
-            "save_tenders",
-            "chat_assistant",
-            "deep_analysis",
-        ]
+        all_perms = list(ALL_PERMISSIONS)
 
         if not member:
             # Compatibilidad legacy si es dueño
@@ -67,6 +60,11 @@ class SwitchWorkspaceUseCase:
             raise UnauthorizedWorkspaceAction(
                 "Tu membresía en este espacio de trabajo está inactiva o suspendida."
             )
+
+        now = utc_now_naive()
+        member.last_access_at = now
+        member.updated_at = now
+        await self.member_repo.update(member)
 
         active_perms = [p for p in all_perms if member.has_permission(p)]
 

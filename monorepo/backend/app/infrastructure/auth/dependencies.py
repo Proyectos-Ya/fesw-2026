@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -16,12 +17,16 @@ from app.application.use_cases.auth.resolve_authenticated_user import (
     ResolveAuthenticatedUserUseCase,
 )
 from app.domain.entities.supplier_member import (
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     WorkspaceContext,
 )
 from app.domain.entities.user import User
 from app.domain.errors.auth_errors import InvalidToken
+from app.shared.datetime_utils import utc_now_naive
+
+_LAST_ACCESS_THROTTLE = timedelta(minutes=5)
 
 # auto_error=False para poder devolver el 401 propio en vez del de FastAPI, con
 # el `WWW-Authenticate` que corresponde. Declarar el esquema es además lo que
@@ -116,7 +121,7 @@ def build_get_current_workspace_context(
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Identificador de espacio de trabajo inválido",
-                    )
+                    ) from None
                 target_supplier_id = None
 
         # Si el ID vino únicamente de una cookie, verificar si la empresa existe y pertenece al usuario.
@@ -129,7 +134,10 @@ def build_get_current_workspace_context(
                 candidate_member = await member_repo.get_by_user_and_supplier(
                     current_user.id, target_supplier_id
                 )
-                if not candidate_member and candidate_supplier.user_id != current_user.id:
+                if (
+                    not candidate_member
+                    and candidate_supplier.user_id != current_user.id
+                ):
                     target_supplier_id = None
 
         # 2. Si no se especificó un target_supplier_id o la cookie era obsoleta, obtener la primera membresía activa
@@ -169,16 +177,7 @@ def build_get_current_workspace_context(
         if not member:
             if supplier.user_id == current_user.id:
                 # Compatibilidad legacy si user_id coincide
-                all_perms = [
-                    "invite_members",
-                    "remove_members",
-                    "edit_company_profile",
-                    "manage_tenders",
-                    "view_matches",
-                    "save_tenders",
-                    "chat_assistant",
-                    "deep_analysis",
-                ]
+                all_perms = list(ALL_PERMISSIONS)
                 return WorkspaceContext(
                     user_id=current_user.id,
                     active_supplier_id=supplier.id,
@@ -195,25 +194,24 @@ def build_get_current_workspace_context(
             )
 
         if member.status != MemberStatus.ACTIVE:
-            if optional:
-                return None
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tu membresía en este espacio de trabajo está inactiva o suspendida",
+                detail="Tu acceso a este espacio de trabajo ha sido revocado.",
             )
+
+        # Throttling de last_access_at (CA1): solo persiste si es nulo o pasaron >= 5 minutos
+        now = utc_now_naive()
+        if (
+            member.last_access_at is None
+            or (now - member.last_access_at) >= _LAST_ACCESS_THROTTLE
+        ):
+            member.last_access_at = now
+            member.updated_at = now
+            await member_repo.update(member)
 
         perms = [
             p
-            for p in [
-                "invite_members",
-                "remove_members",
-                "edit_company_profile",
-                "manage_tenders",
-                "view_matches",
-                "save_tenders",
-                "chat_assistant",
-                "deep_analysis",
-            ]
+            for p in ALL_PERMISSIONS
             if member.has_permission(p)
         ]
 
@@ -245,4 +243,3 @@ def build_get_optional_workspace_context(
         workspace_cookie=workspace_cookie,
         optional=True,
     )
-

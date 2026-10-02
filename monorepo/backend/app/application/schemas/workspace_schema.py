@@ -54,6 +54,7 @@ class WorkspaceMemberSummarySchema(BaseModel):
     supplier_id: UUID
     role: MemberRole
     status: MemberStatus
+    last_access_at: datetime | None = None
     created_at: datetime
 
 
@@ -65,10 +66,9 @@ class WorkspaceMemberDetailSchema(BaseModel):
     email: str
     role: MemberRole
     status: MemberStatus
+    last_access_at: datetime | None = None
     created_at: datetime
 
 
 class SwitchWorkspaceSchema(BaseModel):
     supplier_id: UUID
-
-
