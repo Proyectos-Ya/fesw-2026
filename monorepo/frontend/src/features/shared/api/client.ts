@@ -73,6 +73,12 @@ export class TimeoutError extends Error {
  * no exitosa en `ApiError`. Lo comparten `apiFetch` y `apiDownload`.
  */
 async function send(path: string, options?: RequestInit): Promise<Response> {
+ * Hace la petición contra la API y devuelve la respuesta ya validada.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`. Lo comparten `apiFetch` (JSON) y
+ * `apiDownload` (archivos).
+ */
+async function solicitar(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -142,6 +148,7 @@ export async function apiFetch<T>(
   options?: RequestInit,
 ): Promise<T> {
   const response = await send(path, options);
+  const response = await solicitar(path, options);
 
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
   if (response.status === 204) {
@@ -192,4 +199,26 @@ export function saveBlob(blob: Blob, filename: string): void {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+/** Un archivo descargado de la API. */
+export interface ArchivoDescargado {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Descarga un archivo de la API (por ejemplo, un `.docx`). El nombre sale del
+ * `Content-Disposition`; si no viene, se usa `nombrePorDefecto`.
+ */
+export async function apiDownload(
+  path: string,
+  nombrePorDefecto = "archivo",
+): Promise<ArchivoDescargado> {
+  const response = await solicitar(path);
+  const disposicion = response.headers.get("Content-Disposition") ?? "";
+  const coincidencia = /filename="?([^";]+)"?/i.exec(disposicion);
+  return {
+    blob: await response.blob(),
+    filename: coincidencia?.[1] ?? nombrePorDefecto,
+  };
 }

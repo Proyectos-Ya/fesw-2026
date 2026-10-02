@@ -97,7 +97,7 @@ Tabla nueva `proposal_drafts`. Hay un borrador por empresa y licitación, con re
 | Campo | Contenido |
 |---|---|
 | `status` | `FEASIBILITY` (hay preguntas pendientes), `PAUSED` (discrepancia sin decidir, CA7), `STOPPED` (detenido por el usuario, CA9) o `READY` (borrador generado). |
-| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind`, `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `parcial` \| `desconocido`; `parcial` sale de una respuesta neutra como "En proceso de inscripción" y no pausa), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
+| `requirements` (JSON) | Exigencias extraídas: `id`, `text`, `kind` (`certificacion` \| `experiencia` \| `disponibilidad` \| `condicion` \| `documento` \| `otro`; las dos marcadas no se preguntan), `mandatory`, `origin` (descripción, ítem o nombre del adjunto), `status` (`cumple` \| `no_cumple` \| `parcial` \| `desconocido`; `parcial` sale de una respuesta neutra como "En proceso de inscripción" y no pausa), `catalog_item_id` (el elemento que la cubre, si existe) y `capability_question_id` (la pregunta pendiente, si hace falta una). |
 | `requires_technical_document`, `technical_document_reason` | Si las bases exigen documento técnico, y por qué (CA1). |
 | `paused_requirement_id` | La exigencia cuyo "No" tiene el borrador en `PAUSED`. |
 | `warnings` (JSON) | Advertencias aceptadas al elegir "continuar" (CA8), cada una ligada a su `requirement_id`: si la empresa corrige la respuesta a "Sí", la advertencia se quita sola. |
@@ -157,10 +157,9 @@ FEASIBILITY ──sin preguntas pendientes + generar──▶ READY ──regene
 ### 2.6 Exportar a .docx (CA3)
 
 - **Dependencia nueva, aprobada:** `python-docx`, en `requirements.txt`.
-- **Estructura del archivo:**
-  - H1 con el nombre de la oferta y un H2 por sección.
-  - Los documentos necesarios como viñetas.
-  - Los placeholders y las advertencias como **bloques destacados**: un párrafo sombreado con la etiqueta "Revisar". Se eligió esto en vez de comentarios nativos de Word porque es más simple de implementar.
+- **El Word es solo el documento técnico** (decisión del 2026-10-01). Es lo único que se sube como archivo. El nombre, la descripción, los documentos necesarios y las advertencias se ven en la pestaña del borrador y se copian desde ahí al formulario de la Compra Ágil. Si las bases no exigen documento técnico, no hay Word: la API responde 409 y el frontend no muestra el botón.
+- **Plantilla fija del documento técnico** (`TECHNICAL_SECTIONS`), en este orden: Antecedentes de la empresa, Comprensión del requerimiento, Metodología, Plan de trabajo y plazos, Equipo de trabajo y, solo si las bases piden algo que no calza en las anteriores, Otros requisitos de las bases. Una sección sin contenido queda con un vacío por completar en vez de texto inventado.
+- **Estructura del archivo:** H1 "Documento técnico", una línea con la oferta y la licitación, y un H2 por sección. Los vacíos van resaltados y seguidos de un **bloque destacado**: un párrafo sombreado con la etiqueta "Revisar". Se eligió esto en vez de comentarios nativos de Word porque es más simple de implementar. Las fuentes no se exportan.
 
 ### 2.7 Licitación cerrada
 
@@ -236,69 +235,91 @@ Nueva feature `src/features/proposals/`, siguiendo la Screaming Architecture. La
   - [x] [Red] Máquina de estados: un "No" excluyente pasa a `PAUSED`; un "No" deseable no pausa; una neutra queda `parcial`; `continue` agrega una advertencia; `stop` pasa a `STOPPED`; `resume` vuelve a `FEASIBILITY` sin volver a pausar; `can_generate` es falso si hay pendientes, `PAUSED` o `STOPPED` (`tests/unit/domain/test_proposal.py`).
   - [x] [Red] El parser de `[[INSERTAR: X]]` produce placeholders y el texto visible (`render_placeholders`, `DraftParagraph.from_ai_text`).
   - [x] [Green] Entidad, `ProposalDraftModel`, migración `e4849ff0c0dd` de `proposal_drafts` con la restricción única (`supplier_id`, `tender_id`), repositorio SQL y en memoria, y `TenderClosedForProposal` (en `tender_errors.py`, junto a `TenderClosedForScoring` y `TenderClosedForAnalysis`).
-- [ ] **B2. Factibilidad (CA7)** (§2.3)
-  - [ ] [Red] Con un servicio de IA falso:
-    - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta,
-    - una exigencia cubierta por una respuesta **negativa** previa del catálogo queda `no_cumple` con su `catalog_item_id`, para que el borrador pueda explicar el origen de la pausa ("respondiste 'No' el 12-oct en la licitación X, Ana Pérez"). Para eso `ExperienceItem` suma `answered_at`,
-    - una exigencia desconocida con una clave ya existente en el banco reutiliza esa pregunta,
-    - una exigencia desconocida con una clave nueva registra la pregunta (`origin = ia`), crea la respuesta pendiente con `tender_id` y marca `mandatory` en la exigencia,
-    - una contradicción con el perfil genera una pregunta,
+- [x] **B2. Factibilidad (CA7)** (§2.3)
+  - [x] [Red] Con un servicio de IA falso (`tests/unit/application/test_start_feasibility.py`):
+    - una exigencia cubierta por el catálogo guarda su `catalog_item_id` y no crea pregunta; un id que no existe en el catálogo se descarta (guardrail),
+    - una exigencia cubierta por una respuesta **negativa** previa queda `no_cumple` con su `catalog_item_id` **y** su `capability_question_id`: así el borrador explica el origen de la pausa y la empresa puede actualizar la respuesta desde la pausa. `ExperienceItem` suma `answered_at`,
+    - una exigencia con una clave del banco reutiliza esa pregunta y crea la respuesta pendiente con `tender_id`; si la empresa ya la respondió, usa esa respuesta,
+    - una pregunta nueva se registra en el rubro de la empresa (`origin = ia`, opciones Sí/No); si la clave ya existe, se reutiliza; si nombra a la empresa, no entra al banco y la exigencia queda `parcial`,
     - se detecta si las bases exigen documento técnico,
-    - una licitación cerrada responde 409.
-  - [ ] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
-  - [ ] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir), cada una con su licitación de origen (`tender_id` y código). Sirve para verlas sin pasar por una postulación y para la futura página de experiencia. La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
-- [ ] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
-  - [ ] [Red] `test_no_excluyente_pausa_borrador`, `test_continuar_guarda_decision_y_advertencia` y `test_stop_y_resume_permite_cambiar_respuesta`.
-  - [ ] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase` y `ResumeProposalUseCase`.
-- [ ] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
-  - [ ] [Red] Con documento técnico y sin él; placeholders; fuentes con ids inexistentes descartadas; párrafo de experiencia sin fuente convertido en placeholder; advertencias incluidas; 409 si `!can_generate`.
-  - [ ] [Green] `IProposalAIService.generate_draft` y `GenerateProposalUseCase`.
-- [ ] **B5. Regenerar (CA4)** (§2.5)
-  - [ ] [Red] Las instrucciones llegan al prompt, las de prompt injection se rechazan y se conservan las fuentes.
-  - [ ] [Green] Extraer el helper anti-injection de `GeminiDeepAnalysisService` y crear `RegenerateProposalUseCase`.
-- [ ] **B6. Exportar a .docx (CA3)** (§2.6)
-  - [ ] [Red] El test abre el `.docx` generado y verifica el H1 y los H2, las viñetas de documentos y los bloques "Revisar".
-  - [ ] [Green] `python-docx` en `requirements.txt` y `ExportProposalDocxUseCase`.
-- [ ] **B7. Router** (§2.10)
-  - [ ] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo, empresa activa, 403 sin permiso y 409 con la licitación cerrada.
-  - [ ] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags`, y el cableado en `bootstrap.py`.
+    - si ya hay borrador se devuelve sin llamar a la IA; una licitación cerrada sin borrador da 409.
+  - [x] [Green] Puerto `IProposalAIService.analyze_feasibility`, `GeminiProposalService` y `StartFeasibilityUseCase`.
+  - [x] [Red/Green] `GET /capabilities/questions/pending`: preguntas pendientes de la empresa activa (sin responder ni omitir, o con la vigencia vencida), cada una con su licitación de origen (`tender_id`, código y nombre). La empresa sale del contexto, como en el catálogo: la respuesta no incluye `supplier_id`.
+  - [x] Adelantado de B7, para poder probar B2: `POST /tenders/{id}/proposal/feasibility` y `GET /tenders/{id}/proposal` (con `is_expired` calculado al leer). Router `routers/proposal.py`, e2e en `tests/e2e/api/test_proposal_api.py`.
+  - Decisiones al implementar:
+    - **Rubro del banco:** el primer sector de la empresa, en slug (`categoria_de`). La IA recibe solo las preguntas activas de ese rubro.
+    - **Exigencia sin cobertura válida** (id inventado, sin pregunta o con una pregunta que nombra a la empresa): queda `parcial`. No bloquea la redacción; B4 la marcará como dato por completar.
+    - **Prompt probado con Gemini real** sobre la Compra Ágil 657-70-COT26. Acepta el `responseSchema`, detecta la contradicción de cobertura (Coyhaique frente a una empresa de la RM) y propone preguntas. Hubo que aclarar qué **no** es documento técnico (cotización y formularios son documentos necesarios) y que, si las bases mencionan un adjunto no recibido (un TDR), se avise en `technical_document_reason`. `temperature: 0` porque la lista de exigencias cambiaba entre llamadas.
+    - **Condiciones y documentos no se preguntan.** Probado con Gemini, la mayoría de las "exigencias" de una Compra Ágil eran condiciones del servicio (13 funcionarios, 40 horas, septiembre) o antecedentes a adjuntar (cotización, formulario), y generaban preguntas que cualquier proveedor responde que sí y que no sirven en otra licitación. Dos tipos nuevos de exigencia, `condicion` y `documento` (`KINDS_SIN_PREGUNTA`), quedan `cumple` sin pregunta aunque la IA proponga una. B4 usa las condiciones para describir la oferta y los documentos para la lista de documentos necesarios (CA1). El lugar de ejecución **no** es condición: se cruza con las regiones del perfil. Con Aysén en el perfil, la Compra Ágil 657-70-COT26 pasó de 4 preguntas a ninguna.
+    - **Reintento y log:** un 429 o un 5xx de Gemini se reintenta una vez; si igual falla, el 502 deja la causa en el log (antes no quedaba rastro).
+    - **Pendiente para B4 y la prueba manual (§6):** afinar la clasificación (Coyhaique salió como `experiencia` y no como `disponibilidad`; no cambia la lógica porque queda cubierta por el catálogo).
+- [x] **B3. Discrepancias (CA7, CA8, CA9)** (§2.3)
+  - [x] [Red] Casos de uso (`tests/unit/application/test_proposal_discrepancies.py`):
+    - responder guarda en el banco de la empresa (con la licitación de origen y quién respondió) **y** mueve el borrador; un "No" excluyente lo pausa;
+    - en pausa, otra pregunta no se guarda en ningún lado: se valida contra el borrador antes de escribir. La pregunta pausada sí se actualiza;
+    - una pregunta que no es de la postulación da 404 y una respuesta fuera de las opciones da 422, sin escribir nada;
+    - continuar guarda la decisión y la advertencia; detener pasa a `STOPPED`; reanudar vuelve a `FEASIBILITY`;
+    - decidir sobre una exigencia distinta de la pausada da 409, porque el usuario decidió mirando una pausa que ya cambió;
+    - con la licitación cerrada no se responde, decide ni reanuda (409).
+  - [x] [Green] `AnswerProposalQuestionUseCase`, `DecideDiscrepancyUseCase`, `ResumeProposalUseCase` y el helper `postulacion_abierta`.
+  - [x] Rutas (adelantadas de B7): `POST /tenders/{id}/proposal/questions/{question_id}/answer`, `POST /tenders/{id}/proposal/discrepancy` (`{requirement_id, action}`) y `POST /tenders/{id}/proposal/resume`, con permiso `generate_proposal`; e2e en `tests/e2e/api/test_proposal_api.py`.
+  - [x] Corrección de B1: `content` vacío se guardaba como el JSON `null` y no como `NULL` de SQL (`JSONB(none_as_null=True)`, sin migración).
+  - Queda fuera: responder desde `/capabilities/questions/{id}/answer` guarda en el banco pero no mueve los borradores abiertos. Si hace falta, el borrador puede releer el catálogo al abrirse; se decide con el frontend (F3).
+- [x] **B4. Redacción (CA1, CA2, CA5)** (§2.4)
+  - [x] [Red] Casos de uso (`tests/unit/application/test_generate_proposal.py`):
+    - con documento técnico y sin él; si las bases lo exigen y la IA no lo escribe, la sección queda como vacío; si no lo exigen, se omite aunque la IA lo escriba;
+    - vacíos `[[INSERTAR]]` convertidos en texto visible;
+    - fuentes: se conservan las del catálogo con su etiqueta y se descartan las inventadas; un párrafo que afirma algo de la empresa (`asserts_company_fact`) sin fuente válida recibe el vacío "respaldo de esta afirmación";
+    - documentos necesarios: primero los de la factibilidad (exigencias `documento`), después los que sume la IA sin repetir;
+    - 409 con preguntas pendientes, en pausa, detenido o con la licitación cerrada, **antes** de llamar a la IA; si la IA falla, el borrador no cambia.
+  - [x] [Green] `IProposalAIService.generate_draft`, `GeminiProposalService.generate_draft` (esquema propio, `temperature: 0.4` para que regenerar dé otro texto) y `GenerateProposalUseCase` con `armar_contenido`.
+  - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/generate`; e2e en `tests/e2e/api/test_proposal_api.py`.
+  - Las advertencias no se copian al contenido: viven en `ProposalDraft.warnings`, y el frontend y el `.docx` las muestran como bloque destacado (F6, B6).
+  - **Probado con Gemini real** sobre la Compra Ágil 657-70-COT26: el nombre y la descripción usan las condiciones del servicio y el párrafo sobre la empresa cita sus fuentes. Gemini reescribía los documentos ya detectados ("Se adjunta la cotización formal…") y salían duplicados; ahora el prompt recibe la lista de documentos ya detectados y solo agrega los que falten.
+- [x] **B5. Regenerar (CA4)** (§2.5)
+  - [x] [Red] `tests/unit/application/test_regenerate_proposal.py`: redacta de nuevo con las instrucciones y las guarda en `last_instructions`; una instrucción con inyección se rechaza **antes** de llamar a la IA y el borrador no cambia; solo se regenera un borrador en `READY`; con la licitación cerrada, 409. Filtro en `tests/unit/shared/test_prompt_guard.py`.
+  - [x] [Green] `app/shared/prompt_guard.py` (`frase_de_inyeccion`): la lista de frases que estaba dentro de `GeminiDeepAnalysisService`, ahora compartida, sin cambiar su comportamiento. `RegenerateProposalUseCase` delega en la redacción de B4 con `require_ready=True`.
+  - [x] Ruta (adelantada de B7): `POST /tenders/{id}/proposal/regenerate` con `{instructions}`; 400 ante inyección, como en el análisis profundo. La redacción usa `temperature: 0.4` para que regenerar dé otro texto.
+  - El asistente (`AskTenderAssistantUseCase.FORBIDDEN_PROMPT_PATTERNS`) mantiene su propia lista; unificarlas queda fuera de esta HdU.
+- [x] **B6. Exportar a .docx (CA3)** (§2.6)
+  - [x] [Red] `tests/unit/infrastructure/test_docx_proposal_exporter.py` abre el `.docx` y verifica: H1 "Documento técnico" y un H2 por sección de la plantilla; la oferta, la licitación y la marca de borrador en el encabezado; **no** incluye la descripción, los documentos, las advertencias ni las fuentes; vacíos resaltados y seguidos de un bloque "Revisar" sombreado. `tests/unit/application/test_export_proposal.py`: sin documento técnico, 409 (`TechnicalDocumentNotRequired`); sin redactar, 409; con la licitación cerrada se sigue exportando; nombre de archivo `documento-tecnico-<código>.docx` saneado.
+  - [x] [Green] `python-docx==1.2.0`, puerto `IProposalExporter`, `DocxProposalExporter` y `ExportProposalDocxUseCase`. La plantilla del documento técnico vive en el dominio (`TECHNICAL_SECTIONS`, `TechnicalDocument`); la IA responde un campo por sección (`TechnicalDocumentDTO`), y la redacción la completa con vacíos donde falte.
+  - [x] Ruta: `GET /tenders/{id}/proposal/export.docx`, que cualquier miembro puede usar, también un VIEWER.
+  - **Probado con Gemini real** (657-70-COT26 con documento técnico): acepta el esquema y llena las cinco secciones; el equipo queda como vacío. Gemini adornó una fuente ("especializándonos en capacitación" citando solo "8 años de experiencia"). El guardrail verifica que haya fuente, no que respalde cada frase, así que se endureció el prompt: citar una fuente no autoriza a describir el rubro o la especialidad más allá de lo que dice.
+  - **La imagen de Docker hay que reconstruirla** (`docker compose up -d --build api`), porque cambió `requirements.txt`.
+- [x] **B7. Router** (§2.10). Se fue armando en B2–B6: cada etapa sumó sus rutas con su e2e, para poder probarla.
+  - [x] [Red] `tests/e2e/api/test_proposal_api.py`: el flujo completo (factibilidad → responder → pausa → continuar o detener y reanudar → redactar → regenerar → exportar), empresa activa compartida entre miembros, 403 sin permiso, 409 con la licitación cerrada o ante una acción que no corresponde al estado, 502 si falla la IA.
+  - [x] [Green] `routers/proposal.py` con `summary`, `response_model` y `tags` en las 8 rutas (`GET` del borrador, `feasibility`, `questions/{id}/answer`, `discrepancy`, `resume`, `generate`, `regenerate` y `export.docx`), más `GET /capabilities/questions/pending`, todo cableado en `bootstrap.py`.
 
 ### Frontend (`monorepo/frontend`)
 
-- [ ] **F1. Tipos y servicio**
-  - [ ] [Red/Green] `features/proposals/types.ts`, `services/proposalService.ts` y `hooks/useProposal.ts`.
-- [ ] **F2. Entrada desde la ficha**
-  - [ ] [Red] En `TenderDetailView`, el botón muestra "Generar postulación", "Continuar" o "Reanudar" según el estado. Queda deshabilitado con tooltip si la licitación está cerrada y oculto sin el permiso `generate_proposal`.
-  - [ ] [Green] Botón y ruta `app/(app)/matches/[id]/postulacion/page.tsx`.
-- [ ] **F3. Factibilidad (CA6)**
-  - [ ] [Red] `ProposalStepper` muestra "Analizando bases y experiencia" mientras carga. `FeasibilityStep` lista las exigencias con su estado, las preguntas con sus opciones, el formulario opcional de proyecto tras un "Sí" de experiencia, y los adjuntos con un botón para subir más.
-  - [ ] [Green] Implementación.
-- [ ] **F4. Discrepancias (CA7, CA8, CA9)**
-  - [ ] [Red] `DiscrepancyModal` muestra la cláusula, la recomendación y, si el "No" es de una respuesta anterior, su origen (fecha, quién, licitación). Los botones "Actualizar respuesta", "Continuar con advertencia" y "Detener" llaman al endpoint correcto. La vista `STOPPED` ofrece "Reanudar".
-  - [ ] [Green] Implementación.
-- [ ] **F5. Redacción (CA6)**
-  - [ ] [Red/Green] `GeneratingLoader` con la etapa "Redactando nombre, descripción y documentos".
-- [ ] **F6. Borrador (CA1, CA2, CA3, CA4, CA5)**
-  - [ ] [Red] `ProposalDraftViewer` muestra las secciones, con el documento técnico solo si corresponde, y los placeholders destacados.
-  - [ ] [Red] Al hacer clic en un párrafo se abre `SourcePanel` con el elemento del catálogo que lo respalda: el proyecto (mandante, año, monto), la capacidad (pregunta, respuesta, quién respondió y licitación de origen) o el campo del perfil.
-  - [ ] [Green] `ProposalDraftViewer`, `SourcePanel`, `RegenerateDialog` y el botón "Exportar a .docx".
-  - [ ] Playwright para el flujo crítico: factibilidad → discrepancia → continuar → borrador → exportar.
-
----
+- [x] **F1. Tipos, servicio y hook** (`features/proposals/`): `types.ts`, `services/proposalService.ts` (las 8 rutas), `hooks/useProposal.ts` (estado, acciones, etapa del CA6 y descarga) y `utils/proposal.ts` (`canGenerate` replica la regla del backend). Para descargar el Word, `apiDownload` en `shared/api/client.ts`. Para mostrar cada pregunta con sus opciones y explicar una pausa, el `GET` del borrador suma `questions` y `catalog_items` (backend, `bcc0578`).
+- [x] **F2. Entrada desde la ficha:** `ProposalEntryCard` en `TenderDetailView`, con un texto y una acción según el estado ("Generar postulación", "Continuar postulación", "Revisar", "Reanudar", "Ver borrador"). No ofrece generar si la licitación cerró o si falta el permiso. Ruta `app/(app)/matches/[id]/postulacion/page.tsx`.
+- [x] **F3. Factibilidad (CA6):** `ProposalStepper` con la etapa en curso y `FeasibilityStep`, que muestra las preguntas pendientes con sus opciones, las exigencias evaluadas, las condiciones del servicio y los documentos (estos dos sin preguntar), y si se exige documento técnico. Los adjuntos se suben con `ProposalAttachments`, que reutiliza el gestor del asistente.
+- [x] **F4. Discrepancias (CA7–CA9):** `DiscrepancyModal` con la exigencia, la recomendación y el origen del "No" si vino de una respuesta anterior; "Actualizar respuesta" (solo opciones que no son "No"), "Continuar con advertencia" y "Detener". La vista `STOPPED` ofrece "Reanudar".
+- [x] **F5. Redacción (CA6):** la etapa "Redactando nombre, descripción y documentos…" en el stepper mientras corre `generate` o `regenerate`.
+- [x] **F6. Borrador (CA1–CA5):** `ProposalDraftViewer` con nombre, descripción y documentos, cada uno con su botón "Copiar" para pegar en el formulario; las advertencias; los vacíos resaltados; el panel de fuentes al elegir un párrafo; `RegenerateDialog`; y el documento técnico con "Exportar a .docx", visible solo si existe.
+- Sin el permiso `generate_proposal`, la pantalla es de solo lectura: se puede ver y exportar, pero no responder, decidir ni redactar.
+- **Rediseño tras probarlo (2026-10-01):** la postulación deja de ser un asistente por pasos, porque el tercer paso daba la sensación de que quedaba algo pendiente aunque no lo hubiera. Ahora es **una página con secciones**: *Análisis de las bases* (adjuntos, iniciar o "Volver a analizar", exigencias y preguntas; con el borrador listo se pliegan), *Borrador de la oferta* (próximos pasos, texto para copiar, fuentes, regenerar y documento técnico si se exige) y *Cotización*. El cotizador se mudó desde la ficha a esta página. El CA6 se cumple con `StageNotice`, que solo aparece mientras la IA analiza o redacta.
+- **Preguntas sugeridas para la oferta:** la factibilidad suma hasta 3 preguntas de Sí o No que no exigen las bases, pero cuya respuesta le da a la redacción datos de la empresa (experiencia parecida, entrega en la comuna, plazos). Solo se sugiere lo que el catálogo no responde. Se marcan `suggested`, nunca son excluyentes y, por decisión del 2026-10-01, bloquean la redacción hasta responderlas, como el resto.
+- **Documento técnico siempre visible en el borrador:** si las bases lo exigen, el contenido y "Exportar a .docx"; si no, la advertencia "No se detectó que esta licitación pida un documento técnico", con el motivo del análisis y un botón "Generar de todas formas" (`POST /tenders/{id}/proposal/technical-document`, que redacta el borrador incluyéndolo con la plantilla fija).
+- **Volver a analizar** (`POST /tenders/{id}/proposal/reanalyze`): repite la factibilidad, por ejemplo tras subir las bases que faltaban. Solo si cambió la huella del análisis (ficha, los datos del perfil que recibe la IA —ítems `perfil:` del catálogo y rubro— o adjuntos; no `supplier.updated_at`, que el banner del home mueve al guardar keywords; **no** las respuestas de la propia postulación) se rehacen las exigencias y se descarta el borrador, con confirmación previa. Si no cambió nada, el borrador se mantiene y la página lo avisa. Migración `fd545819dc8b`.
+- **Respuestas cambiadas en el banco:** si la empresa corrige una respuesta fuera de la postulación, `GET /tenders/{id}/proposal` lo informa en `changed_requirement_ids` (estado guardado que ya no calza con la respuesta vigente, o respuesta posterior a `content.generated_at`), sin escribir nada. `POST /tenders/{id}/proposal/sync-answers` aplica los cambios sin rehacer el análisis: si había texto y se puede redactar, se vuelve a redactar con las mismas instrucciones; un "No" excluyente pausa como en la factibilidad. En pausa o detenida no se avisa: ahí se corrige en el aviso de discrepancia o al reanudar. Sin migración: `generated_at` viaja en el JSONB de `content`.
+- **Pendiente:** verificar el flujo completo en el navegador con el backend y Supabase arriba, y decidir si hace falta un e2e de Playwright (la regla pide uno para flujos críticos).
 
 ## 4. Matriz de Cobertura de Criterios de Aceptación
 
 | CA (issue #230) | Backend | Frontend | Test |
 |---|---|---|---|
-| **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_con_y_sin_documento_tecnico` / `ProposalDraftViewer.test.tsx` |
-| **CA2** Vacíos marcados | Parser `[[INSERTAR]]`, `placeholders` | `ProposalDraftViewer` (destacado) | `test_parser_insertar` / `ProposalDraftViewer.test.tsx` |
-| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` (`python-docx`) | Botón "Exportar a .docx" | `test_export_docx_titulos_y_bloques_revisar` |
-| **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + helper anti-injection | `RegenerateDialog` | `test_regenerate_incorpora_instrucciones` |
-| **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog`, `capability_evidence` | `SourcePanel` | `test_fuentes_inexistentes_se_descartan` / `SourcePanel.test.tsx` |
-| **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `ProposalStepper`, `GeneratingLoader` | `ProposalStepper.test.tsx` |
-| **CA7** Pausa y pregunta ante contradicción | `StartFeasibilityUseCase`, `AnswerProposalQuestionUseCase` → `PAUSED` | `DiscrepancyModal` | `test_no_excluyente_pausa_borrador` / `DiscrepancyModal.test.tsx` |
-| **CA8** Continuar con advertencia | `DecideDiscrepancyUseCase(continue)` | Botón "Continuar con advertencia" | `test_continuar_guarda_decision_y_advertencia` |
-| **CA9** Detener y reanudar | `DecideDiscrepancyUseCase(stop)`, `ResumeProposalUseCase` | Botón "Detener", vista "Reanudar" | `test_stop_y_resume_permite_cambiar_respuesta` |
+| **CA1** Nombre, descripción, documentos y documento técnico condicional | `GenerateProposalUseCase`, `requires_technical_document` | `ProposalDraftViewer` | `test_generate_proposal.py::test_deja_el_borrador_listo_con_la_plantilla_de_compra_agil`, `::test_se_arma_con_la_plantilla_si_las_bases_lo_exigen`, `::test_no_se_incluye_si_no_lo_exigen_aunque_la_ia_lo_escriba` / `ProposalDraftViewer.test.tsx` "muestra nombre, descripción y documentos (CA1)" |
+| **CA2** Vacíos marcados | `DraftParagraph.from_ai_text` (`[[INSERTAR]]`), `placeholders` | `HighlightedText` | `test_generate_proposal.py::test_convierte_los_vacios_en_texto_visible`, `test_proposal.py::TestVacios` / "un párrafo con vacíos dice qué completar (CA2)" |
+| **CA3** Exportar a .docx | `ExportProposalDocxUseCase` + `DocxProposalExporter` (solo el documento técnico, plantilla fija) | Botón "Exportar documento técnico" | `test_docx_proposal_exporter.py::test_los_vacios_van_resaltados_y_con_un_bloque_revisar`, `test_export_proposal.py` / "con documento técnico lo muestra y deja exportarlo (CA3)" |
+| **CA4** Regenerar con instrucciones | `RegenerateProposalUseCase` + `prompt_guard` | `RegenerateDialog` | `test_regenerate_proposal.py::test_redacta_de_nuevo_con_las_instrucciones_y_las_guarda`, `::test_rechaza_la_inyeccion_antes_de_llamar_a_la_ia` / "regenera con instrucciones (CA4)" |
+| **CA5** Fuente de cada párrafo | `sources[]` validadas contra los ids del `ExperienceCatalog` | Panel de fuentes de `ProposalDraftViewer` | `test_generate_proposal.py::test_descarta_las_fuentes_inventadas`, `::test_una_afirmacion_sin_fuente_valida_recibe_un_vacio` / "al elegir un párrafo muestra sus fuentes (CA5)" |
+| **CA6** Etapas visibles | Fases separadas `/feasibility` y `/generate` | `StageNotice` | `StageNotice.test.tsx`, `useProposal.test.ts` "iniciar muestra la etapa de análisis…", "redactar muestra la etapa de redacción (CA6)" |
+| **CA7** Pausa y pregunta ante contradicción | `StartFeasibilityUseCase`, `AnswerProposalQuestionUseCase` → `PAUSED` | `DiscrepancyModal` | `test_proposal_discrepancies.py::test_un_no_a_una_excluyente_pausa_el_borrador`, `test_generate_proposal.py::test_en_pausa_no_se_redacta` / `DiscrepancyModal.test.tsx` |
+| **CA8** Continuar con advertencia | `DecideDiscrepancyUseCase(continue)` | Botón "Continuar con advertencia" | `test_proposal_discrepancies.py::test_continuar_guarda_la_decision_y_la_advertencia` / "continuar con advertencia (CA8)" |
+| **CA9** Detener y reanudar | `DecideDiscrepancyUseCase(stop)`, `ResumeProposalUseCase` | Botón "Detener", "Reanudar" | `test_proposal_discrepancies.py::test_detener_deja_el_borrador_detenido`, `::test_vuelve_a_factibilidad`, e2e `test_detener_y_reanudar` / "detener (CA9)", `ProposalView.test.tsx` "detenida ofrece reanudar (CA9)" |
 
 ---
 

@@ -9,16 +9,20 @@ FEASIBILITY ──sin pendientes + generar──▶ READY
 ```
 """
 
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
 
 from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
     DraftContent,
     DraftParagraph,
     DraftSection,
     ProposalDraft,
     Requirement,
+    TechnicalDocument,
+    TechnicalSection,
     render_placeholders,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
@@ -372,7 +376,10 @@ class TestPuedeRedactar:
         borrador.mark_ready(_contenido(), instructions=None)
 
         assert borrador.status == "READY"
-        assert borrador.content == _contenido()
+        assert borrador.content is not None
+        assert (
+            borrador.content.model_copy(update={"generated_at": None}) == _contenido()
+        )
 
     def test_marcar_listo_sin_poder_redactar_falla(self):
         with pytest.raises(InvalidProposalTransition):
@@ -431,3 +438,194 @@ class TestVacios:
             == "Experiencia de (Por favor, inserte aquí el valor años) años."
         )
         assert parrafo.placeholders == ["años"]
+
+
+class TestPlantillaDelDocumentoTecnico:
+    """Plantilla fija acordada con el equipo (plan 230, §2.6)."""
+
+    def test_las_secciones_en_orden(self):
+        assert [(s.key, s.title) for s in TECHNICAL_SECTIONS] == [
+            ("antecedentes", "Antecedentes de la empresa"),
+            ("comprension", "Comprensión del requerimiento"),
+            ("metodologia", "Metodología"),
+            ("plan_de_trabajo", "Plan de trabajo y plazos"),
+            ("equipo", "Equipo de trabajo"),
+            ("otros", "Otros requisitos de las bases"),
+        ]
+
+    def test_solo_otros_requisitos_es_opcional(self):
+        opcionales = [s.key for s in TECHNICAL_SECTIONS if s.optional]
+        assert opcionales == ["otros"]
+
+    def test_el_documento_tecnico_es_una_lista_de_subsecciones(self):
+        documento = TechnicalDocument(
+            sections=[
+                TechnicalSection(
+                    key="metodologia",
+                    title="Metodología",
+                    paragraphs=[DraftParagraph(text="Clases presenciales.")],
+                )
+            ]
+        )
+        assert documento.sections[0].title == "Metodología"
+
+
+class TestPreguntasSugeridas:
+    """Preguntas para fortalecer la oferta: no vienen de una exigencia de las bases."""
+
+    def _con_sugerida(self) -> ProposalDraft:
+        borrador = ProposalDraft(supplier_id=uuid4(), tender_id=uuid4())
+        borrador.load_requirements(
+            [
+                Requirement(
+                    id="sug-1",
+                    text="Experiencia en suministros a municipios",
+                    kind="experiencia",
+                    mandatory=False,
+                    origin="Sugerida para fortalecer la oferta",
+                    suggested=True,
+                    capability_question_id=VIALES_Q,
+                )
+            ]
+        )
+        return borrador
+
+    def test_mientras_no_se_responda_bloquea_la_redaccion(self):
+        assert not self._con_sugerida().can_generate()
+
+    def test_un_no_no_pausa(self):
+        borrador = self._con_sugerida()
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.status == "FEASIBILITY"
+        assert borrador.can_generate()
+
+
+class TestDocumentoTecnicoAPedido:
+    def test_la_empresa_puede_pedirlo_aunque_no_se_detecto(self):
+        borrador = _borrador()
+
+        borrador.request_technical_document()
+
+        assert borrador.requires_technical_document is True
+        assert "no se detectó" in (borrador.technical_document_reason or "")
+
+
+def _listo() -> ProposalDraft:
+    borrador = _borrador()
+    borrador.record_answer(SEC_Q, "afirmativa")
+    borrador.record_answer(VIALES_Q, "afirmativa")
+    borrador.mark_ready(_contenido(), instructions=None)
+    return borrador
+
+
+class TestFechaDeRedaccion:
+    def test_redactar_anota_cuando_se_redacto(self):
+        borrador = _listo()
+
+        assert borrador.content is not None
+        assert borrador.content.generated_at is not None
+
+
+class TestRespuestasCambiadas:
+    """Una respuesta corregida fuera de la postulación (por ejemplo en la página
+    de experiencia de la empresa) se detecta al leer y se aplica a pedido."""
+
+    def test_detecta_la_respuesta_cuyo_estado_ya_no_calza(self):
+        borrador = _listo()
+
+        cambios = borrador.changed_answers(
+            {SEC_Q: ("negativa", None), VIALES_Q: ("afirmativa", None)}
+        )
+
+        assert cambios == ["req-sec"]
+
+    def test_detecta_la_respuesta_modificada_despues_de_redactar(self):
+        borrador = _listo()
+        assert borrador.content is not None
+        despues = borrador.content.generated_at + timedelta(minutes=1)
+
+        cambios = borrador.changed_answers(
+            {SEC_Q: ("afirmativa", despues), VIALES_Q: ("afirmativa", None)}
+        )
+
+        assert cambios == ["req-sec"]
+
+    def test_una_respuesta_vencida_vuelve_a_quedar_pendiente(self):
+        borrador = _listo()
+
+        cambios = borrador.changed_answers({SEC_Q: (None, None)})
+
+        assert cambios == ["req-sec"]
+
+    def test_sin_cambios_no_informa_nada(self):
+        borrador = _listo()
+
+        assert (
+            borrador.changed_answers(
+                {SEC_Q: ("afirmativa", None), VIALES_Q: ("afirmativa", None)}
+            )
+            == []
+        )
+
+    def test_aplicar_un_si_mantiene_el_borrador_listo_para_redactar(self):
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "afirmativa")
+        borrador.record_answer(VIALES_Q, "negativa")
+        borrador.mark_ready(_contenido(), instructions=None)
+
+        borrador.sync_answers({VIALES_Q: "afirmativa"})
+
+        assert borrador.status == "READY"
+        assert _requisito(borrador, "req-viales").status == "cumple"
+        assert borrador.can_generate()
+
+    def test_aplicar_un_no_excluyente_pausa(self):
+        borrador = _listo()
+
+        borrador.sync_answers({SEC_Q: "negativa"})
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-sec"
+        # El texto anterior se conserva hasta que se vuelva a redactar.
+        assert borrador.content is not None
+
+    def test_aplicar_una_vencida_vuelve_a_factibilidad(self):
+        borrador = _listo()
+
+        borrador.sync_answers({SEC_Q: None})
+
+        assert borrador.status == "FEASIBILITY"
+        assert _requisito(borrador, "req-sec").status == "desconocido"
+        assert not borrador.can_generate()
+
+    def test_un_cambio_borra_la_advertencia_aceptada(self):
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "negativa")
+        borrador.decide("continue", uuid4())
+        borrador.record_answer(VIALES_Q, "afirmativa")
+        borrador.mark_ready(_contenido(), instructions=None)
+        assert borrador.warnings
+
+        borrador.sync_answers({SEC_Q: "afirmativa"})
+
+        assert borrador.warnings == []
+        assert borrador.discrepancy_decisions == []
+
+    def test_en_pausa_no_avisa_porque_se_resuelve_en_el_aviso_de_discrepancia(self):
+        borrador = _listo()
+        assert borrador.content is not None
+        despues = borrador.content.generated_at + timedelta(minutes=1)
+        borrador.sync_answers({SEC_Q: "negativa"})
+        assert borrador.status == "PAUSED"
+
+        assert borrador.changed_answers({SEC_Q: ("negativa", despues)}) == []
+
+    def test_en_pausa_no_se_aplica(self):
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "negativa")
+        assert borrador.status == "PAUSED"
+
+        with pytest.raises(InvalidProposalTransition):
+            borrador.sync_answers({SEC_Q: "afirmativa"})

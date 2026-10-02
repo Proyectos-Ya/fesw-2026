@@ -254,9 +254,11 @@ class ExperienceItem(BaseModel):
     title: str
     detail: str
     polarity: Polarity | None = None
-    # Solo en las respuestas: quién respondió y qué licitación motivó la pregunta.
+    # Solo en las respuestas: quién respondió, cuándo y qué licitación motivó la
+    # pregunta. Sirve para explicar el origen de una pausa del borrador.
     answered_by_user_id: UUID | None = None
     tender_id: UUID | None = None
+    answered_at: UtcDateTime | None = None
 
 
 class ExperienceCatalog(BaseModel):

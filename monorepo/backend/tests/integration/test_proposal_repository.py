@@ -183,3 +183,23 @@ async def test_la_base_rechaza_un_estado_desconocido(db_session):
     )
     with pytest.raises(IntegrityError):
         await db_session.commit()
+
+
+async def test_sin_contenido_se_guarda_como_null_de_sql(db_session):
+    """Un JSON `null` no lo encuentra `WHERE content IS NULL`."""
+    from sqlalchemy import text
+
+    repo = SqlProposalDraftRepository(db_session)
+    supplier_id = await _empresa(db_session)
+    tender_id = await _licitacion(db_session)
+    borrador = await repo.save(_borrador(supplier_id, tender_id))
+
+    fila = (
+        await db_session.exec(
+            text(
+                "SELECT content IS NULL FROM proposal_drafts WHERE id = :id"
+            ).bindparams(id=borrador.id)
+        )
+    ).one()
+
+    assert fila[0] is True
