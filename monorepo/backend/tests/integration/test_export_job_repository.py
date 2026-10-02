@@ -41,6 +41,12 @@ async def test_guarda_y_lee_el_archivo_binario(db_session: AsyncSession):
     assert leido.sections == ["hitos", "montos"]
     assert leido.format is ExportFormat.XLSX
 
+    db_session.expunge_all()
+    solo_estado = await repo.get(job.id, with_content=False)
+    assert solo_estado is not None
+    assert solo_estado.status is ExportJobStatus.READY
+    assert solo_estado.content is None
+
 
 async def test_al_arrancar_marca_fallido_lo_que_quedo_en_proceso(db_session: AsyncSession):
     ids = await _escenario(db_session)

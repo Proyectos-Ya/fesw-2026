@@ -17,8 +17,11 @@ class InMemoryExportJobRepository(IExportJobRepository):
         self.jobs[job.id] = job
         return job
 
-    async def get(self, job_id: UUID) -> ExportJob | None:
-        return self.jobs.get(job_id)
+    async def get(self, job_id: UUID, with_content: bool = True) -> ExportJob | None:
+        job = self.jobs.get(job_id)
+        if job is not None and not with_content:
+            return job.model_copy(update={"content": None})
+        return job
 
     async def fail_stale(self, now: datetime) -> int:
         en_proceso = [j for j in self.jobs.values() if j.status is ExportJobStatus.PROCESSING]

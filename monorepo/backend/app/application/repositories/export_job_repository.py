@@ -11,7 +11,9 @@ class IExportJobRepository(ABC):
         """Crea el trabajo o actualiza el existente con el mismo id."""
 
     @abstractmethod
-    async def get(self, job_id: UUID) -> ExportJob | None: ...
+    async def get(self, job_id: UUID, with_content: bool = True) -> ExportJob | None:
+        """Con `with_content=False` no trae el archivo: alcanza para consultar el estado."""
+
 
     @abstractmethod
     async def fail_stale(self, now: datetime) -> int:

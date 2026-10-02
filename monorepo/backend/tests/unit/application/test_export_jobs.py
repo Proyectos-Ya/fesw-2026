@@ -123,6 +123,15 @@ class TestConsultar:
 
         assert (await GetExportJobUseCase(jobs).execute(USUARIO, job.id)).id == job.id
 
+    async def test_consultar_el_estado_no_trae_el_archivo(self):
+        jobs = InMemoryExportJobRepository()
+        job = await jobs.save(_job().listo(b"%PDF", AHORA))
+
+        consultado = await GetExportJobUseCase(jobs).execute(USUARIO, job.id)
+
+        assert consultado.status is ExportJobStatus.READY
+        assert consultado.content is None
+
     async def test_otro_usuario_no_lo_ve(self):
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job())

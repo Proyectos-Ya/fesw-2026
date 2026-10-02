@@ -93,8 +93,10 @@ class GetExportJobUseCase:
     def __init__(self, jobs: IExportJobRepository) -> None:
         self.jobs = jobs
 
-    async def execute(self, user_id: UUID, job_id: UUID) -> ExportJob:
-        job = await self.jobs.get(job_id)
+    async def execute(
+        self, user_id: UUID, job_id: UUID, with_content: bool = False
+    ) -> ExportJob:
+        job = await self.jobs.get(job_id, with_content=with_content)
         if job is None or job.user_id != user_id:
             raise ExportJobNotFound()
         return job
@@ -108,7 +110,7 @@ class DownloadExportFileUseCase:
         self.now = now
 
     async def execute(self, user_id: UUID, job_id: UUID) -> ExportFile:
-        job = await GetExportJobUseCase(self.jobs).execute(user_id, job_id)
+        job = await GetExportJobUseCase(self.jobs).execute(user_id, job_id, with_content=True)
         if job.status is ExportJobStatus.PROCESSING:
             raise ExportFileUnavailable("processing")
         if job.status is ExportJobStatus.FAILED:

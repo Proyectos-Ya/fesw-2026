@@ -2,7 +2,8 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import update
-from sqlmodel import col
+from sqlalchemy.orm import defer
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.export_job_repository import IExportJobRepository
@@ -21,7 +22,7 @@ class ExportJobRepository(IExportJobRepository):
         self.session = session
 
     @staticmethod
-    def _to_entity(model: ExportJobModel) -> ExportJob:
+    def _to_entity(model: ExportJobModel, with_content: bool = True) -> ExportJob:
         return ExportJob(
             id=model.id,
             user_id=model.user_id,
@@ -31,7 +32,7 @@ class ExportJobRepository(IExportJobRepository):
             sections=list(model.sections),
             status=ExportJobStatus(model.status),
             file_name=model.file_name,
-            content=model.content,
+            content=model.content if with_content else None,
             error=model.error,
             created_at=model.created_at,
             finished_at=model.finished_at,
@@ -50,9 +51,18 @@ class ExportJobRepository(IExportJobRepository):
             raise
         return job
 
-    async def get(self, job_id: UUID) -> ExportJob | None:
-        model = await self.session.get(ExportJobModel, job_id)
-        return self._to_entity(model) if model is not None else None
+    async def get(self, job_id: UUID, with_content: bool = True) -> ExportJob | None:
+        if with_content:
+            model = await self.session.get(ExportJobModel, job_id)
+        else:
+            # El estado se consulta cada pocos segundos: sin traer el PDF/Excel.
+            result = await self.session.exec(
+                select(ExportJobModel)
+                .where(col(ExportJobModel.id) == job_id)
+                .options(defer(ExportJobModel.content))
+            )
+            model = result.first()
+        return self._to_entity(model, with_content) if model is not None else None
 
     async def _update(self, statement) -> int:
         try:
