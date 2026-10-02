@@ -1,7 +1,7 @@
 """enlaces compartidos de licitaciones (HdU 19)
 
 Revision ID: e19a4c2b7d01
-Revises: e4849ff0c0dd
+Revises: fd545819dc8b
 Create Date: 2026-09-28 12:00:00.000000
 
 Solo agrega una tabla, así que la versión anterior de la API convive sin
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e19a4c2b7d01"
-down_revision: str | Sequence[str] | None = "e4849ff0c0dd"
+down_revision: str | Sequence[str] | None = "fd545819dc8b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

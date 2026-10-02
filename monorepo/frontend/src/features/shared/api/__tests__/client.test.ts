@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiDownload, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
+import { apiDownload, apiDownloadOrAccepted, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
@@ -149,6 +149,53 @@ describe("apiFetch — token de sesión", () => {
 });
 
 describe("apiDownload", () => {
+  it("devuelve el archivo y el nombre del Content-Disposition", async () => {
+    registrarProveedorDeToken(async () => "jwt-de-supabase");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("PK", {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": 'attachment; filename="documento-tecnico-657-70-COT26.docx"',
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const archivo = await apiDownload("/tenders/t-1/proposal/export.docx");
+
+    expect(archivo.filename).toBe("documento-tecnico-657-70-COT26.docx");
+    expect(await archivo.blob.text()).toBe("PK");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/tenders/t-1/proposal/export.docx");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer jwt-de-supabase",
+    );
+  });
+
+  it("usa un nombre por defecto si no viene Content-Disposition", async () => {
+    mockFetchOnce(new Response("x", { status: 200 }));
+
+    const archivo = await apiDownload("/x", "respaldo.docx");
+
+    expect(archivo.filename).toBe("respaldo.docx");
+  });
+
+  it("lanza ApiError con el detail del backend", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No requiere documento técnico" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(apiDownload("/x")).rejects.toThrowError(
+      expect.objectContaining({ status: 409, message: "No requiere documento técnico" }),
+    );
+  });
+});
+
+describe("apiDownloadOrAccepted", () => {
   it("con 200 entrega el archivo y el nombre de Content-Disposition", async () => {
     mockFetchOnce(
       new Response("%PDF", {
@@ -160,7 +207,7 @@ describe("apiDownload", () => {
       }),
     );
 
-    const resultado = await apiDownload("/tenders/t-1/exports", { method: "POST" });
+    const resultado = await apiDownloadOrAccepted("/tenders/t-1/exports", { method: "POST" });
 
     expect(resultado.kind).toBe("file");
     if (resultado.kind !== "file") return;
@@ -171,7 +218,7 @@ describe("apiDownload", () => {
   it("sin Content-Disposition deja el nombre en null", async () => {
     mockFetchOnce(new Response("x", { status: 200 }));
 
-    const resultado = await apiDownload("/exports/j-1/file");
+    const resultado = await apiDownloadOrAccepted("/exports/j-1/file");
 
     expect(resultado).toMatchObject({ kind: "file", filename: null });
   });
@@ -184,7 +231,7 @@ describe("apiDownload", () => {
       }),
     );
 
-    const resultado = await apiDownload("/tenders/t-1/exports", { method: "POST" });
+    const resultado = await apiDownloadOrAccepted("/tenders/t-1/exports", { method: "POST" });
 
     expect(resultado).toEqual({
       kind: "accepted",
@@ -200,7 +247,7 @@ describe("apiDownload", () => {
       }),
     );
 
-    await expect(apiDownload("/exports/j-1/file")).rejects.toThrowError(
+    await expect(apiDownloadOrAccepted("/exports/j-1/file")).rejects.toThrowError(
       expect.objectContaining({ status: 410, code: "export_expired", message: "El archivo venció." }),
     );
   });
@@ -210,7 +257,7 @@ describe("apiDownload", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("x", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await apiDownload("/exports/j-1/file");
+    await apiDownloadOrAccepted("/exports/j-1/file");
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");

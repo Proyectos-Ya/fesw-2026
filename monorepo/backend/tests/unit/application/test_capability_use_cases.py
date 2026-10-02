@@ -19,10 +19,14 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.capabilities.list_pending_questions import (
+    ListPendingCapabilityQuestionsUseCase,
+)
 from app.application.use_cases.capabilities.register_capability_question import (
     RegisterCapabilityQuestionUseCase,
 )
 from app.domain.entities.capability import (
+    CapabilityAnswer,
     CapabilityEvidence,
     CapabilityOption,
     CapabilityQuestion,
@@ -42,7 +46,9 @@ from tests.unit.application.fakes import (
     InMemoryCapabilityEvidenceRepository,
     InMemoryCapabilityQuestionRepository,
     InMemorySupplierRepository,
+    InMemoryTenderRepository,
 )
+from tests.unit.application.test_score_tender_on_demand import crear_licitacion
 
 
 def _pregunta(target_field: str = "sec_clase_a", **kwargs) -> CapabilityQuestion:
@@ -338,6 +344,8 @@ class TestCatalogo:
         assert por_id[f"capacidad:{bim.id}"].polarity == "negativa"
         assert por_id[f"capacidad:{sec.id}"].title == sec.question
         assert por_id[f"capacidad:{sec.id}"].answered_by_user_id == e.duena
+        # Para explicar de dónde viene una pausa: "respondiste 'No' el 12-oct".
+        assert por_id[f"capacidad:{bim.id}"].answered_at is not None
 
     async def test_un_miembro_ve_lo_que_respondio_otro_de_la_misma_empresa(self):
         sec = _pregunta()
@@ -425,3 +433,67 @@ class TestCatalogo:
 
         with pytest.raises(SupplierNotFoundForUser):
             await e.catalogo().execute(user_id=uuid4(), supplier_id=None)
+
+
+class TestPendientes:
+    """Preguntas que la empresa tiene por responder, con la licitación que las originó."""
+
+    async def _escenario(self, *preguntas):
+        e = await Escenario(list(preguntas)).preparar()
+        tenders = InMemoryTenderRepository()
+        tender_id = uuid4()
+        tenders.tenders[tender_id] = crear_licitacion(tender_id)
+        caso = ListPendingCapabilityQuestionsUseCase(
+            e.suppliers, e.questions, e.answers, tenders
+        )
+        return e, caso, tender_id
+
+    async def _pendiente(self, e: Escenario, pregunta, tender_id=None):
+        await e.answers.save(
+            CapabilityAnswer(
+                supplier_id=e.empresa.id, question_id=pregunta.id, tender_id=tender_id
+            )
+        )
+
+    async def test_lista_las_pendientes_con_su_licitacion(self):
+        sec = _pregunta()
+        e, caso, tender_id = await self._escenario(sec)
+        await self._pendiente(e, sec, tender_id)
+
+        [pendiente] = await caso.execute(user_id=e.duena, supplier_id=e.empresa.id)
+
+        assert pendiente.question == sec
+        assert pendiente.tender_id == tender_id
+        assert pendiente.tender_code == f"COT-{tender_id}"
+
+    async def test_no_lista_las_respondidas_ni_las_omitidas(self):
+        sec, bim, mop = _pregunta("sec"), _pregunta("bim"), _pregunta("mop")
+        e, caso, _ = await self._escenario(sec, bim, mop)
+        await self._pendiente(e, sec)
+        await e.responde(e.duena, bim)
+        await e.answers.save(
+            CapabilityAnswer(supplier_id=e.empresa.id, question_id=mop.id, omitted=True)
+        )
+
+        pendientes = await caso.execute(user_id=e.duena, supplier_id=e.empresa.id)
+
+        assert [p.question.id for p in pendientes] == [sec.id]
+
+    async def test_una_respuesta_vencida_vuelve_a_quedar_pendiente(self):
+        sec = _pregunta(kind="certificacion")
+        e, caso, _ = await self._escenario(sec)
+        await e.responde(
+            e.duena, sec, valid_until=utc_now_naive() - timedelta(minutes=1)
+        )
+
+        [pendiente] = await caso.execute(user_id=e.duena, supplier_id=e.empresa.id)
+
+        assert pendiente.question.id == sec.id
+        assert pendiente.tender_id is None
+
+    async def test_otra_empresa_no_ve_las_pendientes(self):
+        sec = _pregunta()
+        e, caso, _ = await self._escenario(sec)
+        await self._pendiente(e, sec)
+
+        assert await caso.execute(user_id=e.ajeno, supplier_id=e.otra.id) == []

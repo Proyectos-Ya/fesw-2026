@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiDownload, apiFetch } from "@/features/shared/api/client";
+import { apiDownloadOrAccepted, apiFetch } from "@/features/shared/api/client";
 import { downloadExportFile, exportTender, getExportJob } from "../exportService";
 
 vi.mock("@/features/shared/api/client", () => ({
-  apiDownload: vi.fn(),
+  apiDownloadOrAccepted: vi.fn(),
   apiFetch: vi.fn(),
 }));
 
@@ -12,23 +12,23 @@ const PDF = new Blob(["%PDF"], { type: "application/pdf" });
 
 describe("exportService", () => {
   beforeEach(() => {
-    vi.mocked(apiDownload).mockReset();
+    vi.mocked(apiDownloadOrAccepted).mockReset();
     vi.mocked(apiFetch).mockReset();
   });
 
   it("pide la exportación con el formato y las secciones", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({ kind: "file", blob: PDF, filename: "x.xlsx" });
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({ kind: "file", blob: PDF, filename: "x.xlsx" });
 
     await exportTender("t-1", "xlsx", ["hitos", "montos"]);
 
-    expect(apiDownload).toHaveBeenCalledWith("/tenders/t-1/exports", {
+    expect(apiDownloadOrAccepted).toHaveBeenCalledWith("/tenders/t-1/exports", {
       method: "POST",
       body: JSON.stringify({ format: "xlsx", sections: ["hitos", "montos"] }),
     });
   });
 
   it("si llega el archivo lo devuelve con su nombre", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({
       kind: "file",
       blob: PDF,
       filename: "licitacion-COT26.pdf",
@@ -42,7 +42,7 @@ describe("exportService", () => {
   });
 
   it("sin nombre del backend usa uno por defecto con la extensión correcta", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({ kind: "file", blob: PDF, filename: null });
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({ kind: "file", blob: PDF, filename: null });
 
     const resultado = await exportTender("t-1", "xlsx", ["hitos"]);
 
@@ -50,7 +50,7 @@ describe("exportService", () => {
   });
 
   it("si pasó a segundo plano devuelve el trabajo y el aviso", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({
       kind: "accepted",
       body: { job_id: "j-1", status: "processing", message: "Te avisaremos por correo." },
     });
@@ -63,7 +63,7 @@ describe("exportService", () => {
   });
 
   it("un 202 con un cuerpo inesperado es un error", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({ kind: "accepted", body: { raro: true } });
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({ kind: "accepted", body: { raro: true } });
 
     await expect(exportTender("t-1", "pdf", [])).rejects.toThrow();
   });
@@ -75,9 +75,9 @@ describe("exportService", () => {
   });
 
   it("descarga el archivo terminado", async () => {
-    vi.mocked(apiDownload).mockResolvedValue({ kind: "file", blob: PDF, filename: "a.pdf" });
+    vi.mocked(apiDownloadOrAccepted).mockResolvedValue({ kind: "file", blob: PDF, filename: "a.pdf" });
 
     await expect(downloadExportFile("j/1")).resolves.toEqual({ blob: PDF, filename: "a.pdf" });
-    expect(apiDownload).toHaveBeenCalledWith("/exports/j%2F1/file");
+    expect(apiDownloadOrAccepted).toHaveBeenCalledWith("/exports/j%2F1/file");
   });
 });

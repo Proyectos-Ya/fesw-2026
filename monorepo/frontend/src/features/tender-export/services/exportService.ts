@@ -1,4 +1,4 @@
-import { apiDownload, apiFetch } from "@/features/shared/api/client";
+import { apiDownloadOrAccepted, apiFetch } from "@/features/shared/api/client";
 
 import type {
   DownloadedFile,
@@ -24,7 +24,7 @@ export async function exportTender(
   format: ExportFormat,
   sections: readonly ExportSection[],
 ): Promise<ExportResult> {
-  const resultado = await apiDownload(`/tenders/${encodeURIComponent(tenderId)}/exports`, {
+  const resultado = await apiDownloadOrAccepted(`/tenders/${encodeURIComponent(tenderId)}/exports`, {
     method: "POST",
     body: JSON.stringify({ format, sections }),
   });
@@ -47,7 +47,7 @@ export function getExportJob(jobId: string): Promise<ExportJob> {
 }
 
 export async function downloadExportFile(jobId: string): Promise<DownloadedFile> {
-  const resultado = await apiDownload(`/exports/${encodeURIComponent(jobId)}/file`);
+  const resultado = await apiDownloadOrAccepted(`/exports/${encodeURIComponent(jobId)}/file`);
   if (resultado.kind !== "file") {
     throw new Error("El archivo todavía no está disponible.");
   }
