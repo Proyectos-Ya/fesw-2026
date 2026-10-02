@@ -113,6 +113,7 @@ def compose_experience_catalog(
                 polarity=question.polarity_of(answer.answer),
                 answered_by_user_id=answer.answered_by_user_id,
                 tender_id=answer.tender_id,
+                answered_at=answer.answered_at,
             )
         )
 

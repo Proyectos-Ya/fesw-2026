@@ -40,6 +40,12 @@ vi.mock("@/features/tender-assistant/components/TenderAssistantDrawer", () => ({
   TenderAssistantDrawer: () => null,
 }));
 
+vi.mock("@/features/proposals/components/ProposalEntryCard", () => ({
+  ProposalEntryCard: ({ isClosed }: { isClosed: boolean }) => (
+    <div data-testid="proposal-entry-card">{String(isClosed)}</div>
+  ),
+}));
+
 vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
   MilestonesSection: ({ tenderId }: { tenderId: string }) => (
     <div data-testid="milestones-section">{tenderId}</div>
@@ -102,6 +108,14 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
   });
 
+  it("monta la entrada a la postulación (HU-20)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByTestId("proposal-entry-card")).toBeInTheDocument();
+  });
+
   it("aplica rollback al estado previo y muestra alerta ante fallo al guardar licitación", async () => {
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(savedService.saveTenderApi).mockRejectedValue(
@@ -115,7 +129,8 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     });
 
     const saveButton = screen.getByRole("button", { name: "Guardar licitación" });
-    expect(screen.getByRole("button", { name: "Generar cotización" })).toBeInTheDocument();
+    // El cotizador vive en la postulación (HU-20), no en la ficha.
+    expect(screen.queryByRole("button", { name: "Generar cotización" })).not.toBeInTheDocument();
     await user.click(saveButton);
 
     const alert = await screen.findByText(SAVED_TENDERS_ERRORS.SAVE_FAILED);

@@ -1,4 +1,9 @@
+from uuid import UUID
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from app.domain.entities.capability import CapabilityQuestion
+from app.shared.datetime_utils import UtcDateTime
 
 
 class AnswerCapabilityInput(BaseModel):
@@ -31,3 +36,17 @@ class AddCapabilityEvidenceInput(BaseModel):
     buyer: str | None = Field(default=None, max_length=255)
     amount_clp: int | None = Field(default=None, ge=0)
     description: str | None = Field(default=None, max_length=2000)
+
+
+class PendingCapabilityQuestion(BaseModel):
+    """Una pregunta que la empresa activa tiene por responder.
+
+    Sin `supplier_id`: la empresa sale del contexto, como en el catálogo.
+    """
+
+    question: CapabilityQuestion
+    # La licitación que la originó, si la hay.
+    tender_id: UUID | None = None
+    tender_code: str | None = None
+    tender_name: str | None = None
+    generated_at: UtcDateTime

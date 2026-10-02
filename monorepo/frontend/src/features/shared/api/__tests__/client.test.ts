@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError, registrarProveedorDeToken } from "../client";
+import { apiDownload, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
@@ -120,5 +120,52 @@ describe("apiFetch — token de sesión", () => {
 
     expect(cabeceras(fetchMock)["Content-Type"]).toBeUndefined();
     expect(cabeceras(fetchMock).Authorization).toBe("Bearer jwt-de-supabase");
+  });
+});
+
+describe("apiDownload", () => {
+  it("devuelve el archivo y el nombre del Content-Disposition", async () => {
+    registrarProveedorDeToken(async () => "jwt-de-supabase");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("PK", {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": 'attachment; filename="documento-tecnico-657-70-COT26.docx"',
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const archivo = await apiDownload("/tenders/t-1/proposal/export.docx");
+
+    expect(archivo.filename).toBe("documento-tecnico-657-70-COT26.docx");
+    expect(await archivo.blob.text()).toBe("PK");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/tenders/t-1/proposal/export.docx");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer jwt-de-supabase",
+    );
+  });
+
+  it("usa un nombre por defecto si no viene Content-Disposition", async () => {
+    mockFetchOnce(new Response("x", { status: 200 }));
+
+    const archivo = await apiDownload("/x", "respaldo.docx");
+
+    expect(archivo.filename).toBe("respaldo.docx");
+  });
+
+  it("lanza ApiError con el detail del backend", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No requiere documento técnico" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(apiDownload("/x")).rejects.toThrowError(
+      expect.objectContaining({ status: 409, message: "No requiere documento técnico" }),
+    );
   });
 });

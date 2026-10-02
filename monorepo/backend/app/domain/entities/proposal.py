@@ -21,6 +21,7 @@ que ninguna lectura tenga que escribir.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID, uuid4
@@ -36,7 +37,16 @@ from app.shared.datetime_utils import (
 )
 
 ProposalStatus = Literal["FEASIBILITY", "PAUSED", "STOPPED", "READY"]
-RequirementKind = Literal["certificacion", "experiencia", "disponibilidad", "otro"]
+# Dos tipos no describen a la empresa y por eso no se preguntan:
+# - `condicion`: lo que define la oferta (cantidades, duración, fechas, plazos,
+#   especificaciones). Cualquier proveedor que cotiza la acepta; la redacción la
+#   usa para describir la oferta.
+# - `documento`: un antecedente que se adjunta (cotización, formulario,
+#   declaración jurada). Es la lista de documentos necesarios del borrador (CA1).
+RequirementKind = Literal[
+    "certificacion", "experiencia", "disponibilidad", "condicion", "documento", "otro"
+]
+KINDS_SIN_PREGUNTA: frozenset[str] = frozenset({"condicion", "documento"})
 # `parcial` sale de una respuesta neutra ("En proceso de inscripción"): no es un
 # "No", así que no pausa, pero tampoco es un "Sí" que el borrador pueda afirmar.
 RequirementStatus = Literal["cumple", "no_cumple", "parcial", "desconocido"]
@@ -67,6 +77,9 @@ class Requirement(BaseModel):
     catalog_item_id: str | None = None
     # La pregunta del banco que la empresa tiene que responder, si hace falta una.
     capability_question_id: UUID | None = None
+    # Sugerida para fortalecer la oferta: no la piden las bases, pero su respuesta
+    # le da a la redacción datos de la empresa. Nunca es excluyente.
+    suggested: bool = False
 
 
 class DiscrepancyDecision(BaseModel):
@@ -138,14 +151,56 @@ class DraftSection(BaseModel):
     paragraphs: list[DraftParagraph] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TechnicalSectionTemplate:
+    key: str
+    title: str
+    # Opcional: se incluye solo si hay contenido. Las demás siempre van, con un
+    # vacío por completar si la IA no tuvo de dónde sacar el texto.
+    optional: bool = False
+
+
+# Plantilla fija del documento técnico, acordada con el equipo (plan 230, §2.6).
+# Es lo único del borrador que se exporta a Word: nombre, descripción y
+# documentos se copian desde la pestaña del borrador al formulario de la
+# Compra Ágil.
+TECHNICAL_SECTIONS: tuple[TechnicalSectionTemplate, ...] = (
+    TechnicalSectionTemplate("antecedentes", "Antecedentes de la empresa"),
+    TechnicalSectionTemplate("comprension", "Comprensión del requerimiento"),
+    TechnicalSectionTemplate("metodologia", "Metodología"),
+    TechnicalSectionTemplate("plan_de_trabajo", "Plan de trabajo y plazos"),
+    TechnicalSectionTemplate("equipo", "Equipo de trabajo"),
+    TechnicalSectionTemplate("otros", "Otros requisitos de las bases", optional=True),
+)
+
+
+class TechnicalSection(BaseModel):
+    key: str
+    title: str
+    paragraphs: list[DraftParagraph] = Field(default_factory=list)
+
+
+class TechnicalDocument(BaseModel):
+    sections: list[TechnicalSection] = Field(default_factory=list)
+
+
 class DraftContent(BaseModel):
     """Plantilla fija de Compra Ágil (CA1)."""
 
     offer_name: DraftSection
     offer_description: DraftSection
     required_documents: DraftSection
-    # Solo si las bases lo exigen.
-    technical_document: DraftSection | None = None
+    # Solo si las bases lo exigen; con las secciones de `TECHNICAL_SECTIONS`.
+    technical_document: TechnicalDocument | None = None
+    # Cuándo se redactó. Una respuesta del banco modificada después deja el texto
+    # desactualizado. Es `None` en los borradores redactados antes de existir.
+    generated_at: UtcDateTime | None = None
+
+    @field_validator("generated_at")
+    @classmethod
+    def _redactado_en_utc_naive(cls, value: datetime | None) -> datetime | None:
+        # Viaja dentro del JSONB y vuelve con zona: se normaliza como el resto.
+        return aware_to_utc_naive(value)
 
 
 class ProposalDraft(BaseModel):
@@ -162,6 +217,9 @@ class ProposalDraft(BaseModel):
     discrepancy_decisions: list[DiscrepancyDecision] = Field(default_factory=list)
     content: DraftContent | None = None
     last_instructions: str | None = None
+    # Huella de lo que se usó en el análisis (adjuntos, catálogo y ficha). Al
+    # volver a analizar, si no cambió, el borrador se mantiene tal cual.
+    analysis_fingerprint: str | None = None
     created_by_user_id: UUID | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
@@ -193,6 +251,40 @@ class ProposalDraft(BaseModel):
                 or decision.action != "continue"
             )
         ]
+
+    def _estado_actual(self, polarity: Polarity | None) -> RequirementStatus:
+        # Sin polaridad: la respuesta ya no está vigente y se vuelve a preguntar.
+        return _ESTADO_POR_POLARIDAD[polarity] if polarity else "desconocido"
+
+    def changed_answers(
+        self, current: dict[UUID, tuple[Polarity | None, datetime | None]]
+    ) -> list[str]:
+        """Exigencias cuya respuesta en el banco cambió desde que se usó.
+
+        `current` trae, por pregunta, la polaridad vigente (o `None` si ya no
+        hay respuesta vigente) y cuándo se respondió. Cambió si el estado que
+        daría hoy no calza con el guardado, o si se respondió después de
+        redactar: el texto puede citar lo anterior. No modifica nada.
+
+        En pausa o detenida no avisa: ahí la respuesta se corrige en el aviso
+        de discrepancia o al reanudar, y `sync_answers` no aplica.
+        """
+        if self.status not in ("FEASIBILITY", "READY"):
+            return []
+        redactado = self.content.generated_at if self.content else None
+        cambiadas: list[str] = []
+        for requirement in self.requirements:
+            question_id = requirement.capability_question_id
+            if question_id is None or question_id not in current:
+                continue
+            polarity, answered_at = current[question_id]
+            if self._estado_actual(polarity) != requirement.status or (
+                redactado is not None
+                and answered_at is not None
+                and answered_at > redactado
+            ):
+                cambiadas.append(requirement.id)
+        return cambiadas
 
     def can_generate(self) -> bool:
         """¿Se puede redactar? La "pausa" de la generación del CA7."""
@@ -241,6 +333,17 @@ class ProposalDraft(BaseModel):
         )
         return pausada.capability_question_id if pausada else None
 
+    def _cambiar_estado(
+        self, requirement: Requirement, status: RequirementStatus
+    ) -> None:
+        requirement.status = status
+        # Una respuesta nueva reemplaza la anterior: su decisión y su
+        # advertencia dejan de valer. Si vuelve a ser "No", se pregunta otra vez.
+        self.discrepancy_decisions = [
+            d for d in self.discrepancy_decisions if d.requirement_id != requirement.id
+        ]
+        self.warnings = [w for w in self.warnings if w.requirement_id != requirement.id]
+
     def record_answer(self, question_id: UUID, polarity: Polarity) -> None:
         """Aplica la respuesta de la empresa a las exigencias que la esperaban.
 
@@ -259,22 +362,36 @@ class ProposalDraft(BaseModel):
             r for r in self.requirements if r.capability_question_id == question_id
         ]
         for requirement in tocadas:
-            requirement.status = nuevo_estado
-            # Una respuesta nueva reemplaza la anterior: su decisión y su
-            # advertencia dejan de valer. Si vuelve a ser "No", se pregunta otra vez.
-            self.discrepancy_decisions = [
-                d
-                for d in self.discrepancy_decisions
-                if d.requirement_id != requirement.id
-            ]
-            self.warnings = [
-                w for w in self.warnings if w.requirement_id != requirement.id
-            ]
+            self._cambiar_estado(requirement, nuevo_estado)
         if corrige_la_pausa:
             # Se vuelve a evaluar desde cero: un "No" pausa otra vez en la misma
             # exigencia; un "Sí" puede dejar al descubierto otra sin decidir.
             self.status = "FEASIBILITY"
             self.paused_requirement_id = None
+        self._pausar_si_corresponde()
+        self._tocar()
+
+    def sync_answers(self, polarities: dict[UUID, Polarity | None]) -> None:
+        """Aplica las respuestas vigentes del banco a las exigencias que las usan.
+
+        Sirve cuando la empresa corrigió una respuesta fuera de esta postulación.
+        Un "No" excluyente pausa como en la factibilidad; una respuesta vencida
+        vuelve a quedar pendiente. El texto redactado se conserva hasta que se
+        vuelva a redactar. En pausa o detenida no se aplica: primero se resuelve
+        la discrepancia.
+        """
+        self._exigir("FEASIBILITY", "READY", accion="actualizar las respuestas de")
+        for requirement in self.requirements:
+            question_id = requirement.capability_question_id
+            if question_id is None or question_id not in polarities:
+                continue
+            nuevo = self._estado_actual(polarities[question_id])
+            if nuevo != requirement.status:
+                self._cambiar_estado(requirement, nuevo)
+        if self.status == "READY" and (
+            self.pending_requirements() or self._sin_resolver()
+        ):
+            self.status = "FEASIBILITY"
         self._pausar_si_corresponde()
         self._tocar()
 
@@ -315,11 +432,19 @@ class ProposalDraft(BaseModel):
         self.status = "FEASIBILITY"
         self._tocar()
 
+    def request_technical_document(self) -> None:
+        """La empresa pide el documento técnico aunque no se detectó en las bases."""
+        self.requires_technical_document = True
+        self.technical_document_reason = (
+            "Lo pidió la empresa: no se detectó que las bases lo exijan."
+        )
+        self._tocar()
+
     def mark_ready(self, content: DraftContent, instructions: str | None) -> None:
         """Guarda el contenido redactado o regenerado (CA1, CA4)."""
         if not self.can_generate():
             raise InvalidProposalTransition(self.status, "redactar")
-        self.content = content
+        self.content = content.model_copy(update={"generated_at": utc_now_naive()})
         self.last_instructions = instructions
         self.status = "READY"
         self._tocar()
