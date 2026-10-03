@@ -11,6 +11,8 @@ import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
+import { useTenderInteractionReporter } from "@/features/ranking-telemetry/hooks/useTenderInteractionReporter";
+import type { RankingContext } from "@/features/ranking-telemetry/types";
 import {
   calculateTenderScore,
   generateDeepAnalysis,
@@ -44,6 +46,12 @@ import {
 
 interface TenderDetailViewProps {
   tenderId: string;
+  /**
+   * Lista de la que viene el usuario (`?r=&p=` de la URL de la tarjeta). Sin ella
+   * (búsqueda, notificación, enlace directo) las interacciones se guardan sin
+   * atribuir. Nunca se toma de la respuesta de `/recommended`: ver más abajo.
+   */
+  rankingContext?: RankingContext | null;
 }
 
 type LoadState =
@@ -88,7 +96,7 @@ function scoreLabel(score: number): string {
   return "Baja compatibilidad";
 }
 
-export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
+export function TenderDetailView({ tenderId, rankingContext = null }: TenderDetailViewProps) {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
@@ -101,8 +109,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-
+  const reportInteraction = useTenderInteractionReporter(tenderId, rankingContext);
 
   useEffect(() => {
     if (authLoading) return;
@@ -120,7 +127,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     void (async () => {
       try {
         const [matches, savedList] = await Promise.all([
-          getRecommendedTenders(user.id),
+          // Esta llamada solo busca la licitación entre las recomendadas: no es una
+          // lista que se le haya mostrado a nadie. Sin `track: false` cada apertura
+          // de una ficha crearía un ranking fantasma con todas sus posiciones.
+          getRecommendedTenders(user.id, { track: false }),
           fetchSavedTenders().catch(() => []),
         ]);
 
@@ -204,6 +214,13 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
     };
   }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
 
+  // El `detalle` lo informa la ficha al cargar y no la tarjeta: así se registra uno
+  // solo, y también se cubren las entradas desde búsqueda o notificación.
+  const loadedTenderId = state.kind === "ready" ? (state.match.tender?.id ?? null) : null;
+  useEffect(() => {
+    if (loadedTenderId === tenderId) reportInteraction("detalle");
+  }, [loadedTenderId, tenderId, reportInteraction]);
+
   const handleCalculateScore = async () => {
     setActionError(null);
     setPendingAction("score");
@@ -235,6 +252,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       const actualizado = await generateDeepAnalysis(tenderId, undefined, true);
       setAnalysis(actualizado);
       setScore(Math.round(actualizado.compatibility_score));
+      reportInteraction("analisis");
     } catch (err) {
       console.error("Error al actualizar el análisis:", err);
       setActionError(
@@ -257,6 +275,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         await unsaveTenderApi(tenderId);
       } else {
         await saveTenderApi(tenderId);
+        // Solo al guardar, y solo si el guardado resultó.
+        reportInteraction("guardar");
       }
     } catch (err) {
       console.error("Error al actualizar guardado:", err);
@@ -474,7 +494,12 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       <TenderAttachmentsPanel tenderId={tenderId} tenderCode={tender.code} />
 
       {/* AI Compatibility Analysis CTA Card */}
-      <QuotationEditor tenderId={tenderId} tenderCode={tender.code} tenderItems={tender.items} />
+      <QuotationEditor
+        tenderId={tenderId}
+        tenderCode={tender.code}
+        tenderItems={tender.items}
+        onSaved={() => reportInteraction("cotizacion")}
+      />
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
@@ -493,7 +518,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            onClick={() => setIsAssistantOpen(true)}
+            onClick={() => {
+              setIsAssistantOpen(true);
+              reportInteraction("asistente");
+            }}
             variant="ghost"
             className="shrink-0 border border-border-strong bg-white hover:bg-slate-50"
             id="btn-open-tender-assistant"
@@ -509,7 +537,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               guardado, no hay a dónde ir. */}
           {(!cerrada || analysis) && (
             <Button
-              onClick={() => router.push(`/matches/${tenderId}/analisis`)}
+              onClick={() => {
+                reportInteraction("analisis");
+                router.push(`/matches/${tenderId}/analisis`);
+              }}
               variant="primary"
               className="shrink-0"
               id="btn-generate-ai-analysis"
@@ -712,6 +743,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               href={officialUrl}
               target="_blank"
               rel="noreferrer noopener"
+              onClick={() => reportInteraction("ficha_mp")}
               className="inline-flex items-center gap-1.5 font-semibold text-text-link hover:underline"
             >
               Ficha oficial en Mercado Público

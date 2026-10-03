@@ -8,11 +8,17 @@ import { type TenderMaterial, type Material, type Quotation, materialsFromTender
 const blank = (): Material => ({ description: "", unit: "", quantity: "", unit_price: "" });
 const currency = "CLP" as const;
 const noTenderItems: TenderMaterial[] = [];
-interface QuotationEditorProps { tenderId: string; tenderCode: string; tenderItems?: TenderMaterial[]; }
+interface QuotationEditorProps {
+  tenderId: string;
+  tenderCode: string;
+  tenderItems?: TenderMaterial[];
+  /** Se llama después de guardar la cotización con éxito (la ficha lo usa para su telemetría). */
+  onSaved?: () => void;
+}
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });
 
-export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
+export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   return <section className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-6">
@@ -21,11 +27,11 @@ export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderIt
         <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p></div>
       <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : "Generar cotización"}</Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} /></div>}
+    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} onSaved={onSaved} /></div>}
   </section>;
 }
 
-function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
+function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
   const [items, setItems] = useState<Row[]>([]);
   const [initialTenderItems] = useState(tenderItems);
   const [loading, setLoading] = useState(true);
@@ -78,6 +84,7 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: Qu
     try {
       const saved = await apiFetch<Quotation>(endpoint, { method: "PUT", body: JSON.stringify({ currency, items: data }) });
       setDirty(false);
+      onSaved?.();
       if (download) {
         const csv = toCsv(saved.items, saved.currency, tenderCode, saved.supplier_id);
         const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));

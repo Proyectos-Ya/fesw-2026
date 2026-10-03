@@ -60,6 +60,12 @@ vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   unsaveTenderApi: vi.fn(),
 }));
 
+// La telemetría del ranking tiene sus propias pruebas (TenderDetailView.telemetry);
+// acá se aísla para que ninguna prueba salga a la red.
+vi.mock("@/features/ranking-telemetry/services/rankingTelemetryService", () => ({
+  reportTenderInteraction: vi.fn(),
+}));
+
 const mockMatch: MatchingResult = {
   id: "match-50",
   supplier_id: "sup-1",

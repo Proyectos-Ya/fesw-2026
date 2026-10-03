@@ -241,6 +241,13 @@ class Settings(BaseSettings):
     run_milestone_refresh: bool = True
     milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
+    # --- Telemetría del ranking (plan 233, decisión 8) ---
+    # Bucle que calcula el NDCG@10 diario, la prioridad de anexos en sombra y la
+    # purga de 90 días. Apagado, las impresiones se siguen registrando: solo
+    # dejan de agregarse y purgarse.
+    run_ranking_telemetry_jobs: bool = True
+    ranking_telemetry_interval_seconds: int = Field(default=6 * 60 * 60, gt=0)
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.

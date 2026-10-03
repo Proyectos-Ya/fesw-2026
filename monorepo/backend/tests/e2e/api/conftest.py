@@ -4,11 +4,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app import bootstrap
+from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.main import app
 from tests.support.api_auth import preparar_auth
 from tests.unit.application.fakes import (
     FakeEmailService,
     FakeEmbeddingService,
+    FakeRankingImpressionLogger,
     FakeSupplierVectorRepository,
     InMemorySupplierInvitationRepository,
     InMemorySupplierMemberRepository,
@@ -32,6 +34,9 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     invitations = InMemorySupplierInvitationRepository()
     vectors = FakeSupplierVectorRepository()
     emails = FakeEmailService()
+    impresiones = FakeRankingImpressionLogger()
+    # Uno por test: el de `app.state` se compartiría entre tests.
+    registro = RecentRankingRegistry()
 
     app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
     app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
@@ -42,6 +47,10 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         FakeEmbeddingService()
     )
     app.dependency_overrides[bootstrap.get_email_service] = lambda: emails
+    # Sin estos overrides, los tests de `/tenders/recommended` intentarían escribir
+    # las impresiones en la base de desarrollo.
+    app.dependency_overrides[bootstrap.get_ranking_impression_logger] = lambda: impresiones
+    app.dependency_overrides[bootstrap.get_ranking_registry] = lambda: registro
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -51,6 +60,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         ac.usuarios = users
         ac.proveedores = suppliers
         ac.correos = emails
+        ac.rankings_registrados = impresiones
         yield ac
 
     app.dependency_overrides.clear()

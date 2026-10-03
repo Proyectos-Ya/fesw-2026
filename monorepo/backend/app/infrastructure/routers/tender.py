@@ -3,22 +3,42 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
 from qdrant_client.http.exceptions import UnexpectedResponse as QdrantException
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.application.schemas.notification_schema import TenderDetailResponse
+from app.application.schemas.ranking_telemetry_schema import (
+    RecommendedTenderResponse,
+    TenderInteractionRequest,
+    TenderInteractionResponse,
+)
 from app.application.schemas.tender_schema import (
     TenderFilterCriteria,
     TenderSearchResult,
 )
+from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
+)
+from app.application.use_cases.ranking_telemetry.log_ranking_impressions import (
+    RankingImpressionLogger,
+)
+from app.application.use_cases.ranking_telemetry.record_tender_interaction import (
+    RecordTenderInteractionUseCase,
 )
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
@@ -57,6 +77,7 @@ from app.domain.errors.tender_errors import (
     TenderClosedForScoring,
     TenderNotFound,
 )
+from app.shared.datetime_utils import utc_now_naive
 from app.shared.regions import region_id_by_name
 
 
@@ -125,6 +146,9 @@ def create_tender_router(
     get_tender_detail_use_case: Callable,
     get_score_tender_on_demand_use_case: Callable,
     get_current_workspace_context: Callable | None = None,
+    get_ranking_impression_logger: Callable | None = None,
+    get_ranking_registry: Callable | None = None,
+    get_record_tender_interaction_use_case: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -139,7 +163,13 @@ def create_tender_router(
     def dummy_workspace() -> None:
         return None
 
+    def dummy_none() -> None:
+        return None
+
     actual_get_workspace = get_current_workspace_context or dummy_workspace
+    # Sin telemetría cableada (tests de otros routers) `/recommended` no registra.
+    actual_get_impression_logger = get_ranking_impression_logger or dummy_none
+    actual_get_ranking_registry = get_ranking_registry or dummy_none
 
     def _empresa_activa(workspace_context: WorkspaceContext | None) -> UUID | None:
         return workspace_context.active_supplier_id if workspace_context else None
@@ -259,7 +289,8 @@ def create_tender_router(
 
     @router.get(
         "/recommended",
-        response_model=list[MatchingResult],
+        response_model=list[RecommendedTenderResponse],
+        summary="Licitaciones recomendadas para la empresa activa",
         responses={
             404: {
                 "description": "No se encontró el perfil de proveedor o su vector asociado"
@@ -271,17 +302,35 @@ def create_tender_router(
     )
     async def get_recommended_tenders(
         request: Request,
+        background_tasks: BackgroundTasks,
         current_user: Annotated[User, Depends(get_current_user)],
         workspace_context: Annotated[
             WorkspaceContext | None, Depends(actual_get_workspace)
         ],
         use_case: Annotated[RankTendersUseCase, Depends(get_rank_tenders_use_case)],
+        impression_logger: Annotated[
+            RankingImpressionLogger | None, Depends(actual_get_impression_logger)
+        ],
+        ranking_registry: Annotated[
+            RecentRankingRegistry | None, Depends(actual_get_ranking_registry)
+        ],
         force_refresh: bool = False,
+        track: Annotated[
+            bool,
+            Query(
+                description="False para no registrar el ranking: lo usa la ficha, "
+                "que pide la lista solo para encontrar una licitación."
+            ),
+        ] = True,
     ):
-        """Licitaciones recomendadas para la empresa del usuario autenticado."""
+        """Licitaciones recomendadas para la empresa del usuario autenticado.
+
+        Cada ítem trae `ranking_id` y su posición servida; las posiciones se
+        guardan en segundo plano para medir el NDCG en producción.
+        """
         try:
             supplier_id = _empresa_activa(workspace_context)
-            return await use_case.execute(
+            resultados = await use_case.execute(
                 user_id=current_user.id,
                 supplier_id=supplier_id,
                 force_refresh=force_refresh,
@@ -300,6 +349,39 @@ def create_tender_router(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
             ) from e
+
+        ranking_id: UUID | None = None
+        if (
+            track
+            and resultados
+            and impression_logger is not None
+            and ranking_registry is not None
+        ):
+            servido_en = utc_now_naive()
+            ranking_id, es_nuevo = ranking_registry.resolve(
+                user_id=current_user.id,
+                supplier_id=resultados[0].supplier_id,
+                model_version=resultados[0].model_version,
+                tender_ids=[r.tender_id for r in resultados],
+                now=servido_en,
+            )
+            # Se escribe después de responder: no cambia el orden ni la latencia.
+            if es_nuevo:
+                background_tasks.add_task(
+                    impression_logger,
+                    ranking_id,
+                    current_user.id,
+                    list(resultados),
+                    servido_en,
+                )
+        # `dict(resultado)` y no `model_dump()`: deja el `Tender` anidado como
+        # instancia y no lo vuelve a validar.
+        return [
+            RecommendedTenderResponse(
+                **dict(resultado), ranking_id=ranking_id, ranking_position=posicion
+            )
+            for posicion, resultado in enumerate(resultados, start=1)
+        ]
 
     # Declarada antes que las rutas con `{tender_id}` para que el segmento
     # estático "saved" nunca sea capturado como parámetro de path.
@@ -492,6 +574,53 @@ def create_tender_router(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
             ) from e
+
+    if get_record_tender_interaction_use_case is not None:
+
+        @router.post(
+            "/{tender_id}/interactions",
+            response_model=TenderInteractionResponse,
+            status_code=status.HTTP_202_ACCEPTED,
+            summary="Registra una interacción con una licitación (telemetría del ranking)",
+            responses={
+                404: {"description": "La licitación no existe"},
+                422: {"description": "Tipo u origen desconocido"},
+            },
+        )
+        async def record_tender_interaction(
+            tender_id: UUID,
+            body: TenderInteractionRequest,
+            current_user: Annotated[User, Depends(get_current_user)],
+            workspace_context: Annotated[
+                WorkspaceContext | None, Depends(actual_get_workspace)
+            ],
+            use_case: Annotated[
+                RecordTenderInteractionUseCase,
+                Depends(get_record_tender_interaction_use_case),
+            ],
+        ):
+            """Impresiones, clics y acciones sobre una licitación.
+
+            Si `ranking_id` es de este usuario y empresa y la licitación estaba en
+            él, cuenta para el NDCG; si no, se guarda sin atribuir.
+            """
+            try:
+                resultado = await use_case.execute(
+                    user_id=current_user.id,
+                    supplier_id=_empresa_activa(workspace_context),
+                    tender_id=tender_id,
+                    kind=body.kind,
+                    source=body.source,
+                    ranking_id=body.ranking_id,
+                    position=body.position,
+                )
+            except TenderNotFound as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+                ) from e
+            return TenderInteractionResponse(
+                recorded=resultado.recorded, attributed=resultado.attributed
+            )
 
     # Va al final, después de `/search`, `/recommended` y `/saved`: es la ruta
     # más genérica y capturaría esos segmentos como si fueran un UUID.

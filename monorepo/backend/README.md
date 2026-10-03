@@ -418,6 +418,65 @@ recordatorios.
 
 ---
 
+## Telemetría del ranking (plan 233, decisión 8)
+
+Mide si el orden de `GET /tenders/recommended` sirve, con datos de producción: el
+NDCG@10 por versión del modelo, y una prioridad de anexos que se calcula y se guarda
+pero **nadie consume todavía** (en sombra; un test de arquitectura lo asegura).
+
+Un bucle `asyncio` más, con la misma premisa de **una sola instancia** que los
+anteriores:
+
+| Bucle | Cada cuánto | Qué hace |
+|---|---|---|
+| Telemetría del ranking | `RANKING_TELEMETRY_INTERVAL_SECONDS` (6 h), primera vuelta a los 5 min de arrancar | Recalcula el NDCG@10 de los últimos 7 días completos de Chile, toma el snapshot de prioridad y purga lo crudo de más de 90 días |
+
+`RUN_RANKING_TELEMETRY_JOBS=false` lo apaga. Las impresiones se siguen registrando: solo
+dejan de agregarse y purgarse. Todo es idempotente, así que reiniciar o correrlo dos veces
+no duplica nada (salvo un snapshot de prioridad).
+
+### Qué guarda cada tabla
+
+| Tabla | Qué es | Retención |
+|---|---|---|
+| `ranking_impression` | Cada posición que sirvió `/tenders/recommended`, en el orden del modelo | 90 días |
+| `tender_interaction` | Impresiones vistas (≥ 50 % durante 1 s) y acciones del usuario: detalle, guardar, ficha de Mercado Público, asistente, análisis, cotización. Con `ranking_id` y la posición mostrada solo si se pudo atribuir | 90 días |
+| `ranking_metric_daily` | NDCG@10 por día de Chile y `model_version`, con intervalo de confianza bootstrap | se conserva (agregado, sin datos personales) |
+| `attachment_priority_shadow` | Foto de la prioridad de anexos por licitación | 90 días |
+
+No se guarda IP, user agent, texto de búsqueda ni URL: solo ids, tipo, posición, origen y
+fechas. Las claves foráneas a `users`, `supplier` y `tender` son `ON DELETE CASCADE`, así
+que borrar una cuenta (o `scripts/reset_cuentas.py`) limpia la telemetría sola.
+
+Una interacción se atribuye a un ranking si existe la impresión de esa licitación en él,
+es del mismo usuario y empresa, y el ranking tiene menos de 7 días. Si no, se guarda sin
+`ranking_id` y no cuenta para el NDCG. Un ranking sin ninguna interacción con ganancia
+queda fuera del promedio (`rankings_served` los cuenta; `rankings_evaluated`, no).
+
+### Cómo se lee la métrica
+
+```sql
+select day, model_version, ndcg_at_10, ci_low, ci_high, rankings_evaluated, rankings_served
+from ranking_metric_daily
+order by day desc;
+```
+
+La métrica de hoy no existe hasta mañana (solo se calculan días completos de Chile).
+
+### Correrlo a mano
+
+Hace lo mismo que el bucle, para un backfill o para probar sin esperar:
+
+```bash
+python -m scripts.ranking_telemetry --dias 7 --incluir-hoy      # base local
+python -m scripts.ranking_telemetry --confirmar-produccion      # base compartida
+```
+
+`--dias` va de 1 a 90 (más atrás la purga ya borró lo crudo). Sale con 0 si todo terminó,
+1 si algún trabajo falló (los demás corren igual) y 2 si se negó a correr.
+
+---
+
 ## Calidad de código
 
 Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.

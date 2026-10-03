@@ -1,7 +1,8 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
 
 import math
-from datetime import datetime
+from collections.abc import Collection, Sequence
+from datetime import date, datetime
 from uuid import UUID
 
 from app.application.repositories.matching_result_repository import (
@@ -11,6 +12,9 @@ from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
     INotificationPreferenceRepository,
     INotificationRepository,
+)
+from app.application.repositories.ranking_telemetry_repository import (
+    IRankingTelemetryRepository,
 )
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
@@ -48,6 +52,13 @@ from app.domain.entities.notification import (
     NotificationDelivery,
     NotificationPreference,
 )
+from app.domain.entities.ranking_telemetry import (
+    AttachmentPriorityShadow,
+    PurgeCounts,
+    RankingImpression,
+    RankingMetricDaily,
+    TenderInteraction,
+)
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -61,6 +72,7 @@ from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
     UserAlreadyHasSupplier,
 )
+from app.domain.errors.tender_errors import TenderNotFound
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.datetime_utils import to_utc_epoch
 
@@ -1074,3 +1086,136 @@ def armar_scorer(
         formula=formula or FORMULA_DE_PRUEBA,
         model_version=model_version,
     )
+
+
+class InMemoryRankingTelemetryRepository(IRankingTelemetryRepository):
+    """Telemetría del ranking en memoria, con la semántica de la versión SQL.
+
+    - Impresiones únicas por (ranking_id, position).
+    - Interacciones únicas por (ranking_id, tender_id, kind) solo si hay `ranking_id`:
+      Postgres trata los NULL como distintos, así que lo no atribuido no se deduplica.
+    - Rangos de tiempo `start <= x < end` y `>= since`.
+    - La purga borra lo crudo con `< cutoff` y deja las métricas.
+    """
+
+    def __init__(self) -> None:
+        self.impressions: list[RankingImpression] = []
+        self.interactions: list[TenderInteraction] = []
+        self.metrics: dict[tuple[date, str], RankingMetricDaily] = {}
+        self.snapshots: list[AttachmentPriorityShadow] = []
+        self.open_tenders: dict[UUID, datetime] = {}
+        self.manual_uploads: list[tuple[UUID, datetime]] = []
+        self.missing_tenders: set[UUID] = set()
+
+    async def save_impressions(self, impressions: list[RankingImpression]) -> None:
+        existentes = {(i.ranking_id, i.position) for i in self.impressions}
+        for impresion in impressions:
+            clave = (impresion.ranking_id, impresion.position)
+            if clave in existentes:
+                continue
+            existentes.add(clave)
+            self.impressions.append(impresion)
+
+    async def find_impression(
+        self, ranking_id: UUID, tender_id: UUID
+    ) -> RankingImpression | None:
+        for impresion in self.impressions:
+            if impresion.ranking_id == ranking_id and impresion.tender_id == tender_id:
+                return impresion
+        return None
+
+    async def save_interaction(self, interaction: TenderInteraction) -> bool:
+        if interaction.tender_id in self.missing_tenders:
+            raise TenderNotFound(interaction.tender_id)
+        if interaction.ranking_id is not None:
+            for existente in self.interactions:
+                if (
+                    existente.ranking_id == interaction.ranking_id
+                    and existente.tender_id == interaction.tender_id
+                    and existente.kind == interaction.kind
+                ):
+                    return False
+        self.interactions.append(interaction)
+        return True
+
+    async def list_impressions_between(
+        self, start: datetime, end: datetime
+    ) -> list[RankingImpression]:
+        return [i for i in self.impressions if start <= i.created_at < end]
+
+    async def list_attributed_interactions(
+        self, ranking_ids: Sequence[UUID]
+    ) -> list[TenderInteraction]:
+        buscados = set(ranking_ids)
+        return [i for i in self.interactions if i.ranking_id in buscados]
+
+    async def upsert_daily_metric(self, metric: RankingMetricDaily) -> None:
+        self.metrics[(metric.day, metric.model_version)] = metric
+
+    async def count_top_impressions_by_tender(
+        self, since: datetime, max_position: int
+    ) -> dict[UUID, int]:
+        conteo: dict[UUID, int] = {}
+        for i in self.interactions:
+            if (
+                i.kind == "impresion"
+                and i.position is not None
+                and i.position <= max_position
+                and i.created_at >= since
+            ):
+                conteo[i.tender_id] = conteo.get(i.tender_id, 0) + 1
+        return conteo
+
+    async def count_interactions_by_tender(self, since: datetime) -> dict[UUID, int]:
+        conteo: dict[UUID, int] = {}
+        for i in self.interactions:
+            if i.kind != "impresion" and i.created_at >= since:
+                conteo[i.tender_id] = conteo.get(i.tender_id, 0) + 1
+        return conteo
+
+    async def tenders_with_manual_upload(self, since: datetime) -> set[UUID]:
+        return {tender_id for tender_id, at in self.manual_uploads if at >= since}
+
+    async def open_tenders_closing_after(
+        self, tender_ids: Collection[UUID], min_closing_at: datetime
+    ) -> dict[UUID, datetime]:
+        return {
+            tender_id: closing
+            for tender_id, closing in self.open_tenders.items()
+            if tender_id in tender_ids and closing > min_closing_at
+        }
+
+    async def save_priority_snapshots(
+        self, snapshots: list[AttachmentPriorityShadow]
+    ) -> None:
+        self.snapshots.extend(snapshots)
+
+    async def purge_before(self, cutoff: datetime) -> PurgeCounts:
+        impresiones = [i for i in self.impressions if i.created_at >= cutoff]
+        interacciones = [i for i in self.interactions if i.created_at >= cutoff]
+        snapshots = [s for s in self.snapshots if s.computed_at >= cutoff]
+        conteo = PurgeCounts(
+            impressions=len(self.impressions) - len(impresiones),
+            interactions=len(self.interactions) - len(interacciones),
+            priority_snapshots=len(self.snapshots) - len(snapshots),
+        )
+        self.impressions = impresiones
+        self.interactions = interacciones
+        self.snapshots = snapshots
+        return conteo
+
+
+class FakeRankingImpressionLogger:
+    """Registrador de impresiones que solo anota las llamadas (para los e2e)."""
+
+    def __init__(self) -> None:
+        self.llamadas: list[tuple[UUID, UUID, list[MatchingResult], datetime]] = []
+
+    async def __call__(
+        self,
+        ranking_id: UUID,
+        user_id: UUID,
+        results: list[MatchingResult],
+        served_at: datetime,
+    ) -> None:
+        self.llamadas.append((ranking_id, user_id, results, served_at))

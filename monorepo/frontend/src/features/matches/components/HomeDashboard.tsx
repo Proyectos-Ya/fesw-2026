@@ -8,8 +8,9 @@ import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
+import { cardRanking } from "@/features/ranking-telemetry/utils/rankingLink";
 import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult } from "../tenderTypes";
+import type { RecommendedMatch } from "../tenderTypes";
 import type { Question } from "../questionTypes";
 import { normalizeScore } from "../utils/format";
 import { useSmartQuestions } from "../hooks/useSmartQuestions";
@@ -27,7 +28,7 @@ const GREEN_THRESHOLD = 70;
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; matches: MatchingResult[] }
+  | { kind: "ready"; matches: RecommendedMatch[] }
   | { kind: "no-supplier" }
   | { kind: "error"; message: string };
 
@@ -229,8 +230,13 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       ) : (
         <>
           <div className="flex flex-col gap-4">
-            {matches.map((m) => (
-              <TenderCard key={m.id} match={m} />
+            {matches.map((m, index) => (
+              // La posición es la de esta lista, ya filtrada por verde: la que ve el usuario.
+              <TenderCard
+                key={m.id}
+                match={m}
+                ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
+              />
             ))}
           </div>
           <div className="mt-6 text-center">

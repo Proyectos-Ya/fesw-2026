@@ -48,6 +48,9 @@ def create_router(
     get_tender_chat_history_use_case: Callable | None = None,
     get_create_tender_chat_session_use_case: Callable | None = None,
     get_email_service: Callable | None = None,
+    get_ranking_impression_logger: Callable | None = None,
+    get_ranking_registry: Callable | None = None,
+    get_record_tender_interaction_use_case: Callable | None = None,
 ) -> APIRouter:
     """Ensambla todos los sub-routers con sus dependencias inyectadas.
 
@@ -99,6 +102,9 @@ def create_router(
             get_tender_detail_use_case=get_tender_detail_use_case,
             get_current_workspace_context=get_optional_workspace_context or get_current_workspace_context,
             get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
+            get_ranking_impression_logger=get_ranking_impression_logger,
+            get_ranking_registry=get_ranking_registry,
+            get_record_tender_interaction_use_case=get_record_tender_interaction_use_case,
         )
     )
 

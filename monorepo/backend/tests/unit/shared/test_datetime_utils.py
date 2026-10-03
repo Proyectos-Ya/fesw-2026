@@ -1,12 +1,14 @@
 import calendar
 import os
 import time
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
 from app.shared.datetime_utils import (
     CHILE_TZ,
+    chile_date,
+    chile_day_bounds_utc,
     serialize_utc,
     to_utc_epoch,
     to_utc_naive,
@@ -129,3 +131,37 @@ class TestToUtcEpoch:
             else:
                 os.environ["TZ"] = original
             time.tzset()
+
+
+class TestChileDayBoundsUtc:
+    """El día de Chile en UTC naive, que es como se guardan las fechas."""
+
+    def test_en_horario_de_verano_el_dia_empieza_a_las_3_utc(self):
+        assert chile_day_bounds_utc(date(2026, 10, 2)) == (
+            datetime(2026, 10, 2, 3, 0),
+            datetime(2026, 10, 3, 3, 0),
+        )
+
+    def test_en_invierno_el_dia_empieza_a_las_4_utc(self):
+        assert chile_day_bounds_utc(date(2026, 6, 15)) == (
+            datetime(2026, 6, 15, 4, 0),
+            datetime(2026, 6, 16, 4, 0),
+        )
+
+    def test_el_dia_del_cambio_de_hora_dura_23_horas(self):
+        inicio, fin = chile_day_bounds_utc(date(2026, 9, 6))
+        assert (inicio, fin) == (datetime(2026, 9, 6, 4, 0), datetime(2026, 9, 7, 3, 0))
+        assert fin - inicio == timedelta(hours=23)
+
+    def test_los_limites_son_naive(self):
+        inicio, fin = chile_day_bounds_utc(date(2026, 10, 2))
+        assert inicio.tzinfo is None
+        assert fin.tzinfo is None
+
+
+class TestChileDate:
+    def test_un_instante_de_madrugada_utc_es_el_dia_anterior_en_chile(self):
+        assert chile_date(datetime(2026, 10, 3, 2, 30)) == date(2026, 10, 2)
+
+    def test_un_instante_de_la_tarde_es_el_mismo_dia(self):
+        assert chile_date(datetime(2026, 10, 3, 15, 0)) == date(2026, 10, 3)

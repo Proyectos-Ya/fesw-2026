@@ -88,6 +88,27 @@ describe("editor de cotización", () => {
     await screen.findByRole("alert");
     expect(screen.queryByRole("button", { name: "Guardar cotización" })).not.toBeInTheDocument();
   });
+  it("avisa con onSaved después de guardar la cotización", async () => {
+    const onSaved = vi.fn();
+    vi.mocked(apiFetch).mockResolvedValue(saved);
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    await screen.findByLabelText("Descripción 1");
+    expect(onSaved).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
+    await screen.findByText("Cotización guardada.");
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+  it("no avisa con onSaved si el guardado falla", async () => {
+    const onSaved = vi.fn();
+    vi.mocked(apiFetch).mockResolvedValueOnce(saved).mockRejectedValueOnce(new ApiError(503, "Intenta nuevamente"));
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    await screen.findByLabelText("Descripción 1");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Intenta nuevamente"));
+    expect(onSaved).not.toHaveBeenCalled();
+  });
   it("conserva el borrador y muestra el error si falla el guardado", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(saved).mockRejectedValueOnce(new ApiError(503, "Intenta nuevamente"));
     await open();

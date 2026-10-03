@@ -38,6 +38,32 @@ describe("getRecommendedTenders", () => {
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toContain("/tenders/recommended?profile_id=supplier-xyz");
   });
+
+  it("con track: false lo manda para que la ficha no registre un ranking", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getRecommendedTenders("supplier-xyz", { track: false });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain("track=false");
+  });
+
+  it("por defecto no manda track: el backend registra el ranking", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getRecommendedTenders("supplier-xyz");
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).not.toContain("track=");
+  });
 });
 
 describe("generateDeepAnalysis", () => {

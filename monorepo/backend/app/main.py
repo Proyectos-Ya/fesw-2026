@@ -10,6 +10,7 @@ from app.bootstrap import (
     bootstrap,
     build_milestone_refresh_runner,
     build_notification_runners,
+    build_ranking_telemetry_runner,
 )
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
@@ -26,6 +27,9 @@ from app.infrastructure.services.milestone_refresh_scheduler import (
 )
 from app.infrastructure.services.notifications.notification_scheduler import (
     NotificationScheduler,
+)
+from app.infrastructure.services.ranking_telemetry_scheduler import (
+    RankingTelemetryScheduler,
 )
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -154,6 +158,23 @@ async def lifespan(app: FastAPI):
         print("[Main] Iniciando revisión de cambios de fechas de hitos...")
         milestone_refresh_task = asyncio.create_task(milestone_scheduler.start_loop())
 
+    # Telemetría del ranking (plan 233, decisión 8). Mismo supuesto de una sola
+    # instancia; con dos, los upserts y la purga quedan idempotentes y solo se
+    # duplica algún snapshot.
+    ranking_telemetry_task = None
+    if settings.run_ranking_telemetry_jobs:
+        ranking_telemetry_scheduler = RankingTelemetryScheduler(
+            run_cycle=build_ranking_telemetry_runner(),
+            interval_seconds=settings.ranking_telemetry_interval_seconds,
+        )
+        print(
+            "[Main] Iniciando telemetría del ranking "
+            "(NDCG diario, prioridad en sombra, purga)..."
+        )
+        ranking_telemetry_task = asyncio.create_task(
+            ranking_telemetry_scheduler.start_loop()
+        )
+
     yield
 
     # `cancel()` solo *pide* la cancelación: marca la tarea y devuelve el control
@@ -171,6 +192,7 @@ async def lifespan(app: FastAPI):
             digest_task,
             reminder_task,
             milestone_refresh_task,
+            ranking_telemetry_task,
         )
         if t
     ]

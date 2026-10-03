@@ -13,7 +13,7 @@ Las conversiones ocurren únicamente en los bordes del sistema:
   JavaScript interpreta el string como hora local y muestra la hora corrida.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
@@ -39,6 +39,25 @@ def to_utc_naive(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=CHILE_TZ)
     return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def chile_date(value: datetime) -> date:
+    """Fecha de calendario en Chile de un instante UTC naive (invariante de persistencia)."""
+    return value.replace(tzinfo=UTC).astimezone(CHILE_TZ).date()
+
+
+def chile_day_bounds_utc(day: date) -> tuple[datetime, datetime]:
+    """[inicio, fin) del día `day` de Chile, en UTC naive.
+
+    Un día de cambio de hora dura 23 o 25 h, por eso no basta con sumar 24 h al
+    inicio: el fin sale de la medianoche siguiente, convertida por separado.
+    """
+    start = datetime.combine(day, time.min, tzinfo=CHILE_TZ)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=CHILE_TZ)
+    return (
+        start.astimezone(UTC).replace(tzinfo=None),
+        end.astimezone(UTC).replace(tzinfo=None),
+    )
 
 
 def leer_fecha_mp(valor: str | None) -> datetime | None:

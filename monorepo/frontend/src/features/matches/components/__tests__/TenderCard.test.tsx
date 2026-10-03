@@ -1,8 +1,38 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TenderCard } from "../TenderCard";
 import type { MatchingResult, Tender } from "../../tenderTypes";
 import { formatClosingDate } from "../../utils/format";
+import { reportTenderInteraction } from "@/features/ranking-telemetry/services/rankingTelemetryService";
+import { resetReportedImpressions } from "@/features/ranking-telemetry/hooks/useImpressionTracker";
+
+vi.mock("@/features/ranking-telemetry/services/rankingTelemetryService", () => ({
+  reportTenderInteraction: vi.fn(),
+}));
+
+// Un <a> que no navega y llama al onClick original: en jsdom no hay router.
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: React.ComponentProps<"a"> & { href: string }) => (
+    <a
+      href={href}
+      {...rest}
+      onClick={(e) => {
+        e.preventDefault();
+        rest.onClick?.(e);
+      }}
+    >
+      {children}
+    </a>
+  ),
+}));
+
+const RK = "0b6f3d2e-8f1a-4c53-9a6e-2d1c7b9e4a10";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetReportedImpressions();
+});
 
 const mockTender: Tender = {
   id: "tender-123",
@@ -111,5 +141,90 @@ describe("TenderCard: segundo llamado", () => {
     expect(
       screen.getByText(`Cierra ${formatClosingDate(mockTender.closing_at)}`),
     ).toBeInTheDocument();
+  });
+});
+
+describe("TenderCard: telemetría del ranking", () => {
+  it("el enlace lleva el ranking y la posición mostrada", () => {
+    render(
+      <TenderCard
+        match={mockMatch}
+        ranking={{ rankingId: RK, position: 4, source: "matches" }}
+      />,
+    );
+
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      `/matches/tender-123?r=${RK}&p=4`,
+    );
+  });
+
+  it("sin ranking el enlace es el de siempre y un clic no reporta nada", async () => {
+    const user = userEvent.setup();
+    render(<TenderCard match={mockMatch} />);
+
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", "/matches/tender-123");
+    await user.click(link);
+
+    expect(reportTenderInteraction).not.toHaveBeenCalled();
+  });
+
+  it("con ranking, un clic marca la impresión (probó que la vio) pero no el detalle", async () => {
+    const user = userEvent.setup();
+    render(
+      <TenderCard
+        match={mockMatch}
+        ranking={{ rankingId: RK, position: 4, source: "matches" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("link"));
+
+    expect(reportTenderInteraction).toHaveBeenCalledTimes(1);
+    expect(reportTenderInteraction).toHaveBeenCalledWith("tender-123", "impresion", "matches", {
+      rankingId: RK,
+      position: 4,
+    });
+  });
+
+  it("guardar con ranking reporta 'guardar' y llama a onToggleSave", async () => {
+    const user = userEvent.setup();
+    const onToggleSave = vi.fn();
+    render(
+      <TenderCard
+        match={mockMatch}
+        isSaved={false}
+        onToggleSave={onToggleSave}
+        ranking={{ rankingId: RK, position: 2, source: "inicio" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Guardar licitación" }));
+
+    expect(onToggleSave).toHaveBeenCalledWith("tender-123");
+    expect(reportTenderInteraction).toHaveBeenCalledTimes(1);
+    expect(reportTenderInteraction).toHaveBeenCalledWith("tender-123", "guardar", "inicio", {
+      rankingId: RK,
+      position: 2,
+    });
+  });
+
+  it("quitar de guardadas no reporta nada", async () => {
+    const user = userEvent.setup();
+    const onToggleSave = vi.fn();
+    render(
+      <TenderCard
+        match={mockMatch}
+        isSaved
+        onToggleSave={onToggleSave}
+        ranking={{ rankingId: RK, position: 2, source: "inicio" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Quitar de licitaciones guardadas" }));
+
+    expect(onToggleSave).toHaveBeenCalledWith("tender-123");
+    expect(reportTenderInteraction).not.toHaveBeenCalled();
   });
 });

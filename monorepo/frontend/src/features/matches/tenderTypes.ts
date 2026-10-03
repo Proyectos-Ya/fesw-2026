@@ -51,6 +51,14 @@ export interface MatchingResult {
   tender: Tender | null;
 }
 
+/** Lo que devuelve `/tenders/recommended`. Opcionales: un backend anterior no los manda. */
+export interface RecommendedMatch extends MatchingResult {
+  /** Nulo si se pidió con `track: false`. */
+  ranking_id?: string | null;
+  /** Posición servida, antes de los filtros del frontend. */
+  ranking_position?: number | null;
+}
+
 export interface DeepAnalysis {
   id: string;
   tender_id: string;

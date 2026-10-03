@@ -1,7 +1,9 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -63,6 +65,7 @@ from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
 )
+from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.application.services.tender_assistant_ai_service import (
@@ -144,6 +147,16 @@ from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
 from app.application.use_cases.quotation import QuotationUseCase
+from app.application.use_cases.ranking_telemetry.log_ranking_impressions import (
+    LogRankingImpressionsUseCase,
+    RankingImpressionLogger,
+)
+from app.application.use_cases.ranking_telemetry.record_tender_interaction import (
+    RecordTenderInteractionUseCase,
+)
+from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle import (
+    RankingTelemetryCycleResult,
+)
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
@@ -161,6 +174,7 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
 )
 from app.config import settings
 from app.domain.entities.calendar import CalendarProvider
+from app.domain.entities.matching_result import MatchingResult
 from app.infrastructure.auth.dependencies import (
     build_get_current_user,
     build_get_current_workspace_context,
@@ -191,6 +205,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.ranking_telemetry_repository import (
+    SqlRankingTelemetryRepository,
+)
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
@@ -250,6 +267,9 @@ from app.infrastructure.services.gemini_tender_assistant_service import (
 )
 from app.infrastructure.services.notifications.smtp_email_service import (
     SmtpEmailService,
+)
+from app.infrastructure.services.ranking_telemetry_jobs import (
+    build_ranking_telemetry_cycle,
 )
 from app.infrastructure.services.security.fernet_token_cipher import (
     FernetTokenCipher,
@@ -879,6 +899,54 @@ class MockRerankerService(IRerankerService):
 logger = logging.getLogger(__name__)
 
 
+async def registrar_impresiones_de_ranking(
+    ranking_id: UUID,
+    user_id: UUID,
+    results: list[MatchingResult],
+    served_at: datetime,
+) -> None:
+    """Escribe las posiciones servidas de un ranking.
+
+    Corre como `BackgroundTask`, después de responder: abre su propia sesión (la
+    de la petición ya puede estar cerrada) y nunca lanza, porque un fallo de
+    telemetría no puede convertirse en un error para el usuario.
+    """
+    try:
+        async with async_session_maker() as session:
+            await LogRankingImpressionsUseCase(
+                SqlRankingTelemetryRepository(session)
+            ).execute(
+                ranking_id=ranking_id,
+                user_id=user_id,
+                results=results,
+                served_at=served_at,
+            )
+    except Exception as exc:
+        # Sin `user_id` en el log: es un dato personal que no hace falta acá.
+        logger.warning("No se pudo registrar el ranking %s: %s", ranking_id, exc)
+
+
+def get_ranking_impression_logger() -> RankingImpressionLogger:
+    return registrar_impresiones_de_ranking
+
+
+def get_ranking_registry(request: Request) -> RecentRankingRegistry:
+    return request.app.state.ranking_registry
+
+
+def get_record_tender_interaction_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RecordTenderInteractionUseCase:
+    return RecordTenderInteractionUseCase(repo=SqlRankingTelemetryRepository(session))
+
+
+def build_ranking_telemetry_runner() -> Callable[
+    [], Awaitable[RankingTelemetryCycleResult]
+]:
+    """El ciclo del bucle del lifespan: abre y cierra su propia sesión en cada trabajo."""
+    return build_ranking_telemetry_cycle(async_session_maker)
+
+
 class MockEmbeddingService(IEmbeddingService):
     """Embeddings en cero, para levantar en local sin el modelo descargado.
 
@@ -1234,6 +1302,10 @@ def bootstrap(app: FastAPI) -> None:
     # llevarían todas las que sobreviven al filtro y no ordenaría nada.
     app.state.compatibility_formula = build_compatibility_formula()
 
+    # En memoria y por proceso (un solo worker): reusa el `ranking_id` cuando se
+    # sirve la misma lista al mismo usuario y empresa en 30 minutos.
+    app.state.ranking_registry = RecentRankingRegistry()
+
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(
         get_user_repo=get_user_repo,
@@ -1287,6 +1359,9 @@ def bootstrap(app: FastAPI) -> None:
         get_tender_chat_history_use_case=get_tender_chat_history_use_case,
         get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
         get_email_service=get_email_service,
+        get_ranking_impression_logger=get_ranking_impression_logger,
+        get_ranking_registry=get_ranking_registry,
+        get_record_tender_interaction_use_case=get_record_tender_interaction_use_case,
     )
     app.include_router(router)
     app.include_router(
