@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # from uuid import UUID
 from app.shared.constants import UNKNOWN_TENDER_STATUS
@@ -18,6 +18,24 @@ class ItemLicitacionDTO(BaseModel):
     descripcion: str | None = None
     cantidad: float
     unidad_medida: str
+
+
+class DocumentoOficialDTO(BaseModel):
+    """Un anexo tal como lo publica Mercado Público: `documentos: [{id, nombre}]`.
+
+    Inmutable (y por eso hashable) porque viaja dentro de `CambioDeEstado`, que
+    es un dataclass congelado.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    mp_document_id: int = Field(gt=0)
+    nombre: str = Field(min_length=1)
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def _recortar(cls, valor: object) -> object:
+        return valor.strip() if isinstance(valor, str) else valor
 
 
 class TenderIngestaDTO(BaseModel):
@@ -46,6 +64,12 @@ class TenderIngestaDTO(BaseModel):
 
     available_amount_clp: float | None = Field(None, alias="MontoEstimado")
     items: list[ItemLicitacionDTO] = []
+    # Lista oficial de anexos. `None` = la fuente no la informa (el detalle no
+    # trae la clave o algún ítem es ilegible): la lista guardada no se toca.
+    # `[]` = Mercado Público dice que no hay anexos: se retiran los que había.
+    # Confundirlos haría que cada pasada de la ingesta retirara los anexos que
+    # el listado acaba de registrar, y la lista parpadearía.
+    documentos: list[DocumentoOficialDTO] | None = None
 
     class Config:
         populate_by_name = True

@@ -2,6 +2,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
 from app.application.repositories.tender_item_vector_repository import (
     ITenderItemVectorRepository,
 )
@@ -48,6 +51,7 @@ class TenderIngestionUseCase:
         tender_vector_repo: ITenderVectorRepository,
         enable_comuna_generic_heuristic: bool = False,
         tender_item_vector_repo: ITenderItemVectorRepository | None = None,
+        attachment_repo: ITenderAttachmentRepository | None = None,
     ):
         self.repo = repository
         self.embedding_service = embedding_service
@@ -56,6 +60,10 @@ class TenderIngestionUseCase:
         # del puntaje de compatibilidad. Sin él la ingesta funciona igual; las
         # licitaciones sin vectores de partidas las cubre el backfill.
         self.tender_item_vector_repo = tender_item_vector_repo
+        # Opcional, como el de partidas: guarda la lista oficial de anexos que
+        # trae el detalle (plan 233, decisión 1). Sin él la ingesta funciona
+        # igual; la lista la refrescan los crons con lo que ya listan.
+        self.attachment_repo = attachment_repo
         self.text_builder = TextBuilder()
         # Ver settings.enable_comuna_generic_heuristic: apagado por defecto
         # hasta decidir si el riesgo de falso positivo de la heurística
@@ -67,7 +75,13 @@ class TenderIngestionUseCase:
         try:
             existente = await self.repo.get_by_code(dto.code)
             if existente:
-                return await self._actualizar(existente, dto)
+                # El id se toma ANTES de `_actualizar`: su commit expira el
+                # objeto y, con una sesión async, leer un atributo expirado
+                # revienta (MissingGreenlet).
+                tender_id = existente.id
+                resultado = await self._actualizar(existente, dto)
+                await self._sincronizar_anexos(tender_id, dto)
+                return resultado
 
             if (
                 not dto.buyer_rut
@@ -153,6 +167,7 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code, code=dto.status_semantic_code
             )
             await self.repo.save_complex_tender(new_tender, tender_items)
+            await self._sincronizar_anexos(tender_id, dto)  # FK: después de la licitación
 
             return {"status": "success", "tender_code": dto.code}
 
@@ -162,6 +177,26 @@ class TenderIngestionUseCase:
             print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
             await self.repo.rollback()
             raise
+
+    async def _sincronizar_anexos(
+        self, tender_id: uuid.UUID, dto: TenderIngestaDTO
+    ) -> None:
+        """Deja la lista oficial como la informa este detalle.
+
+        `None` no toca nada (ver `TenderIngestaDTO.documentos`). Corre también en
+        "unchanged": escribe en `tender_attachment` y en `attachments_synced_at`,
+        no en `updated_at`, así que no rompe el contrato de no regenerar el
+        análisis.
+
+        Un error acá cae en el `except` de `execute` (rollback y relanzar): el
+        repositorio de anexos comparte la sesión, así que el rollback también lo
+        cubre. El reintento es idempotente: entra por `_actualizar`.
+        """
+        if self.attachment_repo is None or dto.documentos is None:
+            return
+        await self.attachment_repo.sync_official_lists(
+            {tender_id: dto.documentos}, visto_en=utc_now_naive()
+        )
 
     async def _actualizar(
         self, existente: TenderModel, dto: TenderIngestaDTO

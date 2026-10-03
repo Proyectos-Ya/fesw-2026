@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
+
 
 @dataclass(frozen=True)
 class CambioDeEstado:
@@ -23,6 +25,9 @@ class CambioDeEstado:
     # `fecha_ultimo_cambio` de la API. Sirve para decidir si hay que volver a
     # bajar el detalle; puede faltar sin que el estado deje de ser útil.
     changed_at: datetime | None = None
+    # Lista oficial de anexos del ítem del listado. Tupla porque el dataclass es
+    # congelado. `None` = el ítem no la trae legible: no se toca la guardada.
+    documentos: tuple[DocumentoOficialDTO, ...] | None = None
 
 
 @dataclass(frozen=True)

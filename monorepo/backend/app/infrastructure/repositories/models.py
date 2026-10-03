@@ -37,6 +37,9 @@ from app.infrastructure.repositories.supplier_member_model import (
     SupplierMemberModel,
 )
 from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.tender_attachment_model import (
+    TenderAttachmentModel,
+)
 from app.infrastructure.repositories.tender_chat_model import (
     TenderChatDocumentModel,
     TenderChatMessageModel,
@@ -76,6 +79,7 @@ __all__ = [
     "SupplierMemberModel",
     "SupplierInvitationModel",
     "TenderAIAnalysisModel",
+    "TenderAttachmentModel",
     "TenderItemModel",
     "TenderMetadataModel",
     "TenderModel",

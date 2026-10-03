@@ -7,6 +7,8 @@ y se indexa en el repositorio vectorial (Qdrant).
 from datetime import datetime
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
@@ -18,6 +20,7 @@ from app.domain.entities.tender import Tender
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
 from app.shared.constants import ACTIVE_TENDER_STATUSES
+from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
 from tests.unit.application.fakes import (
     FakeEmbeddingPorTexto,
     FakeEmbeddingService,
@@ -141,33 +144,36 @@ def _make_dto(
     nombre: str = "Construcción de sede comunal",
     monto: float = 50_000_000.0,
     items: list[dict] | None = None,
+    documentos: list[dict] | None = None,
 ) -> TenderIngestaDTO:
-    return TenderIngestaDTO.model_validate(
-        {
-            "CodigoExterno": code,
-            "Nombre": nombre,
-            "Descripcion": "Se requiere construir edificio de 2 pisos",
-            "CodigoEstado": status_code,
-            "EstadoCodigo": estado_codigo,
-            "FechaPublicacion": "2026-01-01T00:00:00",
-            "FechaCierre": "2026-06-30T23:59:00",
-            "RutComprador": "12.345.678-9",
-            "NombreOrganismo": organismo,
-            "UnidadCompra": "Depto. Obras",
-            "RegionId": 13,
-            "RegionUnidad": "Región Metropolitana de Santiago",
-            "MontoEstimado": monto,
-            "items": items
-            if items is not None
-            else [
-                {
-                    "nombre_producto": "Mano de obra",
-                    "cantidad": 10,
-                    "unidad_medida": "hh",
-                },
-            ],
-        }
-    )
+    datos: dict = {
+        "CodigoExterno": code,
+        "Nombre": nombre,
+        "Descripcion": "Se requiere construir edificio de 2 pisos",
+        "CodigoEstado": status_code,
+        "EstadoCodigo": estado_codigo,
+        "FechaPublicacion": "2026-01-01T00:00:00",
+        "FechaCierre": "2026-06-30T23:59:00",
+        "RutComprador": "12.345.678-9",
+        "NombreOrganismo": organismo,
+        "UnidadCompra": "Depto. Obras",
+        "RegionId": 13,
+        "RegionUnidad": "Región Metropolitana de Santiago",
+        "MontoEstimado": monto,
+        "items": items
+        if items is not None
+        else [
+            {
+                "nombre_producto": "Mano de obra",
+                "cantidad": 10,
+                "unidad_medida": "hh",
+            },
+        ],
+    }
+    # Sin la clave el DTO deja `documentos` en None: "la fuente no informa".
+    if documentos is not None:
+        datos["documentos"] = documentos
+    return TenderIngestaDTO.model_validate(datos)
 
 
 # ---------------------------------------------------------------------------
@@ -956,3 +962,122 @@ async def test_una_licitacion_que_se_cierra_pierde_tambien_sus_vectores_de_parti
     await use_case.execute(dto)
 
     assert await item_repo.get_many([_ID_EXISTENTE]) == {}
+
+
+# ---------------------------------------------------------------------------
+# Lista oficial de anexos (plan 233, decisión 1)
+# ---------------------------------------------------------------------------
+
+_DOCS_BASES = [{"mp_document_id": 1, "nombre": "Bases.pdf"}]
+
+
+def _caso_con_anexos(
+    repo: FakeTenderRepository, anexos: InMemoryTenderAttachmentRepository | None
+) -> TenderIngestionUseCase:
+    return TenderIngestionUseCase(
+        repository=repo,
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        attachment_repo=anexos,
+    )
+
+
+async def test_alta_guarda_la_lista_oficial() -> None:
+    repo = FakeTenderRepository()
+    anexos = InMemoryTenderAttachmentRepository()
+
+    await _caso_con_anexos(repo, anexos).execute(_make_dto(documentos=_DOCS_BASES))
+
+    assert len(anexos.llamadas) == 1
+    assert list(anexos.llamadas[0][0]) == [repo.saved[0][0].id]
+
+
+async def test_alta_sin_documentos_no_toca_la_lista() -> None:
+    """`None` es "la fuente no informa": no se confunde con "sin anexos"."""
+    anexos = InMemoryTenderAttachmentRepository()
+
+    await _caso_con_anexos(FakeTenderRepository(), anexos).execute(
+        _make_dto(documentos=None)
+    )
+
+    assert anexos.llamadas == []
+
+
+async def test_alta_con_lista_vacia_la_sincroniza_vacia() -> None:
+    repo = FakeTenderRepository()
+    anexos = InMemoryTenderAttachmentRepository()
+
+    await _caso_con_anexos(repo, anexos).execute(_make_dto(documentos=[]))
+
+    assert anexos.llamadas[0][0] == {repo.saved[0][0].id: []}
+
+
+async def test_sin_cambios_igual_refresca_los_anexos_sin_tocar_la_licitacion() -> None:
+    """Escribe en `tender_attachment` y en `attachments_synced_at`, no en
+    `updated_at`: el contrato de no regenerar el análisis se mantiene."""
+    dto = _make_dto(documentos=_DOCS_BASES)
+    repo = RepoQueTeniaLaLicitacion(dto, items_guardados=_items_modelo(dto))
+    anexos = InMemoryTenderAttachmentRepository()
+
+    resultado = await _caso_con_anexos(repo, anexos).execute(dto)
+
+    assert resultado["status"] == "unchanged"
+    assert repo.actualizadas == []
+    assert list(anexos.llamadas[0][0]) == [_ID_EXISTENTE]
+
+
+async def test_actualizacion_refresca_los_anexos() -> None:
+    dto = _make_dto(documentos=_DOCS_BASES)
+    repo = RepoQueTeniaLaLicitacion(
+        dto, items_guardados=_items_modelo(dto), monto_guardado=1.0
+    )
+    anexos = InMemoryTenderAttachmentRepository()
+
+    resultado = await _caso_con_anexos(repo, anexos).execute(dto)
+
+    assert resultado["status"] == "updated"
+    assert list(anexos.llamadas[0][0]) == [_ID_EXISTENTE]
+
+
+async def test_los_anexos_van_despues_de_guardar_la_licitacion() -> None:
+    """Hay clave foránea: la fila de `tender` tiene que existir antes."""
+    log: list[str] = []
+
+    class RepoQueAnotaElGuardado(FakeTenderRepository):
+        async def save_complex_tender(self, tender_model, items) -> None:
+            log.append("sql")
+            await super().save_complex_tender(tender_model, items)
+
+    anexos = InMemoryTenderAttachmentRepository(log=log)
+
+    await _caso_con_anexos(RepoQueAnotaElGuardado(), anexos).execute(
+        _make_dto(documentos=_DOCS_BASES)
+    )
+
+    assert log == ["sql", "anexos"]
+
+
+async def test_si_fallan_los_anexos_hace_rollback_y_propaga() -> None:
+    hizo_rollback = False
+
+    class RepoConRollback(FakeTenderRepository):
+        async def rollback(self) -> None:
+            nonlocal hizo_rollback
+            hizo_rollback = True
+
+    anexos = InMemoryTenderAttachmentRepository(falla_con=RuntimeError("x"))
+
+    with pytest.raises(RuntimeError):
+        await _caso_con_anexos(RepoConRollback(), anexos).execute(
+            _make_dto(documentos=_DOCS_BASES)
+        )
+
+    assert hizo_rollback is True
+
+
+async def test_sin_repositorio_de_anexos_funciona_igual() -> None:
+    resultado = await _caso_con_anexos(FakeTenderRepository(), None).execute(
+        _make_dto(documentos=_DOCS_BASES)
+    )
+
+    assert resultado["status"] == "success"

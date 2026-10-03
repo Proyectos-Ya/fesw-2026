@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.shared.datetime_utils import fecha_mp_a_utc
 
@@ -95,4 +96,64 @@ class TestItemsIncompletos:
             self._item(estado={"id_estado": 2, "codigo": " Publicada "})
         )
         assert cambio is not None
+        assert cambio.status_code == "publicada"
+
+
+class TestDocumentos:
+    """La lista oficial de anexos viaja en el cambio, sin pedir nada más a la API."""
+
+    def _item(self, **cambios: Any) -> dict[str, Any]:
+        base: dict[str, Any] = {
+            "codigo": "X-1",
+            "estado": {"id_estado": 2, "codigo": "publicada"},
+            "fechas": {
+                "fecha_cierre": "2026-09-29 13:30",
+                "fecha_ultimo_cambio": "2026-09-28T13:20:00Z",
+            },
+        }
+        base.update(cambios)
+        return base
+
+    def test_publicada_trae_sus_dos_anexos_como_tupla(self, items):
+        cambio = cambio_desde_item(items["publicada"])
+
+        assert cambio is not None
+        assert cambio.documentos == (
+            DocumentoOficialDTO(
+                mp_document_id=1931002,
+                nombre="Anexo 3 Composición personalidad juridica.xlsx",
+            ),
+            DocumentoOficialDTO(
+                mp_document_id=1931003, nombre="anexos (1,1-A, 2).docx"
+            ),
+        )
+
+    def test_desierta(self, items):
+        cambio = cambio_desde_item(items["desierta"])
+
+        assert cambio is not None
+        assert cambio.documentos == (
+            DocumentoOficialDTO(
+                mp_document_id=1927422,
+                nombre="Observaciones para compras agiles.pdf",
+            ),
+        )
+
+    def test_cancelada_trae_una_tupla_vacia(self, items):
+        cambio = cambio_desde_item(items["cancelada"])
+
+        assert cambio is not None
+        assert cambio.documentos == ()
+
+    def test_un_item_sin_la_clave_deja_documentos_en_none(self):
+        cambio = cambio_desde_item(self._item())
+
+        assert cambio is not None
+        assert cambio.documentos is None
+
+    def test_unos_documentos_ilegibles_no_invalidan_el_cambio_de_estado(self):
+        cambio = cambio_desde_item(self._item(documentos=[{"id": None}]))
+
+        assert cambio is not None
+        assert cambio.documentos is None
         assert cambio.status_code == "publicada"

@@ -128,6 +128,77 @@ class TestCorridaIncompleta:
         assert "techo" in capsys.readouterr().out
 
 
+class PiezasConAnexos(Piezas):
+    """Suma el cuarto paso: refrescar la lista oficial de anexos."""
+
+    def __init__(self, listado: ListadoCambios, falla_con: Exception | None = None) -> None:
+        super().__init__(listado)
+        self.falla_con = falla_con
+        self.anexos_recibidos: list[CambioDeEstado] = []
+
+    async def aplicar_anexos(self, cambios: list[CambioDeEstado]) -> int:
+        self.orden.append("anexos")
+        self.anexos_recibidos = cambios
+        if self.falla_con is not None:
+            raise self.falla_con
+        return 2
+
+    async def correr(self, args: argparse.Namespace) -> int:
+        return await sincronizar_estados(
+            args,
+            listar=self.listar,
+            aplicar=self.aplicar,
+            marcar_vencidas=self.marcar_vencidas,
+            aplicar_anexos=self.aplicar_anexos,
+        )
+
+
+class TestListaOficialDeAnexos:
+    """El cuarto paso reutiliza el listado: no cuesta peticiones a la API.
+
+    Va al final y dentro de un try/except: si falla, estados y cierres ya
+    quedaron aplicados y solo cambia el código de salida.
+    """
+
+    async def test_refresca_los_anexos_despues_de_marcar_vencidas(self):
+        piezas = PiezasConAnexos(_listado())
+
+        codigo = await piezas.correr(_args())
+
+        assert piezas.orden == ["listar", "aplicar", "marcar", "anexos"]
+        assert piezas.anexos_recibidos == [CAMBIO]
+        assert codigo == 0
+
+    async def test_con_sin_marcar_queda_listar_aplicar_anexos(self):
+        piezas = PiezasConAnexos(_listado())
+
+        await piezas.correr(_args(sin_marcar=True))
+
+        assert piezas.orden == ["listar", "aplicar", "anexos"]
+
+    async def test_imprime_cuantas_listas_refresco(self, capsys):
+        await PiezasConAnexos(_listado()).correr(_args())
+
+        assert "Listas de anexos refrescadas: 2" in capsys.readouterr().out
+
+    async def test_si_falla_marca_las_vencidas_sale_con_1_y_avisa(self, capsys):
+        piezas = PiezasConAnexos(_listado(), falla_con=RuntimeError("sin base"))
+
+        codigo = await piezas.correr(_args())
+
+        assert codigo == 1
+        assert "marcar" in piezas.orden
+        salida = capsys.readouterr().out
+        assert "AVISO" in salida
+        assert "RuntimeError" in salida
+
+    async def test_sin_el_colaborador_el_comportamiento_es_el_de_siempre(self):
+        piezas = Piezas(_listado())
+
+        assert await piezas.correr(_args()) == 0
+        assert piezas.orden == ["listar", "aplicar", "marcar"]
+
+
 class TestValidarVentana:
     def test_acepta_hasta_6_horas(self):
         assert validar_ventana(2) is None

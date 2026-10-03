@@ -81,6 +81,10 @@ class TenderModel(SQLModel, table=True):
     available_amount_clp: float | None = None
     created_at: datetime
     updated_at: datetime
+    # Cuándo se vio por última vez la lista oficial de anexos (plan 233,
+    # decisión 1). Nulo = nunca se sincronizó, que no es lo mismo que "sin
+    # anexos". No es `updated_at`: ese campo dispara la regeneración del análisis.
+    attachments_synced_at: datetime | None = Field(default=None)
 
     status: TenderStatusModel | None = Relationship(back_populates="tenders")
     buyer: BuyerInstitutionModel | None = Relationship(back_populates="tenders")

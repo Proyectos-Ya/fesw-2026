@@ -29,6 +29,9 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
 from app.application.repositories.tender_chat_repository import (
     ITenderChatRepository,
 )
@@ -150,6 +153,9 @@ from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
+from app.application.use_cases.tender_attachments.get_tender_attachments import (
+    GetTenderAttachmentsUseCase,
+)
 from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
@@ -194,6 +200,9 @@ from app.infrastructure.repositories.sql_supplier_invitation_repository import (
 from app.infrastructure.repositories.sql_supplier_member_repository import (
     SqlSupplierMemberRepository,
 )
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
+)
 from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
@@ -210,6 +219,9 @@ from app.infrastructure.routers.calendar import (
 from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
+from app.infrastructure.routers.tender_attachments import (
+    create_tender_attachments_router,
+)
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
@@ -761,6 +773,20 @@ def get_tender_milestones_use_case(
     )
 
 
+def get_tender_attachment_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ITenderAttachmentRepository:
+    return SqlTenderAttachmentRepository(session)
+
+
+def get_tender_attachments_use_case(
+    attachments: Annotated[
+        ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
+    ],
+) -> GetTenderAttachmentsUseCase:
+    return GetTenderAttachmentsUseCase(attachments)
+
+
 def get_set_milestone_reminder_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SetMilestoneReminderUseCase:
@@ -1289,5 +1315,10 @@ def bootstrap(app: FastAPI) -> None:
     )
     app.include_router(
         create_milestone_sync_router(get_current_user, get_sync_milestones_use_case)
+    )
+    app.include_router(
+        create_tender_attachments_router(
+            get_current_user, get_tender_attachments_use_case
+        )
     )
 

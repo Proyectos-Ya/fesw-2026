@@ -46,6 +46,13 @@ vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
   ),
 }));
 
+// Sin este mock, el panel real llamaría a `apiFetch` en jsdom.
+vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () => ({
+  TenderAttachmentsPanel: ({ tenderId, tenderCode }: { tenderId: string; tenderCode: string }) => (
+    <div data-testid="tender-attachments-panel">{`${tenderId}|${tenderCode}`}</div>
+  ),
+}));
+
 vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   fetchSavedTenders: vi.fn(),
   saveTenderApi: vi.fn(),
@@ -370,5 +377,45 @@ describe("TenderDetailView: volver", () => {
 
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
     expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("TenderDetailView: anexos oficiales", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+  });
+
+  it("muestra el panel de anexos justo bajo el encabezado, antes de la tarjeta de análisis IA", async () => {
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    const panel = await screen.findByTestId("tender-attachments-panel");
+    expect(panel).toHaveTextContent("tender-50|555-66-COT26");
+    const header = screen
+      .getByRole("heading", { level: 1, name: "Servicios de Seguridad y Redes" })
+      .closest("header") as HTMLElement;
+    // Inmediatamente después del encabezado: queda antes del editor de cotización.
+    expect(header.nextElementSibling).toBe(panel);
+    expect(
+      panel.compareDocumentPosition(
+        screen.getByRole("heading", { name: "Análisis de compatibilidad IA" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("ya no tiene la sección 'Documentos asociados'", async () => {
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    await screen.findByTestId("tender-attachments-panel");
+    expect(screen.queryByText("Documentos asociados")).not.toBeInTheDocument();
+    // El enlace vive ahora en el panel, que acá está mockeado.
+    expect(
+      screen.queryByRole("link", { name: /ver documentos en mercado público/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /ficha oficial en mercado público/i }),
+    ).toBeInTheDocument();
   });
 });

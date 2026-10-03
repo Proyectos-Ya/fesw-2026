@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
@@ -22,18 +22,29 @@ from app.application.services.tender_ingestion_service import ITenderIngestionSe
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
 from app.domain.models.cambio_estado import CambioDeEstado
-from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
+from app.domain.models.tender_ingestion_dto import (
+    DocumentoOficialDTO,
+    ItemLicitacionDTO,
+    TenderIngestaDTO,
+)
 from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
     QdrantTenderItemVectorRepository,
 )
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
+)
 from app.infrastructure.repositories.tender_model import (
     IngestionRunModel,
     TenderMetadataModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.infrastructure.services.tenders.documentos_mp import (
+    documentos_desde_payload,
+    documentos_por_codigo,
+)
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
@@ -76,6 +87,10 @@ class ResultadoListado:
     nuevas: int = 0
     listadas: int = 0
     completo: bool = False
+    # La lista oficial de anexos de cada listada, por código. Se aplica al final
+    # de la corrida, cuando las nuevas ya existen en `tender` (clave foránea), y
+    # no cuesta peticiones: sale del mismo listado.
+    documentos: dict[str, list[DocumentoOficialDTO]] = field(default_factory=dict)
 
 
 @dataclass
@@ -201,6 +216,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     por_publicacion=por_publicacion,
                     estado=estado,
                 )
+                # De todos los ítems, también de los que se filtran más abajo:
+                # si ya tenemos la licitación, igual conviene refrescar su lista.
+                documentos = documentos_por_codigo(listado.items)
                 codigos_candidatos: list[str] = []
                 for item in listado.items:
                     code = item.get("codigo")
@@ -253,6 +271,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     nuevas=new_count,
                     listadas=len(listado.items),
                     completo=listado.completo,
+                    documentos=documentos,
                 )
             except Exception as e:
                 print(f"[IngestionService] Error al sincronizar metadatos: {e}")
@@ -667,6 +686,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             tender_vector_repo=tender_vector_repo,
             enable_comuna_generic_heuristic=settings.enable_comuna_generic_heuristic,
             tender_item_vector_repo=tender_item_vector_repo,
+            # La misma sesión que `TenderRepository`: el rollback del caso de
+            # uso también cubre lo que se escribió en `tender_attachment`.
+            attachment_repo=SqlTenderAttachmentRepository(session),
         )
 
     async def _marcar_procesada(
@@ -775,4 +797,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             # arma el texto del embedding con nombre + descripción + partidas, y
             # son las partidas las que dicen qué se está pidiendo de verdad.
             items=items_dto,
+            # `None` si el detalle no la trae: solo está confirmado en el
+            # listado (plan 233, fase 0), y la ausencia no es "sin anexos".
+            documentos=documentos_desde_payload(detail),
         )

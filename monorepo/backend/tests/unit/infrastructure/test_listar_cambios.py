@@ -106,3 +106,12 @@ class TestListarCambios:
         ).listar_cambios(timedelta(hours=6), limite=9000)
 
         assert listado.completo is False
+
+    async def test_los_cambios_traen_la_lista_oficial_de_anexos(self):
+        listado = await _servicio(ClienteFalso(_items())).listar_cambios(
+            timedelta(hours=6), limite=9000
+        )
+
+        cambio = next(c for c in listado.cambios if c.code == "5052-431-COT26")
+        assert cambio.documentos is not None
+        assert len(cambio.documentos) == 2

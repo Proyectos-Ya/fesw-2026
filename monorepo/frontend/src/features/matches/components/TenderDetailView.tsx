@@ -28,6 +28,7 @@ import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import {
   daysUntilClosing,
@@ -465,6 +466,10 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         </div>
       </header>
 
+      {/* Anexos oficiales (plan 233, decisión 1): reemplaza a "Documentos
+          asociados", que solo enlazaba a la ficha de Mercado Público. */}
+      <TenderAttachmentsPanel tenderId={tenderId} tenderCode={tender.code} />
+
       {/* AI Compatibility Analysis CTA Card */}
       <QuotationEditor tenderId={tenderId} tenderCode={tender.code} tenderItems={tender.items} />
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -693,22 +698,6 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
             </ul>
           </div>
         )}
-      </Section>
-
-      <Section title="Documentos asociados" icon="paperclip">
-        <p className="text-sm text-text-muted">
-          Los documentos oficiales (bases, anexos y aclaraciones) están disponibles
-          directamente en Mercado Público.
-        </p>
-        <a
-          href={officialUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-teal-100 transition-colors"
-        >
-          Ver documentos en Mercado Público
-          <Icon name="external-link" size={14} />
-        </a>
       </Section>
 
       <Section title="Enlaces relacionados" icon="link">
