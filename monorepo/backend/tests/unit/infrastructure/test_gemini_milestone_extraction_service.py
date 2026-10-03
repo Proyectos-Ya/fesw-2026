@@ -51,6 +51,19 @@ async def test_envia_el_pdf_el_contexto_y_un_esquema_json(service):
 
 
 @respx.mock
+async def test_el_esquema_no_ofrece_el_cierre_del_segundo_llamado(service):
+    """Es un hito solo oficial: si la IA lo extrajera quedaría duplicado."""
+    ruta = respx.post(URL).respond(200, json=_respuesta([]))
+
+    await service.extract([PDF], CONTEXTO)
+
+    config = json.loads(ruta.calls.last.request.content)["generationConfig"]
+    esquema_hito = config["responseSchema"]["properties"]["hitos"]["items"]
+    assert "cierre_segundo_llamado" not in esquema_hito["properties"]["kind"]["enum"]
+    assert "cierre_postulacion" in esquema_hito["properties"]["kind"]["enum"]
+
+
+@respx.mock
 async def test_la_instruccion_exige_fechas_iso_y_no_inventar(service):
     ruta = respx.post(URL).respond(200, json=_respuesta([]))
 

@@ -70,6 +70,12 @@ class Tender(BaseModel):
     )
     published_at: UtcDateTime
     closing_at: UtcDateTime
+    # 1 = primer llamado, 2 = segundo (plan 233, decisión 3). `closing_at` es el
+    # del llamado vigente; en el primero, `second_call_closing_at` es solo una
+    # fecha posible. Nulos en licitaciones ingeridas antes de guardarlos.
+    call_number: int | None = None
+    first_call_closing_at: UtcDateTime | None = None
+    second_call_closing_at: UtcDateTime | None = None
     last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora
@@ -91,6 +97,9 @@ class Tender(BaseModel):
         ficha, el cálculo de compatibilidad y el análisis IA— y con el criterio
         copiado en cada uno bastaba con cambiar uno para que la ficha dijera
         "abierta" mientras el botón se negaba a calcular.
+
+        El cierre del segundo llamado no cuenta: en el primero es solo posible, y
+        en el segundo `closing_at` ya es esa fecha.
         """
         momento = ahora or utc_now_naive()
         return (

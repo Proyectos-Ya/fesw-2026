@@ -4,6 +4,7 @@ export type MilestoneKind =
   | "respuestas"
   | "visita_tecnica"
   | "cierre_postulacion"
+  | "cierre_segundo_llamado"
   | "apertura"
   | "adjudicacion"
   | "entrega"
@@ -93,6 +94,7 @@ export const MILESTONE_KIND_LABELS: Record<MilestoneKind, string> = {
   respuestas: "Respuestas",
   visita_tecnica: "Visita técnica",
   cierre_postulacion: "Cierre de postulación",
+  cierre_segundo_llamado: "Segundo llamado",
   apertura: "Apertura de ofertas",
   adjudicacion: "Adjudicación",
   entrega: "Entrega",

@@ -52,6 +52,12 @@ class TenderIngestaDTO(BaseModel):
     status_semantic_code: str = Field(UNKNOWN_TENDER_STATUS, alias="EstadoCodigo")
     published_at: datetime = Field(..., alias="FechaPublicacion")
     closing_at: datetime = Field(..., alias="FechaCierre")
+    # Segundo llamado (plan 233, decisión 3). `closing_at` sigue siendo el cierre
+    # del llamado vigente; estos tres lo desglosan. Un None es "no vino", no
+    # "no hay segundo llamado": el detalle de la API aún no se verificó con ellos.
+    call_number: int | None = Field(None, alias="NumeroLlamado")
+    first_call_closing_at: datetime | None = Field(None, alias="FechaCierrePrimerLlamado")
+    second_call_closing_at: datetime | None = Field(None, alias="FechaCierreSegundoLlamado")
     buyer_rut: str = Field(..., alias="RutComprador")
     buyer_name: str = Field(..., alias="NombreOrganismo")
     buyer_unit: str = Field(..., alias="UnidadCompra")
@@ -101,3 +107,9 @@ class TenderIngestaDTO(BaseModel):
         normalized = to_utc_naive(value)
         assert normalized is not None  # el campo es obligatorio, nunca es None
         return normalized
+
+    @field_validator("first_call_closing_at", "second_call_closing_at", mode="after")
+    @classmethod
+    def normalize_optional_to_utc(cls, value: datetime | None) -> datetime | None:
+        """Mismo criterio que `normalize_to_utc`: un naive es hora de Chile."""
+        return to_utc_naive(value)

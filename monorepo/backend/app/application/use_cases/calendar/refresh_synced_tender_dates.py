@@ -45,6 +45,10 @@ from app.shared.datetime_utils import utc_now_naive
 logger = logging.getLogger(__name__)
 
 # Etiquetas iguales a los títulos de los hitos oficiales (mercado_publico_milestones).
+# El cierre del segundo llamado no está a propósito: avisos y calendario no
+# cambian con la decisión 3 del plan 233 hasta medir cómo transita la API entre
+# llamados. Tiene su propio tipo para no chocar en `_cambios`, que indexa por
+# tipo.
 _OFICIALES: tuple[tuple[MilestoneKind, str, str], ...] = (
     (MilestoneKind.PUBLICACION, "published_at", "Publicación en Mercado Público"),
     (MilestoneKind.CIERRE_POSTULACION, "closing_at", "Cierre de recepción de ofertas"),

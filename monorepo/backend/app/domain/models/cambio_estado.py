@@ -13,7 +13,7 @@ from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 
 @dataclass(frozen=True)
 class CambioDeEstado:
-    """Estado y cierre de una licitación según el listado de cambios.
+    """Estado, cierre y llamado de una licitación según el listado de cambios.
 
     Todas las fechas en UTC naive (invariante de persistencia).
     """
@@ -28,6 +28,24 @@ class CambioDeEstado:
     # Lista oficial de anexos del ítem del listado. Tupla porque el dataclass es
     # congelado. `None` = el ítem no la trae legible: no se toca la guardada.
     documentos: tuple[DocumentoOficialDTO, ...] | None = None
+    # Llamado vigente (`convocatoria.estado_convocatoria`: 1 o 2) y el cierre de
+    # cada llamado, en UTC naive y al minuto. No son imprescindibles: un ítem
+    # sin ellos igual aplica estado y cierre. `closing_at` sigue al llamado
+    # vigente; estos campos lo desglosan.
+    call_number: int | None = None
+    first_call_closing_at: datetime | None = None
+    second_call_closing_at: datetime | None = None
+
+    @property
+    def trae_llamado(self) -> bool:
+        return any(
+            v is not None
+            for v in (
+                self.call_number,
+                self.first_call_closing_at,
+                self.second_call_closing_at,
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -51,6 +69,8 @@ class ResultadoSyncEstados:
     conocidas: int = 0
     # Filas de `tender` que cambiaron de verdad (estado o cierre).
     actualizadas: int = 0
+    # Filas cuyo llamado o cierre por llamado cambió. No mueven `updated_at`.
+    llamados_actualizados: int = 0
     # Dejaron de estar activas: su punto se borra del índice vectorial.
     sacadas_del_indice: int = 0
     # Volvieron a estar activas: no tienen punto, así que las reindexa el ingest.

@@ -50,7 +50,11 @@ class Piezas:
     async def aplicar(self, cambios: list[CambioDeEstado]) -> ResultadoSyncEstados:
         self.orden.append("aplicar")
         self.aplicados = cambios
-        return ResultadoSyncEstados(conocidas=len(cambios), actualizadas=len(cambios))
+        return ResultadoSyncEstados(
+            conocidas=len(cambios),
+            actualizadas=len(cambios),
+            llamados_actualizados=2,
+        )
 
     async def marcar_vencidas(self) -> int:
         self.orden.append("marcar")
@@ -106,6 +110,7 @@ class TestCorridaBuena:
 
         salida = capsys.readouterr().out
         assert "1 cambios listados" in salida
+        assert "2 con llamado actualizado" in salida
         assert "Vencidas marcadas como cerradas: 3" in salida
 
 

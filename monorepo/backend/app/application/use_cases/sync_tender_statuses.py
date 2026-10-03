@@ -1,4 +1,4 @@
-"""Aplica a las licitaciones guardadas el estado y el cierre del listado de cambios.
+"""Aplica a las licitaciones guardadas el estado, el cierre y el llamado del listado.
 
 La ingesta nocturna solo descubre licitaciones nuevas: una ya procesada no se
 vuelve a mirar. Sin esto, una desierta o cancelada seguía figurando publicada
@@ -9,6 +9,11 @@ Se escribe desde el **listado**, sin pedir el detalle: estado y cierre vienen
 ahí. Lo que solo trae el detalle (descripción, partidas) no se puede saber desde
 el listado; para eso se **reencola** la licitación y el ingest decide, con
 `_actualizar`, si cambió el texto.
+
+El llamado vigente y el cierre de cada llamado (plan 233, decisión 3) también
+vienen en el listado. Se registran en una escritura aparte que no mueve
+`updated_at`: ese campo dispara la regeneración del análisis de Gemini y el
+llamado no cambia lo que se pide.
 """
 
 from datetime import datetime
@@ -85,6 +90,7 @@ class SyncTenderStatusesUseCase:
         a_borrar = []
         payloads = {}
         a_sobrescribir: list[CambioDeEstado] = []
+        a_registrar_llamado: list[CambioDeEstado] = []
         a_reencolar: list[str] = []
 
         for cambio in cambios:
@@ -92,6 +98,12 @@ class SyncTenderStatusesUseCase:
             if conocida is None:
                 # Si es nueva, la trae la ingesta nocturna.
                 continue
+
+            # El llamado se registra en toda conocida, también en una reapertura:
+            # no cambia el estado, así que el ingest sigue viendo la diferencia
+            # que lo hace reindexar (ver la rama de abajo).
+            if cambio.trae_llamado:
+                a_registrar_llamado.append(cambio)
 
             estaba_activa = _esta_activa(conocida.status_id)
             queda_activa = cambio.status_code in ACTIVE_TENDER_STATUSES
@@ -136,6 +148,11 @@ class SyncTenderStatusesUseCase:
 
         if a_sobrescribir:
             resultado.actualizadas = await self.repo.overwrite_statuses(a_sobrescribir)
+        if a_registrar_llamado:
+            # Después del estado, y aparte: no mueve `updated_at`.
+            resultado.llamados_actualizados = await self.repo.overwrite_call_info(
+                a_registrar_llamado
+            )
         if a_reencolar:
             resultado.reencoladas = await self.cola.reencolar(a_reencolar)
         return resultado

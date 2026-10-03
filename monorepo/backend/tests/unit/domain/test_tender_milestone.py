@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.entities.tender_milestone import (
+    OFFICIAL_ONLY_KINDS,
     MilestoneKind,
     MilestoneSource,
     MilestoneUrgency,
@@ -133,3 +134,23 @@ class TestValidacion:
         hito = _hito(due_at=datetime(2026, 10, 20, 18, 0))
 
         assert hito.model_dump(mode="json")["due_at"] == "2026-10-20T18:00:00Z"
+
+
+class TestCierreDelSegundoLlamado:
+    """Tipo propio: `_cambios` indexa por tipo y dos oficiales iguales chocarían."""
+
+    def test_el_valor_se_lee_desde_la_base(self):
+        # El repositorio reconstruye el tipo con `MilestoneKind(model.kind)`.
+        assert MilestoneKind("cierre_segundo_llamado") is MilestoneKind.CIERRE_SEGUNDO_LLAMADO
+
+    def test_es_un_hito_solo_oficial(self):
+        assert OFFICIAL_ONLY_KINDS == {MilestoneKind.CIERRE_SEGUNDO_LLAMADO}
+
+    def test_un_hito_puede_ser_de_ese_tipo(self):
+        hito = _hito(
+            kind=MilestoneKind.CIERRE_SEGUNDO_LLAMADO,
+            title="Cierre del segundo llamado",
+            source=MilestoneSource.MERCADO_PUBLICO,
+        )
+
+        assert hito.kind is MilestoneKind.CIERRE_SEGUNDO_LLAMADO

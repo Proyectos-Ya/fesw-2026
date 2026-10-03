@@ -151,6 +151,7 @@ async def sincronizar_estados(
     resultado = await aplicar(listado.cambios)
     print(
         f"{resultado.conocidas} conocidas: {resultado.actualizadas} actualizadas, "
+        f"{resultado.llamados_actualizados} con llamado actualizado, "
         f"{resultado.sacadas_del_indice} sacadas del índice, "
         f"{resultado.reabiertas} reabiertas, {resultado.reencoladas} reencoladas."
     )

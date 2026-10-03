@@ -106,6 +106,9 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code,
                 published_at=dto.published_at,
                 closing_at=dto.closing_at,
+                call_number=dto.call_number,
+                first_call_closing_at=dto.first_call_closing_at,
+                second_call_closing_at=dto.second_call_closing_at,
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,
@@ -221,6 +224,10 @@ class TenderIngestionUseCase:
         texto desde lo persistido y se compara con el que saldría del detalle
         nuevo.
 
+        Hay un tercer caso, que no toca Qdrant ni paga inferencia:
+
+        - **Cambio de llamado** — solo SQL, sin `updated_at`.
+
         Sobre eso manda el estado, porque Qdrant guarda solo activas: la que
         deja de estar activa pierde su punto, y la que vuelve a estarlo lo
         recupera entero (no hay punto al que aplicarle `set_payload`).
@@ -234,8 +241,22 @@ class TenderIngestionUseCase:
         )
         cambio_semantico = texto_actual != texto_nuevo
         cambio_metadatos = self._metadatos_cambiaron(existente, dto)
+        cambio_llamado = self._llamado_cambio(existente, dto)
 
         if not cambio_semantico and not cambio_metadatos:
+            if cambio_llamado:
+                # Solo cambió el llamado (o se completa en una licitación
+                # ingerida antes de guardarlo). No mueve `updated_at` ni toca
+                # Qdrant: no cambia lo que se pide, y mover `updated_at`
+                # regeneraría el análisis de Gemini (6.4). Un cambio de llamado
+                # de verdad trae otro `closing_at`, que sí es metadato.
+                self._aplicar_llamado(existente, dto)
+                await self.repo.update_tender(existente)
+                return {
+                    "status": "updated",
+                    "tender_code": dto.code,
+                    "semantico": False,
+                }
             # No escribir es parte del contrato, no una optimización: mover
             # `updated_at` sin motivo haría que el análisis de Gemini se
             # regenerara para cada proveedor todos los días (ver 6.4).
@@ -290,6 +311,7 @@ class TenderIngestionUseCase:
             await self.repo.replace_tender_items(existente.id, items_nuevos)
 
         self._aplicar_cambios(existente, dto)
+        self._aplicar_llamado(existente, dto)
         await self.repo.update_tender(existente)
 
         return {
@@ -382,6 +404,33 @@ class TenderIngestionUseCase:
             or existente.available_amount_clp != dto.available_amount_clp
             or existente.buyer_unit != dto.buyer_unit
         )
+
+    @staticmethod
+    def _llamado_cambio(existente: TenderModel, dto: TenderIngestaDTO) -> bool:
+        """Si el detalle trae un dato del llamado distinto del guardado.
+
+        Un None no cuenta: que el detalle traiga estos campos no está
+        verificado (plan 233, fase 0), y tomarlo como "sin llamado" borraría lo
+        que escribió el cron de estados desde el listado, donde sí vienen.
+        """
+        return any(
+            nuevo is not None and nuevo != actual
+            for nuevo, actual in (
+                (dto.call_number, existente.call_number),
+                (dto.first_call_closing_at, existente.first_call_closing_at),
+                (dto.second_call_closing_at, existente.second_call_closing_at),
+            )
+        )
+
+    @staticmethod
+    def _aplicar_llamado(existente: TenderModel, dto: TenderIngestaDTO) -> None:
+        """Vuelca lo que el detalle trae del llamado, sin borrar lo que no trae."""
+        if dto.call_number is not None:
+            existente.call_number = dto.call_number
+        if dto.first_call_closing_at is not None:
+            existente.first_call_closing_at = dto.first_call_closing_at
+        if dto.second_call_closing_at is not None:
+            existente.second_call_closing_at = dto.second_call_closing_at
 
     @staticmethod
     def _aplicar_cambios(existente: TenderModel, dto: TenderIngestaDTO) -> None:

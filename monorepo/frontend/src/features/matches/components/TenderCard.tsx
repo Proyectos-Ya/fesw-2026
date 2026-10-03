@@ -10,6 +10,7 @@ import {
   normalizeScore,
   type ClosingTone,
 } from "../utils/format";
+import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 
 interface TenderCardProps {
   match?: MatchingResult;
@@ -88,6 +89,7 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
           <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
             {closing.label}
           </Badge>
+          {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
           <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
           <div className="flex-1" />

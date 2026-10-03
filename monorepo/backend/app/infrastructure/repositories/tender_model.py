@@ -79,6 +79,14 @@ class TenderModel(SQLModel, table=True):
     buyer_rut: str = Field(foreign_key="buyer_institution.rut")
     buyer_unit: str
     available_amount_clp: float | None = None
+    # Segundo llamado (plan 233, decisión 3). `closing_at` sigue siendo el cierre
+    # del llamado vigente. Nullable: las licitaciones ingeridas antes no lo
+    # tienen, y la versión anterior de la app convive con este esquema durante
+    # el deploy. Sin CHECK para `call_number`: el parser ya acepta solo 1 o 2, y
+    # un valor raro haría caer el lote entero del cron.
+    call_number: int | None = Field(default=None)
+    first_call_closing_at: datetime | None = Field(default=None)
+    second_call_closing_at: datetime | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,

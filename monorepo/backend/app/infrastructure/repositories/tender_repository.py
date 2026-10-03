@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, column, delete, func, or_, update
+from sqlalchemy import (
+    DateTime,
+    Integer,
+    String,
+    cast,
+    column,
+    delete,
+    func,
+    or_,
+    update,
+)
 from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
@@ -37,7 +47,7 @@ from app.shared.constants import (
     TENDER_STATUS_CODE_BY_ID,
 )
 
-# Filas por sentencia en el cron de estados. Cada fila del VALUES lleva 3
+# Filas por sentencia en el cron de estados. Cada fila del VALUES lleva hasta 4
 # parámetros; mil deja lejos el techo de 65.535 de Postgres y mantiene cortas
 # las transacciones.
 _LOTE_ESTADOS = 1000
@@ -65,6 +75,9 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             status_code=model.status.code if model.status else None,
             published_at=model.published_at,
             closing_at=model.closing_at,
+            call_number=model.call_number,
+            first_call_closing_at=model.first_call_closing_at,
+            second_call_closing_at=model.second_call_closing_at,
             last_change_at=model.last_change_at,
             buyer_rut=model.buyer_rut,
             buyer_name=model.buyer.name if model.buyer else None,
@@ -105,6 +118,9 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             status_id=entity.status_id,
             published_at=entity.published_at,
             closing_at=entity.closing_at,
+            call_number=entity.call_number,
+            first_call_closing_at=entity.first_call_closing_at,
+            second_call_closing_at=entity.second_call_closing_at,
             last_change_at=entity.last_change_at,
             buyer_rut=entity.buyer_rut,
             buyer_unit=entity.buyer_unit,
@@ -441,6 +457,75 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
                     status_id=nuevos.c.status_id,
                     closing_at=nuevos.c.closing_at,
                     updated_at=ahora,
+                )
+                .returning(TenderModel.id)
+            )
+            result = await self.session.exec(statement)  # type: ignore[call-overload]
+            cambiadas += len(result.all())
+        await self.session.commit()
+        return cambiadas
+
+    async def overwrite_call_info(self, cambios: list[CambioDeEstado]) -> int:
+        """Llamado vigente y cierre de cada llamado, en lote, sin mover `updated_at`.
+
+        Aparte de `overwrite_statuses` a propósito: `updated_at` dispara la
+        regeneración del análisis de Gemini y el llamado no cambia lo que se
+        pide. Un cambio de llamado real trae otro `closing_at`, que sí lo mueve
+        por el otro método. `COALESCE` con lo guardado: un None no borra nada.
+        """
+        cambiadas = 0
+        for inicio in range(0, len(cambios), _LOTE_ESTADOS):
+            lote = cambios[inicio : inicio + _LOTE_ESTADOS]
+            nuevos = sql_values(
+                column("code", String),
+                column("call_number", Integer),
+                column("first_call_closing_at", DateTime),
+                column("second_call_closing_at", DateTime),
+                name="llamados",
+            ).data(
+                [
+                    (
+                        c.code,
+                        c.call_number,
+                        c.first_call_closing_at,
+                        c.second_call_closing_at,
+                    )
+                    for c in lote
+                ]
+            )
+            # El `cast` no es decorativo. SQLAlchemy escribe un `None` como `NULL`
+            # sin tipo, y si una columna del VALUES queda toda en `NULL` (un lote
+            # sin ningún `call_number`, algo corriente) Postgres la resuelve como
+            # `text` y el `COALESCE` con la columna real falla ("los tipos text y
+            # integer no son coincidentes"). Con el cast el tipo es el correcto
+            # aunque ninguna fila traiga el dato.
+            numero = func.coalesce(
+                cast(nuevos.c.call_number, Integer), col(TenderModel.call_number)
+            )
+            primero = func.coalesce(
+                cast(nuevos.c.first_call_closing_at, DateTime),
+                col(TenderModel.first_call_closing_at),
+            )
+            segundo = func.coalesce(
+                cast(nuevos.c.second_call_closing_at, DateTime),
+                col(TenderModel.second_call_closing_at),
+            )
+            statement = (
+                update(TenderModel)
+                .where(col(TenderModel.code) == nuevos.c.code)
+                .where(
+                    or_(
+                        col(TenderModel.call_number).is_distinct_from(numero),
+                        col(TenderModel.first_call_closing_at).is_distinct_from(primero),
+                        col(TenderModel.second_call_closing_at).is_distinct_from(
+                            segundo
+                        ),
+                    )
+                )
+                .values(
+                    call_number=numero,
+                    first_call_closing_at=primero,
+                    second_call_closing_at=segundo,
                 )
                 .returning(TenderModel.id)
             )

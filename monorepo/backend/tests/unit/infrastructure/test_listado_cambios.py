@@ -56,6 +56,44 @@ class TestItemsReales:
         assert cambio is not None
         assert cambio.closing_at == fecha_mp_a_utc("2026-09-27 17:28")
 
+    def test_la_publicada_trae_primer_llamado_y_ambos_cierres(self, items):
+        cambio = cambio_desde_item(items["publicada"])
+        assert cambio is not None
+        assert cambio.call_number == 1
+        assert cambio.first_call_closing_at == datetime(2026, 9, 29, 16, 30)
+        assert cambio.first_call_closing_at == cambio.closing_at
+        assert cambio.second_call_closing_at == datetime(2026, 9, 30, 16, 40)
+
+    def test_la_desierta_queda_en_segundo_llamado(self, items):
+        cambio = cambio_desde_item(items["desierta"])
+        assert cambio is not None
+        assert cambio.call_number == 2
+        assert cambio.first_call_closing_at == datetime(2026, 9, 26, 20, 10)
+        # "…17:28:48.093Z" se trunca al minuto: coincide con `fecha_cierre`.
+        assert cambio.second_call_closing_at == datetime(2026, 9, 27, 20, 28)
+        assert cambio.closing_at == cambio.second_call_closing_at
+
+    def test_la_z_del_segundo_llamado_se_lee_en_hora_de_chile(self, items):
+        cambio = cambio_desde_item(items["publicada"])
+        assert cambio is not None
+        # "2026-09-30T13:40:00.107Z" es hora de Chile: 16:40 UTC, no 13:40.
+        assert cambio.second_call_closing_at == fecha_mp_a_utc("2026-09-30 13:40")
+
+    @pytest.mark.parametrize("codigo", ["publicada", "cerrada", "cancelada"])
+    def test_en_primer_llamado_el_cierre_vigente_es_el_del_primero(self, items, codigo):
+        cambio = cambio_desde_item(items[codigo])
+        assert cambio is not None
+        assert cambio.call_number == 1
+        assert cambio.first_call_closing_at == cambio.closing_at
+
+    def test_cerrada_y_cancelada_traen_su_segundo_cierre_posible(self, items):
+        cerrada = cambio_desde_item(items["cerrada"])
+        cancelada = cambio_desde_item(items["cancelada"])
+        assert cerrada is not None
+        assert cancelada is not None
+        assert cerrada.second_call_closing_at == datetime(2026, 9, 29, 15, 27)
+        assert cancelada.second_call_closing_at == datetime(2026, 9, 30, 19, 39)
+
 
 class TestItemsIncompletos:
     """Lo que no se puede leer se ignora: escribir un estado inventado es peor."""
@@ -97,6 +135,31 @@ class TestItemsIncompletos:
         )
         assert cambio is not None
         assert cambio.status_code == "publicada"
+
+    def test_sin_llamado_igual_sirve(self):
+        cambio = cambio_desde_item(self._item())
+        assert cambio is not None
+        assert cambio.call_number is None
+        assert cambio.first_call_closing_at is None
+        assert cambio.second_call_closing_at is None
+        assert cambio.trae_llamado is False
+
+    def test_un_numero_de_llamado_raro_no_descarta_el_item(self):
+        cambio = cambio_desde_item(self._item(convocatoria={"estado_convocatoria": 3}))
+        assert cambio is not None
+        assert cambio.call_number is None
+
+    def test_un_cierre_por_llamado_ilegible_no_descarta_el_item(self):
+        cambio = cambio_desde_item(
+            self._item(
+                fechas={
+                    "fecha_cierre": "2026-09-29 13:30",
+                    "fecha_cierre_segundo_llamado": "x",
+                }
+            )
+        )
+        assert cambio is not None
+        assert cambio.second_call_closing_at is None
 
 
 class TestDocumentos:

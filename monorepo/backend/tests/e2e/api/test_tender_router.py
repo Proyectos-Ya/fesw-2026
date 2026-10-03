@@ -623,6 +623,67 @@ async def test_get_saved_tenders_success(api: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_saved_tenders_expone_el_segundo_llamado(api: AsyncClient) -> None:
+    """El llamado vigente y el cierre de cada llamado viajan en la licitación."""
+    tender_id = uuid4()
+    mock_tender = _build_tender(tender_id).model_copy(
+        update={
+            "call_number": 2,
+            "first_call_closing_at": datetime(2026, 9, 26, 20, 10),
+            "second_call_closing_at": datetime(2026, 9, 27, 20, 28),
+        }
+    )
+    mock_result = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=0.85,
+        final_score=0.85,
+        model_version="v1.0",
+        tender=mock_tender,
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = [mock_result]
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "segundo_llamado@example.com", "Sofía Rojas")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    tender = response.json()[0]["tender"]
+    assert tender["call_number"] == 2
+    assert tender["first_call_closing_at"] == "2026-09-26T20:10:00Z"
+    assert tender["second_call_closing_at"] == "2026-09-27T20:28:00Z"
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_sin_llamado_devuelve_null(api: AsyncClient) -> None:
+    """Una licitación ingerida antes de guardar el llamado responde con null."""
+    tender_id = uuid4()
+    mock_result = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=0.85,
+        final_score=0.85,
+        model_version="v1.0",
+        tender=_build_tender(tender_id),
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = [mock_result]
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "sin_llamado@example.com", "Sofía Rojas")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    tender = response.json()[0]["tender"]
+    assert tender["call_number"] is None
+    assert tender["first_call_closing_at"] is None
+    assert tender["second_call_closing_at"] is None
+
+
+@pytest.mark.asyncio
 async def test_get_saved_tenders_empty(api: AsyncClient) -> None:
     """Valida que un usuario sin licitaciones guardadas reciba una lista vacía."""
     mock_uc = AsyncMock()

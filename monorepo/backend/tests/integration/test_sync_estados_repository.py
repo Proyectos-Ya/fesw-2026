@@ -3,6 +3,9 @@
 `overwrite_statuses` es un UPDATE en lote con `IS DISTINCT FROM`: tiene que
 escribir estado y cierre, pero no mover `updated_at` de una fila que no cambió,
 porque `updated_at` dispara la regeneración del análisis de Gemini.
+
+`overwrite_call_info` hace lo mismo con el llamado vigente y el cierre de cada
+llamado, pero **nunca** mueve `updated_at` y un `None` no borra lo guardado.
 """
 
 from datetime import datetime, timedelta
@@ -72,6 +75,24 @@ def _cambio(
 ) -> CambioDeEstado:
     return CambioDeEstado(
         code=code, status_id=status_id, status_code=status_code, closing_at=closing_at
+    )
+
+
+def _llamado(
+    code: str,
+    *,
+    call_number: int | None = None,
+    first: datetime | None = None,
+    second: datetime | None = None,
+) -> CambioDeEstado:
+    return CambioDeEstado(
+        code=code,
+        status_id=PUBLICADA,
+        status_code="publicada",
+        closing_at=CIERRE,
+        call_number=call_number,
+        first_call_closing_at=first,
+        second_call_closing_at=second,
     )
 
 
@@ -171,3 +192,124 @@ class TestOverwriteStatuses:
 
     async def test_lista_vacia(self, db_session: AsyncSession):
         assert await TenderRepository(db_session).overwrite_statuses([]) == 0
+
+
+PRIMERO = datetime(2026, 9, 26, 20, 10)
+SEGUNDO = datetime(2026, 9, 27, 20, 28)
+
+
+class TestOverwriteCallInfo:
+    async def test_escribe_los_tres_campos(self, db_session: AsyncSession):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+
+        cambiadas = await TenderRepository(db_session).overwrite_call_info(
+            [_llamado("A", call_number=2, first=PRIMERO, second=SEGUNDO)]
+        )
+
+        fila = await _fila(db_session, tender_id)
+        assert cambiadas == 1
+        assert fila.call_number == 2
+        assert fila.first_call_closing_at == PRIMERO
+        assert fila.second_call_closing_at == SEGUNDO
+
+    async def test_no_mueve_updated_at_ni_last_change_at(
+        self, db_session: AsyncSession
+    ):
+        """`updated_at` dispara la regeneración del análisis de Gemini."""
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+
+        await TenderRepository(db_session).overwrite_call_info(
+            [_llamado("A", call_number=2, first=PRIMERO, second=SEGUNDO)]
+        )
+
+        fila = await _fila(db_session, tender_id)
+        assert fila.updated_at == ANTES
+        assert fila.last_change_at == ANTES
+
+    async def test_no_toca_estado_ni_cierre(self, db_session: AsyncSession):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+        cambio = CambioDeEstado(
+            code="A",
+            status_id=DESIERTA,
+            status_code="desierta",
+            closing_at=CIERRE + timedelta(days=3),
+            call_number=2,
+        )
+
+        await TenderRepository(db_session).overwrite_call_info([cambio])
+
+        fila = await _fila(db_session, tender_id)
+        assert fila.call_number == 2
+        assert fila.status_id == PUBLICADA
+        assert fila.closing_at == CIERRE
+
+    async def test_un_none_no_borra_lo_guardado(self, db_session: AsyncSession):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+        repo = TenderRepository(db_session)
+        await repo.overwrite_call_info(
+            [_llamado("A", call_number=2, first=PRIMERO, second=SEGUNDO)]
+        )
+
+        cambiadas = await repo.overwrite_call_info([_llamado("A")])
+
+        fila = await _fila(db_session, tender_id)
+        assert cambiadas == 0
+        assert fila.call_number == 2
+        assert fila.first_call_closing_at == PRIMERO
+        assert fila.second_call_closing_at == SEGUNDO
+
+    async def test_un_dato_parcial_completa_sin_borrar_el_resto(
+        self, db_session: AsyncSession
+    ):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+        repo = TenderRepository(db_session)
+        await repo.overwrite_call_info([_llamado("A", call_number=1, first=PRIMERO)])
+
+        cambiadas = await repo.overwrite_call_info([_llamado("A", second=SEGUNDO)])
+
+        fila = await _fila(db_session, tender_id)
+        assert cambiadas == 1
+        assert fila.call_number == 1
+        assert fila.first_call_closing_at == PRIMERO
+        assert fila.second_call_closing_at == SEGUNDO
+
+    async def test_lo_mismo_dos_veces_no_cuenta_como_cambio(
+        self, db_session: AsyncSession
+    ):
+        await _base(db_session)
+        await _tender(db_session, "A")
+        repo = TenderRepository(db_session)
+        cambio = _llamado("A", call_number=2, first=PRIMERO, second=SEGUNDO)
+        await repo.overwrite_call_info([cambio])
+
+        assert await repo.overwrite_call_info([cambio]) == 0
+
+    async def test_en_un_lote_mixto_solo_cuenta_las_que_cambian(
+        self, db_session: AsyncSession
+    ):
+        await _base(db_session)
+        a = await _tender(db_session, "A")
+        b = await _tender(db_session, "B")
+        otra = await _tender(db_session, "OTRA")
+        repo = TenderRepository(db_session)
+        await repo.overwrite_call_info([_llamado("B", call_number=1)])
+
+        cambiadas = await repo.overwrite_call_info(
+            [
+                _llamado("A", call_number=2, second=SEGUNDO),
+                _llamado("B", call_number=1),  # igual a lo guardado
+            ]
+        )
+
+        assert cambiadas == 1
+        assert (await _fila(db_session, a)).call_number == 2
+        assert (await _fila(db_session, b)).call_number == 1
+        assert (await _fila(db_session, otra)).call_number is None
+
+    async def test_lista_vacia(self, db_session: AsyncSession):
+        assert await TenderRepository(db_session).overwrite_call_info([]) == 0

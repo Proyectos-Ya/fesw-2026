@@ -59,6 +59,28 @@ class TestTenderSerialization:
         assert dumped["created_at"].endswith("Z")
         assert dumped["updated_at"].endswith("Z")
 
+    def test_the_closing_of_each_call_is_serialized_as_utc_with_z(self):
+        tender = Tender(
+            code="1058078-836-COT26",
+            name="Insumos de medicina fisica",
+            status_id=6,
+            status_code="desierta",
+            published_at=datetime(2026, 9, 25, 19, 51, 0),
+            closing_at=datetime(2026, 9, 27, 20, 28, 0),
+            call_number=2,
+            first_call_closing_at=datetime(2026, 9, 26, 20, 10, 0),
+            second_call_closing_at=datetime(2026, 9, 27, 20, 28, 0),
+            last_change_at=datetime(2026, 9, 28, 13, 55, 0),
+            buyer_rut="61.602.123-0",
+            buyer_unit="Farmacos",
+        )
+
+        dumped = tender.model_dump(mode="json")
+
+        assert dumped["first_call_closing_at"] == "2026-09-26T20:10:00Z"
+        assert dumped["second_call_closing_at"] == "2026-09-27T20:28:00Z"
+        assert dumped["closing_at"] == dumped["second_call_closing_at"]
+
 
 class TestQuestionSerialization:
     def test_generated_at_is_serialized_as_utc_with_z(self):

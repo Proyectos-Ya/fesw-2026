@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TenderDetailView } from "../TenderDetailView";
@@ -7,6 +7,7 @@ import * as tenderService from "../../services/tenderService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
+import { formatDateTime } from "../../utils/format";
 
 const mockRouter = {
   push: vi.fn(),
@@ -417,5 +418,90 @@ describe("TenderDetailView: anexos oficiales", () => {
     expect(
       screen.getByRole("link", { name: /ficha oficial en mercado público/i }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * `Intl` separa la hora del "p. m." con un espacio duro o uno fino según la
+ * versión de Node, y el matcher de Testing Library no normaliza el string
+ * esperado. Escritos como escapes: en el código fuente son indistinguibles.
+ */
+function conEspaciosNormales(valor: string): string {
+  return valor.replace(/[\u00a0\u202f]/g, " ");
+}
+
+describe("TenderDetailView: segundo llamado", () => {
+  // Octubre es UTC-3 en Chile: 13:30 y 13:40.
+  const PRIMER = "2026-10-06T16:30:00Z";
+  const SEGUNDO = "2026-10-07T16:40:00Z";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+  });
+
+  function conTender(cambios: Partial<Tender>) {
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
+      { ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } },
+    ]);
+  }
+
+  it("en segundo llamado etiqueta la ficha y muestra el cierre de cada llamado", async () => {
+    conTender({
+      call_number: 2,
+      first_call_closing_at: PRIMER,
+      second_call_closing_at: SEGUNDO,
+      closing_at: SEGUNDO,
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Segundo llamado")).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Cierre por llamado" });
+    expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(PRIMER)))).toBeInTheDocument();
+    expect(within(region).getByText("Cierre 2.º llamado")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(SEGUNDO)))).toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("en primer llamado la fecha del segundo se presenta como posible, sin etiqueta de segundo llamado", async () => {
+    conTender({
+      call_number: 1,
+      first_call_closing_at: PRIMER,
+      second_call_closing_at: SEGUNDO,
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    // Coincidencia exacta: "Segundo llamado posible" no cuenta como la etiqueta.
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Cierre por llamado" });
+    expect(within(region).getByText("Segundo llamado posible")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(SEGUNDO)))).toBeInTheDocument();
+  });
+
+  it("una licitación antigua, sin los campos, se ve como antes", async () => {
+    conTender({});
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("con los tres campos en null tampoco dibuja nada", async () => {
+    conTender({ call_number: null, first_call_closing_at: null, second_call_closing_at: null });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
 });

@@ -44,15 +44,30 @@ async def get_tender(tenders: ITenderRepository, tender_id: UUID) -> Tender:
     return encontradas[0]
 
 
+# El título es parte de la clave de `merge_milestones` (tipo, título), así que no
+# depende del llamado: si cambiara al pasar al segundo llamado quedaría un
+# duplicado. Lo que cambia entre llamados es la descripción.
+_TITULO_SEGUNDO_LLAMADO = "Cierre del segundo llamado"
+_SEGUNDO_LLAMADO_VIGENTE = "Llamado vigente: coincide con el cierre de recepción de ofertas."
+_SEGUNDO_LLAMADO_POSIBLE = (
+    "Fecha posible: Mercado Público la publica desde el primer llamado y solo se "
+    "usa si se abre un segundo llamado."
+)
+
+
 def mercado_publico_milestones(tender: Tender, user_id: UUID) -> list[TenderMilestone]:
-    """Hitos oficiales que siempre vienen en la ficha de Mercado Público."""
+    """Hitos oficiales de la ficha de Mercado Público.
+
+    Siempre la publicación y el cierre de ofertas; y el cierre del segundo
+    llamado cuando Mercado Público lo publica.
+    """
     comunes = {
         "user_id": user_id,
         "tender_id": tender.id,
         "source": MilestoneSource.MERCADO_PUBLICO,
         "has_time": True,
     }
-    return [
+    hitos = [
         TenderMilestone(
             kind=MilestoneKind.PUBLICACION,
             title="Publicación en Mercado Público",
@@ -66,6 +81,24 @@ def mercado_publico_milestones(tender: Tender, user_id: UUID) -> list[TenderMile
             **comunes,
         ),
     ]
+    # Solo cuando Mercado Público publicó la fecha. Con tipo propio y fuera de
+    # `_OFICIALES` de `refresh_synced_tender_dates`: avisos y calendario no
+    # cambian con este hito.
+    if tender.second_call_closing_at is not None:
+        hitos.append(
+            TenderMilestone(
+                kind=MilestoneKind.CIERRE_SEGUNDO_LLAMADO,
+                title=_TITULO_SEGUNDO_LLAMADO,
+                description=(
+                    _SEGUNDO_LLAMADO_VIGENTE
+                    if tender.call_number == 2
+                    else _SEGUNDO_LLAMADO_POSIBLE
+                ),
+                due_at=tender.second_call_closing_at,
+                **comunes,
+            )
+        )
+    return hitos
 
 
 def _clave(milestone: TenderMilestone) -> tuple[MilestoneKind, str]:

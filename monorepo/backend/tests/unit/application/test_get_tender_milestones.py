@@ -129,3 +129,101 @@ async def test_licitacion_inexistente(escenario):
 
     with pytest.raises(TenderNotFound):
         await use_case.execute(USUARIO, uuid4())
+
+
+def _escenario_con(**llamado: object):
+    """Como el fixture `escenario`, con campos del llamado en la licitación.
+
+    Devuelve también `tenders`: el fixture no lo expone y hace falta para
+    cambiar la licitación entre dos consultas.
+    """
+    datos: dict[str, object] = {
+        "code": "COT-2",
+        "name": "Reparación de techumbre",
+        "status_id": 1,
+        "published_at": AHORA - timedelta(days=3),
+        "closing_at": AHORA + timedelta(days=2),
+        "last_change_at": AHORA,
+        "buyer_rut": "12.345.678-9",
+        "buyer_unit": "Operaciones",
+    }
+    datos.update(llamado)
+    tender = Tender.model_validate(datos)
+    tenders = InMemoryTenderRepository()
+    tenders.tenders[tender.id] = tender
+    hitos = InMemoryTenderMilestoneRepository()
+    use_case = GetTenderMilestonesUseCase(
+        tenders=tenders,
+        milestones=hitos,
+        event_links=InMemoryCalendarEventLinkRepository(),
+        chat=InMemoryTenderChatRepository(),
+        now=lambda: AHORA,
+    )
+    return tender, tenders, hitos, use_case
+
+
+def _hito_del_segundo_llamado(resultado) -> TenderMilestone:
+    return next(
+        v.milestone
+        for v in resultado.milestones
+        if v.milestone.kind is MilestoneKind.CIERRE_SEGUNDO_LLAMADO
+    )
+
+
+async def test_con_fecha_de_segundo_llamado_agrega_su_hito():
+    segundo = AHORA + timedelta(days=3)
+    tender, _, hitos, use_case = _escenario_con(call_number=1, second_call_closing_at=segundo)
+
+    resultado = await use_case.execute(USUARIO, tender.id)
+
+    assert [v.milestone.kind for v in resultado.milestones] == [
+        MilestoneKind.PUBLICACION,
+        MilestoneKind.CIERRE_POSTULACION,
+        MilestoneKind.CIERRE_SEGUNDO_LLAMADO,
+    ]
+    hito = resultado.milestones[2].milestone
+    assert hito.title == "Cierre del segundo llamado"
+    assert hito.source is MilestoneSource.MERCADO_PUBLICO
+    assert hito.has_time is True
+    assert hito.due_at == segundo
+    assert (hito.description or "").startswith("Fecha posible")
+    assert len(await hitos.list_for_tender(USUARIO, tender.id)) == 3
+
+
+async def test_en_segundo_llamado_el_hito_se_describe_como_vigente():
+    segundo = AHORA + timedelta(days=3)
+    tender, _, _, use_case = _escenario_con(
+        call_number=2, closing_at=segundo, second_call_closing_at=segundo
+    )
+
+    resultado = await use_case.execute(USUARIO, tender.id)
+
+    assert (
+        _hito_del_segundo_llamado(resultado).description
+        == "Llamado vigente: coincide con el cierre de recepción de ofertas."
+    )
+
+
+async def test_al_pasar_al_segundo_llamado_actualiza_el_mismo_hito():
+    segundo = AHORA + timedelta(days=3)
+    tender, tenders, hitos, use_case = _escenario_con(call_number=1, second_call_closing_at=segundo)
+    antes = _hito_del_segundo_llamado(await use_case.execute(USUARIO, tender.id))
+
+    tenders.tenders[tender.id] = tender.model_copy(
+        update={"call_number": 2, "closing_at": segundo}
+    )
+    despues = await use_case.execute(USUARIO, tender.id)
+
+    guardados = await hitos.list_for_tender(USUARIO, tender.id)
+    assert len(guardados) == 3
+    hito = _hito_del_segundo_llamado(despues)
+    assert hito.id == antes.id
+    assert hito.description != antes.description
+
+
+async def test_sin_fecha_de_segundo_llamado_no_hay_hito_extra():
+    tender, _, hitos, use_case = _escenario_con(call_number=1)
+
+    await use_case.execute(USUARIO, tender.id)
+
+    assert len(await hitos.list_for_tender(USUARIO, tender.id)) == 2

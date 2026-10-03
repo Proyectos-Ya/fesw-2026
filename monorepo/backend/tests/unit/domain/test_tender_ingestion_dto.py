@@ -185,3 +185,65 @@ class TestDocumentosOficiales:
         )
 
         assert dto.documentos == []
+
+
+def _con_llamado(**extra: object) -> TenderIngestaDTO:
+    """DTO con los campos del llamado.
+
+    No sirve `model_copy`: no valida, así que se saltaría la normalización a UTC
+    que justamente se quiere comprobar.
+    """
+    return TenderIngestaDTO(
+        CodigoExterno="1234-56-COT26",
+        Nombre="Compra ágil de prueba",
+        Descripcion=None,
+        CodigoEstado=5,
+        FechaPublicacion=datetime(2026, 9, 25, 16, 51),
+        FechaCierre=datetime(2026, 9, 27, 17, 28),
+        RutComprador="60.000.000-0",
+        NombreOrganismo="Municipalidad de Prueba",
+        UnidadCompra="Unidad de Prueba",
+        RegionId=13,
+        RegionUnidad="Región Metropolitana",
+        MontoEstimado=1000.0,
+        **extra,  # type: ignore[arg-type]
+    )
+
+
+class TestLlamado:
+    """Segundo llamado (plan 233, decisión 3): `closing_at` no cambia de sentido."""
+
+    def test_los_campos_del_llamado_son_opcionales(self):
+        dto = _build_dto("2026-07-27T17:42:00", "2026-07-30T15:00:00")
+
+        assert dto.call_number is None
+        assert dto.first_call_closing_at is None
+        assert dto.second_call_closing_at is None
+
+    def test_los_cierres_por_llamado_se_normalizan_a_utc(self):
+        # Chile está en UTC-3 entre el 26 y el 27 de septiembre de 2026.
+        dto = _con_llamado(
+            NumeroLlamado=2,
+            FechaCierrePrimerLlamado=datetime(2026, 9, 26, 17, 10),
+            FechaCierreSegundoLlamado=datetime(2026, 9, 27, 17, 28),
+        )
+
+        assert dto.call_number == 2
+        assert dto.first_call_closing_at == datetime(2026, 9, 26, 20, 10)
+        assert dto.second_call_closing_at == datetime(2026, 9, 27, 20, 28)
+
+    def test_los_cierres_por_llamado_quedan_naive(self):
+        dto = _con_llamado(
+            FechaCierrePrimerLlamado=datetime(2026, 9, 26, 17, 10),
+            FechaCierreSegundoLlamado=datetime(2026, 9, 27, 17, 28),
+        )
+
+        assert dto.first_call_closing_at is not None
+        assert dto.first_call_closing_at.tzinfo is None
+        assert dto.second_call_closing_at is not None
+        assert dto.second_call_closing_at.tzinfo is None
+
+    def test_un_cierre_none_sigue_siendo_none(self):
+        dto = _con_llamado(NumeroLlamado=1, FechaCierrePrimerLlamado=None)
+
+        assert dto.first_call_closing_at is None

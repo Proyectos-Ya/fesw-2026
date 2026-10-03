@@ -35,3 +35,14 @@ class ITenderStatusSyncRepository(ABC):
         cuántas cambiaron de verdad.
         """
         ...
+
+    @abstractmethod
+    async def overwrite_call_info(self, cambios: list[CambioDeEstado]) -> int:
+        """Escribe el llamado vigente y el cierre de cada llamado, en lote.
+
+        Un `None` no borra lo guardado: que el ítem no traiga un dato no es que
+        no exista. No mueve `updated_at` (ni `last_change_at`): ese campo dispara
+        la regeneración del análisis de Gemini y el llamado no cambia lo que se
+        pide. Devuelve cuántas filas cambiaron de verdad.
+        """
+        ...

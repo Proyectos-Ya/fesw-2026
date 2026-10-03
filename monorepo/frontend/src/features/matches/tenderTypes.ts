@@ -17,6 +17,12 @@ export interface Tender {
   status_code: string | null;
   published_at: string;
   closing_at: string;
+  /** Llamado vigente: 1 = primer llamado, 2 = segundo. Nulo o ausente en licitaciones antiguas. */
+  call_number?: number | null;
+  /** Cierre del primer llamado (ISO UTC con `Z`). */
+  first_call_closing_at?: string | null;
+  /** Cierre del segundo llamado. En el primero es solo una fecha posible: MP la publica aunque no se use. */
+  second_call_closing_at?: string | null;
   last_change_at: string;
   buyer_rut: string;
   buyer_name: string | null;

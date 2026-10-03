@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { TenderCard } from "../TenderCard";
 import type { MatchingResult, Tender } from "../../tenderTypes";
+import { formatClosingDate } from "../../utils/format";
 
 const mockTender: Tender = {
   id: "tender-123",
@@ -69,5 +70,46 @@ describe("TenderCard", () => {
 
     expect(screen.getByText("Desierta")).toBeInTheDocument();
     expect(screen.queryByText(/Cierra en/)).not.toBeInTheDocument();
+  });
+});
+
+describe("TenderCard: segundo llamado", () => {
+  it("etiqueta la licitación que está en su segundo llamado", () => {
+    render(<TenderCard tender={{ ...mockTender, call_number: 2 }} />);
+
+    expect(screen.getByText("Segundo llamado")).toBeInTheDocument();
+  });
+
+  it("no etiqueta el primer llamado aunque Mercado Público publique la fecha del segundo", () => {
+    render(
+      <TenderCard
+        tender={{
+          ...mockTender,
+          call_number: 1,
+          first_call_closing_at: "2026-06-10T18:00:00Z",
+          second_call_closing_at: "2026-06-11T18:00:00Z",
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+  });
+
+  it("una licitación antigua, sin datos del llamado, se ve como antes", () => {
+    render(
+      <TenderCard
+        tender={{
+          ...mockTender,
+          call_number: null,
+          first_call_closing_at: null,
+          second_call_closing_at: null,
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(`Cierra ${formatClosingDate(mockTender.closing_at)}`),
+    ).toBeInTheDocument();
   });
 });

@@ -26,6 +26,8 @@ import {
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
+import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
+import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
 import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
@@ -415,6 +417,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
             <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
               {closing.label}
             </Badge>
+            {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
             <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
             <div className="flex-1" />
@@ -581,6 +584,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
           value={formatClosingDate(tender.published_at)}
         />
       </div>
+
+      <CallClosingDates tender={tender} />
 
       {/* Análisis de compatibilidad IA si ya existe */}
       {analysis && (

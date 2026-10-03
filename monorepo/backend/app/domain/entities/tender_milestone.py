@@ -23,11 +23,20 @@ class MilestoneKind(StrEnum):
     RESPUESTAS = "respuestas"
     VISITA_TECNICA = "visita_tecnica"
     CIERRE_POSTULACION = "cierre_postulacion"
+    CIERRE_SEGUNDO_LLAMADO = "cierre_segundo_llamado"
     APERTURA = "apertura"
     ADJUDICACION = "adjudicacion"
     ENTREGA = "entrega"
     FIRMA_CONTRATO = "firma_contrato"
     OTRO = "otro"
+
+
+# Hitos que salen solo de los datos de Mercado Público, nunca de un documento.
+# La IA no los ofrece: si los extrajera, quedarían duplicados del oficial con
+# otra clave (tipo, título) en `merge_milestones`.
+OFFICIAL_ONLY_KINDS: frozenset[MilestoneKind] = frozenset(
+    {MilestoneKind.CIERRE_SEGUNDO_LLAMADO}
+)
 
 
 class MilestoneSource(StrEnum):

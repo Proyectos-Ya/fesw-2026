@@ -46,6 +46,7 @@ from app.infrastructure.services.tenders.documentos_mp import (
     documentos_por_codigo,
 )
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
+from app.infrastructure.services.tenders.llamados import leer_llamado
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
     ErrorTransitorioMercadoPublico,
@@ -766,6 +767,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         fechas = detail.get("fechas", {}) or {}
         presupuesto = detail.get("presupuesto", {}) or {}
         estado = detail.get("estado", {}) or {}
+        llamado = leer_llamado(detail)
 
         def parse_date(date_str) -> datetime:
             # Naive en hora de Chile: el DTO la pasa a UTC (`normalize_to_utc`).
@@ -783,6 +785,10 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             EstadoCodigo=estado.get("codigo"),
             FechaPublicacion=parse_date(fechas.get("fecha_publicacion")),
             FechaCierre=parse_date(fechas.get("fecha_cierre")),
+            # Hora de Chile naive, como las dos de arriba: el DTO las pasa a UTC.
+            NumeroLlamado=llamado.numero,
+            FechaCierrePrimerLlamado=llamado.cierre_primer_llamado,
+            FechaCierreSegundoLlamado=llamado.cierre_segundo_llamado,
             RutComprador=str(institucion.get("rut", "Sin RUT")),
             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),

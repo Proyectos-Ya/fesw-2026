@@ -10,7 +10,7 @@ from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
 )
 from app.application.services.tender_assistant_ai_service import DocumentContextDTO
-from app.domain.entities.tender_milestone import MilestoneKind
+from app.domain.entities.tender_milestone import OFFICIAL_ONLY_KINDS, MilestoneKind
 from app.domain.errors.milestone_errors import MilestoneExtractionUnavailable
 from app.infrastructure.services.document_text import xlsx_to_text
 
@@ -42,7 +42,10 @@ _ESQUEMA = {
             "items": {
                 "type": "OBJECT",
                 "properties": {
-                    "kind": {"type": "STRING", "enum": [k.value for k in MilestoneKind]},
+                    "kind": {
+                        "type": "STRING",
+                        "enum": [k.value for k in MilestoneKind if k not in OFFICIAL_ONLY_KINDS],
+                    },
                     "title": {"type": "STRING", "description": "Nombre breve del hito"},
                     "description": {"type": "STRING", "nullable": True},
                     "fecha": {"type": "STRING", "description": "YYYY-MM-DD"},
