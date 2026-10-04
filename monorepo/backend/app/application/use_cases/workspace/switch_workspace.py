@@ -4,6 +4,7 @@ from app.application.repositories.supplier_member_repository import (
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.schemas.workspace_schema import SwitchWorkspaceSchema
 from app.domain.entities.supplier_member import (
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     WorkspaceContext,
@@ -38,16 +39,7 @@ class SwitchWorkspaceUseCase:
             current_user.id, data.supplier_id
         )
 
-        all_perms = [
-            "invite_members",
-            "remove_members",
-            "edit_company_profile",
-            "manage_tenders",
-            "view_matches",
-            "save_tenders",
-            "chat_assistant",
-            "deep_analysis",
-        ]
+        all_perms = list(ALL_PERMISSIONS)
 
         if not member:
             # Compatibilidad legacy si es dueño

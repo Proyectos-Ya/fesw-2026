@@ -8,11 +8,15 @@ from pydantic import BaseModel
 class AttachmentStatus(StrEnum):
     """Estado de un anexo oficial para quien mira la ficha.
 
-    Hoy solo `missing`: Chiripa conoce la lista, no los archivos. La subida
-    (plan 233, decisión 2) agrega los demás.
+    Lo calcula `estado_del_anexo` a partir del archivo que la empresa ve para ese
+    anexo (plan 233, decisión 2): `missing` si no hay ninguno.
     """
 
     MISSING = "missing"
+    UPLOADING = "uploading"
+    STORED = "stored"
+    REJECTED = "rejected"
+    UNSUPPORTED = "unsupported"
 
 
 class OfficialAttachment(BaseModel):

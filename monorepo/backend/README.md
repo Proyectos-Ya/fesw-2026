@@ -477,6 +477,80 @@ python -m scripts.ranking_telemetry --confirmar-produccion      # base compartid
 
 ---
 
+## Anexos: subida manual (plan 233, decisión 2)
+
+La empresa descarga los anexos de Mercado Público y los sube a Chiripa, arrastrándolos al
+panel "Anexos de la licitación" o con el botón de cada fila. El backend comprueba que el
+archivo **se llame como el anexo oficial** (se toleran mayúsculas, tildes y el " (1)" que
+agrega el navegador) y no lo guarda si no calza.
+
+### El flujo, en tres pasos
+
+1. `POST /tenders/{id}/attachments/{anexo}/upload-url` con `{file_name, size_bytes, mime, sha256}`.
+   Valida el nombre, el tamaño (máx. 50 MB) y el cupo, crea la fila `uploading` y devuelve una
+   URL firmada (201). Si la empresa ya tiene ese archivo, responde 200 con `deduplicated: true`
+   y no hay nada que subir. `upload_id` es el id del archivo.
+2. El navegador hace `PUT` **directo al almacenamiento** con exactamente los `headers` devueltos
+   y sin credenciales. El backend no ve los bytes.
+3. `POST /tenders/{id}/attachments/uploads/{upload_id}/complete` hace un `HEAD` y verifica el
+   tamaño (siempre) y la huella SHA-256 (cuando el almacenamiento la informa). Si no coinciden,
+   borra el objeto y deja el archivo `rejected` (422).
+
+`DELETE /tenders/{id}/attachments/files/{file_id}` borra un archivo propio. Subir y borrar
+requieren el permiso `upload_attachments` (admin y miembro; no el lector). Los errores llevan
+un `code` estable (`quota_exceeded`, `attachment_name_mismatch`…) además del `detail`.
+
+### Tablas
+
+| Tabla | Qué guarda |
+|---|---|
+| `attachment_file` | Un archivo por (anexo, contenido, empresa): `sha256`, tamaño, `storage_key`, `status` (`uploading`, `stored`, `unsupported`, `rejected`, `purged`), `visibility` (`private`), `trust` (`pending`) y `purge_after`. Pertenece a la empresa: borrar al usuario deja `uploader_user_id` nulo |
+| `attachment_upload_quota` | Subidas nuevas por empresa y mes de calendario de Chile (tope `ATTACHMENT_MANUAL_UPLOADS_PER_MONTH`, 100). Un reintento o un duplicado no cobran; borrar no devuelve el cupo |
+
+### Dónde se guardan los archivos
+
+| Entorno | Almacenamiento |
+|---|---|
+| `R2_*` completas | Cloudflare R2, objeto `private/{empresa}/{sha256}.{ext}` |
+| Sin R2 y `IS_DEV=true` | Disco local (`ATTACHMENT_LOCAL_STORAGE_DIR`, `storage/attachments`), con un receptor `PUT /dev-storage/...` que verifica tamaño y huella. La URL es absoluta al backend (`ATTACHMENT_LOCAL_STORAGE_PUBLIC_URL`) y **no** `/api`: el rewrite de Next corta los cuerpos a 10 MB |
+| Sin R2 y sin `IS_DEV` | Apagado: las rutas de escritura responden 503 `storage_unavailable` y la lista devuelve `can_upload: false`. Se puede desplegar antes de crear el bucket |
+
+En desarrollo hay que abrir el frontend en `http://localhost:3000` (el `PUT` es de otro origen y
+`CORS_ORIGINS` lo autoriza) y no por una IP de la red: WebCrypto, que calcula la huella, solo
+existe en `localhost` y `https`.
+
+### Configurar Cloudflare R2
+
+1. Crear el bucket (`R2_BUCKET`) y un token de API con permiso **Object Read & Write** solo sobre
+   ese bucket. Su `Access Key ID` y `Secret Access Key` son `R2_ACCESS_KEY_ID` y
+   `R2_SECRET_ACCESS_KEY`; `R2_ACCOUNT_ID` es el de la cuenta.
+2. Configurar el CORS del bucket, para que el navegador pueda hacer el `PUT`:
+
+```json
+[{"AllowedOrigins":["https://<frontend-prod>","http://localhost:3000"],"AllowedMethods":["PUT"],"AllowedHeaders":["content-type","x-amz-checksum-sha256"],"MaxAgeSeconds":3600}]
+```
+
+Sin `x-amz-checksum-sha256` y `content-type` en `AllowedHeaders`, el navegador bloquea el `PUT` y
+el cliente ve "No se pudo conectar con el almacenamiento".
+
+La firma SigV4 está escrita a mano (`app/infrastructure/services/attachments/sigv4.py`, sin
+`boto3`) y fijada con los vectores oficiales de la documentación de S3. La URL de subida firma
+`Content-Length` y el checksum, así que queda atada al tamaño y al contenido declarados.
+
+### Lo que hay que saber
+
+- **R2 podría no validar ni devolver el checksum.** `complete` siempre compara el tamaño; si R2
+  informa la huella, también. Si no, el archivo queda `stored` y la extracción de texto
+  (decisión 4) tiene que recalcular el SHA-256 al leerlo.
+- **Objetos huérfanos.** Borrar una licitación o una empresa en cascada (y
+  `scripts/reset_cuentas.py`) borra las filas pero **no** los objetos del bucket. Queda para un
+  limpiador (`purge_after` ya marca qué sobra).
+- `--reload` regenera el secreto del disco local: las URLs pendientes dan 403 y el cliente pide otra.
+- Para colgar trabajo de un archivo recién guardado (extracción, promoción a compartido), se
+  compone `get_attachment_stored_listener` en `app/bootstrap.py`.
+
+---
+
 ## Calidad de código
 
 Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.

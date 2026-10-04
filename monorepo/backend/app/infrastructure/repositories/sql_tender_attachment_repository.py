@@ -140,6 +140,20 @@ class SqlTenderAttachmentRepository(ITenderAttachmentRepository):
             await self.session.commit()
         return len(tender_ids)
 
+    async def get_official_attachment(
+        self, tender_id: UUID, attachment_id: UUID
+    ) -> OfficialAttachment | None:
+        modelo = (
+            await self.session.exec(
+                select(TenderAttachmentModel).where(
+                    col(TenderAttachmentModel.id) == attachment_id,
+                    col(TenderAttachmentModel.tender_id) == tender_id,
+                    col(TenderAttachmentModel.removed_at).is_(None),
+                )
+            )
+        ).first()
+        return _a_entidad(modelo) if modelo is not None else None
+
     async def get_official_list(self, tender_id: UUID) -> OfficialAttachmentList | None:
         # Dos columnas a propósito: con solo `attachments_synced_at`, `first()` daría
         # None tanto si la licitación no existe como si nunca se sincronizó.

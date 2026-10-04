@@ -1,13 +1,18 @@
 import asyncio
 import logging
+import secrets
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.attachment_file_repository import (
+    IAttachmentFileRepository,
+)
 from app.application.repositories.calendar_repository import (
     ICalendarConnectionRepository,
 )
@@ -45,6 +50,11 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.attachment_storage import IAttachmentStorage
+from app.application.services.attachment_stored_listener import (
+    IAttachmentStoredListener,
+    NoopAttachmentStoredListener,
+)
 from app.application.services.calendar_provider_client import (
     CalendarProviders,
     ICalendarProviderClient,
@@ -166,8 +176,17 @@ from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
+from app.application.use_cases.tender_attachments.complete_attachment_upload import (
+    CompleteAttachmentUploadUseCase,
+)
+from app.application.use_cases.tender_attachments.delete_attachment_file import (
+    DeleteAttachmentFileUseCase,
+)
 from app.application.use_cases.tender_attachments.get_tender_attachments import (
     GetTenderAttachmentsUseCase,
+)
+from app.application.use_cases.tender_attachments.request_attachment_upload import (
+    RequestAttachmentUploadUseCase,
 )
 from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
@@ -211,6 +230,9 @@ from app.infrastructure.repositories.ranking_telemetry_repository import (
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
+from app.infrastructure.repositories.sql_attachment_file_repository import (
+    SqlAttachmentFileRepository,
+)
 from app.infrastructure.repositories.sql_supplier_invitation_repository import (
     SqlSupplierInvitationRepository,
 )
@@ -233,6 +255,7 @@ from app.infrastructure.routers.calendar import (
     create_calendar_router,
     create_milestone_sync_router,
 )
+from app.infrastructure.routers.dev_storage import create_dev_storage_router
 from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
@@ -245,6 +268,12 @@ from app.infrastructure.services.api_embedding_service import (
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.attachments.local_attachment_storage import (
+    LocalDiskAttachmentStorage,
+)
+from app.infrastructure.services.attachments.r2_attachment_storage import (
+    R2AttachmentStorage,
+)
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
 )
@@ -799,12 +828,104 @@ def get_tender_attachment_repo(
     return SqlTenderAttachmentRepository(session)
 
 
+def build_attachment_storage() -> IAttachmentStorage | None:
+    """R2 si está configurado; disco local solo en desarrollo; si no, la subida queda apagada.
+
+    Sin R2 y fuera de desarrollo devuelve `None`: la API arranca igual y las rutas
+    de escritura responden 503 `storage_unavailable`, así se puede desplegar antes
+    de crear el bucket sin romper nada.
+    """
+    if settings.r2_enabled:
+        logger.info("Anexos en Cloudflare R2 (bucket %s).", settings.r2_bucket)
+        return R2AttachmentStorage(
+            account_id=settings.r2_account_id or "",
+            access_key_id=settings.r2_access_key_id or "",
+            secret_access_key=settings.r2_secret_access_key or "",
+            bucket=settings.r2_bucket or "",
+        )
+    if settings.is_dev:
+        logger.warning(
+            "Anexos en disco local (%s): solo para desarrollo.",
+            settings.attachment_local_storage_dir,
+        )
+        # Secreto por proceso: con --reload las URLs pendientes vencen, y el cliente
+        # pide otra.
+        return LocalDiskAttachmentStorage(
+            root=Path(settings.attachment_local_storage_dir),
+            public_base_url=settings.attachment_local_storage_public_url,
+            secret=secrets.token_bytes(32),
+        )
+    logger.warning("Sin R2 configurado: la subida de anexos queda apagada.")
+    return None
+
+
+def get_attachment_storage(request: Request) -> IAttachmentStorage | None:
+    return getattr(request.app.state, "attachment_storage", None)
+
+
+def get_attachment_file_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IAttachmentFileRepository:
+    return SqlAttachmentFileRepository(session)
+
+
+def get_attachment_stored_listener() -> IAttachmentStoredListener:
+    # Decisión 4 (extracción) y 6 (promoción): se componen acá con
+    # `CompositeAttachmentStoredListener`, sin tocar los casos de uso.
+    return NoopAttachmentStoredListener()
+
+
 def get_tender_attachments_use_case(
     attachments: Annotated[
         ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
     ],
+    files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
+    storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
 ) -> GetTenderAttachmentsUseCase:
-    return GetTenderAttachmentsUseCase(attachments)
+    return GetTenderAttachmentsUseCase(
+        attachments,
+        files,
+        uploads_per_month=settings.attachment_manual_uploads_per_month,
+        storage_available=storage is not None,
+    )
+
+
+def get_request_attachment_upload_use_case(
+    attachments: Annotated[
+        ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
+    ],
+    files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
+    storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    listener: Annotated[
+        IAttachmentStoredListener, Depends(get_attachment_stored_listener)
+    ],
+) -> RequestAttachmentUploadUseCase:
+    return RequestAttachmentUploadUseCase(
+        attachments=attachments,
+        files=files,
+        storage=storage,
+        listener=listener,
+        uploads_per_month=settings.attachment_manual_uploads_per_month,
+    )
+
+
+def get_complete_attachment_upload_use_case(
+    files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
+    storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    listener: Annotated[
+        IAttachmentStoredListener, Depends(get_attachment_stored_listener)
+    ],
+) -> CompleteAttachmentUploadUseCase:
+    return CompleteAttachmentUploadUseCase(
+        files=files, storage=storage, listener=listener
+    )
+
+
+def get_delete_attachment_file_use_case(
+    files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
+    storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+) -> DeleteAttachmentFileUseCase:
+    return DeleteAttachmentFileUseCase(files=files, storage=storage)
 
 
 def get_set_milestone_reminder_use_case(
@@ -1306,6 +1427,10 @@ def bootstrap(app: FastAPI) -> None:
     # sirve la misma lista al mismo usuario y empresa en 30 minutos.
     app.state.ranking_registry = RecentRankingRegistry()
 
+    # R2, disco local (solo desarrollo) o nada. Antes de los routers: ellos y los
+    # casos de uso lo leen de `app.state`.
+    app.state.attachment_storage = build_attachment_storage()
+
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(
         get_user_repo=get_user_repo,
@@ -1393,7 +1518,17 @@ def bootstrap(app: FastAPI) -> None:
     )
     app.include_router(
         create_tender_attachments_router(
-            get_current_user, get_tender_attachments_use_case
+            get_current_user,
+            get_tender_attachments_use_case,
+            get_optional_workspace_context=get_optional_workspace_context,
+            get_current_workspace_context=get_current_workspace_context,
+            get_request_upload_use_case=get_request_attachment_upload_use_case,
+            get_complete_upload_use_case=get_complete_attachment_upload_use_case,
+            get_delete_file_use_case=get_delete_attachment_file_use_case,
         )
     )
+    # El receptor de subidas del disco local solo existe cuando de verdad se usa
+    # el disco local: nunca con R2 ni en producción.
+    if isinstance(app.state.attachment_storage, LocalDiskAttachmentStorage):
+        app.include_router(create_dev_storage_router(app.state.attachment_storage))
 

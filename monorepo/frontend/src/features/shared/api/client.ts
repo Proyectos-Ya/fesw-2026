@@ -50,11 +50,20 @@ const MENSAJE_ERROR_SERVIDOR =
   "Tuvimos un problema en el servidor. Inténtalo nuevamente en unos segundos.";
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
-/** Error de una respuesta HTTP no exitosa del backend. */
+/**
+ * Error de una respuesta HTTP no exitosa del backend.
+ *
+ * `code` es el código estable (`quota_exceeded`, `attachment_name_mismatch`…) que
+ * algunos endpoints mandan junto al `detail`; `body` es el JSON completo para leer
+ * sus extras (`limit`, `expected_name`…). Ambos son opcionales: la mayoría de los
+ * errores solo traen `detail`.
+ */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code: string | null = null,
+    public readonly body: unknown = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -116,8 +125,11 @@ export async function apiFetch<T>(
     // Server Error") no le sirve a quien lo lee. Si el backend manda `detail`,
     // ese mensaje tiene prioridad más abajo.
     let detail = response.status >= 500 ? MENSAJE_ERROR_SERVIDOR : response.statusText;
+    let code: string | null = null;
+    let errorBody: unknown = null;
     try {
       const body: unknown = await response.json();
+      errorBody = body;
       if (
         body &&
         typeof body === "object" &&
@@ -125,6 +137,14 @@ export async function apiFetch<T>(
         typeof (body as { detail: unknown }).detail === "string"
       ) {
         detail = (body as { detail: string }).detail;
+      }
+      if (
+        body &&
+        typeof body === "object" &&
+        "code" in body &&
+        typeof (body as { code: unknown }).code === "string"
+      ) {
+        code = (body as { code: string }).code;
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el mensaje de respaldo.
@@ -136,7 +156,7 @@ export async function apiFetch<T>(
     ) {
       notificarRevocacionAcceso(detail);
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code, errorBody);
   }
 
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.

@@ -86,6 +86,14 @@ class InMemoryTenderAttachmentRepository(ITenderAttachmentRepository):
             self.sincronizadas[tender_id] = visto_en
         return len(listas)
 
+    async def get_official_attachment(
+        self, tender_id: UUID, attachment_id: UUID
+    ) -> OfficialAttachment | None:
+        for (tid, _), fila in self.filas.items():
+            if fila.id == attachment_id and tid == tender_id and fila.removed_at is None:
+                return fila
+        return None
+
     async def get_official_list(self, tender_id: UUID) -> OfficialAttachmentList | None:
         if tender_id not in self.licitaciones.values():
             return None

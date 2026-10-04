@@ -248,6 +248,27 @@ class Settings(BaseSettings):
     run_ranking_telemetry_jobs: bool = True
     ranking_telemetry_interval_seconds: int = Field(default=6 * 60 * 60, gt=0)
 
+    # --- Anexos: almacenamiento y subida manual (plan 233, decisión 2) ---
+    # Cloudflare R2, donde viven los archivos que suben las empresas. Las cuatro
+    # primeras van juntas (ver `_exigir_r2_completo`); sin ellas, la subida queda
+    # apagada, salvo en desarrollo, que usa el disco local.
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket: str | None = None
+    # Reservada: dominio público de lectura para `shared/` (visor o `fileUri` de
+    # Gemini). La decisión 2 no la usa.
+    r2_public_base_url: str | None = None
+    # Solo desarrollo y sin R2: dónde guarda el disco local y cómo lo alcanza el
+    # navegador. La URL es absoluta al backend y NO `/api`: el rewrite de Next
+    # corta los cuerpos a 10 MB, y un anexo puede pesar hasta 50.
+    attachment_local_storage_dir: str = "storage/attachments"
+    attachment_local_storage_public_url: str = "http://localhost:8000"
+    # Subidas nuevas por empresa y mes de calendario de Chile. Se cuenta al emitir
+    # la URL, no al confirmar: acota cuántos objetos puede escribir una empresa
+    # aunque nunca confirme. Los reintentos y los duplicados no cobran.
+    attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.
@@ -373,6 +394,43 @@ class Settings(BaseSettings):
             )
         return self
 
+    @property
+    def r2_enabled(self) -> bool:
+        """R2 está configurado (el validador garantiza que entonces está completo)."""
+        return all(
+            (
+                self.r2_account_id,
+                self.r2_access_key_id,
+                self.r2_secret_access_key,
+                self.r2_bucket,
+            )
+        )
+
+    @model_validator(mode="after")
+    def _exigir_r2_completo(self) -> "Settings":
+        """Con alguna variable de R2 puesta, tienen que estar las cuatro.
+
+        Una cuenta sin clave dejaría arrancar un despliegue que falla en la
+        primera subida de la primera empresa; mejor que no arranque.
+        """
+        pares = (
+            ("R2_ACCOUNT_ID", self.r2_account_id),
+            ("R2_ACCESS_KEY_ID", self.r2_access_key_id),
+            ("R2_SECRET_ACCESS_KEY", self.r2_secret_access_key),
+            ("R2_BUCKET", self.r2_bucket),
+        )
+        if not any(valor for _, valor in pares):
+            return self
+        faltantes = [nombre for nombre, valor in pares if not valor]
+        if faltantes:
+            raise ValueError("Falta configurar para Cloudflare R2: " + ", ".join(faltantes))
+        return self
+
+    @field_validator("attachment_local_storage_public_url", mode="after")
+    @classmethod
+    def _sin_barra_final(cls, valor: str) -> str:
+        return valor.rstrip("/")
+
     @field_validator(
         "embedding_api_key",
         "pinecone_api_key",
@@ -381,6 +439,11 @@ class Settings(BaseSettings):
         "google_calendar_client_id",
         "google_calendar_client_secret",
         "token_encryption_key",
+        "r2_account_id",
+        "r2_access_key_id",
+        "r2_secret_access_key",
+        "r2_bucket",
+        "r2_public_base_url",
         mode="after",
     )
     @classmethod

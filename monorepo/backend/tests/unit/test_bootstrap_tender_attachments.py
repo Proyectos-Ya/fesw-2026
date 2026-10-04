@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.bootstrap import get_tender_attachment_repo, get_tender_attachments_use_case
+from app.infrastructure.repositories.sql_attachment_file_repository import (
+    SqlAttachmentFileRepository,
+)
 from app.infrastructure.repositories.sql_tender_attachment_repository import (
     SqlTenderAttachmentRepository,
 )
@@ -22,10 +25,14 @@ def test_get_tender_attachment_repo_usa_la_sesion_recibida():
 
 def test_el_caso_de_uso_recibe_el_repositorio():
     repo = SqlTenderAttachmentRepository(AsyncMock(spec=AsyncSession))
+    files_repo = SqlAttachmentFileRepository(AsyncMock(spec=AsyncSession))
 
-    use_case = get_tender_attachments_use_case(repo)
+    use_case = get_tender_attachments_use_case(repo, files_repo, None)
 
     assert use_case.attachments is repo
+    assert use_case.files is files_repo
+    # Sin almacenamiento configurado, la ficha no ofrece subir.
+    assert use_case.storage_available is False
 
 
 def test_la_ruta_aparece_en_la_aplicacion():

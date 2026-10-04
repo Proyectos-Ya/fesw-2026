@@ -292,3 +292,43 @@ async def test_un_id_repetido_en_la_misma_lista_no_falla(db_session: AsyncSessio
     )
 
     assert len(await _filas(db_session, tender_id)) == 1
+
+
+async def test_get_official_attachment_devuelve_la_fila_vigente(db_session: AsyncSession):
+    await _base(db_session)
+    tender_id = await _tender(db_session, "A")
+    repo = SqlTenderAttachmentRepository(db_session)
+    await repo.sync_official_lists({tender_id: [BASES, ANEXO]}, visto_en=T1)
+    lista = await repo.get_official_list(tender_id)
+    assert lista is not None
+    anexo = lista.attachments[1]
+
+    encontrado = await repo.get_official_attachment(tender_id, anexo.id)
+
+    assert encontrado == anexo
+
+
+async def test_get_official_attachment_de_otra_licitacion_es_none(db_session: AsyncSession):
+    await _base(db_session)
+    tender_id = await _tender(db_session, "A")
+    otra = await _tender(db_session, "B")
+    repo = SqlTenderAttachmentRepository(db_session)
+    await repo.sync_official_lists({tender_id: [BASES]}, visto_en=T1)
+    lista = await repo.get_official_list(tender_id)
+    assert lista is not None
+
+    assert await repo.get_official_attachment(otra, lista.attachments[0].id) is None
+    assert await repo.get_official_attachment(tender_id, uuid4()) is None
+
+
+async def test_get_official_attachment_retirado_es_none(db_session: AsyncSession):
+    await _base(db_session)
+    tender_id = await _tender(db_session, "A")
+    repo = SqlTenderAttachmentRepository(db_session)
+    await repo.sync_official_lists({tender_id: [BASES, ANEXO]}, visto_en=T1)
+    lista = await repo.get_official_list(tender_id)
+    assert lista is not None
+    anexo = lista.attachments[1]
+    await repo.sync_official_lists({tender_id: [BASES]}, visto_en=T2)
+
+    assert await repo.get_official_attachment(tender_id, anexo.id) is None

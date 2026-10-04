@@ -3,7 +3,10 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID
 
-from app.domain.entities.tender_attachment import OfficialAttachmentList
+from app.domain.entities.tender_attachment import (
+    OfficialAttachment,
+    OfficialAttachmentList,
+)
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 
 
@@ -36,4 +39,15 @@ class ITenderAttachmentRepository(ABC):
     @abstractmethod
     async def get_official_list(self, tender_id: UUID) -> OfficialAttachmentList | None:
         """La lista vigente, o `None` si la licitación no existe."""
+        ...
+
+    @abstractmethod
+    async def get_official_attachment(
+        self, tender_id: UUID, attachment_id: UUID
+    ) -> OfficialAttachment | None:
+        """Una fila oficial vigente de esa licitación.
+
+        `None` si no existe, si es de otra licitación o si Mercado Público la
+        retiró: la subida no debe colgar archivos de algo que ya no se publica.
+        """
         ...

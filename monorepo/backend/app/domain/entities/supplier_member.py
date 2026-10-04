@@ -18,6 +18,25 @@ class MemberStatus(StrEnum):
     SUSPENDED = "suspended"
 
 
+# Subir un anexo gasta cupo de la empresa y escribe datos que la decisión 6 puede
+# volver compartidos: es una capacidad distinta de conversar con el asistente.
+UPLOAD_ATTACHMENTS = "upload_attachments"
+
+# Orden estable de `/workspaces/current`. Única fuente de la lista completa: el
+# dueño legacy (sin fila de membresía) recibe todos, y si cada sitio tuviera la
+# suya, un permiso nuevo le faltaría justo a quien más debería tenerlo.
+ALL_PERMISSIONS: tuple[str, ...] = (
+    "invite_members",
+    "remove_members",
+    "edit_company_profile",
+    "manage_tenders",
+    "view_matches",
+    "save_tenders",
+    "chat_assistant",
+    "deep_analysis",
+    UPLOAD_ATTACHMENTS,
+)
+
 _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
     MemberRole.ADMIN: {
         "invite_members",
@@ -28,12 +47,14 @@ _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        UPLOAD_ATTACHMENTS,
     },
     MemberRole.MEMBER: {
         "view_matches",
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        UPLOAD_ATTACHMENTS,
     },
     MemberRole.VIEWER: {
         "view_matches",

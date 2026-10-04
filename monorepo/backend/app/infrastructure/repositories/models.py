@@ -8,6 +8,10 @@ Importar desde acá evita que eso dependa de qué módulos haya cargado la
 aplicación por casualidad. Al agregar un modelo nuevo, agregarlo también aquí.
 """
 
+from app.infrastructure.repositories.attachment_file_model import (
+    AttachmentFileModel,
+    AttachmentUploadQuotaModel,
+)
 from app.infrastructure.repositories.calendar_model import (
     CalendarConnectionModel,
     CalendarEventLinkModel,
@@ -66,7 +70,9 @@ from app.infrastructure.repositories.tender_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "AttachmentFileModel",
     "AttachmentPriorityShadowModel",
+    "AttachmentUploadQuotaModel",
     "CalendarConnectionModel",
     "CalendarEventLinkModel",
     "CalendarOAuthStateModel",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
@@ -21,6 +21,14 @@ function messageFrom(error: unknown): string {
 export function useTenderAttachments(tenderId: string) {
   const [state, setState] = useState<TenderAttachmentsState>({ status: "loading" });
   const [reloadNonce, setReloadNonce] = useState(0);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // `setState` solo dentro de los callbacks de la promesa, no en el cuerpo del efecto.
   useEffect(() => {
@@ -42,5 +50,19 @@ export function useTenderAttachments(tenderId: string) {
     setReloadNonce((n) => n + 1);
   }, []);
 
-  return { state, reload };
+  /**
+   * Vuelve a pedir la lista **sin** pasar por `loading`: tras subir o borrar un
+   * archivo, la lista no puede parpadear ni perder lo que la persona ya veía. Un
+   * error se ignora y se conserva la lista actual.
+   */
+  const refresh = useCallback(async (): Promise<void> => {
+    try {
+      const data = await getTenderAttachments(tenderId);
+      if (mounted.current) setState({ status: "ready", data });
+    } catch {
+      // Se conserva la lista que ya había.
+    }
+  }, [tenderId]);
+
+  return { state, reload, refresh };
 }

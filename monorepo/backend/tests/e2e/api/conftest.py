@@ -59,6 +59,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         # tocar el estado directamente (desactivar una cuenta, por ejemplo).
         ac.usuarios = users
         ac.proveedores = suppliers
+        ac.miembros = members
         ac.correos = emails
         ac.rankings_registrados = impresiones
         yield ac

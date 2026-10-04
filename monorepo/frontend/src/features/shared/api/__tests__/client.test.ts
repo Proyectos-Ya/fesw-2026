@@ -69,6 +69,54 @@ describe("apiFetch", () => {
   });
 });
 
+describe("apiFetch — código estable del error", () => {
+  it("expone el code y el cuerpo cuando el backend los manda", async () => {
+    mockFetchOnce(
+      new Response(
+        JSON.stringify({ detail: "Tope alcanzado", code: "quota_exceeded", limit: 100 }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const error = await apiFetch("/tenders/t/attachments/a/upload-url").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).message).toBe("Tope alcanzado");
+    expect((error as ApiError).code).toBe("quota_exceeded");
+    expect((error as { body: { limit: number } }).body.limit).toBe(100);
+  });
+
+  it("deja code en null cuando el error no trae uno", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No autorizado" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const error = await apiFetch("/auth/me").catch((e: unknown) => e);
+
+    expect((error as ApiError).code).toBeNull();
+  });
+
+  it("deja code y body en null cuando la respuesta no es JSON", async () => {
+    mockFetchOnce(new Response("caída", { status: 502, statusText: "Bad Gateway" }));
+
+    const error = await apiFetch("/auth/me").catch((e: unknown) => e);
+
+    expect((error as ApiError).code).toBeNull();
+    expect((error as ApiError).body).toBeNull();
+  });
+
+  it("construir un ApiError con status y mensaje sigue funcionando", () => {
+    const error = new ApiError(404, "No existe");
+
+    expect(error.status).toBe(404);
+    expect(error.code).toBeNull();
+    expect(error.body).toBeNull();
+  });
+});
+
 describe("apiFetch — origen de la API", () => {
   it("llama a una ruta relativa bajo /api, no al dominio del backend", async () => {
     // La cookie de sesión es httpOnly y la emite el backend. Si el navegador la

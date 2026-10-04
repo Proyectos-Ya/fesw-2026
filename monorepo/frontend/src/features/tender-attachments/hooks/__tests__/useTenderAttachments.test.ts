@@ -55,4 +55,55 @@ describe("useTenderAttachments", () => {
       );
     }
   });
+
+  it("refresh vuelve a pedir la lista sin pasar por loading", async () => {
+    const nueva = buildTenderAttachments({ official: [] });
+    vi.mocked(service.getTenderAttachments)
+      .mockResolvedValueOnce(buildTenderAttachments())
+      .mockResolvedValueOnce(nueva);
+    const { result } = renderHook(() => useTenderAttachments("t-1"));
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    const estados: string[] = [];
+
+    await act(async () => {
+      const pendiente = result.current.refresh();
+      estados.push(result.current.state.status);
+      await pendiente;
+    });
+
+    estados.push(result.current.state.status);
+    expect(estados).toEqual(["ready", "ready"]);
+    expect(result.current.state).toEqual({ status: "ready", data: nueva });
+    expect(service.getTenderAttachments).toHaveBeenCalledTimes(2);
+  });
+
+  it("si refresh falla conserva la lista que ya había", async () => {
+    const original = buildTenderAttachments();
+    vi.mocked(service.getTenderAttachments)
+      .mockResolvedValueOnce(original)
+      .mockRejectedValueOnce(new ApiError(500, "Falló el servidor"));
+    const { result } = renderHook(() => useTenderAttachments("t-1"));
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.state).toEqual({ status: "ready", data: original });
+  });
+
+  it("refresh después de desmontar no actualiza el estado", async () => {
+    let resolver: (data: ReturnType<typeof buildTenderAttachments>) => void = () => {};
+    vi.mocked(service.getTenderAttachments)
+      .mockResolvedValueOnce(buildTenderAttachments())
+      .mockReturnValueOnce(new Promise((resolve) => (resolver = resolve)));
+    const { result, unmount } = renderHook(() => useTenderAttachments("t-1"));
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+
+    const pendiente = result.current.refresh();
+    unmount();
+    resolver(buildTenderAttachments({ official: [] }));
+
+    await expect(pendiente).resolves.toBeUndefined();
+  });
 });

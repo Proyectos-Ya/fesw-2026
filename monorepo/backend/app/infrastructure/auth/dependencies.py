@@ -17,6 +17,7 @@ from app.application.use_cases.auth.resolve_authenticated_user import (
     ResolveAuthenticatedUserUseCase,
 )
 from app.domain.entities.supplier_member import (
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     WorkspaceContext,
@@ -176,16 +177,7 @@ def build_get_current_workspace_context(
         if not member:
             if supplier.user_id == current_user.id:
                 # Compatibilidad legacy si user_id coincide
-                all_perms = [
-                    "invite_members",
-                    "remove_members",
-                    "edit_company_profile",
-                    "manage_tenders",
-                    "view_matches",
-                    "save_tenders",
-                    "chat_assistant",
-                    "deep_analysis",
-                ]
+                all_perms = list(ALL_PERMISSIONS)
                 return WorkspaceContext(
                     user_id=current_user.id,
                     active_supplier_id=supplier.id,
@@ -217,20 +209,7 @@ def build_get_current_workspace_context(
             member.updated_at = now
             await member_repo.update(member)
 
-        perms = [
-            p
-            for p in [
-                "invite_members",
-                "remove_members",
-                "edit_company_profile",
-                "manage_tenders",
-                "view_matches",
-                "save_tenders",
-                "chat_assistant",
-                "deep_analysis",
-            ]
-            if member.has_permission(p)
-        ]
+        perms = [p for p in ALL_PERMISSIONS if member.has_permission(p)]
 
         return WorkspaceContext(
             user_id=current_user.id,
