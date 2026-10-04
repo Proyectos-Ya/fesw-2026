@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiDownload, apiDownloadOrAccepted, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
+import {
+  apiDownload,
+  apiDownloadOrAccepted,
+  apiFetch,
+  ApiError,
+  registrarProveedorDeToken,
+} from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));

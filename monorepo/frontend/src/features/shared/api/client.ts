@@ -133,6 +133,8 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
 
 /**
  * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`.
  *
  * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
  * agrega esta función.
@@ -166,11 +168,9 @@ export async function apiDownload(
   nombrePorDefecto = "archivo",
 ): Promise<ArchivoDescargado> {
   const response = await solicitar(path);
-  const disposicion = response.headers.get("Content-Disposition") ?? "";
-  const coincidencia = /filename="?([^";]+)"?/i.exec(disposicion);
   return {
     blob: await response.blob(),
-    filename: coincidencia?.[1] ?? nombrePorDefecto,
+    filename: filenameFrom(response.headers.get("Content-Disposition")) ?? nombrePorDefecto,
   };
 }
 
@@ -185,8 +185,8 @@ function filenameFrom(disposition: string | null): string | null {
 }
 
 /**
- * Como `apiDownload`, pero para endpoints que pueden responder 202 en vez del
- * archivo (exportaciones de la HdU 19).
+ * Como `apiDownload`, pero para endpoints que pueden responder 202 porque el
+ * archivo sigue generándose (exportaciones de la HdU 19).
  */
 export async function apiDownloadOrAccepted(
   path: string,

@@ -58,7 +58,6 @@ pypdf==6.18.1
 # Exportar el detalle de una licitación a PDF (HdU 19). Wheel puro: a diferencia
 # de WeasyPrint, no necesita pango ni cairo en la imagen de producción.
 reportlab==4.5.1
-
 # Exportación del borrador de postulación a Word (HU-20, CA3).
 python-docx==1.2.0
 
