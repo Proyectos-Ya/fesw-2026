@@ -34,3 +34,15 @@ export function mensajeDeErrorAuth(err: unknown, respaldo: string): string {
   );
   return traduccion?.mensaje ?? err.message;
 }
+
+/**
+ * `true` si el login falló porque el correo nunca se confirmó.
+ *
+ * El login lo usa para llevar al usuario a `/verificar`, donde puede pedir otro
+ * enlace; sin eso el correo con enlace vencido queda sin salida.
+ */
+export function correoSinConfirmar(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const codigo = "code" in err && typeof err.code === "string" ? err.code : undefined;
+  return codigo === "email_not_confirmed" || /email not confirmed/i.test(err.message);
+}

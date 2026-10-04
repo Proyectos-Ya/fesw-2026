@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { loginSchema, type LoginData } from "../authSchema";
 import { iniciarSesionConCorreo } from "../services/authService";
-import { mensajeDeErrorAuth } from "../authErrors";
+import { correoSinConfirmar, mensajeDeErrorAuth } from "../authErrors";
 import { useAuth } from "../AuthContext";
 import { RETURN_URL_PARAM, sanitizeReturnUrl } from "../returnUrl";
 import { Input } from "@/features/shared/components/Input";
@@ -63,6 +63,11 @@ function LoginFormInner() {
       // descarta destinos externos.
       router.push(sanitizeReturnUrl(params.get(RETURN_URL_PARAM)) ?? "/");
     } catch (err) {
+      if (correoSinConfirmar(err)) {
+        // Enlace vencido o perdido: /verificar permite pedir otro.
+        router.push(`/verificar?email=${encodeURIComponent(data.email)}`);
+        return;
+      }
       setError(mensajeDeErrorAuth(err, "Ocurrió un error inesperado. Inténtalo de nuevo."));
     } finally {
       setIsSubmitting(false);
