@@ -23,8 +23,12 @@ class InMemoryExportJobRepository(IExportJobRepository):
             return job.model_copy(update={"content": None})
         return job
 
-    async def fail_stale(self, now: datetime) -> int:
-        en_proceso = [j for j in self.jobs.values() if j.status is ExportJobStatus.PROCESSING]
+    async def fail_stale(self, now: datetime, created_before: datetime) -> int:
+        en_proceso = [
+            j
+            for j in self.jobs.values()
+            if j.status is ExportJobStatus.PROCESSING and j.created_at < created_before
+        ]
         for job in en_proceso:
             self.jobs[job.id] = job.fallido("La API se reinició durante la generación.", now)
         return len(en_proceso)

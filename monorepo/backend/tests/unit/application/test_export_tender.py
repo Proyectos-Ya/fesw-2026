@@ -169,6 +169,14 @@ class TestRapido:
         with pytest.raises(ExportGenerationFailed):
             await esc.exportar(ExportFormat.PDF)
 
+    async def test_si_el_render_mismo_lanza_timeout_no_pasa_a_segundo_plano(self):
+        esc = Escenario(pdf=PdfFalso(b"", error=TimeoutError("socket")))
+
+        with pytest.raises(ExportGenerationFailed):
+            await esc.exportar(ExportFormat.PDF)
+        assert esc.fondo.programados == []
+        assert esc.jobs.jobs == {}
+
     async def test_sin_permiso_no_genera_nada(self):
         esc = Escenario()
 

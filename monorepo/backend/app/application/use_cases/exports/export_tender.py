@@ -99,7 +99,10 @@ class ExportTenderUseCase:
             content = await asyncio.wait_for(
                 asyncio.shield(tarea), timeout=self.inline_timeout_seconds
             )
-        except TimeoutError:
+        except TimeoutError as error:
+            if tarea.done() and tarea.exception() is not None:
+                # El que venció fue el render mismo, no el umbral: no hay nada que esperar.
+                raise ExportGenerationFailed() from error
             job = ExportJob.crear(
                 user_id=ctx.user_id,
                 supplier_id=ctx.active_supplier_id,
@@ -109,6 +112,8 @@ class ExportTenderUseCase:
                 file_name=file_name,
                 now=self.now(),
             )
+            # Los archivos vencidos se vacían acá y no solo al arrancar la API.
+            await self.jobs.purge_expired(self.now())
             await self.jobs.save(job)
             self.background.schedule(job, tarea, recipient_email, snapshot.tender.name)
             return ExportQueued(job=job)

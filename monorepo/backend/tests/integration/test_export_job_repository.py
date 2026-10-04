@@ -51,13 +51,15 @@ async def test_guarda_y_lee_el_archivo_binario(db_session: AsyncSession):
 async def test_al_arrancar_marca_fallido_lo_que_quedo_en_proceso(db_session: AsyncSession):
     ids = await _escenario(db_session)
     repo = ExportJobRepository(db_session)
-    colgado = await repo.save(_job(*ids))
+    colgado = await repo.save(_job(*ids, now=AHORA - timedelta(hours=1)))
+    reciente = await repo.save(_job(*ids, now=AHORA))
     listo = await repo.save(_job(*ids).listo(b"x", AHORA))
 
-    assert await repo.fail_stale(AHORA) == 1
+    assert await repo.fail_stale(AHORA, AHORA - timedelta(minutes=15)) == 1
     db_session.expunge_all()
 
     assert (await repo.get(colgado.id)).status is ExportJobStatus.FAILED
+    assert (await repo.get(reciente.id)).status is ExportJobStatus.PROCESSING
     assert (await repo.get(listo.id)).status is ExportJobStatus.READY
 
 

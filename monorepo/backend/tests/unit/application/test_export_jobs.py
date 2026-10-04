@@ -102,8 +102,7 @@ class TestCompletar:
 
         assert jobs.jobs[job.id].status is ExportJobStatus.READY
 
-    async def test_una_tarea_cancelada_por_el_apagado_no_se_marca_ni_avisa(self):
-        # Al reiniciar la API, `ReconcileExportJobsUseCase` la marca fallida.
+    async def test_una_tarea_cancelada_por_el_apagado_queda_fallida_sin_avisar(self):
         jobs, correo = InMemoryExportJobRepository(), FakeEmailService()
         job = await jobs.save(_job())
 
@@ -112,7 +111,7 @@ class TestCompletar:
 
         with pytest.raises(asyncio.CancelledError):
             await _completar(jobs, correo).execute(job, cancelada(), CORREO, "x")
-        assert jobs.jobs[job.id].status is ExportJobStatus.PROCESSING
+        assert jobs.jobs[job.id].status is ExportJobStatus.FAILED
         assert correo.sent == []
 
 
@@ -188,7 +187,9 @@ class TestDescargar:
 class TestReconciliar:
     async def test_al_arrancar_falla_lo_que_quedo_en_proceso_y_limpia_lo_vencido(self):
         jobs = InMemoryExportJobRepository()
-        colgado = await jobs.save(_job())
+        colgado = await jobs.save(
+            _job().model_copy(update={"created_at": AHORA - timedelta(hours=1)})
+        )
         viejo = await jobs.save(
             _job().listo(b"%PDF", AHORA).model_copy(update={"expires_at": AHORA - timedelta(days=1)})
         )
@@ -198,3 +199,12 @@ class TestReconciliar:
         assert (colgados, purgados) == (1, 1)
         assert jobs.jobs[colgado.id].status is ExportJobStatus.FAILED
         assert jobs.jobs[viejo.id].content is None
+
+    async def test_no_toca_lo_que_una_instancia_anterior_esta_generando_ahora(self):
+        jobs = InMemoryExportJobRepository()
+        reciente = await jobs.save(_job().model_copy(update={"created_at": AHORA}))
+
+        colgados, _ = await ReconcileExportJobsUseCase(jobs, now=lambda: AHORA).execute()
+
+        assert colgados == 0
+        assert jobs.jobs[reciente.id].status is ExportJobStatus.PROCESSING

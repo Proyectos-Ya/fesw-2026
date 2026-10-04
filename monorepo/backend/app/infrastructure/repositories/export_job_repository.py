@@ -73,10 +73,13 @@ class ExportJobRepository(IExportJobRepository):
             raise
         return result.rowcount or 0
 
-    async def fail_stale(self, now: datetime) -> int:
+    async def fail_stale(self, now: datetime, created_before: datetime) -> int:
         return await self._update(
             update(ExportJobModel)
-            .where(col(ExportJobModel.status) == ExportJobStatus.PROCESSING.value)
+            .where(
+                col(ExportJobModel.status) == ExportJobStatus.PROCESSING.value,
+                col(ExportJobModel.created_at) < created_before,
+            )
             .values(status=ExportJobStatus.FAILED.value, error=_REINICIO, finished_at=now)
         )
 

@@ -1,8 +1,9 @@
 """Lo que pasa con una exportación después de responder (HdU 19, criterios 8 y 9)."""
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from app.application.repositories.export_job_repository import IExportJobRepository
@@ -23,6 +24,11 @@ from app.domain.errors.notification_errors import EmailDeliveryError
 from app.shared.datetime_utils import utc_now_naive
 
 logger = logging.getLogger(__name__)
+
+# Un trabajo en proceso más joven que esto puede ser de una instancia anterior que
+# sigue viva durante el despliegue: el arranque no lo toca.
+_GRACIA_REINICIO = timedelta(minutes=15)
+_INTERRUMPIDA = "La API se apagó durante la generación."
 
 _ETIQUETAS = {ExportFormat.PDF: "PDF", ExportFormat.XLSX: "Excel"}
 
@@ -52,10 +58,13 @@ class CompleteExportJobUseCase:
         item = ExportReadyItem(
             job_id=job.id, tender_name=tender_name, format_label=_ETIQUETAS[job.format]
         )
-        # CancelledError no es Exception: si la API se apaga, sube tal cual y
-        # el trabajo queda en proceso hasta que el arranque lo marque fallido.
         try:
             content = await render
+        except asyncio.CancelledError:
+            # La API se está apagando: se deja constancia para que nadie espere un
+            # archivo que no llegará. Sin correo, el proceso se está cerrando.
+            await self.jobs.save(job.fallido(_INTERRUMPIDA, self.now()))
+            raise
         except Exception as error:
             logger.exception("Falló la exportación %s", job.id)
             fallido = await self.jobs.save(job.fallido(str(error) or type(error).__name__, self.now()))
@@ -133,4 +142,5 @@ class ReconcileExportJobsUseCase:
 
     async def execute(self) -> tuple[int, int]:
         ahora = self.now()
-        return await self.jobs.fail_stale(ahora), await self.jobs.purge_expired(ahora)
+        colgados = await self.jobs.fail_stale(ahora, ahora - _GRACIA_REINICIO)
+        return colgados, await self.jobs.purge_expired(ahora)

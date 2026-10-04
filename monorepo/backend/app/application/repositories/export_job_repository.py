@@ -16,8 +16,12 @@ class IExportJobRepository(ABC):
 
 
     @abstractmethod
-    async def fail_stale(self, now: datetime) -> int:
-        """Marca fallidos los que quedaron en proceso por un reinicio de la API."""
+    async def fail_stale(self, now: datetime, created_before: datetime) -> int:
+        """Marca fallidos los que siguen en proceso y se crearon antes de `created_before`.
+
+        El corte evita tocar lo que una instancia anterior, todavía viva durante un
+        despliegue, está generando en este momento.
+        """
 
     @abstractmethod
     async def purge_expired(self, now: datetime) -> int:
