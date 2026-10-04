@@ -7,6 +7,14 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.calendar_repository import (
+    ICalendarConnectionRepository,
+)
+from app.application.repositories.export_job_repository import IExportJobRepository
+from app.application.repositories.kanban_repository import (
+    IKanbanCardRepository,
+    IKanbanColumnRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -16,11 +24,14 @@ from app.application.repositories.notification_repository import (
     INotificationRepository,
 )
 from app.application.repositories.question_repository import IQuestionRepository
-from app.application.repositories.kanban_repository import (
-    IKanbanCardRepository,
-    IKanbanColumnRepository,
-)
+from app.application.repositories.quotation_repository import IQuotationRepository
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
+from app.application.repositories.supplier_invitation_repository import (
+    ISupplierInvitationRepository,
+)
+from app.application.repositories.supplier_member_repository import (
+    ISupplierMemberRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -29,10 +40,17 @@ from app.application.repositories.tender_chat_repository import (
     ITenderChatRepository,
 )
 from app.application.repositories.tender_repository import ITenderRepository
+from app.application.repositories.tender_share_link_repository import (
+    ITenderShareLinkRepository,
+)
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.calendar_provider_client import (
+    CalendarProviders,
+    ICalendarProviderClient,
+)
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
@@ -41,14 +59,38 @@ from app.application.services.document_validator_service import (
 )
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.export_background import IExportBackground
 from app.application.services.identity_directory import IIdentityDirectory
+from app.application.services.milestone_extraction_ai_service import (
+    IMilestoneExtractionAIService,
+)
+from app.application.services.proposal_ai_service import IProposalAIService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
+from app.application.services.tender_refresher import ITenderRefresher
+from app.application.services.token_cipher import ITokenCipher
 from app.application.services.token_verifier import IAuthTokenVerifier
 from app.application.services.weighting_service import IWeightingService
+from app.application.use_cases.ask_tender_assistant_use_case import (
+    AskTenderAssistantUseCase,
+)
+from app.application.use_cases.calendar.calendar_authorization import (
+    CompleteCalendarAuthorizationUseCase,
+    StartCalendarAuthorizationUseCase,
+)
+from app.application.use_cases.calendar.calendar_connections import (
+    DisconnectCalendarUseCase,
+    GetCalendarConnectionsUseCase,
+)
+from app.application.use_cases.calendar.refresh_synced_tender_dates import (
+    RefreshSyncedTenderDatesUseCase,
+)
+from app.application.use_cases.calendar.sync_milestones import (
+    SyncMilestonesToCalendarUseCase,
+)
 from app.application.use_cases.capabilities.add_capability_evidence import (
     AddCapabilityEvidenceUseCase,
 )
@@ -61,32 +103,6 @@ from app.application.use_cases.capabilities.build_experience_catalog import (
 from app.application.use_cases.capabilities.list_pending_questions import (
     ListPendingCapabilityQuestionsUseCase,
 )
-from app.application.use_cases.proposals.answer_proposal_question import (
-    AnswerProposalQuestionUseCase,
-)
-from app.application.use_cases.proposals.decide_discrepancy import (
-    DecideDiscrepancyUseCase,
-)
-from app.application.use_cases.proposals.export_proposal import (
-    ExportProposalDocxUseCase,
-)
-from app.application.use_cases.proposals.generate_proposal import (
-    GenerateProposalUseCase,
-)
-from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
-from app.application.use_cases.proposals.regenerate_proposal import (
-    RegenerateProposalUseCase,
-)
-from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
-from app.application.use_cases.proposals.sync_proposal_answers import (
-    SyncProposalAnswersUseCase,
-)
-from app.application.use_cases.proposals.start_feasibility import (
-    StartFeasibilityUseCase,
-)
-from app.application.use_cases.ask_tender_assistant_use_case import (
-    AskTenderAssistantUseCase,
-)
 from app.application.use_cases.create_tender_chat_session_use_case import (
     CreateTenderChatSessionUseCase,
 )
@@ -96,8 +112,36 @@ from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import 
 from app.application.use_cases.delete_tender_chat_document_use_case import (
     DeleteTenderChatDocumentUseCase,
 )
+from app.application.use_cases.exports.build_export_snapshot import (
+    BuildExportSnapshotUseCase,
+)
+from app.application.use_cases.exports.export_jobs import (
+    CompleteExportJobUseCase,
+    DownloadExportFileUseCase,
+    GetExportJobUseCase,
+    ReconcileExportJobsUseCase,
+)
+from app.application.use_cases.exports.export_tender import ExportTenderUseCase
 from app.application.use_cases.get_tender_chat_history_use_case import (
     GetTenderChatHistoryUseCase,
+)
+from app.application.use_cases.kanban.add_tender_to_board import AddTenderToBoardUseCase
+from app.application.use_cases.kanban.create_kanban_column import (
+    CreateKanbanColumnUseCase,
+)
+from app.application.use_cases.kanban.delete_kanban_column import (
+    DeleteKanbanColumnUseCase,
+)
+from app.application.use_cases.kanban.list_kanban_cards import ListKanbanCardsUseCase
+from app.application.use_cases.kanban.list_kanban_columns import (
+    ListKanbanColumnsUseCase,
+)
+from app.application.use_cases.kanban.move_kanban_card import MoveKanbanCardUseCase
+from app.application.use_cases.kanban.remove_tender_from_board import (
+    RemoveTenderFromBoardUseCase,
+)
+from app.application.use_cases.kanban.update_kanban_column import (
+    UpdateKanbanColumnUseCase,
 )
 from app.application.use_cases.list_tender_chat_documents_use_case import (
     ListTenderChatDocumentsUseCase,
@@ -105,6 +149,18 @@ from app.application.use_cases.list_tender_chat_documents_use_case import (
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
+)
+from app.application.use_cases.milestones.extract_tender_milestones import (
+    ExtractTenderMilestonesUseCase,
+)
+from app.application.use_cases.milestones.get_tender_milestones import (
+    GetTenderMilestonesUseCase,
+)
+from app.application.use_cases.milestones.send_milestone_reminders import (
+    SendMilestoneRemindersUseCase,
+)
+from app.application.use_cases.milestones.set_milestone_reminder import (
+    SetMilestoneReminderUseCase,
 )
 from app.application.use_cases.notifications.build_daily_digest import (
     BuildDailyDigestUseCase,
@@ -124,25 +180,47 @@ from app.application.use_cases.notifications.manage_notifications import (
 from app.application.use_cases.notifications.scan_supplier_for_alerts import (
     ScanSupplierForAlertsUseCase,
 )
+from app.application.use_cases.proposals.answer_proposal_question import (
+    AnswerProposalQuestionUseCase,
+)
+from app.application.use_cases.proposals.decide_discrepancy import (
+    DecideDiscrepancyUseCase,
+)
+from app.application.use_cases.proposals.export_proposal import (
+    ExportProposalDocxUseCase,
+)
+from app.application.use_cases.proposals.generate_proposal import (
+    GenerateProposalUseCase,
+)
+from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
+from app.application.use_cases.proposals.regenerate_proposal import (
+    RegenerateProposalUseCase,
+)
+from app.application.use_cases.proposals.resume_proposal import ResumeProposalUseCase
+from app.application.use_cases.proposals.start_feasibility import (
+    StartFeasibilityUseCase,
+)
+from app.application.use_cases.proposals.sync_proposal_answers import (
+    SyncProposalAnswersUseCase,
+)
 from app.application.use_cases.questions.answer_question_use_case import (
     AnswerQuestionUseCase,
 )
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
-from app.application.use_cases.kanban.add_tender_to_board import AddTenderToBoardUseCase
-from app.application.use_cases.kanban.create_kanban_column import CreateKanbanColumnUseCase
-from app.application.use_cases.kanban.delete_kanban_column import DeleteKanbanColumnUseCase
-from app.application.use_cases.kanban.list_kanban_cards import ListKanbanCardsUseCase
-from app.application.use_cases.kanban.list_kanban_columns import ListKanbanColumnsUseCase
-from app.application.use_cases.kanban.move_kanban_card import MoveKanbanCardUseCase
-from app.application.use_cases.kanban.remove_tender_from_board import RemoveTenderFromBoardUseCase
-from app.application.use_cases.kanban.update_kanban_column import UpdateKanbanColumnUseCase
+from app.application.use_cases.quotation import QuotationUseCase
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
 from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
 from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
+from app.application.use_cases.sharing.tender_sharing import (
+    CreateShareLinkUseCase,
+    GetSharedTenderUseCase,
+    ListShareLinksUseCase,
+    RevokeShareLinkUseCase,
+)
 from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
@@ -151,13 +229,23 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
 from app.config import settings
+from app.domain.entities.calendar import CalendarProvider
 from app.infrastructure.auth.dependencies import (
     build_get_current_user,
     build_get_current_workspace_context,
     build_get_optional_workspace_context,
 )
 from app.infrastructure.db import async_session_maker, get_session
-
+from app.infrastructure.repositories.calendar_repository import (
+    CalendarConnectionRepository,
+    CalendarEventLinkRepository,
+    CalendarOAuthStateRepository,
+)
+from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.repositories.kanban_repository import (
+    KanbanCardRepository,
+    KanbanColumnRepository,
+)
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -173,18 +261,17 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
-from app.infrastructure.repositories.kanban_repository import (
-    KanbanCardRepository,
-    KanbanColumnRepository,
-)
+from app.infrastructure.repositories.quotation_repository import QuotationRepository
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
-from app.application.repositories.supplier_invitation_repository import (
-    ISupplierInvitationRepository,
+from app.infrastructure.repositories.sql_capability_repository import (
+    SqlCapabilityAnswerRepository,
+    SqlCapabilityEvidenceRepository,
+    SqlCapabilityQuestionRepository,
 )
-from app.application.repositories.supplier_member_repository import (
-    ISupplierMemberRepository,
+from app.infrastructure.repositories.sql_proposal_repository import (
+    SqlProposalDraftRepository,
 )
 from app.infrastructure.repositories.sql_supplier_invitation_repository import (
     SqlSupplierInvitationRepository,
@@ -196,127 +283,37 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_repository import (
+    TenderMilestoneRepository,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.infrastructure.repositories.tender_share_link_repository import (
+    TenderShareLinkRepository,
+)
 from app.infrastructure.repositories.user_repository import UserRepository
-from app.application.repositories.calendar_repository import (
-    ICalendarConnectionRepository,
-)
-from app.application.services.calendar_provider_client import (
-    CalendarProviders,
-    ICalendarProviderClient,
-)
-from app.application.services.milestone_extraction_ai_service import (
-    IMilestoneExtractionAIService,
-)
-from app.application.services.token_cipher import ITokenCipher
-from app.application.use_cases.calendar.calendar_authorization import (
-    CompleteCalendarAuthorizationUseCase,
-    StartCalendarAuthorizationUseCase,
-)
-from app.application.use_cases.calendar.calendar_connections import (
-    DisconnectCalendarUseCase,
-    GetCalendarConnectionsUseCase,
-)
-from app.application.services.tender_refresher import ITenderRefresher
-from app.application.use_cases.calendar.refresh_synced_tender_dates import (
-    RefreshSyncedTenderDatesUseCase,
-)
-from app.application.use_cases.calendar.sync_milestones import (
-    SyncMilestonesToCalendarUseCase,
-)
-from app.domain.entities.calendar import CalendarProvider
-from app.infrastructure.repositories.calendar_repository import (
-    CalendarConnectionRepository,
-    CalendarOAuthStateRepository,
-)
 from app.infrastructure.routers.calendar import (
     create_calendar_router,
     create_milestone_sync_router,
 )
-from app.infrastructure.services.calendar.google_calendar_client import (
-    GoogleCalendarClient,
-)
-from app.infrastructure.services.security.fernet_token_cipher import (
-    FernetTokenCipher,
-    UnconfiguredTokenCipher,
-)
-from app.application.use_cases.milestones.extract_tender_milestones import (
-    ExtractTenderMilestonesUseCase,
-)
-from app.application.use_cases.milestones.get_tender_milestones import (
-    GetTenderMilestonesUseCase,
-)
-from app.application.use_cases.milestones.send_milestone_reminders import (
-    SendMilestoneRemindersUseCase,
-)
-from app.application.use_cases.milestones.set_milestone_reminder import (
-    SetMilestoneReminderUseCase,
-)
-from app.application.use_cases.quotation import QuotationUseCase
-from app.infrastructure.repositories.calendar_repository import (
-    CalendarEventLinkRepository,
-)
-from app.infrastructure.repositories.quotation_repository import QuotationRepository
-from app.infrastructure.repositories.sql_proposal_repository import (
-    SqlProposalDraftRepository,
-)
-from app.infrastructure.repositories.sql_capability_repository import (
-    SqlCapabilityAnswerRepository,
-    SqlCapabilityEvidenceRepository,
-    SqlCapabilityQuestionRepository,
-)
-from app.infrastructure.repositories.tender_milestone_repository import (
-    TenderMilestoneRepository,
-)
-from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.capability import create_capability_router
+from app.infrastructure.routers.exports import create_exports_router
+from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.proposal import create_proposal_router
 from app.infrastructure.routers.quotation import create_quotation_router
-from app.infrastructure.services.gemini_milestone_extraction_service import (
-    GeminiMilestoneExtractionService,
-)
 from app.infrastructure.routers.router import create_router
-from app.application.repositories.tender_share_link_repository import (
-    ITenderShareLinkRepository,
-)
-from app.application.use_cases.sharing.tender_sharing import (
-    CreateShareLinkUseCase,
-    GetSharedTenderUseCase,
-    ListShareLinksUseCase,
-    RevokeShareLinkUseCase,
-)
-from app.infrastructure.repositories.tender_share_link_repository import (
-    TenderShareLinkRepository,
-)
 from app.infrastructure.routers.sharing import (
     create_public_sharing_router,
     create_sharing_router,
 )
-from app.application.repositories.export_job_repository import IExportJobRepository
-from app.application.repositories.quotation_repository import IQuotationRepository
-from app.application.services.export_background import IExportBackground
-from app.application.use_cases.exports.build_export_snapshot import (
-    BuildExportSnapshotUseCase,
-)
-from app.application.use_cases.exports.export_jobs import (
-    CompleteExportJobUseCase,
-    DownloadExportFileUseCase,
-    GetExportJobUseCase,
-    ReconcileExportJobsUseCase,
-)
-from app.application.use_cases.exports.export_tender import ExportTenderUseCase
-from app.infrastructure.repositories.export_job_repository import ExportJobRepository
-from app.infrastructure.routers.exports import create_exports_router
-from app.infrastructure.services.exports.background import AsyncioExportBackground
-from app.infrastructure.services.exports.excel_renderer import OpenpyxlExcelRenderer
-from app.infrastructure.services.exports.pdf_renderer import ReportLabPdfRenderer
-
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.calendar.google_calendar_client import (
+    GoogleCalendarClient,
+)
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
     HttpCompanyLookupService,
     SreLookupService,
@@ -325,18 +322,27 @@ from app.infrastructure.services.company_lookup.http_company_lookup_service impo
 from app.infrastructure.services.document_validator_service import (
     DocumentValidatorService,
 )
-from app.infrastructure.services.field_weighting_service import FieldWeightingService
-from app.application.services.proposal_ai_service import IProposalAIService
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
-from app.infrastructure.services.gemini_proposal_service import GeminiProposalService
+from app.infrastructure.services.exports.background import AsyncioExportBackground
+from app.infrastructure.services.exports.excel_renderer import OpenpyxlExcelRenderer
+from app.infrastructure.services.exports.pdf_renderer import ReportLabPdfRenderer
+from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
 )
+from app.infrastructure.services.gemini_milestone_extraction_service import (
+    GeminiMilestoneExtractionService,
+)
+from app.infrastructure.services.gemini_proposal_service import GeminiProposalService
 from app.infrastructure.services.gemini_tender_assistant_service import (
     GeminiTenderAssistantService,
 )
 from app.infrastructure.services.notifications.smtp_email_service import (
     SmtpEmailService,
+)
+from app.infrastructure.services.security.fernet_token_cipher import (
+    FernetTokenCipher,
+    UnconfiguredTokenCipher,
 )
 from app.infrastructure.services.smart_question_service import SmartQuestionServiceImpl
 from app.infrastructure.services.supabase_identity_directory import (
@@ -617,18 +623,6 @@ def get_shared_tender_use_case(
         tenders=tenders,
         suppliers=suppliers,
         matching_results=matching_results,
-    )
-
-
-def get_score_tender_on_demand_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
-) -> ScoreTenderOnDemandUseCase:
-    return ScoreTenderOnDemandUseCase(
-        supplier_repo=SupplierRepository(session),
-        tender_repo=TenderRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-        scorer=scorer,
     )
 
 
