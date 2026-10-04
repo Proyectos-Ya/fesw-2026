@@ -291,20 +291,29 @@ from app.infrastructure.repositories.tender_share_link_repository import (
     TenderShareLinkRepository,
 )
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.infrastructure.routers.auth import create_auth_router
 from app.infrastructure.routers.calendar import (
     create_calendar_router,
     create_milestone_sync_router,
 )
 from app.infrastructure.routers.capability import create_capability_router
+from app.infrastructure.routers.catalog import create_catalog_router
 from app.infrastructure.routers.exports import create_exports_router
+from app.infrastructure.routers.health import create_health_router
+from app.infrastructure.routers.kanban import create_kanban_router
 from app.infrastructure.routers.milestones import create_milestones_router
+from app.infrastructure.routers.notification import create_notification_router
 from app.infrastructure.routers.proposal import create_proposal_router
+from app.infrastructure.routers.question import create_question_router
 from app.infrastructure.routers.quotation import create_quotation_router
-from app.infrastructure.routers.router import create_router
 from app.infrastructure.routers.sharing import (
     create_public_sharing_router,
     create_sharing_router,
 )
+from app.infrastructure.routers.supplier import create_supplier_router
+from app.infrastructure.routers.tender import create_tender_router
+from app.infrastructure.routers.tender_chat import create_tender_chat_router
+from app.infrastructure.routers.workspace import create_workspace_router
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
@@ -1637,51 +1646,91 @@ def bootstrap(app: FastAPI) -> None:
         get_supplier_repo=get_supplier_repo,
     )
 
-    router = create_router(
-        get_rank_tenders_use_case=get_rank_tenders_use_case,
-        get_smart_question_use_case=get_smart_question_use_case,
-        get_answer_question_use_case=get_answer_question_use_case,
-        get_supplier_repo=get_supplier_repo,
-        get_supplier_vector_repo=get_supplier_vector_repo,
-        get_embedding_service=get_embedding_service,
-        get_company_lookup_service=get_company_lookup_service,
-        get_user_repo=get_user_repo,
-        get_current_user=get_current_user,
-        get_supplier_member_repo=get_supplier_member_repo,
-        get_supplier_invitation_repo=get_supplier_invitation_repo,
-        get_current_workspace_context=get_current_workspace_context,
-        get_optional_workspace_context=get_optional_workspace_context,
-        get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
-        get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
-        get_save_tender_use_case=get_save_tender_use_case,
-        get_unsave_tender_use_case=get_unsave_tender_use_case,
-        get_search_tenders_use_case=get_search_tenders_use_case,
-        get_tender_detail_use_case=get_tender_detail_use_case,
-        get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
-        get_list_notifications_use_case=get_list_notifications_use_case,
-        get_count_unread_use_case=get_count_unread_use_case,
-        get_mark_notification_read_use_case=get_mark_notification_read_use_case,
-        get_mark_all_read_use_case=get_mark_all_read_use_case,
-        get_notification_preferences_use_case=get_notification_preferences_use_case,
-        get_update_notification_preferences_use_case=get_update_notification_preferences_use_case,
-        get_list_deliveries_use_case=get_list_deliveries_use_case,
-        get_upload_tender_chat_doc_use_case=get_upload_tender_chat_doc_use_case,
-        get_list_tender_chat_docs_use_case=get_list_tender_chat_docs_use_case,
-        get_delete_tender_chat_doc_use_case=get_delete_tender_chat_doc_use_case,
-        get_ask_tender_assistant_use_case=get_ask_tender_assistant_use_case,
-        get_tender_chat_history_use_case=get_tender_chat_history_use_case,
-        get_create_tender_chat_session_use_case=get_create_tender_chat_session_use_case,
-        get_list_kanban_columns_use_case=get_list_kanban_columns_use_case,
-        get_create_kanban_column_use_case=get_create_kanban_column_use_case,
-        get_update_kanban_column_use_case=get_update_kanban_column_use_case,
-        get_delete_kanban_column_use_case=get_delete_kanban_column_use_case,
-        get_list_kanban_cards_use_case=get_list_kanban_cards_use_case,
-        get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
-        get_move_kanban_card_use_case=get_move_kanban_card_use_case,
-        get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
-        get_email_service=get_email_service,
+    # Cada router recibe solo los providers que usa. El orden de registro es el
+    # orden en que FastAPI prueba las rutas, así que no se reordena a la ligera.
+    app.include_router(create_health_router(), tags=["Health"])
+    app.include_router(create_auth_router(get_current_user=get_current_user))
+    app.include_router(
+        create_supplier_router(
+            get_supplier_repo=get_supplier_repo,
+            get_supplier_vector_repo=get_supplier_vector_repo,
+            get_embedding_service=get_embedding_service,
+            get_company_lookup_service=get_company_lookup_service,
+            get_current_user=get_current_user,
+            get_supplier_member_repo=get_supplier_member_repo,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
     )
-    app.include_router(router)
+    app.include_router(
+        create_workspace_router(
+            get_current_user=get_current_user,
+            get_current_workspace_context=get_current_workspace_context,
+            get_supplier_member_repo=get_supplier_member_repo,
+            get_supplier_invitation_repo=get_supplier_invitation_repo,
+            get_supplier_repo=get_supplier_repo,
+            get_user_repo=get_user_repo,
+            get_email_service=get_email_service,
+        )
+    )
+    app.include_router(
+        create_tender_router(
+            get_rank_tenders_use_case=get_rank_tenders_use_case,
+            get_current_user=get_current_user,
+            get_get_or_create_deep_analysis_use_case=get_get_or_create_deep_analysis_use_case,
+            get_list_saved_tenders_use_case=get_list_saved_tenders_use_case,
+            get_save_tender_use_case=get_save_tender_use_case,
+            get_unsave_tender_use_case=get_unsave_tender_use_case,
+            get_search_tenders_use_case=get_search_tenders_use_case,
+            get_tender_detail_use_case=get_tender_detail_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+            get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
+        )
+    )
+    app.include_router(
+        create_notification_router(
+            get_current_user=get_current_user,
+            get_list_notifications_use_case=get_list_notifications_use_case,
+            get_count_unread_use_case=get_count_unread_use_case,
+            get_mark_notification_read_use_case=get_mark_notification_read_use_case,
+            get_mark_all_read_use_case=get_mark_all_read_use_case,
+            get_notification_preferences_use_case=get_notification_preferences_use_case,
+            get_update_notification_preferences_use_case=get_update_notification_preferences_use_case,
+            get_list_deliveries_use_case=get_list_deliveries_use_case,
+        )
+    )
+    app.include_router(
+        create_question_router(
+            get_smart_question_use_case=get_smart_question_use_case,
+            get_answer_question_use_case=get_answer_question_use_case,
+            get_current_user=get_current_user,
+        )
+    )
+    app.include_router(create_catalog_router(get_current_user=get_current_user))
+    app.include_router(
+        create_tender_chat_router(
+            get_current_user=get_current_user,
+            get_upload_doc_use_case=get_upload_tender_chat_doc_use_case,
+            get_list_docs_use_case=get_list_tender_chat_docs_use_case,
+            get_delete_doc_use_case=get_delete_tender_chat_doc_use_case,
+            get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
+            get_chat_history_use_case=get_tender_chat_history_use_case,
+            get_create_chat_session_use_case=get_create_tender_chat_session_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_kanban_router(
+            get_current_user=get_current_user,
+            get_list_kanban_columns_use_case=get_list_kanban_columns_use_case,
+            get_create_kanban_column_use_case=get_create_kanban_column_use_case,
+            get_update_kanban_column_use_case=get_update_kanban_column_use_case,
+            get_delete_kanban_column_use_case=get_delete_kanban_column_use_case,
+            get_list_kanban_cards_use_case=get_list_kanban_cards_use_case,
+            get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
+            get_move_kanban_card_use_case=get_move_kanban_card_use_case,
+            get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
+        )
+    )
     app.include_router(
         create_capability_router(
             get_current_user=get_current_user,
