@@ -27,6 +27,8 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
+import { ExportActions } from "@/features/tender-export/components/ExportActions";
+import { ShareDialog } from "@/features/tender-sharing/components/ShareDialog";
 import { ProposalEntryCard } from "@/features/proposals/components/ProposalEntryCard";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import {
@@ -97,6 +99,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [retryNonce, setRetryNonce] = useState(0);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
 
@@ -420,6 +423,16 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
 
             <button
               type="button"
+              onClick={() => setIsShareOpen(true)}
+              aria-label="Compartir licitación"
+              title="Compartir con un enlace de 7 días"
+              className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95"
+            >
+              <Icon name="share-2" size={18} />
+            </button>
+
+            <button
+              type="button"
               onClick={handleToggleSave}
               aria-label={isSaved ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
               title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
@@ -462,8 +475,14 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
               </>
             )}
           </div>
+
+          <div className="mt-4">
+            <ExportActions tenderId={tenderId} />
+          </div>
         </div>
       </header>
+
+      <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
 
       {/* AI Compatibility Analysis CTA Card */}
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -275,6 +276,40 @@ from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
 )
 from app.infrastructure.routers.router import create_router
+from app.application.repositories.tender_share_link_repository import (
+    ITenderShareLinkRepository,
+)
+from app.application.use_cases.sharing.tender_sharing import (
+    CreateShareLinkUseCase,
+    GetSharedTenderUseCase,
+    ListShareLinksUseCase,
+    RevokeShareLinkUseCase,
+)
+from app.infrastructure.repositories.tender_share_link_repository import (
+    TenderShareLinkRepository,
+)
+from app.infrastructure.routers.sharing import (
+    create_public_sharing_router,
+    create_sharing_router,
+)
+from app.application.repositories.export_job_repository import IExportJobRepository
+from app.application.repositories.quotation_repository import IQuotationRepository
+from app.application.services.export_background import IExportBackground
+from app.application.use_cases.exports.build_export_snapshot import (
+    BuildExportSnapshotUseCase,
+)
+from app.application.use_cases.exports.export_jobs import (
+    CompleteExportJobUseCase,
+    DownloadExportFileUseCase,
+    GetExportJobUseCase,
+    ReconcileExportJobsUseCase,
+)
+from app.application.use_cases.exports.export_tender import ExportTenderUseCase
+from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.routers.exports import create_exports_router
+from app.infrastructure.services.exports.background import AsyncioExportBackground
+from app.infrastructure.services.exports.excel_renderer import OpenpyxlExcelRenderer
+from app.infrastructure.services.exports.pdf_renderer import ReportLabPdfRenderer
 
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
@@ -463,6 +498,125 @@ def get_quotation_use_case(
         QuotationRepository(session),
         SupplierRepository(session),
         TenderRepository(session),
+    )
+
+
+def get_tender_share_link_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ITenderShareLinkRepository:
+    return TenderShareLinkRepository(session)
+
+
+# Exportaciones (HdU 19). Igual que en los enlaces, dependen de los proveedores
+# de repositorio para que los tests E2E puedan sustituirlos.
+def get_quotation_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IQuotationRepository:
+    return QuotationRepository(session)
+
+
+def get_export_job_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IExportJobRepository:
+    return ExportJobRepository(session)
+
+
+def get_export_background(request: Request) -> IExportBackground:
+    return request.app.state.export_background
+
+
+def get_export_tender_use_case(
+    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+    matching_results: Annotated[
+        IMatchingResultRepository, Depends(get_matching_result_repo)
+    ],
+    quotations: Annotated[IQuotationRepository, Depends(get_quotation_repo)],
+    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
+    background: Annotated[IExportBackground, Depends(get_export_background)],
+) -> ExportTenderUseCase:
+    return ExportTenderUseCase(
+        snapshots=BuildExportSnapshotUseCase(
+            tenders=tenders, matching_results=matching_results, quotations=quotations
+        ),
+        jobs=jobs,
+        pdf_renderer=ReportLabPdfRenderer(),
+        excel_renderer=OpenpyxlExcelRenderer(),
+        background=background,
+        inline_timeout_seconds=settings.export_inline_timeout_seconds,
+    )
+
+
+def get_export_job_use_case(
+    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
+) -> GetExportJobUseCase:
+    return GetExportJobUseCase(jobs)
+
+
+def get_download_export_file_use_case(
+    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
+) -> DownloadExportFileUseCase:
+    return DownloadExportFileUseCase(jobs)
+
+
+def build_export_background(app: FastAPI) -> AsyncioExportBackground:
+    """Termina las exportaciones que pasaron a segundo plano.
+
+    Cada trabajo abre su propia sesión: cuando la generación termina, la sesión
+    de la petición que lo originó ya se cerró.
+    """
+
+    @asynccontextmanager
+    async def open_completion():
+        async with async_session_maker() as session:
+            yield CompleteExportJobUseCase(
+                jobs=ExportJobRepository(session),
+                email=app.state.email_service,
+                base_url=settings.app_base_url,
+            )
+
+    return AsyncioExportBackground(open_completion)
+
+
+async def reconcile_export_jobs() -> tuple[int, int]:
+    """Al arrancar: falla lo que quedó en proceso y vacía los archivos vencidos."""
+    async with async_session_maker() as session:
+        return await ReconcileExportJobsUseCase(ExportJobRepository(session)).execute()
+
+
+# Enlaces compartidos (HdU 19). Dependen de los proveedores de repositorio y no
+# de la sesión directa, para que los tests E2E puedan sustituirlos.
+def get_create_share_link_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+) -> CreateShareLinkUseCase:
+    return CreateShareLinkUseCase(links=links, tenders=tenders, base_url=settings.app_base_url)
+
+
+def get_list_share_links_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+) -> ListShareLinksUseCase:
+    return ListShareLinksUseCase(links=links)
+
+
+def get_revoke_share_link_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+) -> RevokeShareLinkUseCase:
+    return RevokeShareLinkUseCase(links=links)
+
+
+def get_shared_tender_use_case(
+    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
+    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+    suppliers: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    matching_results: Annotated[
+        IMatchingResultRepository, Depends(get_matching_result_repo)
+    ],
+) -> GetSharedTenderUseCase:
+    return GetSharedTenderUseCase(
+        links=links,
+        tenders=tenders,
+        suppliers=suppliers,
+        matching_results=matching_results,
     )
 
 
@@ -1457,6 +1611,8 @@ def bootstrap(app: FastAPI) -> None:
         use_tls=settings.smtp_use_tls,
     )
 
+    app.state.export_background = build_export_background(app)
+
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
     # llevarían todas las que sobreviven al filtro y no ordenaría nada.
@@ -1562,6 +1718,25 @@ def bootstrap(app: FastAPI) -> None:
             get_current_user,
             get_quotation_use_case,
             get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_sharing_router(
+            get_current_workspace_context,
+            get_create_share_link_use_case,
+            get_list_share_links_use_case,
+            get_revoke_share_link_use_case,
+        )
+    )
+    # Sin sesión a propósito: es lo que abre un tercero (criterio 2).
+    app.include_router(create_public_sharing_router(get_shared_tender_use_case))
+    app.include_router(
+        create_exports_router(
+            get_current_workspace_context,
+            get_current_user,
+            get_export_tender_use_case,
+            get_export_job_use_case,
+            get_download_export_file_use_case,
         )
     )
     app.include_router(

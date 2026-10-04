@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiDownload, apiFetch, ApiError, registrarProveedorDeToken } from "../client";
+import {
+  apiDownload,
+  apiDownloadOrAccepted,
+  apiFetch,
+  ApiError,
+  registrarProveedorDeToken,
+} from "../client";
 
 function mockFetchOnce(response: Response) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
@@ -37,6 +43,31 @@ describe("apiFetch", () => {
       expect.objectContaining({ name: "ApiError", status: 401, message: "No autorizado" }),
     );
     await expect(apiFetch("/auth/me")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("expone el code del backend para distinguir errores con el mismo status", async () => {
+    // Un enlace caducado y uno revocado son los dos 410 (HdU 19).
+    mockFetchOnce(
+      new Response(
+        JSON.stringify({ detail: "El enlace fue revocado.", code: "share_link_revoked" }),
+        { status: 410, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await expect(apiFetch("/shared/abc")).rejects.toThrowError(
+      expect.objectContaining({ status: 410, code: "share_link_revoked" }),
+    );
+  });
+
+  it("deja code sin definir cuando el backend no lo manda", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No autorizado" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const error = await apiFetch("/auth/me").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBeUndefined();
   });
 });
 
@@ -167,5 +198,74 @@ describe("apiDownload", () => {
     await expect(apiDownload("/x")).rejects.toThrowError(
       expect.objectContaining({ status: 409, message: "No requiere documento técnico" }),
     );
+  });
+});
+
+describe("apiDownloadOrAccepted", () => {
+  it("con 200 entrega el archivo y el nombre de Content-Disposition", async () => {
+    mockFetchOnce(
+      new Response("%PDF", {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": 'attachment; filename="licitacion-COT26.pdf"',
+        },
+      }),
+    );
+
+    const resultado = await apiDownloadOrAccepted("/tenders/t-1/exports", { method: "POST" });
+
+    expect(resultado.kind).toBe("file");
+    if (resultado.kind !== "file") return;
+    expect(resultado.filename).toBe("licitacion-COT26.pdf");
+    await expect(resultado.blob.text()).resolves.toBe("%PDF");
+  });
+
+  it("sin Content-Disposition deja el nombre en null", async () => {
+    mockFetchOnce(new Response("x", { status: 200 }));
+
+    const resultado = await apiDownloadOrAccepted("/exports/j-1/file");
+
+    expect(resultado).toMatchObject({ kind: "file", filename: null });
+  });
+
+  it("con 202 devuelve el cuerpo JSON: el archivo sigue generándose", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ job_id: "j-1", status: "processing" }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const resultado = await apiDownloadOrAccepted("/tenders/t-1/exports", { method: "POST" });
+
+    expect(resultado).toEqual({
+      kind: "accepted",
+      body: { job_id: "j-1", status: "processing" },
+    });
+  });
+
+  it("normaliza los errores igual que apiFetch", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "El archivo venció.", code: "export_expired" }), {
+        status: 410,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(apiDownloadOrAccepted("/exports/j-1/file")).rejects.toThrowError(
+      expect.objectContaining({ status: 410, code: "export_expired", message: "El archivo venció." }),
+    );
+  });
+
+  it("adjunta el token de sesión", async () => {
+    registrarProveedorDeToken(async () => "tok-123");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("x", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiDownloadOrAccepted("/exports/j-1/file");
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");
   });
 });

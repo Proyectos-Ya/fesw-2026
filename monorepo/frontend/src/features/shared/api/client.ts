@@ -52,6 +52,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Código estable que manda el backend cuando un status no alcanza para distinguir el caso. */
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -105,15 +107,13 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
 
   if (!response.ok) {
     let detail = response.statusText;
+    let code: string | undefined;
     try {
       const body: unknown = await response.json();
-      if (
-        body &&
-        typeof body === "object" &&
-        "detail" in body &&
-        typeof (body as { detail: unknown }).detail === "string"
-      ) {
-        detail = (body as { detail: string }).detail;
+      if (body && typeof body === "object") {
+        const campos = body as { detail?: unknown; code?: unknown };
+        if (typeof campos.detail === "string") detail = campos.detail;
+        if (typeof campos.code === "string") code = campos.code;
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el statusText.
@@ -125,7 +125,7 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
     ) {
       notificarRevocacionAcceso(detail);
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   return response;
@@ -133,6 +133,8 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
 
 /**
  * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`.
  *
  * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
  * agrega esta función.
@@ -166,10 +168,54 @@ export async function apiDownload(
   nombrePorDefecto = "archivo",
 ): Promise<ArchivoDescargado> {
   const response = await solicitar(path);
-  const disposicion = response.headers.get("Content-Disposition") ?? "";
-  const coincidencia = /filename="?([^";]+)"?/i.exec(disposicion);
   return {
     blob: await response.blob(),
-    filename: coincidencia?.[1] ?? nombrePorDefecto,
+    filename: filenameFrom(response.headers.get("Content-Disposition")) ?? nombrePorDefecto,
   };
+}
+
+export type ExportDownloadResult =
+  | { kind: "file"; blob: Blob; filename: string | null }
+  /** 202: el backend aceptó el pedido pero el archivo todavía no está (HdU 19). */
+  | { kind: "accepted"; body: unknown };
+
+function filenameFrom(disposition: string | null): string | null {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Como `apiDownload`, pero para endpoints que pueden responder 202 porque el
+ * archivo sigue generándose (exportaciones de la HdU 19).
+ */
+export async function apiDownloadOrAccepted(
+  path: string,
+  options?: RequestInit,
+): Promise<ExportDownloadResult> {
+  const response = await solicitar(path, options);
+
+  if (response.status === 202) {
+    return { kind: "accepted", body: (await response.json()) as unknown };
+  }
+
+  return {
+    kind: "file",
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")),
+  };
+}
+
+/**
+ * Guarda un archivo recibido del backend, con el mismo truco de ancla que la
+ * descarga del CSV de cotizaciones.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

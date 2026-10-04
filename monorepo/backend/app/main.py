@@ -10,6 +10,7 @@ from app.bootstrap import (
     bootstrap,
     build_milestone_refresh_runner,
     build_notification_runners,
+    reconcile_export_jobs,
 )
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
@@ -69,6 +70,12 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
+
+    # Exportaciones en segundo plano (HdU 19): viven en la memoria del proceso,
+    # así que las que quedaron a medias antes de este arranque ya no terminarán.
+    colgadas, purgadas = await reconcile_export_jobs()
+    if colgadas or purgadas:
+        print(f"[Main] Exportaciones: {colgadas} interrumpidas, {purgadas} vencidas limpiadas")
 
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
@@ -167,6 +174,7 @@ async def lifespan(app: FastAPI):
         tarea.cancel()
     if tareas:
         await asyncio.gather(*tareas, return_exceptions=True)
+    await app.state.export_background.shutdown()
 
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()
