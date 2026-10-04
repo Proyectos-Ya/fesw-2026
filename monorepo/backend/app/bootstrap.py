@@ -9,6 +9,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.calendar_repository import (
     ICalendarConnectionRepository,
+    ICalendarEventLinkRepository,
+    ICalendarOAuthStateRepository,
+)
+from app.application.repositories.capability_repository import (
+    ICapabilityAnswerRepository,
+    ICapabilityEvidenceRepository,
+    ICapabilityQuestionRepository,
 )
 from app.application.repositories.export_job_repository import IExportJobRepository
 from app.application.repositories.kanban_repository import (
@@ -23,6 +30,7 @@ from app.application.repositories.notification_repository import (
     INotificationPreferenceRepository,
     INotificationRepository,
 )
+from app.application.repositories.proposal_repository import IProposalDraftRepository
 from app.application.repositories.question_repository import IQuestionRepository
 from app.application.repositories.quotation_repository import IQuotationRepository
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
@@ -38,6 +46,9 @@ from app.application.repositories.supplier_vector_repository import (
 )
 from app.application.repositories.tender_chat_repository import (
     ITenderChatRepository,
+)
+from app.application.repositories.tender_milestone_repository import (
+    ITenderMilestoneRepository,
 )
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_share_link_repository import (
@@ -362,25 +373,159 @@ from app.infrastructure.services.supabase_token_service import (
     descargar_jwks,
 )
 
+# --- Repositorios SQL ---
+#
+# Uno por repositorio, todos sobre la sesión de la petición. FastAPI cachea
+# `get_session` dentro de un request, así que todos comparten la misma sesión y
+# transacción. Los casos de uso los piden por estos providers, y no instanciando
+# el repositorio, para que un `dependency_overrides` sobre uno de ellos alcance
+# a todos los endpoints que lo usan.
 
-def get_supplier_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ISupplierRepository:
-    # Crea el repositorio concreto con la sesión de BD por petición
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_supplier_repo(session: SessionDep) -> ISupplierRepository:
     return SupplierRepository(session)
 
 
-def get_supplier_member_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ISupplierMemberRepository:
+def get_supplier_member_repo(session: SessionDep) -> ISupplierMemberRepository:
     return SqlSupplierMemberRepository(session)
 
 
-def get_supplier_invitation_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ISupplierInvitationRepository:
+def get_supplier_invitation_repo(session: SessionDep) -> ISupplierInvitationRepository:
     return SqlSupplierInvitationRepository(session)
 
+
+def get_user_repo(session: SessionDep) -> IUserRepository:
+    return UserRepository(session)
+
+
+def get_tender_repo(session: SessionDep) -> ITenderRepository:
+    return TenderRepository(session)
+
+
+def get_matching_result_repo(session: SessionDep) -> IMatchingResultRepository:
+    return MatchingResultRepository(session)
+
+
+def get_saved_tender_repo(session: SessionDep) -> ISavedTenderRepository:
+    return SavedTenderRepository(session)
+
+
+def get_notification_repo(session: SessionDep) -> INotificationRepository:
+    return NotificationRepository(session)
+
+
+def get_notification_preference_repo(
+    session: SessionDep,
+) -> INotificationPreferenceRepository:
+    return NotificationPreferenceRepository(session)
+
+
+def get_notification_delivery_repo(session: SessionDep) -> INotificationDeliveryRepository:
+    return NotificationDeliveryRepository(session)
+
+
+def get_question_repo(session: SessionDep) -> IQuestionRepository:
+    return QuestionRepositoryImpl(session)
+
+
+def get_capability_question_repo(session: SessionDep) -> ICapabilityQuestionRepository:
+    return SqlCapabilityQuestionRepository(session)
+
+
+def get_capability_answer_repo(session: SessionDep) -> ICapabilityAnswerRepository:
+    return SqlCapabilityAnswerRepository(session)
+
+
+def get_capability_evidence_repo(session: SessionDep) -> ICapabilityEvidenceRepository:
+    return SqlCapabilityEvidenceRepository(session)
+
+
+def get_quotation_repo(session: SessionDep) -> IQuotationRepository:
+    return QuotationRepository(session)
+
+
+def get_tender_share_link_repo(session: SessionDep) -> ITenderShareLinkRepository:
+    return TenderShareLinkRepository(session)
+
+
+def get_export_job_repo(session: SessionDep) -> IExportJobRepository:
+    return ExportJobRepository(session)
+
+
+def get_proposal_draft_repo(session: SessionDep) -> IProposalDraftRepository:
+    return SqlProposalDraftRepository(session)
+
+
+def get_tender_chat_repo(session: SessionDep) -> ITenderChatRepository:
+    return SQLTenderChatRepository(session)
+
+
+def get_tender_milestone_repo(session: SessionDep) -> ITenderMilestoneRepository:
+    return TenderMilestoneRepository(session)
+
+
+def get_calendar_oauth_state_repo(session: SessionDep) -> ICalendarOAuthStateRepository:
+    return CalendarOAuthStateRepository(session)
+
+
+def get_calendar_event_link_repo(session: SessionDep) -> ICalendarEventLinkRepository:
+    return CalendarEventLinkRepository(session)
+
+
+def get_kanban_column_repo(session: SessionDep) -> IKanbanColumnRepository:
+    return KanbanColumnRepository(session)
+
+
+def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
+    return KanbanCardRepository(session)
+
+
+SupplierRepoDep = Annotated[ISupplierRepository, Depends(get_supplier_repo)]
+TenderRepoDep = Annotated[ITenderRepository, Depends(get_tender_repo)]
+MatchingResultRepoDep = Annotated[
+    IMatchingResultRepository, Depends(get_matching_result_repo)
+]
+SavedTenderRepoDep = Annotated[ISavedTenderRepository, Depends(get_saved_tender_repo)]
+NotificationRepoDep = Annotated[INotificationRepository, Depends(get_notification_repo)]
+NotificationPreferenceRepoDep = Annotated[
+    INotificationPreferenceRepository, Depends(get_notification_preference_repo)
+]
+NotificationDeliveryRepoDep = Annotated[
+    INotificationDeliveryRepository, Depends(get_notification_delivery_repo)
+]
+QuestionRepoDep = Annotated[IQuestionRepository, Depends(get_question_repo)]
+CapabilityQuestionRepoDep = Annotated[
+    ICapabilityQuestionRepository, Depends(get_capability_question_repo)
+]
+CapabilityAnswerRepoDep = Annotated[
+    ICapabilityAnswerRepository, Depends(get_capability_answer_repo)
+]
+CapabilityEvidenceRepoDep = Annotated[
+    ICapabilityEvidenceRepository, Depends(get_capability_evidence_repo)
+]
+QuotationRepoDep = Annotated[IQuotationRepository, Depends(get_quotation_repo)]
+TenderShareLinkRepoDep = Annotated[
+    ITenderShareLinkRepository, Depends(get_tender_share_link_repo)
+]
+ExportJobRepoDep = Annotated[IExportJobRepository, Depends(get_export_job_repo)]
+ProposalDraftRepoDep = Annotated[IProposalDraftRepository, Depends(get_proposal_draft_repo)]
+TenderChatRepoDep = Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)]
+TenderMilestoneRepoDep = Annotated[
+    ITenderMilestoneRepository, Depends(get_tender_milestone_repo)
+]
+CalendarOAuthStateRepoDep = Annotated[
+    ICalendarOAuthStateRepository, Depends(get_calendar_oauth_state_repo)
+]
+CalendarEventLinkRepoDep = Annotated[
+    ICalendarEventLinkRepository, Depends(get_calendar_event_link_repo)
+]
+KanbanColumnRepoDep = Annotated[IKanbanColumnRepository, Depends(get_kanban_column_repo)]
+KanbanCardRepoDep = Annotated[IKanbanCardRepository, Depends(get_kanban_card_repo)]
+
+
+# --- Servicios y clientes construidos al arrancar (viven en app.state) ---
 
 
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
@@ -388,11 +533,11 @@ def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
     return QdrantSupplierRepository(request.app.state.qdrant_async_client)
 
 
-def get_tender_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ITenderRepository:
-    # Crea el repositorio concreto de licitaciones con la sesión de BD
-    return TenderRepository(session)
+def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
+    return QdrantTenderRepository(
+        client=request.app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    )
 
 
 def get_embedding_service(request: Request) -> IEmbeddingService:
@@ -404,13 +549,6 @@ def get_company_lookup_service(request: Request) -> ICompanyLookupService | None
     return request.app.state.company_lookup_service
 
 
-def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
-    return QdrantTenderRepository(
-        client=request.app.state.qdrant_async_client,
-        vector_size=settings.embedding_vector_size,
-    )
-
-
 def get_reranker_service(request: Request) -> IRerankerService:
     return request.app.state.reranker_service
 
@@ -419,134 +557,401 @@ def get_weighting_service(request: Request) -> IWeightingService:
     return request.app.state.weighting_service
 
 
-def get_matching_result_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IMatchingResultRepository:
-    return MatchingResultRepository(session)
+def get_email_service(request: Request) -> IEmailService:
+    return request.app.state.email_service
 
 
-def get_compatibility_scorer(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
-) -> CompatibilityScorer:
-    """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
-    return CompatibilityScorer(
-        reranker_service=reranker_service,
-        weighting_service=weighting_service,
-        matching_result_repo=MatchingResultRepository(session),
-        model_version=settings.embedding_model,
-    )
+def get_token_verifier(request: Request) -> IAuthTokenVerifier:
+    """El verificador de tokens, como dependencia y no como objeto capturado.
+
+    Que pase por el sistema de dependencias es lo que permite sustituirlo en los
+    tests con `app.dependency_overrides`, y así ejercitar la verificación real
+    contra un JWKS de prueba sin levantar Supabase.
+    """
+    return request.app.state.token_verifier
 
 
-def get_rank_tenders_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    supplier_vector_repo: Annotated[
-        ISupplierVectorRepository, Depends(get_supplier_vector_repo)
-    ],
-    tender_vector_repo: Annotated[
-        ITenderVectorRepository, Depends(get_tender_vector_repo)
-    ],
-    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
-    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
-) -> RankTendersUseCase:
-    return RankTendersUseCase(
-        supplier_repo=SupplierRepository(session),
-        supplier_vector_repo=supplier_vector_repo,
-        tender_vector_repo=tender_vector_repo,
-        tender_repo=TenderRepository(session),
-        scorer=scorer,
-        matching_result_repo=MatchingResultRepository(session),
-        model_version=settings.embedding_model,
-        embedding_service=embedding_service,
-    )
+def get_identity_directory(session: SessionDep) -> IIdentityDirectory:
+    return SupabaseIdentityDirectory(session)
 
 
-def get_score_tender_on_demand_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
-) -> ScoreTenderOnDemandUseCase:
-    return ScoreTenderOnDemandUseCase(
-        supplier_repo=SupplierRepository(session),
-        tender_repo=TenderRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-        scorer=scorer,
-    )
+def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
+    return request.app.state.deep_analysis_service
 
 
-def get_build_experience_catalog_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BuildExperienceCatalogUseCase:
-    return BuildExperienceCatalogUseCase(
-        SupplierRepository(session),
-        SqlCapabilityQuestionRepository(session),
-        SqlCapabilityAnswerRepository(session),
-        SqlCapabilityEvidenceRepository(session),
-    )
+def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIService:
+    return request.app.state.tender_assistant_ai_service
 
 
-def get_answer_capability_question_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> AnswerCapabilityQuestionUseCase:
-    return AnswerCapabilityQuestionUseCase(
-        SupplierRepository(session),
-        SqlCapabilityQuestionRepository(session),
-        SqlCapabilityAnswerRepository(session),
-    )
+def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAIService:
+    return request.app.state.milestone_extraction_service
 
 
-def get_add_capability_evidence_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> AddCapabilityEvidenceUseCase:
-    return AddCapabilityEvidenceUseCase(
-        SupplierRepository(session),
-        SqlCapabilityQuestionRepository(session),
-        SqlCapabilityAnswerRepository(session),
-        SqlCapabilityEvidenceRepository(session),
-    )
+def get_calendar_providers(request: Request) -> CalendarProviders:
+    return request.app.state.calendar_providers
 
 
-def get_quotation_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> QuotationUseCase:
-    return QuotationUseCase(
-        QuotationRepository(session),
-        SupplierRepository(session),
-        TenderRepository(session),
-    )
-
-
-def get_tender_share_link_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ITenderShareLinkRepository:
-    return TenderShareLinkRepository(session)
-
-
-# Exportaciones (HdU 19). Igual que en los enlaces, dependen de los proveedores
-# de repositorio para que los tests E2E puedan sustituirlos.
-def get_quotation_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IQuotationRepository:
-    return QuotationRepository(session)
-
-
-def get_export_job_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IExportJobRepository:
-    return ExportJobRepository(session)
+def get_token_cipher(request: Request) -> ITokenCipher:
+    return request.app.state.token_cipher
 
 
 def get_export_background(request: Request) -> IExportBackground:
     return request.app.state.export_background
 
 
-def get_export_tender_use_case(
-    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
-    matching_results: Annotated[
-        IMatchingResultRepository, Depends(get_matching_result_repo)
+def get_proposal_ai_service(request: Request) -> IProposalAIService:
+    return request.app.state.proposal_ai_service
+
+
+def get_document_validator_service() -> IDocumentValidatorService:
+    return DocumentValidatorService()
+
+
+SupplierVectorRepoDep = Annotated[
+    ISupplierVectorRepository, Depends(get_supplier_vector_repo)
+]
+TenderVectorRepoDep = Annotated[ITenderVectorRepository, Depends(get_tender_vector_repo)]
+EmbeddingServiceDep = Annotated[IEmbeddingService, Depends(get_embedding_service)]
+CalendarProvidersDep = Annotated[CalendarProviders, Depends(get_calendar_providers)]
+DocumentValidatorDep = Annotated[
+    IDocumentValidatorService, Depends(get_document_validator_service)
+]
+ProposalAIServiceDep = Annotated[IProposalAIService, Depends(get_proposal_ai_service)]
+
+
+def get_calendar_connection_repo(
+    session: SessionDep,
+    cipher: Annotated[ITokenCipher, Depends(get_token_cipher)],
+) -> ICalendarConnectionRepository:
+    return CalendarConnectionRepository(session, cipher)
+
+
+CalendarConnectionRepoDep = Annotated[
+    ICalendarConnectionRepository, Depends(get_calendar_connection_repo)
+]
+
+
+# --- Matching y licitaciones ---
+
+
+def get_compatibility_scorer(
+    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
+    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    matching_result_repo: MatchingResultRepoDep,
+) -> CompatibilityScorer:
+    """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
+    return CompatibilityScorer(
+        reranker_service=reranker_service,
+        weighting_service=weighting_service,
+        matching_result_repo=matching_result_repo,
+        model_version=settings.embedding_model,
+    )
+
+
+CompatibilityScorerDep = Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)]
+
+
+def get_rank_tenders_use_case(
+    supplier_repo: SupplierRepoDep,
+    supplier_vector_repo: SupplierVectorRepoDep,
+    tender_vector_repo: TenderVectorRepoDep,
+    tender_repo: TenderRepoDep,
+    scorer: CompatibilityScorerDep,
+    matching_result_repo: MatchingResultRepoDep,
+    embedding_service: EmbeddingServiceDep,
+) -> RankTendersUseCase:
+    return RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=scorer,
+        matching_result_repo=matching_result_repo,
+        model_version=settings.embedding_model,
+        embedding_service=embedding_service,
+    )
+
+
+def get_score_tender_on_demand_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    matching_result_repo: MatchingResultRepoDep,
+    scorer: CompatibilityScorerDep,
+) -> ScoreTenderOnDemandUseCase:
+    return ScoreTenderOnDemandUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
+        scorer=scorer,
+    )
+
+
+def get_search_tenders_use_case(
+    supplier_repo: SupplierRepoDep,
+    supplier_vector_repo: SupplierVectorRepoDep,
+    tender_vector_repo: TenderVectorRepoDep,
+    tender_repo: TenderRepoDep,
+    embedding_service: EmbeddingServiceDep,
+) -> SearchTendersUseCase:
+    return SearchTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        embedding_service=embedding_service,
+    )
+
+
+def get_tender_detail_use_case(
+    tender_repo: TenderRepoDep,
+    supplier_repo: SupplierRepoDep,
+    matching_result_repo: MatchingResultRepoDep,
+) -> GetTenderDetailUseCase:
+    return GetTenderDetailUseCase(
+        tender_repo=tender_repo,
+        supplier_repo=supplier_repo,
+        matching_result_repo=matching_result_repo,
+    )
+
+
+def get_get_or_create_deep_analysis_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    matching_result_repo: MatchingResultRepoDep,
+    deep_analysis_service: Annotated[
+        IDeepAnalysisService, Depends(get_deep_analysis_service)
     ],
-    quotations: Annotated[IQuotationRepository, Depends(get_quotation_repo)],
-    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
+    scorer: CompatibilityScorerDep,
+) -> GetOrCreateDeepAnalysisUseCase:
+    return GetOrCreateDeepAnalysisUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        matching_result_repo=matching_result_repo,
+        deep_analysis_service=deep_analysis_service,
+        scorer=scorer,
+    )
+
+
+# --- Licitaciones guardadas ---
+
+
+def get_list_saved_tenders_use_case(
+    saved_tender_repo: SavedTenderRepoDep,
+    tender_repo: TenderRepoDep,
+    supplier_repo: SupplierRepoDep,
+    matching_result_repo: MatchingResultRepoDep,
+) -> ListSavedTendersUseCase:
+    return ListSavedTendersUseCase(
+        saved_tender_repo=saved_tender_repo,
+        tender_repo=tender_repo,
+        supplier_repo=supplier_repo,
+        matching_result_repo=matching_result_repo,
+    )
+
+
+def get_save_tender_use_case(
+    saved_tender_repo: SavedTenderRepoDep,
+    tender_repo: TenderRepoDep,
+) -> SaveTenderUseCase:
+    return SaveTenderUseCase(saved_tender_repo=saved_tender_repo, tender_repo=tender_repo)
+
+
+def get_unsave_tender_use_case(saved_tender_repo: SavedTenderRepoDep) -> UnsaveTenderUseCase:
+    return UnsaveTenderUseCase(saved_tender_repo=saved_tender_repo)
+
+
+# --- Capacidades y cotización ---
+
+
+def get_build_experience_catalog_use_case(
+    supplier_repo: SupplierRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_repo: CapabilityAnswerRepoDep,
+    evidence_repo: CapabilityEvidenceRepoDep,
+) -> BuildExperienceCatalogUseCase:
+    return BuildExperienceCatalogUseCase(
+        supplier_repo, question_repo, answer_repo, evidence_repo
+    )
+
+
+def get_answer_capability_question_use_case(
+    supplier_repo: SupplierRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_repo: CapabilityAnswerRepoDep,
+) -> AnswerCapabilityQuestionUseCase:
+    return AnswerCapabilityQuestionUseCase(supplier_repo, question_repo, answer_repo)
+
+
+def get_add_capability_evidence_use_case(
+    supplier_repo: SupplierRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_repo: CapabilityAnswerRepoDep,
+    evidence_repo: CapabilityEvidenceRepoDep,
+) -> AddCapabilityEvidenceUseCase:
+    return AddCapabilityEvidenceUseCase(
+        supplier_repo, question_repo, answer_repo, evidence_repo
+    )
+
+
+def get_quotation_use_case(
+    quotation_repo: QuotationRepoDep,
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+) -> QuotationUseCase:
+    return QuotationUseCase(quotation_repo, supplier_repo, tender_repo)
+
+
+CatalogUseCaseDep = Annotated[
+    BuildExperienceCatalogUseCase, Depends(get_build_experience_catalog_use_case)
+]
+AnswerCapabilityUseCaseDep = Annotated[
+    AnswerCapabilityQuestionUseCase, Depends(get_answer_capability_question_use_case)
+]
+
+
+# --- Postulaciones ---
+
+
+def get_list_pending_capability_questions_use_case(
+    supplier_repo: SupplierRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_repo: CapabilityAnswerRepoDep,
+    tender_repo: TenderRepoDep,
+) -> ListPendingCapabilityQuestionsUseCase:
+    return ListPendingCapabilityQuestionsUseCase(
+        supplier_repo, question_repo, answer_repo, tender_repo
+    )
+
+
+def get_start_feasibility_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_repo: CapabilityAnswerRepoDep,
+    catalog_use_case: CatalogUseCaseDep,
+    chat_repo: TenderChatRepoDep,
+    ai_service: ProposalAIServiceDep,
+    validator: DocumentValidatorDep,
+) -> StartFeasibilityUseCase:
+    return StartFeasibilityUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        draft_repo=draft_repo,
+        question_repo=question_repo,
+        answer_repo=answer_repo,
+        catalog_use_case=catalog_use_case,
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        validator_service=validator,
+    )
+
+
+def get_proposal_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    catalog_use_case: CatalogUseCaseDep,
+) -> GetProposalUseCase:
+    return GetProposalUseCase(
+        supplier_repo, tender_repo, draft_repo, question_repo, catalog_use_case
+    )
+
+
+def get_answer_proposal_question_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    question_repo: CapabilityQuestionRepoDep,
+    answer_use_case: AnswerCapabilityUseCaseDep,
+) -> AnswerProposalQuestionUseCase:
+    return AnswerProposalQuestionUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        draft_repo=draft_repo,
+        question_repo=question_repo,
+        answer_use_case=answer_use_case,
+    )
+
+
+def get_decide_discrepancy_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+) -> DecideDiscrepancyUseCase:
+    return DecideDiscrepancyUseCase(supplier_repo, tender_repo, draft_repo)
+
+
+def get_generate_proposal_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    catalog_use_case: CatalogUseCaseDep,
+    chat_repo: TenderChatRepoDep,
+    ai_service: ProposalAIServiceDep,
+    validator: DocumentValidatorDep,
+) -> GenerateProposalUseCase:
+    return GenerateProposalUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        draft_repo=draft_repo,
+        catalog_use_case=catalog_use_case,
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        validator_service=validator,
+    )
+
+
+GenerateProposalUseCaseDep = Annotated[
+    GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
+]
+
+
+def get_regenerate_proposal_use_case(
+    generate_use_case: GenerateProposalUseCaseDep,
+) -> RegenerateProposalUseCase:
+    return RegenerateProposalUseCase(generate_use_case)
+
+
+def get_sync_proposal_answers_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    catalog_use_case: CatalogUseCaseDep,
+    generate_use_case: GenerateProposalUseCaseDep,
+) -> SyncProposalAnswersUseCase:
+    return SyncProposalAnswersUseCase(
+        supplier_repo, tender_repo, draft_repo, catalog_use_case, generate_use_case
+    )
+
+
+def get_export_proposal_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+) -> ExportProposalDocxUseCase:
+    return ExportProposalDocxUseCase(
+        supplier_repo, tender_repo, draft_repo, DocxProposalExporter()
+    )
+
+
+def get_resume_proposal_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+) -> ResumeProposalUseCase:
+    return ResumeProposalUseCase(supplier_repo, tender_repo, draft_repo)
+
+
+# --- Exportaciones y enlaces compartidos (HdU 19) ---
+
+
+def get_export_tender_use_case(
+    tenders: TenderRepoDep,
+    matching_results: MatchingResultRepoDep,
+    quotations: QuotationRepoDep,
+    jobs: ExportJobRepoDep,
     background: Annotated[IExportBackground, Depends(get_export_background)],
 ) -> ExportTenderUseCase:
     return ExportTenderUseCase(
@@ -561,14 +966,12 @@ def get_export_tender_use_case(
     )
 
 
-def get_export_job_use_case(
-    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
-) -> GetExportJobUseCase:
+def get_export_job_use_case(jobs: ExportJobRepoDep) -> GetExportJobUseCase:
     return GetExportJobUseCase(jobs)
 
 
 def get_download_export_file_use_case(
-    jobs: Annotated[IExportJobRepository, Depends(get_export_job_repo)],
+    jobs: ExportJobRepoDep,
 ) -> DownloadExportFileUseCase:
     return DownloadExportFileUseCase(jobs)
 
@@ -598,34 +1001,26 @@ async def reconcile_export_jobs() -> tuple[int, int]:
         return await ReconcileExportJobsUseCase(ExportJobRepository(session)).execute()
 
 
-# Enlaces compartidos (HdU 19). Dependen de los proveedores de repositorio y no
-# de la sesión directa, para que los tests E2E puedan sustituirlos.
 def get_create_share_link_use_case(
-    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
-    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
+    links: TenderShareLinkRepoDep,
+    tenders: TenderRepoDep,
 ) -> CreateShareLinkUseCase:
     return CreateShareLinkUseCase(links=links, tenders=tenders, base_url=settings.app_base_url)
 
 
-def get_list_share_links_use_case(
-    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
-) -> ListShareLinksUseCase:
+def get_list_share_links_use_case(links: TenderShareLinkRepoDep) -> ListShareLinksUseCase:
     return ListShareLinksUseCase(links=links)
 
 
-def get_revoke_share_link_use_case(
-    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
-) -> RevokeShareLinkUseCase:
+def get_revoke_share_link_use_case(links: TenderShareLinkRepoDep) -> RevokeShareLinkUseCase:
     return RevokeShareLinkUseCase(links=links)
 
 
 def get_shared_tender_use_case(
-    links: Annotated[ITenderShareLinkRepository, Depends(get_tender_share_link_repo)],
-    tenders: Annotated[ITenderRepository, Depends(get_tender_repo)],
-    suppliers: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
-    matching_results: Annotated[
-        IMatchingResultRepository, Depends(get_matching_result_repo)
-    ],
+    links: TenderShareLinkRepoDep,
+    tenders: TenderRepoDep,
+    suppliers: SupplierRepoDep,
+    matching_results: MatchingResultRepoDep,
 ) -> GetSharedTenderUseCase:
     return GetSharedTenderUseCase(
         links=links,
@@ -635,198 +1030,59 @@ def get_shared_tender_use_case(
     )
 
 
-def get_saved_tender_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ISavedTenderRepository:
-    return SavedTenderRepository(session)
-
-
-def get_list_saved_tenders_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ListSavedTendersUseCase:
-    return ListSavedTendersUseCase(
-        saved_tender_repo=SavedTenderRepository(session),
-        tender_repo=TenderRepository(session),
-        supplier_repo=SupplierRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-    )
-
-
-def get_save_tender_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> SaveTenderUseCase:
-    return SaveTenderUseCase(
-        saved_tender_repo=SavedTenderRepository(session),
-        tender_repo=TenderRepository(session),
-    )
-
-
-def get_unsave_tender_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> UnsaveTenderUseCase:
-    return UnsaveTenderUseCase(saved_tender_repo=SavedTenderRepository(session))
-
-
-def get_search_tenders_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    supplier_vector_repo: Annotated[
-        ISupplierVectorRepository, Depends(get_supplier_vector_repo)
-    ],
-    tender_vector_repo: Annotated[
-        ITenderVectorRepository, Depends(get_tender_vector_repo)
-    ],
-    embedding_service: Annotated[IEmbeddingService, Depends(get_embedding_service)],
-) -> SearchTendersUseCase:
-    return SearchTendersUseCase(
-        supplier_repo=SupplierRepository(session),
-        supplier_vector_repo=supplier_vector_repo,
-        tender_vector_repo=tender_vector_repo,
-        tender_repo=TenderRepository(session),
-        embedding_service=embedding_service,
-    )
-
-
-def get_tender_detail_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> GetTenderDetailUseCase:
-    return GetTenderDetailUseCase(
-        tender_repo=TenderRepository(session),
-        supplier_repo=SupplierRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-    )
-
-
 # --- Alertas de licitaciones (HdU 08) ---
 
 
-def get_notification_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> INotificationRepository:
-    return NotificationRepository(session)
-
-
-def get_notification_preference_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> INotificationPreferenceRepository:
-    return NotificationPreferenceRepository(session)
-
-
-def get_notification_delivery_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> INotificationDeliveryRepository:
-    return NotificationDeliveryRepository(session)
-
-
-def get_email_service(request: Request) -> IEmailService:
-    return request.app.state.email_service
-
-
 def get_list_notifications_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    notification_repo: NotificationRepoDep,
+    tender_repo: TenderRepoDep,
 ) -> ListNotificationsUseCase:
     return ListNotificationsUseCase(
-        notification_repo=NotificationRepository(session),
-        tender_repo=TenderRepository(session),
+        notification_repo=notification_repo,
+        tender_repo=tender_repo,
     )
 
 
 def get_count_unread_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    notification_repo: NotificationRepoDep,
 ) -> CountUnreadNotificationsUseCase:
-    return CountUnreadNotificationsUseCase(
-        notification_repo=NotificationRepository(session)
-    )
+    return CountUnreadNotificationsUseCase(notification_repo=notification_repo)
 
 
 def get_mark_notification_read_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    notification_repo: NotificationRepoDep,
 ) -> MarkNotificationReadUseCase:
-    return MarkNotificationReadUseCase(
-        notification_repo=NotificationRepository(session)
-    )
+    return MarkNotificationReadUseCase(notification_repo=notification_repo)
 
 
 def get_mark_all_read_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    notification_repo: NotificationRepoDep,
 ) -> MarkAllNotificationsReadUseCase:
-    return MarkAllNotificationsReadUseCase(
-        notification_repo=NotificationRepository(session)
-    )
+    return MarkAllNotificationsReadUseCase(notification_repo=notification_repo)
 
 
 def get_notification_preferences_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    preference_repo: NotificationPreferenceRepoDep,
 ) -> GetNotificationPreferencesUseCase:
-    return GetNotificationPreferencesUseCase(
-        preference_repo=NotificationPreferenceRepository(session)
-    )
+    return GetNotificationPreferencesUseCase(preference_repo=preference_repo)
 
 
 def get_update_notification_preferences_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    preference_repo: NotificationPreferenceRepoDep,
 ) -> UpdateNotificationPreferencesUseCase:
-    return UpdateNotificationPreferencesUseCase(
-        preference_repo=NotificationPreferenceRepository(session)
-    )
+    return UpdateNotificationPreferencesUseCase(preference_repo=preference_repo)
 
 
 def get_list_deliveries_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    delivery_repo: NotificationDeliveryRepoDep,
 ) -> ListDeliveriesUseCase:
-    return ListDeliveriesUseCase(delivery_repo=NotificationDeliveryRepository(session))
+    return ListDeliveriesUseCase(delivery_repo=delivery_repo)
 
 
-def get_user_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IUserRepository:
-    return UserRepository(session)
+# --- Preguntas inteligentes ---
 
 
-def get_token_verifier(request: Request) -> IAuthTokenVerifier:
-    """El verificador de tokens, como dependencia y no como objeto capturado.
-
-    Que pase por el sistema de dependencias es lo que permite sustituirlo en los
-    tests con `app.dependency_overrides`, y así ejercitar la verificación real
-    contra un JWKS de prueba sin levantar Supabase.
-    """
-    return request.app.state.token_verifier
-
-
-def get_identity_directory(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IIdentityDirectory:
-    return SupabaseIdentityDirectory(session)
-
-
-def get_deep_analysis_service(request: Request) -> IDeepAnalysisService:
-    return request.app.state.deep_analysis_service
-
-
-def get_get_or_create_deep_analysis_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    deep_analysis_service: Annotated[
-        IDeepAnalysisService, Depends(get_deep_analysis_service)
-    ],
-    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
-) -> GetOrCreateDeepAnalysisUseCase:
-    return GetOrCreateDeepAnalysisUseCase(
-        supplier_repo=SupplierRepository(session),
-        tender_repo=TenderRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-        deep_analysis_service=deep_analysis_service,
-        scorer=scorer,
-    )
-
-
-def get_question_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IQuestionRepository:
-    return QuestionRepositoryImpl(session)
-
-
-def get_smart_question_service(
-    question_repo: Annotated[IQuestionRepository, Depends(get_question_repo)],
-) -> ISmartQuestionService:
+def get_smart_question_service(question_repo: QuestionRepoDep) -> ISmartQuestionService:
     return SmartQuestionServiceImpl(question_repository=question_repo)
 
 
@@ -834,7 +1090,7 @@ def get_smart_question_use_case(
     smart_question_service: Annotated[
         ISmartQuestionService, Depends(get_smart_question_service)
     ],
-    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+    supplier_repo: SupplierRepoDep,
 ) -> SmartQuestionUseCase:
     return SmartQuestionUseCase(
         smart_question_service=smart_question_service,
@@ -842,90 +1098,65 @@ def get_smart_question_use_case(
     )
 
 
-def get_answer_question_use_case(
-    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
-) -> AnswerQuestionUseCase:
+def get_answer_question_use_case(supplier_repo: SupplierRepoDep) -> AnswerQuestionUseCase:
     # Inyectar el caso de uso que procesa las respuestas
     return AnswerQuestionUseCase(supplier_repo=supplier_repo)
 
 
-def get_tender_chat_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ITenderChatRepository:
-    return SQLTenderChatRepository(session)
-
-
-def get_tender_assistant_ai_service(request: Request) -> ITenderAssistantAIService:
-    return request.app.state.tender_assistant_ai_service
-
-
-def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAIService:
-    return request.app.state.milestone_extraction_service
-
-
-def get_calendar_providers(request: Request) -> CalendarProviders:
-    return request.app.state.calendar_providers
-
-
-def get_token_cipher(request: Request) -> ITokenCipher:
-    return request.app.state.token_cipher
-
-
-def get_calendar_connection_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    cipher: Annotated[ITokenCipher, Depends(get_token_cipher)],
-) -> ICalendarConnectionRepository:
-    return CalendarConnectionRepository(session, cipher)
+# --- Calendario e hitos (HU-16) ---
 
 
 def get_calendar_connections_use_case(
-    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
-    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+    connections: CalendarConnectionRepoDep,
+    providers: CalendarProvidersDep,
 ) -> GetCalendarConnectionsUseCase:
     return GetCalendarConnectionsUseCase(connections, providers)
 
 
 def get_start_calendar_authorization_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+    milestones: TenderMilestoneRepoDep,
+    states: CalendarOAuthStateRepoDep,
+    providers: CalendarProvidersDep,
 ) -> StartCalendarAuthorizationUseCase:
     return StartCalendarAuthorizationUseCase(
-        milestones=TenderMilestoneRepository(session),
-        states=CalendarOAuthStateRepository(session),
+        milestones=milestones,
+        states=states,
         providers=providers,
     )
 
 
 def get_complete_calendar_authorization_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
-    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+    states: CalendarOAuthStateRepoDep,
+    connections: CalendarConnectionRepoDep,
+    providers: CalendarProvidersDep,
 ) -> CompleteCalendarAuthorizationUseCase:
     return CompleteCalendarAuthorizationUseCase(
-        states=CalendarOAuthStateRepository(session),
+        states=states,
         connections=connections,
         providers=providers,
     )
 
 
 def get_sync_milestones_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
-    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+    tenders: TenderRepoDep,
+    milestones: TenderMilestoneRepoDep,
+    connections: CalendarConnectionRepoDep,
+    event_links: CalendarEventLinkRepoDep,
+    providers: CalendarProvidersDep,
 ) -> SyncMilestonesToCalendarUseCase:
     return SyncMilestonesToCalendarUseCase(
-        tenders=TenderRepository(session),
-        milestones=TenderMilestoneRepository(session),
+        tenders=tenders,
+        milestones=milestones,
         connections=connections,
-        event_links=CalendarEventLinkRepository(session),
+        event_links=event_links,
         providers=providers,
         app_base_url=settings.app_base_url,
     )
 
 
 def get_disconnect_calendar_use_case(
-    connections: Annotated[ICalendarConnectionRepository, Depends(get_calendar_connection_repo)],
-    providers: Annotated[CalendarProviders, Depends(get_calendar_providers)],
+    connections: CalendarConnectionRepoDep,
+    providers: CalendarProvidersDep,
 ) -> DisconnectCalendarUseCase:
     return DisconnectCalendarUseCase(connections, providers)
 
@@ -943,207 +1174,47 @@ def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient
 
 
 def get_tender_milestones_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    tenders: TenderRepoDep,
+    milestones: TenderMilestoneRepoDep,
+    event_links: CalendarEventLinkRepoDep,
+    chat: TenderChatRepoDep,
 ) -> GetTenderMilestonesUseCase:
     return GetTenderMilestonesUseCase(
-        tenders=TenderRepository(session),
-        milestones=TenderMilestoneRepository(session),
-        event_links=CalendarEventLinkRepository(session),
-        chat=chat_repo,
+        tenders=tenders,
+        milestones=milestones,
+        event_links=event_links,
+        chat=chat,
     )
 
 
 def get_set_milestone_reminder_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    milestones: TenderMilestoneRepoDep,
 ) -> SetMilestoneReminderUseCase:
-    return SetMilestoneReminderUseCase(TenderMilestoneRepository(session))
+    return SetMilestoneReminderUseCase(milestones)
 
 
 def get_extract_tender_milestones_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    tenders: TenderRepoDep,
+    milestones: TenderMilestoneRepoDep,
+    event_links: CalendarEventLinkRepoDep,
+    chat: TenderChatRepoDep,
     ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
 ) -> ExtractTenderMilestonesUseCase:
     return ExtractTenderMilestonesUseCase(
-        tenders=TenderRepository(session),
-        milestones=TenderMilestoneRepository(session),
-        event_links=CalendarEventLinkRepository(session),
-        chat=chat_repo,
+        tenders=tenders,
+        milestones=milestones,
+        event_links=event_links,
+        chat=chat,
         ai=ai,
     )
 
 
-def get_document_validator_service() -> IDocumentValidatorService:
-    return DocumentValidatorService()
-
-
-def get_list_pending_capability_questions_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ListPendingCapabilityQuestionsUseCase:
-    return ListPendingCapabilityQuestionsUseCase(
-        SupplierRepository(session),
-        SqlCapabilityQuestionRepository(session),
-        SqlCapabilityAnswerRepository(session),
-        TenderRepository(session),
-    )
-
-
-def get_proposal_ai_service(request: Request) -> IProposalAIService:
-    return request.app.state.proposal_ai_service
-
-
-def get_start_feasibility_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    ai_service: Annotated[IProposalAIService, Depends(get_proposal_ai_service)],
-    validator: Annotated[
-        IDocumentValidatorService, Depends(get_document_validator_service)
-    ],
-) -> StartFeasibilityUseCase:
-    supplier_repo = SupplierRepository(session)
-    question_repo = SqlCapabilityQuestionRepository(session)
-    answer_repo = SqlCapabilityAnswerRepository(session)
-    return StartFeasibilityUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=TenderRepository(session),
-        draft_repo=SqlProposalDraftRepository(session),
-        question_repo=question_repo,
-        answer_repo=answer_repo,
-        catalog_use_case=BuildExperienceCatalogUseCase(
-            supplier_repo,
-            question_repo,
-            answer_repo,
-            SqlCapabilityEvidenceRepository(session),
-        ),
-        chat_repo=SQLTenderChatRepository(session),
-        ai_service=ai_service,
-        validator_service=validator,
-    )
-
-
-def get_proposal_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> GetProposalUseCase:
-    supplier_repo = SupplierRepository(session)
-    question_repo = SqlCapabilityQuestionRepository(session)
-    return GetProposalUseCase(
-        supplier_repo,
-        TenderRepository(session),
-        SqlProposalDraftRepository(session),
-        question_repo,
-        BuildExperienceCatalogUseCase(
-            supplier_repo,
-            question_repo,
-            SqlCapabilityAnswerRepository(session),
-            SqlCapabilityEvidenceRepository(session),
-        ),
-    )
-
-
-def get_answer_proposal_question_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> AnswerProposalQuestionUseCase:
-    supplier_repo = SupplierRepository(session)
-    question_repo = SqlCapabilityQuestionRepository(session)
-    return AnswerProposalQuestionUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=TenderRepository(session),
-        draft_repo=SqlProposalDraftRepository(session),
-        question_repo=question_repo,
-        answer_use_case=AnswerCapabilityQuestionUseCase(
-            supplier_repo, question_repo, SqlCapabilityAnswerRepository(session)
-        ),
-    )
-
-
-def get_decide_discrepancy_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> DecideDiscrepancyUseCase:
-    return DecideDiscrepancyUseCase(
-        SupplierRepository(session),
-        TenderRepository(session),
-        SqlProposalDraftRepository(session),
-    )
-
-
-def get_generate_proposal_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    ai_service: Annotated[IProposalAIService, Depends(get_proposal_ai_service)],
-    validator: Annotated[
-        IDocumentValidatorService, Depends(get_document_validator_service)
-    ],
-) -> GenerateProposalUseCase:
-    supplier_repo = SupplierRepository(session)
-    question_repo = SqlCapabilityQuestionRepository(session)
-    answer_repo = SqlCapabilityAnswerRepository(session)
-    return GenerateProposalUseCase(
-        supplier_repo=supplier_repo,
-        tender_repo=TenderRepository(session),
-        draft_repo=SqlProposalDraftRepository(session),
-        catalog_use_case=BuildExperienceCatalogUseCase(
-            supplier_repo,
-            question_repo,
-            answer_repo,
-            SqlCapabilityEvidenceRepository(session),
-        ),
-        chat_repo=SQLTenderChatRepository(session),
-        ai_service=ai_service,
-        validator_service=validator,
-    )
-
-
-def get_regenerate_proposal_use_case(
-    generate_use_case: Annotated[
-        GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
-    ],
-) -> RegenerateProposalUseCase:
-    return RegenerateProposalUseCase(generate_use_case)
-
-
-def get_sync_proposal_answers_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    catalog_use_case: Annotated[
-        BuildExperienceCatalogUseCase, Depends(get_build_experience_catalog_use_case)
-    ],
-    generate_use_case: Annotated[
-        GenerateProposalUseCase, Depends(get_generate_proposal_use_case)
-    ],
-) -> SyncProposalAnswersUseCase:
-    return SyncProposalAnswersUseCase(
-        SupplierRepository(session),
-        TenderRepository(session),
-        SqlProposalDraftRepository(session),
-        catalog_use_case,
-        generate_use_case,
-    )
-
-
-def get_export_proposal_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ExportProposalDocxUseCase:
-    return ExportProposalDocxUseCase(
-        SupplierRepository(session),
-        TenderRepository(session),
-        SqlProposalDraftRepository(session),
-        DocxProposalExporter(),
-    )
-
-
-def get_resume_proposal_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ResumeProposalUseCase:
-    return ResumeProposalUseCase(
-        SupplierRepository(session),
-        TenderRepository(session),
-        SqlProposalDraftRepository(session),
-    )
+# --- Asistente de licitaciones ---
 
 
 def get_upload_tender_chat_doc_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
-    validator_service: Annotated[
-        IDocumentValidatorService, Depends(get_document_validator_service)
-    ],
+    chat_repo: TenderChatRepoDep,
+    validator_service: DocumentValidatorDep,
 ) -> UploadTenderChatDocumentUseCase:
     return UploadTenderChatDocumentUseCase(
         chat_repo=chat_repo, validator_service=validator_service
@@ -1151,27 +1222,25 @@ def get_upload_tender_chat_doc_use_case(
 
 
 def get_list_tender_chat_docs_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    chat_repo: TenderChatRepoDep,
 ) -> ListTenderChatDocumentsUseCase:
     return ListTenderChatDocumentsUseCase(chat_repo=chat_repo)
 
 
 def get_delete_tender_chat_doc_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    chat_repo: TenderChatRepoDep,
 ) -> DeleteTenderChatDocumentUseCase:
     return DeleteTenderChatDocumentUseCase(chat_repo=chat_repo)
 
 
 def get_ask_tender_assistant_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    chat_repo: TenderChatRepoDep,
     ai_service: Annotated[
         ITenderAssistantAIService, Depends(get_tender_assistant_ai_service)
     ],
-    supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
-    tender_repo: Annotated[ITenderRepository, Depends(get_tender_repo)],
-    validator_service: Annotated[
-        IDocumentValidatorService, Depends(get_document_validator_service)
-    ],
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    validator_service: DocumentValidatorDep,
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
@@ -1182,88 +1251,67 @@ def get_ask_tender_assistant_use_case(
     )
 
 
-
-
 def get_create_tender_chat_session_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    chat_repo: TenderChatRepoDep,
 ) -> CreateTenderChatSessionUseCase:
     return CreateTenderChatSessionUseCase(chat_repo=chat_repo)
 
 
 def get_tender_chat_history_use_case(
-    chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    chat_repo: TenderChatRepoDep,
 ) -> GetTenderChatHistoryUseCase:
     return GetTenderChatHistoryUseCase(chat_repo=chat_repo)
-
 
 
 # --- Tablero Kanban (HdU 10) ---
 
 
-def get_kanban_column_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IKanbanColumnRepository:
-    return KanbanColumnRepository(session)
-
-
-def get_kanban_card_repo(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> IKanbanCardRepository:
-    return KanbanCardRepository(session)
-
-
 def get_list_kanban_columns_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    column_repo: KanbanColumnRepoDep,
 ) -> ListKanbanColumnsUseCase:
-    return ListKanbanColumnsUseCase(column_repo=KanbanColumnRepository(session))
+    return ListKanbanColumnsUseCase(column_repo=column_repo)
 
 
 def get_create_kanban_column_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    column_repo: KanbanColumnRepoDep,
 ) -> CreateKanbanColumnUseCase:
-    return CreateKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+    return CreateKanbanColumnUseCase(column_repo=column_repo)
 
 
 def get_update_kanban_column_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    column_repo: KanbanColumnRepoDep,
 ) -> UpdateKanbanColumnUseCase:
-    return UpdateKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+    return UpdateKanbanColumnUseCase(column_repo=column_repo)
 
 
 def get_delete_kanban_column_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    column_repo: KanbanColumnRepoDep,
 ) -> DeleteKanbanColumnUseCase:
-    return DeleteKanbanColumnUseCase(column_repo=KanbanColumnRepository(session))
+    return DeleteKanbanColumnUseCase(column_repo=column_repo)
 
 
-def get_list_kanban_cards_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> ListKanbanCardsUseCase:
-    return ListKanbanCardsUseCase(card_repo=KanbanCardRepository(session))
+def get_list_kanban_cards_use_case(card_repo: KanbanCardRepoDep) -> ListKanbanCardsUseCase:
+    return ListKanbanCardsUseCase(card_repo=card_repo)
 
 
 def get_add_tender_to_board_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    card_repo: KanbanCardRepoDep,
+    column_repo: KanbanColumnRepoDep,
 ) -> AddTenderToBoardUseCase:
-    return AddTenderToBoardUseCase(
-        card_repo=KanbanCardRepository(session),
-        column_repo=KanbanColumnRepository(session),
-    )
+    return AddTenderToBoardUseCase(card_repo=card_repo, column_repo=column_repo)
 
 
 def get_move_kanban_card_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    card_repo: KanbanCardRepoDep,
+    column_repo: KanbanColumnRepoDep,
 ) -> MoveKanbanCardUseCase:
-    return MoveKanbanCardUseCase(
-        card_repo=KanbanCardRepository(session),
-        column_repo=KanbanColumnRepository(session),
-    )
+    return MoveKanbanCardUseCase(card_repo=card_repo, column_repo=column_repo)
 
 
 def get_remove_tender_from_board_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    card_repo: KanbanCardRepoDep,
 ) -> RemoveTenderFromBoardUseCase:
-    return RemoveTenderFromBoardUseCase(card_repo=KanbanCardRepository(session))
+    return RemoveTenderFromBoardUseCase(card_repo=card_repo)
 
 
 class MockRerankerService(IRerankerService):
