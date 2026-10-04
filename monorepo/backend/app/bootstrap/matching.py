@@ -4,8 +4,20 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.application.repositories.matching_result_repository import (
+    IMatchingResultRepository,
+)
+from app.application.repositories.supplier_repository import ISupplierRepository
+from app.application.repositories.supplier_vector_repository import (
+    ISupplierVectorRepository,
+)
+from app.application.repositories.tender_repository import ITenderRepository
+from app.application.repositories.tender_vector_repository import (
+    ITenderVectorRepository,
+)
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
@@ -38,11 +50,17 @@ from app.bootstrap.services import (
 )
 from app.config import settings
 
+# Constructores compartidos por los providers de la API y por los runners del
+# scheduler. Los argumentos son obligatorios y por nombre: si alguien agrega una
+# dependencia, todos los que arman el caso de uso tienen que pasarla, en vez de
+# quedarse en silencio con el valor por defecto del constructor.
 
-def get_compatibility_scorer(
-    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
-    matching_result_repo: MatchingResultRepoDep,
+
+def build_compatibility_scorer(
+    *,
+    reranker_service: IRerankerService,
+    weighting_service: IWeightingService,
+    matching_result_repo: IMatchingResultRepository,
 ) -> CompatibilityScorer:
     """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
     return CompatibilityScorer(
@@ -50,6 +68,42 @@ def get_compatibility_scorer(
         weighting_service=weighting_service,
         matching_result_repo=matching_result_repo,
         model_version=settings.embedding_model,
+    )
+
+
+def build_rank_tenders_use_case(
+    *,
+    supplier_repo: ISupplierRepository,
+    supplier_vector_repo: ISupplierVectorRepository,
+    tender_vector_repo: ITenderVectorRepository,
+    tender_repo: ITenderRepository,
+    scorer: CompatibilityScorer,
+    matching_result_repo: IMatchingResultRepository,
+    embedding_service: IEmbeddingService,
+) -> RankTendersUseCase:
+    # Con el servicio de embeddings, una empresa sin vector en Qdrant lo recupera
+    # en vez de fallar con SupplierVectorNotFound.
+    return RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=scorer,
+        matching_result_repo=matching_result_repo,
+        model_version=settings.embedding_model,
+        embedding_service=embedding_service,
+    )
+
+
+def get_compatibility_scorer(
+    reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
+    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
+    matching_result_repo: MatchingResultRepoDep,
+) -> CompatibilityScorer:
+    return build_compatibility_scorer(
+        reranker_service=reranker_service,
+        weighting_service=weighting_service,
+        matching_result_repo=matching_result_repo,
     )
 
 
@@ -65,14 +119,13 @@ def get_rank_tenders_use_case(
     matching_result_repo: MatchingResultRepoDep,
     embedding_service: EmbeddingServiceDep,
 ) -> RankTendersUseCase:
-    return RankTendersUseCase(
+    return build_rank_tenders_use_case(
         supplier_repo=supplier_repo,
         supplier_vector_repo=supplier_vector_repo,
         tender_vector_repo=tender_vector_repo,
         tender_repo=tender_repo,
         scorer=scorer,
         matching_result_repo=matching_result_repo,
-        model_version=settings.embedding_model,
         embedding_service=embedding_service,
     )
 

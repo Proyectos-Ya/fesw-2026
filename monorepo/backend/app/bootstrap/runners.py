@@ -10,14 +10,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from sqlmodel.ext.asyncio.session import AsyncSession
+from starlette.datastructures import State
 
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.tender_refresher import ITenderRefresher
 from app.application.use_cases.calendar.refresh_synced_tender_dates import (
     RefreshSyncedTenderDatesUseCase,
-)
-from app.application.use_cases.calendar.sync_milestones import (
-    SyncMilestonesToCalendarUseCase,
 )
 from app.application.use_cases.exports.export_jobs import (
     CompleteExportJobUseCase,
@@ -36,6 +33,12 @@ from app.application.use_cases.notifications.dispatch_pending_deliveries import 
 from app.application.use_cases.notifications.scan_supplier_for_alerts import (
     ScanSupplierForAlertsUseCase,
 )
+from app.bootstrap.calendar import build_sync_milestones_use_case
+from app.bootstrap.matching import (
+    build_compatibility_scorer,
+    build_rank_tenders_use_case,
+)
+from app.bootstrap.services import build_supplier_vector_repo, build_tender_vector_repo
 from app.config import settings
 from app.infrastructure.db import async_session_maker
 from app.infrastructure.repositories.calendar_repository import (
@@ -50,12 +53,6 @@ from app.infrastructure.repositories.notification_repository import (
     NotificationDeliveryRepository,
     NotificationPreferenceRepository,
     NotificationRepository,
-)
-from app.infrastructure.repositories.qdrant_supplier_repository import (
-    QdrantSupplierRepository,
-)
-from app.infrastructure.repositories.qdrant_tender_repository import (
-    QdrantTenderRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_milestone_repository import (
@@ -107,13 +104,12 @@ def build_milestone_refresh_runner(
             tenders = TenderRepository(session)
             milestones = TenderMilestoneRepository(session)
             event_links = CalendarEventLinkRepository(session)
-            sync = SyncMilestonesToCalendarUseCase(
+            sync = build_sync_milestones_use_case(
                 tenders=tenders,
                 milestones=milestones,
                 connections=CalendarConnectionRepository(session, app.state.token_cipher),
                 event_links=event_links,
                 providers=app.state.calendar_providers,
-                app_base_url=settings.app_base_url,
             )
             return await RefreshSyncedTenderDatesUseCase(
                 tenders=tenders,
@@ -127,6 +123,30 @@ def build_milestone_refresh_runner(
             ).execute()
 
     return refresh
+
+
+def build_scan_rank_tenders_use_case(
+    state: State, session: AsyncSession
+) -> RankTendersUseCase:
+    """El ranking que usa el escaneo de alertas, armado con la sesión de la vuelta.
+
+    Usa el mismo constructor que el provider de la API: antes era una copia
+    aparte y se quedó sin el servicio de embeddings cuando la API lo sumó.
+    """
+    matching_results = MatchingResultRepository(session)
+    return build_rank_tenders_use_case(
+        supplier_repo=SupplierRepository(session),
+        supplier_vector_repo=build_supplier_vector_repo(state),
+        tender_vector_repo=build_tender_vector_repo(state),
+        tender_repo=TenderRepository(session),
+        scorer=build_compatibility_scorer(
+            reranker_service=state.reranker_service,
+            weighting_service=state.weighting_service,
+            matching_result_repo=matching_results,
+        ),
+        matching_result_repo=matching_results,
+        embedding_service=state.embedding_service,
+    )
 
 
 def build_notification_runners(
@@ -145,25 +165,6 @@ def build_notification_runners(
     conozca ningún repositorio concreto.
     """
 
-    def _rank_tenders(session: AsyncSession) -> RankTendersUseCase:
-        return RankTendersUseCase(
-            supplier_repo=SupplierRepository(session),
-            supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_async_client),
-            tender_vector_repo=QdrantTenderRepository(
-                client=app.state.qdrant_async_client,
-                vector_size=settings.embedding_vector_size,
-            ),
-            tender_repo=TenderRepository(session),
-            scorer=CompatibilityScorer(
-                reranker_service=app.state.reranker_service,
-                weighting_service=app.state.weighting_service,
-                matching_result_repo=MatchingResultRepository(session),
-                model_version=settings.embedding_model,
-            ),
-            matching_result_repo=MatchingResultRepository(session),
-            model_version=settings.embedding_model,
-        )
-
     async def scan_all() -> int:
         async with async_session_maker() as session:
             user_ids = await SupplierRepository(session).list_user_ids_with_profile()
@@ -173,7 +174,9 @@ def build_notification_runners(
             try:
                 async with async_session_maker() as session:
                     use_case = ScanSupplierForAlertsUseCase(
-                        rank_tenders_use_case=_rank_tenders(session),
+                        rank_tenders_use_case=build_scan_rank_tenders_use_case(
+                            app.state, session
+                        ),
                         preference_repo=NotificationPreferenceRepository(session),
                         notification_repo=NotificationRepository(session),
                         delivery_repo=NotificationDeliveryRepository(session),

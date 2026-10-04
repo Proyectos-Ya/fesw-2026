@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
+from starlette.datastructures import State
 
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -47,16 +48,24 @@ from app.infrastructure.services.supabase_identity_directory import (
 )
 
 
-def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
+def build_supplier_vector_repo(state: State) -> ISupplierVectorRepository:
     # Reutiliza el cliente Qdrant inicializado en el lifespan
-    return QdrantSupplierRepository(request.app.state.qdrant_async_client)
+    return QdrantSupplierRepository(state.qdrant_async_client)
+
+
+def build_tender_vector_repo(state: State) -> ITenderVectorRepository:
+    return QdrantTenderRepository(
+        client=state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    )
+
+
+def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
+    return build_supplier_vector_repo(request.app.state)
 
 
 def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
-    return QdrantTenderRepository(
-        client=request.app.state.qdrant_async_client,
-        vector_size=settings.embedding_vector_size,
-    )
+    return build_tender_vector_repo(request.app.state)
 
 
 def get_embedding_service(request: Request) -> IEmbeddingService:

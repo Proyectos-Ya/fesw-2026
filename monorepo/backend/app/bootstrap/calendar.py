@@ -6,7 +6,13 @@ from fastapi import Depends
 
 from app.application.repositories.calendar_repository import (
     ICalendarConnectionRepository,
+    ICalendarEventLinkRepository,
 )
+from app.application.repositories.tender_milestone_repository import (
+    ITenderMilestoneRepository,
+)
+from app.application.repositories.tender_repository import ITenderRepository
+from app.application.services.calendar_provider_client import CalendarProviders
 from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
 )
@@ -93,13 +99,19 @@ def get_complete_calendar_authorization_use_case(
     )
 
 
-def get_sync_milestones_use_case(
-    tenders: TenderRepoDep,
-    milestones: TenderMilestoneRepoDep,
-    connections: CalendarConnectionRepoDep,
-    event_links: CalendarEventLinkRepoDep,
-    providers: CalendarProvidersDep,
+def build_sync_milestones_use_case(
+    *,
+    tenders: ITenderRepository,
+    milestones: ITenderMilestoneRepository,
+    connections: ICalendarConnectionRepository,
+    event_links: ICalendarEventLinkRepository,
+    providers: CalendarProviders,
 ) -> SyncMilestonesToCalendarUseCase:
+    """Compartido por el provider de la API y el refresco de hitos del scheduler.
+
+    Argumentos obligatorios y por nombre, por la misma razón que en
+    `matching.build_rank_tenders_use_case`.
+    """
     return SyncMilestonesToCalendarUseCase(
         tenders=tenders,
         milestones=milestones,
@@ -107,6 +119,22 @@ def get_sync_milestones_use_case(
         event_links=event_links,
         providers=providers,
         app_base_url=settings.app_base_url,
+    )
+
+
+def get_sync_milestones_use_case(
+    tenders: TenderRepoDep,
+    milestones: TenderMilestoneRepoDep,
+    connections: CalendarConnectionRepoDep,
+    event_links: CalendarEventLinkRepoDep,
+    providers: CalendarProvidersDep,
+) -> SyncMilestonesToCalendarUseCase:
+    return build_sync_milestones_use_case(
+        tenders=tenders,
+        milestones=milestones,
+        connections=connections,
+        event_links=event_links,
+        providers=providers,
     )
 
 
