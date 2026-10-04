@@ -10,7 +10,7 @@ Antes esto era un `logger.warning` y seguía adelante también fuera de desarrol
 
 import pytest
 
-from app.bootstrap import MockEmbeddingService, build_embedding_service
+from app.bootstrap.builders import MockEmbeddingService, build_embedding_service
 from app.config import settings
 from app.infrastructure.services import bge_m3_embedding_service as modulo_local
 from app.infrastructure.services.api_embedding_service import (
