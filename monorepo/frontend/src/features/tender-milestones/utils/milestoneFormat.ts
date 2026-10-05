@@ -43,14 +43,24 @@ export function formatMilestoneDate(iso: string, hasTime: boolean): string {
   return formatter.format(date).replace(/[  ]/g, " ");
 }
 
+// Dos colores: rojo para lo que hay que atender ya, gris para todo lo demás.
 const URGENCY_TONES: Record<MilestoneUrgency, BadgeTone> = {
   vencido: "neutral",
   critico: "danger",
-  proximo: "warning",
   normal: "neutral",
 };
 
-/** La urgencia la decide el backend; acá solo se traduce a etiqueta y color. */
+function remaining(days: number): string {
+  if (days === 0) return "Hoy";
+  if (days === 1) return "Mañana";
+  return `En ${days} días`;
+}
+
+/**
+ * La urgencia la decide el backend; acá solo se traduce a etiqueta y color.
+ * Lo destacado va además entre signos de exclamación, para que no dependa
+ * solo del color (criterio 9).
+ */
 export function urgencyBadge(
   urgency: MilestoneUrgency,
   dueAtIso: string,
@@ -60,8 +70,6 @@ export function urgencyBadge(
   if (urgency === "vencido") return { label: "Vencido", tone };
   const dueAt = parseApiDate(dueAtIso);
   if (dueAt === null) return { label: "—", tone };
-  const days = Math.max(0, chileDay(dueAt) - chileDay(now));
-  if (days === 0) return { label: "Hoy", tone };
-  if (days === 1) return { label: "Mañana", tone };
-  return { label: `En ${days} días`, tone };
+  const label = remaining(Math.max(0, chileDay(dueAt) - chileDay(now)));
+  return { label: urgency === "critico" ? `¡${label}!` : label, tone };
 }

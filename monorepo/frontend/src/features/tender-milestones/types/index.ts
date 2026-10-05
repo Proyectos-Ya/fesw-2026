@@ -12,7 +12,8 @@ export type MilestoneKind =
 
 export type MilestoneSource = "mercado_publico" | "ia_documento";
 
-export type MilestoneUrgency = "vencido" | "critico" | "proximo" | "normal";
+/** `critico`: le quedan 5 días de calendario o menos y se destaca en rojo (criterio 9). */
+export type MilestoneUrgency = "vencido" | "critico" | "normal";
 
 export type CalendarProvider = "google";
 

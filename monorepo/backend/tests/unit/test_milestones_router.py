@@ -43,7 +43,7 @@ def api():
         milestones=[
             MilestoneView(
                 milestone=hito,
-                urgency=MilestoneUrgency.PROXIMO,
+                urgency=MilestoneUrgency.CRITICO,
                 synced_providers=[CalendarProvider.GOOGLE],
             )
         ],
@@ -94,7 +94,7 @@ def test_lista_los_hitos_con_fecha_utc_urgencia_y_sincronizacion(api):
         "source_excerpt": "a las 15:00 del día 20",
         "due_at": "2026-10-20T18:00:00Z",
         "has_time": True,
-        "urgency": "proximo",
+        "urgency": "critico",
         "synced_providers": ["google"],
         "reminder_days_before": None,
     }

@@ -102,7 +102,7 @@ async def test_informa_urgencia_y_proveedores_sincronizados(escenario):
     por_tipo = {v.milestone.kind: v for v in resultado.milestones}
     assert por_tipo[MilestoneKind.PUBLICACION].urgency is MilestoneUrgency.VENCIDO
     assert por_tipo[MilestoneKind.CIERRE_POSTULACION].urgency is MilestoneUrgency.CRITICO
-    assert por_tipo[MilestoneKind.VISITA_TECNICA].urgency is MilestoneUrgency.PROXIMO
+    assert por_tipo[MilestoneKind.VISITA_TECNICA].urgency is MilestoneUrgency.CRITICO
     assert por_tipo[MilestoneKind.VISITA_TECNICA].synced_providers == [CalendarProvider.GOOGLE]
     assert por_tipo[MilestoneKind.CIERRE_POSTULACION].synced_providers == []
 

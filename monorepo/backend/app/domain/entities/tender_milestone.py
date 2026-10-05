@@ -1,5 +1,4 @@
-import math
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -8,10 +7,8 @@ from pydantic import BaseModel, BeforeValidator, Field, StringConstraints
 
 from app.shared.datetime_utils import CHILE_TZ, UtcDateTime, to_utc_naive, utc_now_naive
 
-_UN_DIA = timedelta(days=1)
-_DIAS_CRITICO = 3
 # El criterio 9 de la HU-16 pide destacar el hito cuando le quedan 5 días o menos.
-_DIAS_PROXIMO = 5
+_DIAS_DESTACADO = 5
 
 # Anticipaciones que el usuario puede elegir para el recordatorio de un hito.
 REMINDER_DAYS_OPTIONS = (1, 3, 7)
@@ -37,9 +34,14 @@ class MilestoneSource(StrEnum):
 
 class MilestoneUrgency(StrEnum):
     VENCIDO = "vencido"
+    # Se destaca en rojo: le quedan 5 días de calendario o menos (criterio 9).
     CRITICO = "critico"
-    PROXIMO = "proximo"
     NORMAL = "normal"
+
+
+def _fecha_en_chile(valor: datetime) -> date:
+    """Fecha de calendario en Chile de un instante UTC naive."""
+    return valor.replace(tzinfo=UTC).astimezone(CHILE_TZ).date()
 
 
 def _recortar(maximo: int):
@@ -86,19 +88,21 @@ class TenderMilestone(BaseModel):
         return self.model_copy(update={"reminder_sent_at": now, "updated_at": now})
 
     def urgencia(self, now: datetime) -> MilestoneUrgency:
-        """Vencido, crítico (3 días o menos) o próximo (5 días o menos, criterio 9)."""
-        restante = self.due_at - now
-        if restante < timedelta(0):
+        """Vencido, crítico (5 días o menos, criterio 9) o normal.
+
+        Los días se cuentan por **fecha de calendario en Chile**, igual que la
+        etiqueta de la tabla ("Hoy", "Mañana", "En 5 días"). Contarlos por horas
+        hacía que un hito rotulado "En 5 días" quedara sin destacar si vencía
+        más tarde en el día que la hora actual.
+        """
+        if self.due_at < now:
             return MilestoneUrgency.VENCIDO
-        dias = math.ceil(restante / _UN_DIA)
-        if dias <= _DIAS_CRITICO:
+        dias = (_fecha_en_chile(self.due_at) - _fecha_en_chile(now)).days
+        if dias <= _DIAS_DESTACADO:
             return MilestoneUrgency.CRITICO
-        if dias <= _DIAS_PROXIMO:
-            return MilestoneUrgency.PROXIMO
         return MilestoneUrgency.NORMAL
 
     def con_hora(self, hora: time) -> "TenderMilestone":
         """Copia del hito a la `hora` de Chile del mismo día local."""
-        dia_local = self.due_at.replace(tzinfo=UTC).astimezone(CHILE_TZ).date()
-        due_at = to_utc_naive(datetime.combine(dia_local, hora))
+        due_at = to_utc_naive(datetime.combine(_fecha_en_chile(self.due_at), hora))
         return self.model_copy(update={"due_at": due_at, "has_time": True})
