@@ -12,6 +12,7 @@ Esta guía detalla los scripts existentes en `monorepo/backend/scripts/` y `mono
 * **Propósito**: Borrar usuarios (`users`), perfiles de empresa/proveedores (`supplier`) y todas sus dependencias en cascada (historiales de chat, análisis de IA, resultados de matching, licitaciones guardadas y preferencias de alertas).
 * **Comportamiento seguro**:
   * **Conserva las licitaciones**: Las tablas de licitaciones (`tender`, `tender_item`), instituciones compradoras (`buyer_institution`), regiones y comunas **no se tocan**.
+  * **Conserva los anexos compartidos** (`attachment_file` sin empresa); sus extracciones se recalculan.
   * **Limpia Qdrant**: Elimina los puntos correspondientes a los proveedores borrados en la colección `suppliers`, previniendo vectores huérfanos.
 * **Uso**:
   ```bash

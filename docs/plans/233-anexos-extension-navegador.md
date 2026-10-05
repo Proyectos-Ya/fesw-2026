@@ -75,7 +75,8 @@ lo que de verdad se pide (requisitos, ítems, entregables, visita técnica) est�
 - **Modelo de confianza:**
   - Una subida manual queda `private` hasta que el mismo sha256 llegue desde la
     extensión o desde otra empresa. Recién ahí se copia a `shared/`.
-  - Dos hashes distintos para el mismo `mp_document_id` dejan el anexo en `conflict`.
+  - Dos hashes distintos para el mismo `mp_document_id` dejan el anexo en `conflict`
+    (precisado en ADR 0002: solo cuentan las versiones respaldadas; una subida suelta no bloquea ni ve a las demás).
 - **Procesamiento:**
   - `AttachmentProcessingScheduler` va en el lifespan, con el mismo patrón que
     `MilestoneRefreshScheduler`.

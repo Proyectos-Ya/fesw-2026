@@ -551,6 +551,33 @@ La firma SigV4 está escrita a mano (`app/infrastructure/services/attachments/si
 
 ---
 
+## Anexos compartidos (plan 233, decisión 6)
+
+Cuando dos fuentes independientes confirman el mismo archivo para un anexo oficial (dos empresas sin personas en común, o una captura de la extensión y otra fuente que no sea la misma persona), el archivo se promueve a versión compartida visible para todas las empresas.
+
+### La fila canónica y privacidad
+- **Fila sin empresa:** La versión compartida es una fila canónica en `attachment_file` con `workspace_id = NULL`, `uploader_user_id = NULL`, `visibility = 'shared'` y `trust = 'corroborated'`, almacenada en `shared/{tender}/{mp_document_id}/{sha}.{ext}`.
+- **Sin filtración de datos:** No lleva autor, empresa ni fecha de subida original. Los aportes originales de las empresas se mantienen `private` y solo actualizan su `trust`.
+- **Borrar una empresa no borra lo compartido:** Como la fila canónica tiene `workspace_id NULL`, el `CASCADE` de `supplier` borra los aportes privados de esa empresa pero deja intacto el documento compartido para el resto.
+
+### Regla de confianza (en 5 líneas)
+1. Una subida manual aislada queda `pending` y `private`; no se comparte, no bloquea a nadie y no revela la existencia de privados ajenos (anti-oráculo).
+2. Dos fuentes independientes con el mismo SHA-256 generan la versión canónica compartida.
+3. Lo compartido es pegajoso: versiones vigentes no se bajan por subidas distintas ajenas (esos aportes quedan `rejected`).
+4. La extensión de navegador arbitra: puede corroborar una versión, suspender lo compartido ante contradicción (`conflict`) o reemplazarlo si confirma una nueva versión.
+5. Conflicto ocurre únicamente cuando hay dos o más versiones respaldadas sin ganador claro; mientras dura, no se comparte nada.
+
+### Candado y concurrencia
+- La reevaluación se ejecuta con un candado `SELECT ... FOR NO KEY UPDATE` sobre la fila `tender_attachment`, que serializa las promociones del mismo anexo pero no bloquea los `INSERT` concurrentes de aportes nuevos de otras empresas (`FOR KEY SHARE`).
+- El caso de uso (`PromoteAttachmentUseCase`) abre su propia sesión de base de datos (`PromoteOpener`), garantizando que la transacción del candado sea independiente de la petición HTTP.
+- Al materializar la versión canónica, se copia el objeto a `shared/` y se verifica estrictamente el tamaño y el hash SHA-256 de los bytes en el destino antes de confirmar en base de datos.
+
+### Integración y eventos
+- **Evento para Decisión 4 (extracción de texto):** `IAttachmentVisibilityListener.on_visibility_changed(file)` notifica cuando una versión canónica pasa a `shared` (para indexarla en el resumen compartido) o vuelve a `private` (para desindexarla).
+- **Reseteo de cuentas (`scripts/reset_cuentas.py`):** Resguarda las versiones canónicas en una tabla temporal `ON COMMIT DROP` durante el `TRUNCATE TABLE ... CASCADE` y las repone en la misma transacción, preservando los documentos compartidos.
+
+---
+
 ## Calidad de código
 
 Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.

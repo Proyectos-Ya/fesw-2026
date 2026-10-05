@@ -24,11 +24,15 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
 * **Planes activos / registrados**:
   * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
   * [233-anexos-extension-navegador.md](./plans/233-anexos-extension-navegador.md): Anexos de Mercado Público (subida, extracción con Gemini y extensión de navegador), segundo llamado, NDCG en producción y matching en sombra (Spike 2).
+  * [instrucciones-decision-7.md](./plans/instrucciones-decision-7.md): Instrucciones técnicas de implementación para la Extensión de Navegador (Fase 3, Decisión 7).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
 * **Convención de nombre**: `<NNNN>-<slug>.md` con cuatro dígitos correlativos (ejemplo: `0001-seleccion-motor-vectorial.md`).
 * **Estructura**: Contexto, Decisión tomada, Alternativas descartadas y Consecuencias.
+* **Decisiones registradas**:
+  * [0002-confianza-de-anexos-compartidos.md](./decisions/0002-confianza-de-anexos-compartidos.md): Modelo de confianza, privacidad y ciclo de vida de anexos oficiales compartidos entre empresas (Plan 233, Decisión 6).
+  * [0003-arquitectura-extension-navegador.md](./decisions/0003-arquitectura-extension-navegador.md): Arquitectura de la extensión de navegador, compatibilidad multi-navegador con WXT, Bridge y adaptador de Mercado Público (Plan 233, Decisión 7).
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:

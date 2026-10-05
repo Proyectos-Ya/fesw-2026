@@ -8,11 +8,15 @@ import { Icon } from "@/features/shared/components/Icon";
 import type { RowUpload } from "../hooks/useAttachmentUploads";
 import {
   ATTACHMENT_STATUS_LABELS,
+  STATUS_REASON_FALLBACK,
+  STATUS_REASON_LABELS,
   VISIBILITY_LABELS,
   type AttachmentStatus,
   type OfficialAttachment,
 } from "../types";
 import { formatFileSize } from "../utils/formatFileSize";
+import { VISIBILITY_HINTS, sharingNotice } from "../utils/sharing";
+import { ProcessingBadge } from "./ProcessingBadge";
 
 const STATUS_TONE: Record<AttachmentStatus, BadgeTone> = {
   missing: "warning",
@@ -54,6 +58,7 @@ export function AttachmentRow({
   const busy = upload !== undefined && !failed;
   const file = attachment.file;
   const percent = Math.round((upload?.progress ?? 0) * 100);
+  const notice = sharingNotice(attachment.file);
 
   const canPick =
     canUpload &&
@@ -78,9 +83,12 @@ export function AttachmentRow({
         {attachment.ext !== "" && <Badge tone="neutral">{attachment.ext.toUpperCase()}</Badge>}
 
         {upload === undefined && (
-          <Badge tone={STATUS_TONE[attachment.status]}>
-            {ATTACHMENT_STATUS_LABELS[attachment.status]}
-          </Badge>
+          <>
+            <Badge tone={STATUS_TONE[attachment.status]}>
+              {ATTACHMENT_STATUS_LABELS[attachment.status]}
+            </Badge>
+            <ProcessingBadge processing={attachment.processing} />
+          </>
         )}
         {failed && (
           <Badge tone="danger" iconLeft={<Icon name="circle-alert" size={12} />}>
@@ -102,7 +110,12 @@ export function AttachmentRow({
           <span className="inline-flex items-center gap-1.5 text-xs text-text-subtle">
             <span>{formatFileSize(file.size_bytes)}</span>
             <span aria-hidden="true">·</span>
-            <span>{VISIBILITY_LABELS[file.visibility]}</span>
+            <Badge
+              tone={file.visibility === "shared" ? "teal" : "neutral"}
+              iconLeft={<Icon name={file.visibility === "shared" ? "users" : "lock"} size={12} />}
+            >
+              <span title={VISIBILITY_HINTS[file.visibility]}>{VISIBILITY_LABELS[file.visibility]}</span>
+            </Badge>
           </span>
         )}
 
@@ -145,6 +158,17 @@ export function AttachmentRow({
       )}
       {failed && upload.message !== null && (
         <p className="text-sm font-medium text-danger">{upload.message}</p>
+      )}
+      {!failed && notice !== null && (
+        <p role="note" className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-700">
+          <Icon name="triangle-alert" size={14} />
+          <span>{notice}</span>
+        </p>
+      )}
+      {file?.status_reason && (
+        <p className="text-xs text-text-muted">
+          {STATUS_REASON_LABELS[file.status_reason] ?? STATUS_REASON_FALLBACK}
+        </p>
       )}
 
       {/* Sin `accept`: el backend valida la extensión contra el anexo oficial. */}
