@@ -32,6 +32,7 @@ from app.domain.entities.attachment_file import (
     AttachmentFile,
     AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
 )
 from app.domain.entities.supplier_member import MemberRole, WorkspaceContext
 from app.domain.entities.tender_attachment import AttachmentStatus, OfficialAttachment
@@ -56,6 +57,7 @@ from app.domain.errors.tender_errors import TenderNotFound
 from app.infrastructure.routers.tender_attachments import (
     create_tender_attachments_router,
 )
+from tests.unit.application.attachment_file_fakes import canonico
 
 SINCRONIZADA = datetime(2026, 9, 28, 16, 28)
 AHORA = datetime(2026, 10, 3, 15, 0)
@@ -117,12 +119,14 @@ def test_lista_los_anexos_oficiales_con_su_estado_y_la_fecha_en_utc(api):
                 "ext": "xlsx",
                 "status": "missing",
                 "file": None,
+                "processing": None,
             }
         ],
         "list_synced_at": "2026-09-28T16:28:00Z",
         "quota": None,
         "can_upload": False,
         "max_upload_size_bytes": 52428800,
+        "processing_enabled": False,
     }
     api.use_case.execute.assert_awaited_once_with(api.tender_id, access=None)
 
@@ -141,6 +145,7 @@ def test_una_lista_sin_sincronizar_devuelve_null(api):
         "quota": None,
         "can_upload": False,
         "max_upload_size_bytes": 52428800,
+        "processing_enabled": False,
     }
 
 
@@ -321,6 +326,7 @@ def test_si_ya_existe_el_archivo_responde_200_con_el_archivo(subidas):
             "status": "stored",
             "is_mine": True,
             "created_at": "2026-10-03T15:00:00Z",
+            "status_reason": None,
         },
     }
 
@@ -408,6 +414,29 @@ def test_errores_al_pedir_la_url(subidas, error, estado, codigo, extra):
     assert {k: v for k, v in cuerpo.items() if k not in ("code", "detail")} == extra
     if estado == 403:
         assert "revocado" not in cuerpo["detail"].lower()
+
+
+def test_completar_informa_la_visibilidad_efectiva_del_aporte_ya_corroborado(subidas):
+    # La fila de la empresa sigue siendo privada; su contenido ya lo ven todas. La
+    # etiqueta del panel sale de `visibility`, así que el backend manda la efectiva.
+    propio = _archivo(subidas.tender_id).model_copy(update={"trust": AttachmentTrust.CORROBORATED})
+    subidas.completar.execute.return_value = propio
+
+    respuesta = subidas.client.post(subidas.url_completar(propio.id))
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["visibility"] == "shared"
+    assert respuesta.json()["trust"] == "corroborated"
+    assert respuesta.json()["is_mine"] is True
+
+
+def test_completar_un_aporte_sin_confirmar_sigue_privado(subidas):
+    respuesta = subidas.client.post(
+        subidas.url_completar(subidas.completar.execute.return_value.id)
+    )
+
+    assert respuesta.json()["visibility"] == "private"
+    assert respuesta.json()["trust"] == "pending"
 
 
 def test_completar_responde_el_archivo_guardado(subidas):
@@ -510,6 +539,56 @@ def test_la_lista_con_empresa_informa_permiso_cupo_y_archivo_propio(subidas):
     subidas.listar.execute.assert_awaited_once_with(
         subidas.tender_id, access=WorkspaceAccess(WS, True)
     )
+
+
+def test_la_lista_muestra_la_version_canonica_como_compartida_y_ajena(subidas):
+    compartida = canonico(
+        tender_attachment_id=subidas.anexo.id, tender_id=subidas.tender_id, sha256=SHA
+    )
+    subidas.listar.execute.return_value = TenderAttachmentsResult(
+        official=[
+            OfficialAttachmentView(
+                subidas.anexo, AttachmentStatus.STORED, AttachmentFileView(compartida, False)
+            )
+        ],
+        list_synced_at=SINCRONIZADA,
+        can_upload=True,
+    )
+
+    respuesta = subidas.client.get(f"/tenders/{subidas.tender_id}/attachments")
+
+    archivo = respuesta.json()["official"][0]["file"]
+    assert archivo["is_mine"] is False
+    assert archivo["visibility"] == "shared"
+    # Nunca se informa quién subió un archivo compartido.
+    assert set(archivo) == {
+        "id",
+        "size_bytes",
+        "source",
+        "visibility",
+        "trust",
+        "status",
+        "is_mine",
+        "created_at",
+        "status_reason",
+    }
+
+
+def test_la_lista_informa_la_visibilidad_efectiva_del_aporte_propio_corroborado(subidas):
+    propio = _archivo(subidas.tender_id).model_copy(update={"trust": AttachmentTrust.CORROBORATED})
+    subidas.listar.execute.return_value = TenderAttachmentsResult(
+        official=[
+            OfficialAttachmentView(
+                subidas.anexo, AttachmentStatus.STORED, AttachmentFileView(propio, True)
+            )
+        ],
+        list_synced_at=SINCRONIZADA,
+        can_upload=True,
+    )
+
+    respuesta = subidas.client.get(f"/tenders/{subidas.tender_id}/attachments")
+
+    assert respuesta.json()["official"][0]["file"]["visibility"] == "shared"
 
 
 def test_la_lista_para_un_viewer_pasa_can_upload_falso(subidas):

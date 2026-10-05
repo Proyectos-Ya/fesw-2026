@@ -118,14 +118,7 @@ class DeepAnalysisRequest(BaseModel):
     )
 
 
-class DeepAnalysisResponse(DeepAnalysis):
-    """El análisis más si dejó de estar al día.
-
-    La ficha lo consulta sin generar, así que necesita distinguir "vigente" de
-    "escrito con datos anteriores" para ofrecer el botón de actualizar.
-    """
-
-    is_outdated: bool = False
+from app.application.schemas.deep_analysis_schema import DeepAnalysisResponse  # noqa: E402
 
 
 class TenderScoreResponse(BaseModel):

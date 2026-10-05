@@ -26,6 +26,7 @@ from app.domain.entities.attachment_file import (
     AttachmentFile,
     AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
     AttachmentVisibility,
 )
 from app.domain.errors.attachment_errors import (
@@ -170,6 +171,32 @@ def archivo(
     )
 
 
+def canonico(
+    m: Mundo,
+    *,
+    sha: str = SHA_A,
+    estado: AttachmentFileStatus = AttachmentFileStatus.STORED,
+    visibilidad: AttachmentVisibility = AttachmentVisibility.SHARED,
+    confianza: AttachmentTrust = AttachmentTrust.CORROBORATED,
+) -> AttachmentFile:
+    """La versión compartida de un anexo: sin empresa ni autor (decisión 6)."""
+    return AttachmentFile(
+        id=uuid4(),
+        tender_attachment_id=m.anexo_id,
+        tender_id=m.tender_id,
+        sha256=sha,
+        size_bytes=2048,
+        storage_key=f"shared/{m.tender_id}/1/{sha}.pdf",
+        source=AttachmentFileSource.MANUAL,
+        uploader_user_id=None,
+        workspace_id=None,
+        visibility=visibilidad,
+        trust=confianza,
+        status=estado,
+        created_at=AHORA,
+    )
+
+
 def _columnas(f: AttachmentFile) -> dict[str, object]:
     return {
         **f.model_dump(),
@@ -236,9 +263,7 @@ async def test_visibles_no_incluyen_privados_ajenos_ni_purgados(db_session: Asyn
     m = await sembrar(db_session)
     repo = SqlAttachmentFileRepository(db_session)
     propio = await repo.create(archivo(m, sha="1" * 64))
-    compartido = await repo.create(
-        archivo(m, ws=m.ws_b, sha="2" * 64, visibilidad=AttachmentVisibility.SHARED)
-    )
+    compartido = await repo.create(canonico(m, sha="2" * 64))
     await repo.create(archivo(m, ws=m.ws_b, sha="3" * 64))  # privado ajeno
     await repo.create(archivo(m, sha="4" * 64, estado=AttachmentFileStatus.PURGED))
 
@@ -352,15 +377,7 @@ async def test_busquedas_por_empresa_y_compartidos(db_session: AsyncSession):
     m = await sembrar(db_session)
     repo = SqlAttachmentFileRepository(db_session)
     propio = await repo.create(archivo(m, sha=SHA_A))
-    compartido = await repo.create(
-        archivo(
-            m,
-            ws=m.ws_b,
-            sha=SHA_B,
-            estado=AttachmentFileStatus.STORED,
-            visibilidad=AttachmentVisibility.SHARED,
-        )
-    )
+    compartido = await repo.create(canonico(m, sha=SHA_B))
     privado_ajeno = await repo.create(
         archivo(m, ws=m.ws_b, sha="c" * 64, estado=AttachmentFileStatus.STORED)
     )

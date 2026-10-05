@@ -55,6 +55,7 @@ def _columnas(archivo: AttachmentFile) -> dict[str, Any]:
         "created_at": archivo.created_at,
         "completed_at": archivo.completed_at,
         "purge_after": archivo.purge_after,
+        "status_reason": archivo.status_reason,
     }
 
 
@@ -76,6 +77,7 @@ def _a_entidad(m: AttachmentFileModel) -> AttachmentFile:
         created_at=m.created_at,
         completed_at=m.completed_at,
         purge_after=m.purge_after,
+        status_reason=m.status_reason,
     )
 
 
@@ -142,7 +144,9 @@ class SqlAttachmentFileRepository(IAttachmentFileRepository):
     async def list_visible_for_tender(
         self, *, tender_id: UUID, workspace_id: UUID | None
     ) -> list[AttachmentFile]:
-        # Los compartidos los ve cualquiera; los privados, solo su empresa.
+        # Los compartidos los ve cualquiera; los privados, solo su empresa. Sin empresa
+        # solo `visibility = shared`: nunca `workspace_id IS NULL`, que traería las
+        # versiones canónicas que un conflicto dejó ocultas (decisión 6).
         visibles = col(AttachmentFileModel.visibility) == AttachmentVisibility.SHARED.value
         if workspace_id is not None:
             visibles = or_(visibles, col(AttachmentFileModel.workspace_id) == workspace_id)
@@ -176,6 +180,8 @@ class SqlAttachmentFileRepository(IAttachmentFileRepository):
     async def create_consuming_quota(
         self, file: AttachmentFile, *, month: date, limit: int
     ) -> AttachmentFile:
+        if file.workspace_id is None:
+            raise ValueError("una versión canónica no gasta cupo")
         # Un solo statement atómico: inserta el mes en 1, o suma 1 solo mientras
         # no se llegó al tope. Dos subidas simultáneas no pueden pasarse: la
         # segunda espera el lock de la fila y ve el valor ya actualizado.

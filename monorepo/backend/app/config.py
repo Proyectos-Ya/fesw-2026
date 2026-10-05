@@ -269,6 +269,22 @@ class Settings(BaseSettings):
     # aunque nunca confirme. Los reintentos y los duplicados no cobran.
     attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
 
+    # --- Anexos: extracción con Gemini y resumen (plan 233, decisión 4) ---
+    # Apagado por defecto: cada anexo es una llamada pagada a Gemini. Apagado, lo
+    # subido igual queda en cola y se procesa al encenderlo.
+    run_attachment_processing: bool = False
+    # Llamadas a `generateContent` por día de Chile. Al agotarse, la cola espera al
+    # día siguiente sin llamar. 0 pausa la extracción sin apagar el bucle.
+    attachment_gemini_daily_budget: int = Field(default=100, ge=0)
+    # Modelo de la extracción; vacío usa GEMINI_MODEL.
+    gemini_extraction_model: str | None = None
+    attachment_processing_poll_seconds: int = Field(default=60, gt=0)
+    attachment_processing_sweep_seconds: int = Field(default=15 * 60, gt=0)
+
+    @property
+    def attachment_extraction_model(self) -> str:
+        return self.gemini_extraction_model or self.gemini_model
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.
@@ -496,7 +512,12 @@ class Settings(BaseSettings):
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
 
-    @field_validator("qdrant_url_override", "qdrant_api_key", mode="after")
+    @field_validator(
+        "qdrant_url_override",
+        "qdrant_api_key",
+        "gemini_extraction_model",
+        mode="after",
+    )
     @classmethod
     def _vacio_es_ausente(cls, valor: str | None) -> str | None:
         """Una variable declarada pero vacía es ausencia, no un valor.

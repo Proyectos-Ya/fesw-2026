@@ -18,7 +18,12 @@ from app.domain.entities.attachment_file import (
     AttachmentFile,
     AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
     AttachmentVisibility,
+)
+from app.domain.entities.attachment_processing import (
+    EstadoDeExtraccion,
+    ProcessingState,
 )
 from app.domain.entities.tender_attachment import AttachmentStatus
 from app.domain.errors.tender_errors import TenderNotFound
@@ -26,6 +31,7 @@ from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
 from tests.unit.application.attachment_file_fakes import (
     InMemoryAttachmentFileRepository,
+    canonico,
 )
 
 T1 = datetime(2026, 9, 28, 16, 0)
@@ -173,7 +179,7 @@ async def test_el_privado_de_otra_empresa_no_se_ve():
 async def test_el_compartido_de_otra_empresa_se_ve_pero_no_es_mio():
     repo, tender_id, anexo_id = await _con_un_anexo()
     archivos = InMemoryAttachmentFileRepository()
-    compartido = _archivo(tender_id, anexo_id, ws=OTRA, visibilidad=AttachmentVisibility.SHARED)
+    compartido = canonico(tender_attachment_id=anexo_id, tender_id=tender_id, sha256="0" * 64)
     archivos.filas[compartido.id] = compartido
 
     resultado = await _caso(repo, archivos).execute(
@@ -184,6 +190,41 @@ async def test_el_compartido_de_otra_empresa_se_ve_pero_no_es_mio():
     assert vista.status == AttachmentStatus.STORED
     assert vista.file is not None
     assert vista.file.is_mine is False
+
+
+async def test_sin_empresa_la_canonica_no_es_mia():
+    # Regresión: la canónica no tiene empresa y quien mira sin empresa tampoco, y
+    # `None == None` la volvería "propia".
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+    compartido = canonico(tender_attachment_id=anexo_id, tender_id=tender_id, sha256="0" * 64)
+    archivos.filas[compartido.id] = compartido
+
+    resultado = await _caso(repo, archivos).execute(tender_id)
+
+    [vista] = resultado.official
+    assert vista.status == AttachmentStatus.STORED
+    assert vista.file is not None
+    assert vista.file.is_mine is False
+
+
+async def test_una_canonica_oculta_no_aparece():
+    # Suspendida por un conflicto: sin empresa, pero privada. Nadie la ve.
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+    oculta = canonico(
+        tender_attachment_id=anexo_id,
+        tender_id=tender_id,
+        sha256="0" * 64,
+        visibility=AttachmentVisibility.PRIVATE,
+        trust=AttachmentTrust.CONFLICT,
+    )
+    archivos.filas[oculta.id] = oculta
+
+    for acceso in (None, WorkspaceAccess(WS, can_upload=True)):
+        [vista] = (await _caso(repo, archivos).execute(tender_id, access=acceso)).official
+        assert vista.status == AttachmentStatus.MISSING
+        assert vista.file is None
 
 
 async def test_sin_empresa_solo_se_ven_los_compartidos():
@@ -233,3 +274,139 @@ async def test_el_maximo_de_subida_son_50_mb():
     resultado = await _caso(repo).execute(tender_id)
 
     assert resultado.max_upload_size_bytes == 52428800
+
+
+class _FakeStatusReader:
+    def __init__(self, states: dict[UUID, EstadoDeExtraccion] | None = None) -> None:
+        self.states = dict(states or {})
+        self.received_ids: list[list[UUID]] = []
+
+    async def extraction_states(
+        self, file_ids: list[UUID], *, prompt_version: str
+    ) -> dict[UUID, EstadoDeExtraccion]:
+        self.received_ids.append(list(file_ids))
+        return {
+            fid: self.states.get(
+                fid, EstadoDeExtraccion(extraida=False, fallida=False)
+            )
+            for fid in file_ids
+        }
+
+    async def pending_count(
+        self, *, tender_id: UUID, workspace_id: UUID | None, prompt_version: str
+    ) -> int:
+        return 0
+
+
+async def test_processing_estados_segun_senial():
+    from app.domain.entities.attachment_processing import (
+        EstadoDeExtraccion,
+        ProcessingState,
+    )
+
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+
+    # Archivo STORED
+    f_ready = canonico(
+        tender_attachment_id=anexo_id,
+        tender_id=tender_id,
+        sha256="1" * 64,
+    )
+    archivos.filas[f_ready.id] = f_ready
+
+    reader = _FakeStatusReader(
+        {f_ready.id: EstadoDeExtraccion(extraida=True, fallida=False)}
+    )
+    res = await _caso(
+        repo, archivos, processing=reader, processing_enabled=True
+    ).execute(tender_id)
+    assert res.processing_enabled is True
+    assert res.official[0].processing == ProcessingState.READY
+
+    # FAILED
+    reader.states[f_ready.id] = EstadoDeExtraccion(extraida=False, fallida=True)
+    res = await _caso(repo, archivos, processing=reader).execute(tender_id)
+    assert res.official[0].processing == ProcessingState.FAILED
+
+    # PROCESSING (sin senal extraida ni fallida)
+    reader.states[f_ready.id] = EstadoDeExtraccion(
+        extraida=False, fallida=False
+    )
+    res = await _caso(repo, archivos, processing=reader).execute(tender_id)
+    assert res.official[0].processing == ProcessingState.PROCESSING
+
+    # UNSUPPORTED
+    f_unsupported = f_ready.model_copy(
+        update={"status": AttachmentFileStatus.UNSUPPORTED}
+    )
+    archivos.filas[f_ready.id] = f_unsupported
+    res = await _caso(repo, archivos, processing=reader).execute(tender_id)
+    assert res.official[0].processing == ProcessingState.UNSUPPORTED
+
+
+async def test_uploading_da_none_en_processing():
+    from app.domain.entities.attachment_processing import EstadoDeExtraccion
+
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+    f_uploading = canonico(
+        tender_attachment_id=anexo_id,
+        tender_id=tender_id,
+        sha256="2" * 64,
+    ).model_copy(update={"status": AttachmentFileStatus.UPLOADING})
+    archivos.filas[f_uploading.id] = f_uploading
+
+    reader = _FakeStatusReader()
+    res = await _caso(repo, archivos, processing=reader).execute(tender_id)
+    assert res.official[0].processing is None
+
+
+async def test_processing_recibe_solo_ids_elegidos_y_no_privados_ajenos():
+    from app.domain.entities.attachment_processing import EstadoDeExtraccion
+
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+
+    # Archivo privado de OTRA empresa
+    f_ajeno = AttachmentFile(
+        id=uuid4(),
+        tender_attachment_id=anexo_id,
+        tender_id=tender_id,
+        sha256="3" * 64,
+        size_bytes=100,
+        storage_key="k",
+        source=AttachmentFileSource.MANUAL,
+        uploader_user_id=uuid4(),
+        workspace_id=OTRA,
+        visibility=AttachmentVisibility.PRIVATE,
+        trust=AttachmentTrust.PENDING,
+        status=AttachmentFileStatus.STORED,
+        created_at=AHORA,
+    )
+    archivos.filas[f_ajeno.id] = f_ajeno
+
+    reader = _FakeStatusReader()
+    res = await _caso(repo, archivos, processing=reader).execute(
+        tender_id, access=WorkspaceAccess(WS, can_upload=True)
+    )
+    assert res.official[0].file is None
+    assert res.official[0].processing is None
+    # No se paso f_ajeno al reader
+    assert reader.received_ids == []
+
+
+async def test_sin_lector_processing_queda_en_none():
+    repo, tender_id, anexo_id = await _con_un_anexo()
+    archivos = InMemoryAttachmentFileRepository()
+    f = canonico(
+        tender_attachment_id=anexo_id,
+        tender_id=tender_id,
+        sha256="4" * 64,
+    )
+    archivos.filas[f.id] = f
+
+    res = await _caso(repo, archivos, processing=None).execute(tender_id)
+    assert res.official[0].processing is None
+    assert res.processing_enabled is False
+

@@ -1,7 +1,9 @@
-"""Borrar un archivo de anexo (plan 233, decisión 2).
+"""Borrar un archivo de anexo (plan 233, decisiones 2 y 6).
 
 Un borrado nunca revela que existe el archivo privado de otra empresa (404, no
 403), no rompe a otro anexo que comparte el mismo objeto, y no devuelve el cupo.
+Un aporte ya corroborado tampoco se borra: no "descomparte" nada y confundiría.
+Borrar uno que no lo está avisa a la promoción, porque puede destrabar un conflicto.
 """
 
 from datetime import date, datetime
@@ -17,6 +19,7 @@ from app.domain.entities.attachment_file import (
     AttachmentFile,
     AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
     AttachmentVisibility,
 )
 from app.domain.errors.attachment_errors import (
@@ -28,6 +31,8 @@ from app.domain.errors.attachment_errors import (
 from tests.unit.application.attachment_file_fakes import (
     FakeAttachmentStorage,
     InMemoryAttachmentFileRepository,
+    RecordingDeletedListener,
+    canonico,
 )
 
 T = uuid4()
@@ -41,7 +46,7 @@ def _archivo(
     *,
     ws=WS,
     tender=T,
-    visibilidad=AttachmentVisibility.PRIVATE,
+    confianza=AttachmentTrust.PENDING,
     clave: str | None = None,
 ) -> AttachmentFile:
     return AttachmentFile(
@@ -54,7 +59,7 @@ def _archivo(
         source=AttachmentFileSource.MANUAL,
         uploader_user_id=uuid4(),
         workspace_id=ws,
-        visibility=visibilidad,
+        trust=confianza,
         status=AttachmentFileStatus.STORED,
         created_at=AHORA,
     )
@@ -64,6 +69,7 @@ class Escenario:
     def __init__(self) -> None:
         self.archivos = InMemoryAttachmentFileRepository()
         self.storage = FakeAttachmentStorage()
+        self.listener = RecordingDeletedListener()
 
     def sembrar(self, archivo: AttachmentFile) -> AttachmentFile:
         self.archivos.filas[archivo.id] = archivo
@@ -72,7 +78,9 @@ class Escenario:
 
     def caso(self, *, con_almacenamiento: bool = True) -> DeleteAttachmentFileUseCase:
         return DeleteAttachmentFileUseCase(
-            files=self.archivos, storage=self.storage if con_almacenamiento else None
+            files=self.archivos,
+            storage=self.storage if con_almacenamiento else None,
+            listener=self.listener,
         )
 
 
@@ -123,24 +131,95 @@ async def test_inexistente_es_404() -> None:
         await Escenario().caso().execute(tender_id=T, file_id=uuid4(), workspace_id=WS)
 
 
-async def test_compartido_ajeno_no_es_del_que_pide() -> None:
+async def test_la_version_compartida_no_es_de_nadie() -> None:
     e = Escenario()
-    ajeno = e.sembrar(_archivo(ws=OTRA, visibilidad=AttachmentVisibility.SHARED))
+    compartida = e.sembrar(
+        canonico(
+            tender_attachment_id=uuid4(),
+            tender_id=T,
+            sha256=SHA,
+            storage_key=f"shared/{T}/1/{SHA}.pdf",
+        )
+    )
 
     with pytest.raises(NotAttachmentFileOwner):
-        await e.caso().execute(tender_id=T, file_id=ajeno.id, workspace_id=WS)
+        await e.caso().execute(tender_id=T, file_id=compartida.id, workspace_id=WS)
 
-    assert ajeno.id in e.archivos.filas
+    assert compartida.id in e.archivos.filas
+    assert e.storage.borradas == []
+    assert e.listener.recibidos == []
 
 
-async def test_compartido_propio_no_se_borra() -> None:
+async def test_una_canonica_oculta_responde_como_inexistente() -> None:
+    # Suspendida por un conflicto: sin empresa, pero nadie la ve. Que la guardia de
+    # dueño compare `None != ws` no puede dejar pasar a "es de otra empresa".
     e = Escenario()
-    propio = e.sembrar(_archivo(visibilidad=AttachmentVisibility.SHARED))
+    oculta = e.sembrar(
+        canonico(
+            tender_attachment_id=uuid4(),
+            tender_id=T,
+            sha256=SHA,
+            storage_key=f"shared/{T}/1/{SHA}.pdf",
+            visibility=AttachmentVisibility.PRIVATE,
+            trust=AttachmentTrust.CONFLICT,
+        )
+    )
+
+    with pytest.raises(AttachmentFileNotFound):
+        await e.caso().execute(tender_id=T, file_id=oculta.id, workspace_id=WS)
+
+    assert oculta.id in e.archivos.filas
+
+
+async def test_un_aporte_propio_ya_corroborado_no_se_borra() -> None:
+    e = Escenario()
+    propio = e.sembrar(_archivo(confianza=AttachmentTrust.CORROBORATED))
 
     with pytest.raises(AttachmentFileIsShared):
         await e.caso().execute(tender_id=T, file_id=propio.id, workspace_id=WS)
 
     assert propio.id in e.archivos.filas
+    assert e.storage.borradas == []
+    assert e.listener.recibidos == []
+
+
+@pytest.mark.parametrize(
+    "confianza",
+    [AttachmentTrust.PENDING, AttachmentTrust.CONFLICT, AttachmentTrust.REJECTED],
+)
+async def test_un_aporte_propio_sin_confirmar_se_borra_y_avisa(
+    confianza: AttachmentTrust,
+) -> None:
+    e = Escenario()
+    archivo = e.sembrar(_archivo(confianza=confianza))
+
+    await e.caso().execute(tender_id=T, file_id=archivo.id, workspace_id=WS)
+
+    assert archivo.id not in e.archivos.filas
+    # Decisión 6: borrar una versión que chocaba puede destrabar lo compartido.
+    assert e.listener.recibidos == [archivo]
+
+
+async def test_un_listener_que_falla_no_cambia_el_resultado() -> None:
+    e = Escenario()
+    e.listener.falla_con = RuntimeError("boom")
+    archivo = e.sembrar(_archivo())
+
+    await e.caso().execute(tender_id=T, file_id=archivo.id, workspace_id=WS)
+
+    assert archivo.id not in e.archivos.filas
+    assert e.storage.borradas == [archivo.storage_key]
+
+
+async def test_sin_listener_el_borrado_funciona_igual() -> None:
+    e = Escenario()
+    archivo = e.sembrar(_archivo())
+
+    await DeleteAttachmentFileUseCase(files=e.archivos, storage=e.storage).execute(
+        tender_id=T, file_id=archivo.id, workspace_id=WS
+    )
+
+    assert archivo.id not in e.archivos.filas
 
 
 async def test_si_el_almacenamiento_falla_la_fila_sigue() -> None:

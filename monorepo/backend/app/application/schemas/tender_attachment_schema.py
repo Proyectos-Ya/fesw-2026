@@ -9,6 +9,7 @@ from app.domain.entities.attachment_file import (
     AttachmentTrust,
     AttachmentVisibility,
 )
+from app.domain.entities.attachment_processing import ProcessingState
 from app.domain.entities.tender_attachment import AttachmentStatus
 from app.domain.services.attachment_files import MAX_ATTACHMENT_SIZE_BYTES
 from app.shared.datetime_utils import UtcDateTime
@@ -23,6 +24,7 @@ class AttachmentFileResponse(BaseModel):
     visibility: AttachmentVisibility
     trust: AttachmentTrust
     status: AttachmentFileStatus
+    status_reason: str | None = None
     is_mine: bool  # lo subió la empresa activa (y por eso puede borrarlo)
     created_at: UtcDateTime
 
@@ -46,6 +48,7 @@ class OfficialAttachmentResponse(BaseModel):
     ext: str  # minúsculas, sin punto; vacía si el nombre no trae una reconocible
     status: AttachmentStatus
     file: AttachmentFileResponse | None = None
+    processing: ProcessingState | None = None
 
 
 class TenderAttachmentsResponse(BaseModel):
@@ -59,6 +62,7 @@ class TenderAttachmentsResponse(BaseModel):
     # El rol de la empresa activa puede subir y hay almacenamiento configurado.
     can_upload: bool = False
     max_upload_size_bytes: int = MAX_ATTACHMENT_SIZE_BYTES
+    processing_enabled: bool = False
 
 
 class AttachmentUploadUrlRequest(BaseModel):

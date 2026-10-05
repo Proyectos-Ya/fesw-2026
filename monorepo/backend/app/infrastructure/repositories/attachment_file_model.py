@@ -1,4 +1,4 @@
-"""Archivos subidos para los anexos oficiales y cupo mensual por empresa (plan 233, decisión 2).
+"""Archivos subidos para los anexos oficiales y cupo mensual por empresa (plan 233, decisiones 2 y 6).
 
 Sin `index=True`: los índices van en `__table_args__` con el nombre exacto de la
 migración, para que `alembic check` no proponga renombrarlos. Los CHECK no los
@@ -10,12 +10,25 @@ Texto con CHECK y no ENUM nativo: `status`, `visibility` y `trust` gobiernan qu�
 cada empresa, así que un valor inválido no puede entrar, y agregar un valor a un
 ENUM de Postgres no se revierte en un downgrade mientras que un CHECK se reemplaza.
 Los conjuntos completos ya están (incluidos los de las decisiones 5, 6 y 7).
+
+Decisión 6: la versión compartida de un anexo es una fila **sin empresa**
+(`workspace_id` nulo), así el CASCADE de `supplier` borra los aportes de una empresa
+y nunca lo compartido. Los CHECK impiden publicar una fila de empresa o dejarla sin
+corroborar, y los dos índices únicos parciales, tener dos versiones canónicas
+iguales o dos visibles para el mismo anexo.
 """
 
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, Column, Index, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    Index,
+    UniqueConstraint,
+    text,
+)
 from sqlmodel import Field, SQLModel
 
 _ESTADOS = "'uploading','stored','unsupported','rejected','purged'"
@@ -50,6 +63,36 @@ class AttachmentFileModel(SQLModel, table=True):
         ),
         CheckConstraint("size_bytes > 0", name="ck_attachment_file_size"),
         CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="ck_attachment_file_sha256"),
+        # Decisión 6: solo la versión canónica (sin empresa ni autor) puede ser
+        # `shared`, y solo corroborada. Un error de código no puede publicar la fila
+        # de una empresa.
+        CheckConstraint(
+            "visibility = 'private' OR workspace_id IS NULL",
+            name="ck_attachment_file_shared_sin_empresa",
+        ),
+        CheckConstraint(
+            "visibility = 'private' OR trust = 'corroborated'",
+            name="ck_attachment_file_shared_corroborado",
+        ),
+        CheckConstraint(
+            "workspace_id IS NOT NULL OR uploader_user_id IS NULL",
+            name="ck_attachment_file_canonico_sin_autor",
+        ),
+        # Una canónica por versión, y una sola visible por anexo. Únicos parciales:
+        # la UQ (anexo, sha, empresa) no alcanza a las filas sin empresa (NULLS DISTINCT).
+        Index(
+            "uq_attachment_file_canonical_sha",
+            "tender_attachment_id",
+            "sha256",
+            unique=True,
+            postgresql_where=text("workspace_id IS NULL"),
+        ),
+        Index(
+            "uq_attachment_file_shared_attachment",
+            "tender_attachment_id",
+            unique=True,
+            postgresql_where=text("visibility = 'shared'"),
+        ),
     )
 
     id: UUID = Field(primary_key=True)
@@ -66,7 +109,11 @@ class AttachmentFileModel(SQLModel, table=True):
     uploader_user_id: UUID | None = Field(
         default=None, foreign_key="users.id", ondelete="SET NULL"
     )
-    workspace_id: UUID = Field(foreign_key="supplier.id", ondelete="CASCADE")
+    # Nulo = versión canónica compartida (decisión 6): no es de ninguna empresa, así
+    # que el CASCADE de `supplier` no la alcanza.
+    workspace_id: UUID | None = Field(
+        default=None, foreign_key="supplier.id", ondelete="CASCADE"
+    )
     visibility: str = Field(
         default="private", max_length=20, sa_column_kwargs={"server_default": "private"}
     )
@@ -77,6 +124,7 @@ class AttachmentFileModel(SQLModel, table=True):
     created_at: datetime
     completed_at: datetime | None = Field(default=None)
     purge_after: datetime | None = Field(default=None)
+    status_reason: str | None = Field(default=None, max_length=40)
 
 
 class AttachmentUploadQuotaModel(SQLModel, table=True):

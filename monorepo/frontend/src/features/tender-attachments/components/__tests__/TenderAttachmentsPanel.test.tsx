@@ -5,13 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
 import { formatDateTime } from "@/features/matches/utils/format";
 import * as storage from "../../services/storageUpload";
+import { getTenderDigest } from "../../services/tenderDigestService";
 import * as service from "../../services/tenderAttachmentsService";
 import {
   buildAttachmentFile,
   buildOfficialAttachment,
   buildTenderAttachments,
+  buildTenderDigest,
   buildUploadTicket,
 } from "../../test-utils";
+import { SHARING_NOTICES } from "../../utils/sharing";
 import { TenderAttachmentsPanel } from "../TenderAttachmentsPanel";
 
 vi.mock("../../services/tenderAttachmentsService", () => ({
@@ -19,6 +22,10 @@ vi.mock("../../services/tenderAttachmentsService", () => ({
   requestUploadUrl: vi.fn(),
   completeUpload: vi.fn(),
   deleteAttachmentFile: vi.fn(),
+}));
+
+vi.mock("../../services/tenderDigestService", () => ({
+  getTenderDigest: vi.fn(),
 }));
 
 // Se conserva `StorageUploadError` real: el hook decide el mensaje según su clase.
@@ -46,6 +53,8 @@ function archivoDescargado() {
 describe("TenderAttachmentsPanel", () => {
   beforeEach(() => {
     vi.mocked(service.getTenderAttachments).mockReset();
+    vi.mocked(getTenderDigest).mockReset();
+    vi.mocked(getTenderDigest).mockResolvedValue(buildTenderDigest());
   });
 
   it("mientras carga avisa y deja a mano la ficha oficial", () => {
@@ -313,6 +322,114 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
     expect(screen.queryByRole("button", { name: /Borrar/ })).not.toBeInTheDocument();
   });
 
+  it('muestra "Solo tu empresa" en un archivo propio sin confirmar', async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        official: [
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile(),
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().getByText("Solo tu empresa")).toBeVisible();
+    expect(filas().queryByRole("note")).toBeNull();
+  });
+
+  it('muestra "Compartido" y no ofrece Borrar en un archivo propio ya confirmado', async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile({ visibility: "shared", trust: "corroborated" }),
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().getByText("Compartido")).toBeVisible();
+    expect(filas().queryByRole("button", { name: /borrar el archivo/i })).toBeNull();
+  });
+
+  it('muestra "Compartido" en el archivo que confirmaron otras fuentes', async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        official: [
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile({ is_mine: false, visibility: "shared" }),
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().getByText("Compartido")).toBeVisible();
+    expect(filas().queryByRole("note")).toBeNull();
+  });
+
+  it("avisa el conflicto en un archivo propio y deja borrarlo", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile({ is_mine: true, visibility: "private", trust: "conflict" }),
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().getByRole("note")).toHaveTextContent(SHARING_NOTICES.conflict);
+    expect(filas().getByRole("button", { name: /borrar el archivo/i })).toBeVisible();
+  });
+
+  it("avisa que el archivo propio no coincide con la versión confirmada", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        official: [
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile({ is_mine: true, visibility: "private", trust: "rejected" }),
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().getByRole("note")).toHaveTextContent(SHARING_NOTICES.rejected);
+  });
+
+  it("no muestra avisos en un anexo sin archivo", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        official: [
+          buildOfficialAttachment({
+            status: "missing",
+            file: null,
+          }),
+        ],
+      }),
+    );
+    renderPanel();
+
+    await screen.findByText(NOMBRE_OFICIAL);
+    expect(filas().queryByRole("note")).toBeNull();
+  });
+
   it("muestra el cupo y avisa cuando se alcanzó el tope", async () => {
     vi.mocked(service.getTenderAttachments).mockResolvedValue(
       buildTenderAttachments({ can_upload: true, quota: { used: 3, limit: 100 } }),
@@ -374,4 +491,71 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
     expect(barra).toHaveAttribute("aria-valuenow", "50");
     expect(screen.getByText("Subiendo 50 %")).toBeVisible();
   });
+
+  describe("integración con Digest", () => {
+    it("con una fila ready: aparece Resumen de los anexos y se llamó getTenderDigest", async () => {
+      vi.mocked(service.getTenderAttachments).mockResolvedValue(
+        buildTenderAttachments({
+          official: [
+            buildOfficialAttachment({
+              id: "a-1",
+              status: "stored",
+              processing: "ready",
+              file: buildAttachmentFile({ id: "f-1" }),
+            }),
+          ],
+        })
+      );
+
+      const { unmount } = renderPanel();
+
+      expect(await screen.findByText("Resumen de los anexos")).toBeInTheDocument();
+      expect(getTenderDigest).toHaveBeenCalledWith("t-1");
+      unmount();
+    });
+
+    it("sin filas ready: getTenderDigest no se llama", async () => {
+      vi.mocked(getTenderDigest).mockClear();
+      vi.mocked(service.getTenderAttachments).mockResolvedValue(
+        buildTenderAttachments({
+          official: [
+            buildOfficialAttachment({
+              id: "a-1",
+              status: "missing",
+              processing: null,
+            }),
+          ],
+        })
+      );
+
+      renderPanel();
+      await screen.findByText(NOMBRE_OFICIAL);
+
+      expect(getTenderDigest).not.toHaveBeenCalled();
+      expect(screen.queryByText("Resumen de los anexos")).toBeNull();
+    });
+
+    it("con processing_enabled: false y una fila processing muestra aviso de desactivado", async () => {
+      vi.mocked(service.getTenderAttachments).mockResolvedValue(
+        buildTenderAttachments({
+          processing_enabled: false,
+          official: [
+            buildOfficialAttachment({
+              id: "a-1",
+              status: "stored",
+              processing: "processing",
+              file: buildAttachmentFile({ id: "f-1" }),
+            }),
+          ],
+        })
+      );
+
+      renderPanel();
+
+      expect(
+        await screen.findByText("El resumen automático de anexos está desactivado en este entorno.")
+      ).toBeInTheDocument();
+    });
+  });
 });
+

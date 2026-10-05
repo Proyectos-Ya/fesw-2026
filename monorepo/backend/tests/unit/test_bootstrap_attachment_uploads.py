@@ -1,7 +1,8 @@
-"""El cableado de la subida manual de anexos en el composition root (plan 233, decisión 2).
+"""El cableado de la subida manual de anexos en el composition root (plan 233, decisiones 2 y 6).
 
-Qué almacenamiento se elige según el entorno, y que el receptor del disco local
-(`/dev-storage`) solo existe cuando de verdad se usa el disco local.
+Qué almacenamiento se elige según el entorno, que el receptor del disco local
+(`/dev-storage`) solo existe cuando de verdad se usa el disco local, y que la
+promoción a compartido se cuelga de "guardado" y de "borrado" con sesión propia.
 """
 
 from unittest.mock import AsyncMock
@@ -11,12 +12,24 @@ from fastapi import FastAPI
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app import bootstrap
+from app.application.services.attachment_deleted_listener import (
+    CompositeAttachmentDeletedListener,
+)
 from app.application.services.attachment_stored_listener import (
-    NoopAttachmentStoredListener,
+    CompositeAttachmentStoredListener,
+)
+from app.application.services.attachment_visibility_listener import (
+    NoopAttachmentVisibilityListener,
+)
+from app.application.use_cases.tender_attachments.promote_attachment import (
+    AttachmentPromotionListener,
 )
 from app.config import settings
 from app.infrastructure.repositories.sql_attachment_file_repository import (
     SqlAttachmentFileRepository,
+)
+from app.infrastructure.repositories.sql_attachment_trust_repository import (
+    SqlAttachmentTrustRepository,
 )
 from app.infrastructure.services.attachments.local_attachment_storage import (
     LocalDiskAttachmentStorage,
@@ -129,21 +142,58 @@ def test_sin_almacenamiento_en_app_state_el_getter_devuelve_none():
 def test_las_dependencias_se_arman_con_lo_recibido():
     sesion = AsyncMock(spec=AsyncSession)
     archivos = bootstrap.get_attachment_file_repo(sesion)
-    listener = bootstrap.get_attachment_stored_listener()
+    promocion = bootstrap.get_attachment_promotion_listener(
+        None, bootstrap.get_attachment_visibility_listener()
+    )
+    guardado = bootstrap.get_attachment_stored_listener(promocion)
+    borrado = bootstrap.get_attachment_deleted_listener(promocion)
 
     assert isinstance(archivos, SqlAttachmentFileRepository)
-    assert isinstance(listener, NoopAttachmentStoredListener)
 
     pedir = bootstrap.get_request_attachment_upload_use_case(
-        bootstrap.get_tender_attachment_repo(sesion), archivos, None, listener
+        bootstrap.get_tender_attachment_repo(sesion), archivos, None, guardado
     )
-    completar = bootstrap.get_complete_attachment_upload_use_case(archivos, None, listener)
-    borrar = bootstrap.get_delete_attachment_file_use_case(archivos, None)
+    completar = bootstrap.get_complete_attachment_upload_use_case(archivos, None, guardado)
+    borrar = bootstrap.get_delete_attachment_file_use_case(archivos, None, borrado)
 
     assert pedir.files is archivos and pedir.storage is None
     assert pedir.uploads_per_month == settings.attachment_manual_uploads_per_month
-    assert completar.files is archivos
-    assert borrar.files is archivos
+    assert pedir.listener is guardado
+    assert completar.files is archivos and completar.listener is guardado
+    assert borrar.files is archivos and borrar.listener is borrado
+
+
+def test_la_promocion_se_cuelga_de_guardado_y_de_borrado():
+    promocion = bootstrap.get_attachment_promotion_listener(
+        None, bootstrap.get_attachment_visibility_listener()
+    )
+
+    guardado = bootstrap.get_attachment_stored_listener(promocion)
+    borrado = bootstrap.get_attachment_deleted_listener(promocion)
+
+    assert isinstance(promocion, AttachmentPromotionListener)
+    assert isinstance(guardado, CompositeAttachmentStoredListener)
+    assert guardado.listeners == [promocion]
+    assert isinstance(borrado, CompositeAttachmentDeletedListener)
+    assert borrado.listeners == [promocion]
+
+
+def test_hasta_la_decision_4_nadie_escucha_los_cambios_de_visibilidad():
+    assert isinstance(
+        bootstrap.get_attachment_visibility_listener(), NoopAttachmentVisibilityListener
+    )
+
+
+async def test_cada_promocion_abre_su_propia_sesion():
+    # La promoción toma un candado y hace su propio commit: no puede usar la sesión de
+    # la petición. Construir y cerrar una sesión sin consultas no conecta.
+    abrir = bootstrap.build_promotion_opener(None, NoopAttachmentVisibilityListener())
+
+    async with abrir() as primera, abrir() as segunda:
+        assert isinstance(primera.trust, SqlAttachmentTrustRepository)
+        assert isinstance(segunda.trust, SqlAttachmentTrustRepository)
+        assert primera.trust.session is not segunda.trust.session
+        assert primera.storage is None
 
 
 def test_las_rutas_nuevas_aparecen_en_openapi():

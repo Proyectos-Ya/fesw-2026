@@ -51,3 +51,8 @@ class ITenderAttachmentRepository(ABC):
         retiró: la subida no debe colgar archivos de algo que ya no se publica.
         """
         ...
+
+    @abstractmethod
+    async def get_attachment(self, attachment_id: UUID) -> OfficialAttachment | None:
+        """Una fila oficial por ID, incluso si fue retirada (`removed_at is not None`)."""
+        ...

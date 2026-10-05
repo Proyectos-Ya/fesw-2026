@@ -7,9 +7,11 @@ import { compraAgilFichaUrl } from "@/features/matches/utils/links";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { useAttachmentUploads } from "../hooks/useAttachmentUploads";
+import { useProcessingPoll } from "../hooks/useProcessingPoll";
 import { useTenderAttachments } from "../hooks/useTenderAttachments";
 import { AttachmentDropZone } from "./AttachmentDropZone";
 import { AttachmentRow } from "./AttachmentRow";
+import { DigestCard } from "./DigestCard";
 import { DropRejectionAlert } from "./DropRejectionAlert";
 
 interface TenderAttachmentsPanelProps {
@@ -44,6 +46,22 @@ export function TenderAttachmentsPanel({ tenderId, tenderCode }: TenderAttachmen
   const official = data?.official ?? [];
   const canUpload = data?.can_upload === true && official.length > 0;
 
+  const polling =
+    data !== null &&
+    data.processing_enabled === true &&
+    official.some((a) => a.processing === "processing");
+  useProcessingPoll(Boolean(polling), refresh);
+
+  const readyKey =
+    data?.official
+      .filter((a) => a.processing === "ready")
+      .map((a) => a.file?.id ?? a.id)
+      .join(",") ?? "";
+  const processingDisabled =
+    data !== null &&
+    data.processing_enabled === false &&
+    official.some((a) => a.processing === "processing");
+
   // Siempre se cancela el soltar por defecto: si no, el navegador abriría el
   // archivo en la pestaña y la persona perdería la ficha. Solo se actúa con permiso.
   function handleDragOver(event: DragEvent<HTMLElement>) {
@@ -65,6 +83,7 @@ export function TenderAttachmentsPanel({ tenderId, tenderCode }: TenderAttachmen
 
   return (
     <section
+      id="tender-attachments-panel"
       aria-labelledby={titleId}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -130,6 +149,18 @@ export function TenderAttachmentsPanel({ tenderId, tenderCode }: TenderAttachmen
           official={official}
           onClose={uploads.dismissRejections}
         />
+      )}
+
+      {processingDisabled && (
+        <p role="note" className="mt-3 text-xs text-text-muted">
+          El resumen automático de anexos está desactivado en este entorno.
+        </p>
+      )}
+
+      {readyKey !== "" && (
+        <div className="mt-4">
+          <DigestCard tenderId={tenderId} refreshKey={readyKey} />
+        </div>
       )}
 
       {canUpload && data?.quota != null && (

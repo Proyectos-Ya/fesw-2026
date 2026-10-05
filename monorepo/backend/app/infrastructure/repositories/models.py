@@ -12,6 +12,12 @@ from app.infrastructure.repositories.attachment_file_model import (
     AttachmentFileModel,
     AttachmentUploadQuotaModel,
 )
+from app.infrastructure.repositories.attachment_processing_model import (
+    AttachmentExtractionModel,
+    AttachmentGeminiDailyUsageModel,
+    AttachmentProcessingJobModel,
+    TenderDigestModel,
+)
 from app.infrastructure.repositories.calendar_model import (
     CalendarConnectionModel,
     CalendarEventLinkModel,
@@ -70,8 +76,11 @@ from app.infrastructure.repositories.tender_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "AttachmentExtractionModel",
     "AttachmentFileModel",
+    "AttachmentGeminiDailyUsageModel",
     "AttachmentPriorityShadowModel",
+    "AttachmentProcessingJobModel",
     "AttachmentUploadQuotaModel",
     "CalendarConnectionModel",
     "CalendarEventLinkModel",
@@ -102,6 +111,7 @@ __all__ = [
     "TenderChatDocumentModel",
     "TenderChatMessageModel",
     "TenderChatSessionModel",
+    "TenderDigestModel",
     "TenderInteractionModel",
     "UserModel",
 ]

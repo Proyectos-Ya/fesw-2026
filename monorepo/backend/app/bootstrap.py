@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -10,8 +11,45 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.attachment_extraction_repository import (
+    IAttachmentExtractionRepository,
+)
 from app.application.repositories.attachment_file_repository import (
     IAttachmentFileRepository,
+)
+from app.application.repositories.attachment_processing_job_repository import (
+    IAttachmentProcessingJobRepository,
+)
+from app.application.repositories.attachment_processing_status_reader import (
+    IAttachmentProcessingStatusReader,
+)
+from app.application.repositories.gemini_usage_repository import (
+    IGeminiUsageRepository,
+)
+from app.application.repositories.tender_digest_repository import (
+    ITenderDigestRepository,
+)
+from app.application.services.attachment_processing_notifier import (
+    IAttachmentProcessingNotifier,
+)
+from app.application.services.enqueue_extraction_listener import (
+    EnqueueExtractionOnStored,
+)
+from app.application.use_cases.attachment_processing.build_tender_digest import (
+    BuildTenderDigestUseCase,
+)
+from app.application.use_cases.attachment_processing.extract_attachment import (
+    ExtractAttachmentUseCase,
+)
+from app.application.use_cases.attachment_processing.get_tender_digest import (
+    GetTenderDigestUseCase,
+)
+from app.application.use_cases.attachment_processing.process_next_job import (
+    ProcessNextAttachmentJobUseCase,
+)
+from app.application.use_cases.attachment_processing.sweep import (
+    SweepAttachmentProcessingUseCase,
+    SweepResult,
 )
 from app.application.repositories.calendar_repository import (
     ICalendarConnectionRepository,
@@ -50,10 +88,18 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.repositories.user_repository import IUserRepository
+from app.application.services.attachment_deleted_listener import (
+    CompositeAttachmentDeletedListener,
+    IAttachmentDeletedListener,
+)
 from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.attachment_stored_listener import (
+    CompositeAttachmentStoredListener,
     IAttachmentStoredListener,
-    NoopAttachmentStoredListener,
+)
+from app.application.services.attachment_visibility_listener import (
+    IAttachmentVisibilityListener,
+    NoopAttachmentVisibilityListener,
 )
 from app.application.services.calendar_provider_client import (
     CalendarProviders,
@@ -68,6 +114,9 @@ from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.services.document_validator_service import (
     IDocumentValidatorService,
+)
+from app.application.services.document_analysis_quotation_service import (
+    IDocumentAnalysisAndQuotationService,
 )
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
@@ -185,6 +234,11 @@ from app.application.use_cases.tender_attachments.delete_attachment_file import 
 from app.application.use_cases.tender_attachments.get_tender_attachments import (
     GetTenderAttachmentsUseCase,
 )
+from app.application.use_cases.tender_attachments.promote_attachment import (
+    AttachmentPromotionListener,
+    PromoteAttachmentUseCase,
+    PromoteOpener,
+)
 from app.application.use_cases.tender_attachments.request_attachment_upload import (
     RequestAttachmentUploadUseCase,
 )
@@ -230,8 +284,23 @@ from app.infrastructure.repositories.ranking_telemetry_repository import (
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
 )
+from app.infrastructure.repositories.sql_attachment_extraction_repository import (
+    SqlAttachmentExtractionRepository,
+)
 from app.infrastructure.repositories.sql_attachment_file_repository import (
     SqlAttachmentFileRepository,
+)
+from app.infrastructure.repositories.sql_attachment_processing_job_repository import (
+    SqlAttachmentProcessingJobRepository,
+)
+from app.infrastructure.repositories.sql_attachment_processing_status_reader import (
+    SqlAttachmentProcessingStatusReader,
+)
+from app.infrastructure.repositories.sql_attachment_trust_repository import (
+    SqlAttachmentTrustRepository,
+)
+from app.infrastructure.repositories.sql_gemini_usage_repository import (
+    SqlGeminiUsageRepository,
 )
 from app.infrastructure.repositories.sql_supplier_invitation_repository import (
     SqlSupplierInvitationRepository,
@@ -241,6 +310,9 @@ from app.infrastructure.repositories.sql_supplier_member_repository import (
 )
 from app.infrastructure.repositories.sql_tender_attachment_repository import (
     SqlTenderAttachmentRepository,
+)
+from app.infrastructure.repositories.sql_tender_digest_repository import (
+    SqlTenderDigestRepository,
 )
 from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
@@ -262,17 +334,32 @@ from app.infrastructure.routers.router import create_router
 from app.infrastructure.routers.tender_attachments import (
     create_tender_attachments_router,
 )
+from app.infrastructure.routers.tender_digest import (
+    create_tender_digest_router,
+)
 from app.infrastructure.services.api_embedding_service import (
     ApiEmbeddingService,
     DeepInfraEmbeddingService,
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.attachment_processing_jobs import (
+    sql_processing_units,
+)
+from app.infrastructure.services.attachment_processing_scheduler import (
+    AsyncioProcessingSignal,
+)
+from app.infrastructure.services.attachments.content_reader import (
+    StdlibAttachmentContentReader,
+)
 from app.infrastructure.services.attachments.local_attachment_storage import (
     LocalDiskAttachmentStorage,
 )
 from app.infrastructure.services.attachments.r2_attachment_storage import (
     R2AttachmentStorage,
+)
+from app.infrastructure.services.attachments.gemini_attachment_extraction_service import (
+    GeminiAttachmentExtractionService,
 )
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
@@ -290,6 +377,9 @@ from app.infrastructure.services.gemini_deep_analysis_service import (
 )
 from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
+)
+from app.infrastructure.services.gemini_document_analysis_and_quotation_service import (
+    GeminiDocumentAnalysisAndQuotationService,
 )
 from app.infrastructure.services.gemini_tender_assistant_service import (
     GeminiTenderAssistantService,
@@ -869,10 +959,105 @@ def get_attachment_file_repo(
     return SqlAttachmentFileRepository(session)
 
 
-def get_attachment_stored_listener() -> IAttachmentStoredListener:
-    # Decisión 4 (extracción) y 6 (promoción): se componen acá con
-    # `CompositeAttachmentStoredListener`, sin tocar los casos de uso.
-    return NoopAttachmentStoredListener()
+def get_tender_digest_repo(request: Request) -> ITenderDigestRepository | None:
+    return getattr(request.app.state, "tender_digest_repo", None)
+
+
+def get_attachment_extraction_repo(
+    request: Request,
+) -> IAttachmentExtractionRepository | None:
+    return getattr(request.app.state, "attachment_extraction_repo", None)
+
+
+def get_gemini_usage_repo(request: Request) -> IGeminiUsageRepository | None:
+    return getattr(request.app.state, "gemini_usage_repo", None)
+
+
+
+def build_promotion_opener(
+    storage: IAttachmentStorage | None,
+    visibility_listener: IAttachmentVisibilityListener,
+    session_factory: Callable[[], AsyncSession] = async_session_maker,
+) -> PromoteOpener:
+    """Entrega un caso de uso de promoción por evaluación, cada uno con su sesión.
+
+    La promoción toma un candado sobre el anexo y hace su propio commit (decisión
+    6): no puede usar la sesión de la petición, que puede traer cambios sin
+    confirmar o quedar en un estado fallido por otro listener. Mismo patrón que
+    `registrar_impresiones_de_ranking`.
+    """
+
+    @asynccontextmanager
+    async def abrir() -> AsyncIterator[PromoteAttachmentUseCase]:
+        async with session_factory() as session:
+            yield PromoteAttachmentUseCase(
+                trust=SqlAttachmentTrustRepository(session),
+                storage=storage,
+                visibility_listener=visibility_listener,
+            )
+
+    return abrir
+
+
+def get_attachment_visibility_listener() -> IAttachmentVisibilityListener:
+    # Decisión 4: reconstruir el resumen compartido cuando una versión entra o sale
+    # de lo compartido. Hasta entonces, nadie escucha.
+    return NoopAttachmentVisibilityListener()
+
+
+def get_attachment_promotion_listener(
+    storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    visibility: Annotated[
+        IAttachmentVisibilityListener, Depends(get_attachment_visibility_listener)
+    ],
+) -> AttachmentPromotionListener:
+    return AttachmentPromotionListener(build_promotion_opener(storage, visibility))
+
+
+def get_attachment_processing_notifier(
+    request: Request,
+) -> IAttachmentProcessingNotifier:
+    return request.app.state.attachment_processing_signal
+
+
+def get_attachment_processing_job_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IAttachmentProcessingJobRepository:
+    return SqlAttachmentProcessingJobRepository(session)
+
+
+def get_attachment_processing_status_reader(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IAttachmentProcessingStatusReader:
+    return SqlAttachmentProcessingStatusReader(session)
+
+
+def get_attachment_stored_listener(
+    promotion: Annotated[
+        AttachmentPromotionListener, Depends(get_attachment_promotion_listener)
+    ],
+    jobs: Annotated[
+        IAttachmentProcessingJobRepository | None,
+        Depends(get_attachment_processing_job_repo),
+    ] = None,
+    notifier: Annotated[
+        IAttachmentProcessingNotifier | None,
+        Depends(get_attachment_processing_notifier),
+    ] = None,
+) -> IAttachmentStoredListener:
+    # Decisión 6 (promoción) y Decisión 4 (extracción).
+    listeners: list[IAttachmentStoredListener] = [promotion]
+    if jobs is not None and notifier is not None:
+        listeners.append(EnqueueExtractionOnStored(jobs=jobs, notifier=notifier))
+    return CompositeAttachmentStoredListener(listeners)
+
+
+def get_attachment_deleted_listener(
+    promotion: Annotated[
+        AttachmentPromotionListener, Depends(get_attachment_promotion_listener)
+    ],
+) -> IAttachmentDeletedListener:
+    return CompositeAttachmentDeletedListener([promotion])
 
 
 def get_tender_attachments_use_case(
@@ -881,12 +1066,59 @@ def get_tender_attachments_use_case(
     ],
     files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
     storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    status: Annotated[
+        IAttachmentProcessingStatusReader | None,
+        Depends(get_attachment_processing_status_reader),
+    ] = None,
 ) -> GetTenderAttachmentsUseCase:
     return GetTenderAttachmentsUseCase(
         attachments,
         files,
         uploads_per_month=settings.attachment_manual_uploads_per_month,
         storage_available=storage is not None,
+        processing=status,
+        processing_enabled=settings.run_attachment_processing and storage is not None,
+    )
+
+
+def get_tender_digest_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetTenderDigestUseCase:
+    tenders = TenderRepository(session)
+    extractions = SqlAttachmentExtractionRepository(session)
+    return GetTenderDigestUseCase(
+        tenders=tenders,
+        extractions=extractions,
+        status=SqlAttachmentProcessingStatusReader(session),
+        build=BuildTenderDigestUseCase(
+            tenders=tenders,
+            extractions=extractions,
+            digests=SqlTenderDigestRepository(session),
+        ),
+    )
+
+
+def build_attachment_processing_runner(
+    app: FastAPI,
+) -> tuple[
+    Callable[[], Awaitable[bool]],
+    Callable[[], Awaitable[SweepResult]],
+]:
+    """El trabajo y el barrido del bucle del lifespan; cada fase abre y cierra su sesión."""
+    units = sql_processing_units(async_session_maker)
+    extract = ExtractAttachmentUseCase(
+        units=units,
+        storage=app.state.attachment_storage,
+        reader=app.state.attachment_content_reader,
+        ai=app.state.attachment_extraction_ai_service,
+        daily_budget=settings.attachment_gemini_daily_budget,
+    )
+    signal = app.state.attachment_processing_signal
+    return (
+        ProcessNextAttachmentJobUseCase(
+            units=units, extract=extract, notifier=signal
+        ).execute,
+        SweepAttachmentProcessingUseCase(units=units, notifier=signal).execute,
     )
 
 
@@ -924,8 +1156,11 @@ def get_complete_attachment_upload_use_case(
 def get_delete_attachment_file_use_case(
     files: Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)],
     storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    listener: Annotated[
+        IAttachmentDeletedListener, Depends(get_attachment_deleted_listener)
+    ],
 ) -> DeleteAttachmentFileUseCase:
-    return DeleteAttachmentFileUseCase(files=files, storage=storage)
+    return DeleteAttachmentFileUseCase(files=files, storage=storage, listener=listener)
 
 
 def get_set_milestone_reminder_use_case(
@@ -938,6 +1173,12 @@ def get_extract_tender_milestones_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
     ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
+    digest_repo: Annotated[
+        ITenderDigestRepository | None, Depends(get_tender_digest_repo)
+    ] = None,
+    extraction_repo: Annotated[
+        IAttachmentExtractionRepository | None, Depends(get_attachment_extraction_repo)
+    ] = None,
 ) -> ExtractTenderMilestonesUseCase:
     return ExtractTenderMilestonesUseCase(
         tenders=TenderRepository(session),
@@ -945,6 +1186,8 @@ def get_extract_tender_milestones_use_case(
         event_links=CalendarEventLinkRepository(session),
         chat=chat_repo,
         ai=ai,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
     )
 
 
@@ -952,14 +1195,31 @@ def get_document_validator_service() -> IDocumentValidatorService:
     return DocumentValidatorService()
 
 
+def get_document_analysis_quotation_service(
+    request: Request,
+) -> IDocumentAnalysisAndQuotationService:
+    return request.app.state.document_analysis_quotation_service
+
+
 def get_upload_tender_chat_doc_use_case(
+    session: Annotated[AsyncSession, Depends(get_session)],
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
     validator_service: Annotated[
         IDocumentValidatorService, Depends(get_document_validator_service)
     ],
+    unified_service: Annotated[
+        IDocumentAnalysisAndQuotationService,
+        Depends(get_document_analysis_quotation_service),
+    ],
 ) -> UploadTenderChatDocumentUseCase:
     return UploadTenderChatDocumentUseCase(
-        chat_repo=chat_repo, validator_service=validator_service
+        chat_repo=chat_repo,
+        validator_service=validator_service,
+        supplier_repo=SupplierRepository(session),
+        tender_repo=TenderRepository(session),
+        quotation_repo=QuotationRepository(session),
+        matching_result_repo=MatchingResultRepository(session),
+        unified_service=unified_service,
     )
 
 
@@ -985,6 +1245,21 @@ def get_ask_tender_assistant_use_case(
     validator_service: Annotated[
         IDocumentValidatorService, Depends(get_document_validator_service)
     ],
+    digest_repo: Annotated[
+        ITenderDigestRepository | None, Depends(get_tender_digest_repo)
+    ] = None,
+    extraction_repo: Annotated[
+        IAttachmentExtractionRepository | None, Depends(get_attachment_extraction_repo)
+    ] = None,
+    attachment_file_repo: Annotated[
+        IAttachmentFileRepository, Depends(get_attachment_file_repo)
+    ] = None,
+    attachment_storage: Annotated[
+        IAttachmentStorage | None, Depends(get_attachment_storage)
+    ] = None,
+    usage_repo: Annotated[
+        IGeminiUsageRepository | None, Depends(get_gemini_usage_repo)
+    ] = None,
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
@@ -992,6 +1267,11 @@ def get_ask_tender_assistant_use_case(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         validator_service=validator_service,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
+        attachment_file_repo=attachment_file_repo,
+        attachment_storage=attachment_storage,
+        usage_repo=usage_repo,
     )
 
 
@@ -1389,6 +1669,12 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.document_analysis_quotation_service = (
+        GeminiDocumentAnalysisAndQuotationService(
+            api_key=settings.gemini_api_key,
+            model_name=settings.gemini_model,
+        )
+    )
     # Una llave inválida corta el arranque acá, no al guardar el primer token.
     app.state.token_cipher = (
         FernetTokenCipher(settings.token_encryption_key)
@@ -1430,6 +1716,15 @@ def bootstrap(app: FastAPI) -> None:
     # R2, disco local (solo desarrollo) o nada. Antes de los routers: ellos y los
     # casos de uso lo leen de `app.state`.
     app.state.attachment_storage = build_attachment_storage()
+    app.state.attachment_extraction_ai_service = (
+        GeminiAttachmentExtractionService(
+            api_key=settings.gemini_api_key,
+            model_name=settings.attachment_extraction_model,
+        )
+    )
+    app.state.attachment_content_reader = StdlibAttachmentContentReader()
+    # Un solo despertador por proceso: lo comparten el listener (peticiones) y el bucle.
+    app.state.attachment_processing_signal = AsyncioProcessingSignal()
 
     # Una sola instancia de la dependencia → FastAPI cachea el usuario por request
     get_current_user = build_get_current_user(
@@ -1525,6 +1820,13 @@ def bootstrap(app: FastAPI) -> None:
             get_request_upload_use_case=get_request_attachment_upload_use_case,
             get_complete_upload_use_case=get_complete_attachment_upload_use_case,
             get_delete_file_use_case=get_delete_attachment_file_use_case,
+        )
+    )
+    app.include_router(
+        create_tender_digest_router(
+            get_current_user,
+            get_tender_digest_use_case,
+            get_optional_workspace_context=get_optional_workspace_context,
         )
     )
     # El receptor de subidas del disco local solo existe cuando de verdad se usa

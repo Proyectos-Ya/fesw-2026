@@ -53,6 +53,7 @@ from app.domain.errors.attachment_errors import (
     UploadVerificationFailed,
 )
 from app.domain.errors.tender_errors import TenderNotFound
+from app.domain.services.attachment_trust import es_propio, visibilidad_efectiva
 
 # Código HTTP de cada error de la subida. El `code` y el mensaje salen del propio error.
 _ESTADO_HTTP: dict[type[AttachmentUploadError], int] = {
@@ -113,17 +114,25 @@ def _sin_permiso(workspace: WorkspaceContext) -> JSONResponse | None:
     )
 
 
-def _archivo(archivo: AttachmentFile, workspace_id: UUID | None) -> AttachmentFileResponse:
+def _archivo_respuesta(archivo: AttachmentFile, *, es_mio: bool) -> AttachmentFileResponse:
+    # `visibility` es la efectiva (decisión 6): el aporte propio ya corroborado se
+    # informa como compartido, y es de donde el cliente lee su etiqueta y si ofrece
+    # Borrar. Nunca se informa quién subió un archivo compartido.
     return AttachmentFileResponse(
         id=archivo.id,
         size_bytes=archivo.size_bytes,
         source=archivo.source,
-        visibility=archivo.visibility,
+        visibility=visibilidad_efectiva(archivo),
         trust=archivo.trust,
         status=archivo.status,
-        is_mine=archivo.workspace_id == workspace_id,
+        is_mine=es_mio,
         created_at=archivo.created_at,
+        status_reason=archivo.status_reason,
     )
+
+
+def _archivo(archivo: AttachmentFile, workspace_id: UUID | None) -> AttachmentFileResponse:
+    return _archivo_respuesta(archivo, es_mio=es_propio(archivo, workspace_id))
 
 
 def _respuesta(resultado: TenderAttachmentsResult) -> TenderAttachmentsResponse:
@@ -137,19 +146,11 @@ def _respuesta(resultado: TenderAttachmentsResult) -> TenderAttachmentsResponse:
                 ext=vista.attachment.ext,
                 status=vista.status,
                 file=(
-                    AttachmentFileResponse(
-                        id=vista.file.file.id,
-                        size_bytes=vista.file.file.size_bytes,
-                        source=vista.file.file.source,
-                        visibility=vista.file.file.visibility,
-                        trust=vista.file.file.trust,
-                        status=vista.file.file.status,
-                        is_mine=vista.file.is_mine,
-                        created_at=vista.file.file.created_at,
-                    )
+                    _archivo_respuesta(vista.file.file, es_mio=vista.file.is_mine)
                     if vista.file is not None
                     else None
                 ),
+                processing=vista.processing,
             )
             for vista in resultado.official
         ],
@@ -161,6 +162,7 @@ def _respuesta(resultado: TenderAttachmentsResult) -> TenderAttachmentsResponse:
         ),
         can_upload=resultado.can_upload,
         max_upload_size_bytes=resultado.max_upload_size_bytes,
+        processing_enabled=resultado.processing_enabled,
     )
 
 
@@ -219,6 +221,11 @@ def create_tender_attachments_router(
         compartido; nunca el privado de otra empresa). `quota` y `can_upload` se
         calculan para la empresa activa: puede subir si su rol tiene el permiso
         `upload_attachments` y hay almacenamiento configurado.
+
+        `file.visibility` es la visibilidad efectiva: `shared` si el contenido lo
+        ven todas las empresas, incluido el archivo propio ya confirmado por otra
+        fuente. `trust=conflict` o `rejected` solo aparecen en archivos propios.
+        Nunca se informa quién subió un archivo compartido.
         """
         access = (
             WorkspaceAccess(
@@ -391,7 +398,13 @@ def create_tender_attachments_router(
                 "description": "`permission_denied` o `not_owner`",
             },
             404: {"model": AttachmentErrorResponse, "description": "`file_not_found`"},
-            409: {"model": AttachmentErrorResponse, "description": "`file_is_shared`"},
+            409: {
+                "model": AttachmentErrorResponse,
+                "description": (
+                    "`file_is_shared`: el archivo ya se comparte (también el propio "
+                    "ya confirmado)"
+                ),
+            },
             502: {"model": AttachmentErrorResponse, "description": "`storage_error`"},
             503: {"model": AttachmentErrorResponse, "description": "`storage_unavailable`"},
         },
@@ -407,8 +420,10 @@ def create_tender_attachments_router(
         """Borra un archivo que subió la empresa activa.
 
         Borra la fila y, si ninguna otra fila usa el mismo objeto, el objeto del
-        almacenamiento. El cupo del mes no se devuelve. Un archivo ya compartido
-        con otras empresas no se puede borrar (409).
+        almacenamiento. El cupo del mes no se devuelve. Un archivo que ya se
+        comparte no se puede borrar (409 `file_is_shared`), tampoco el propio ya
+        confirmado por otra fuente. Borrar uno que chocaba con la versión
+        compartida puede destrabarla.
         """
         if (denegado := _sin_permiso(workspace)) is not None:
             return denegado

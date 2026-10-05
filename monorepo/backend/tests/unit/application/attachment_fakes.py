@@ -94,6 +94,12 @@ class InMemoryTenderAttachmentRepository(ITenderAttachmentRepository):
                 return fila
         return None
 
+    async def get_attachment(self, attachment_id: UUID) -> OfficialAttachment | None:
+        for fila in self.filas.values():
+            if fila.id == attachment_id:
+                return fila
+        return None
+
     async def get_official_list(self, tender_id: UUID) -> OfficialAttachmentList | None:
         if tender_id not in self.licitaciones.values():
             return None

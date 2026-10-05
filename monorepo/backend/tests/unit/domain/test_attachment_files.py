@@ -15,6 +15,7 @@ from app.domain.entities.attachment_file import (
     AttachmentFile,
     AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
     AttachmentVisibility,
 )
 from app.domain.entities.tender_attachment import AttachmentStatus, OfficialAttachment
@@ -71,6 +72,31 @@ def _archivo(
         uploader_user_id=uuid4(),
         workspace_id=ws,
         visibility=visibilidad,
+        status=estado,
+        created_at=creado,
+    )
+
+
+def _canonico(
+    *,
+    estado: AttachmentFileStatus = AttachmentFileStatus.STORED,
+    visibilidad: AttachmentVisibility = AttachmentVisibility.SHARED,
+    confianza: AttachmentTrust = AttachmentTrust.CORROBORATED,
+    creado: datetime = AHORA,
+) -> AttachmentFile:
+    """La versión compartida de un anexo: sin empresa ni autor (decisión 6)."""
+    return AttachmentFile(
+        id=uuid4(),
+        tender_attachment_id=uuid4(),
+        tender_id=T,
+        sha256=SHA,
+        size_bytes=4,
+        storage_key=f"shared/{T}/1931002/{SHA}.pdf",
+        source=AttachmentFileSource.MANUAL,
+        uploader_user_id=None,
+        workspace_id=None,
+        visibility=visibilidad,
+        trust=confianza,
         status=estado,
         created_at=creado,
     )
@@ -177,14 +203,14 @@ def test_anexo_sin_extension() -> None:
 
 def test_elegir_archivo_visible_prefiere_el_propio_antes_que_el_compartido() -> None:
     propio = _archivo()
-    compartido = _archivo(ws=OTRA, visibilidad=AttachmentVisibility.SHARED)
+    compartido = _canonico()
 
     assert elegir_archivo_visible([compartido, propio], WS) is propio
 
 
 def test_elegir_archivo_visible_prefiere_el_compartido_antes_que_el_propio_subiendo() -> None:
     subiendo = _archivo(estado=AttachmentFileStatus.UPLOADING)
-    compartido = _archivo(ws=OTRA, visibilidad=AttachmentVisibility.SHARED)
+    compartido = _canonico()
 
     assert elegir_archivo_visible([subiendo, compartido], WS) is compartido
 
@@ -218,17 +244,39 @@ def test_elegir_archivo_visible_no_devuelve_el_privado_de_otra_empresa() -> None
 @pytest.mark.parametrize(
     "estado", [AttachmentFileStatus.UPLOADING, AttachmentFileStatus.REJECTED]
 )
+def test_elegir_archivo_visible_ignora_lo_compartido_que_no_esta_guardado(
+    estado: AttachmentFileStatus,
+) -> None:
+    sin_guardar = _canonico(estado=estado)
+
+    assert elegir_archivo_visible([sin_guardar], WS) is None
+
+
+@pytest.mark.parametrize(
+    "estado", [AttachmentFileStatus.UPLOADING, AttachmentFileStatus.REJECTED]
+)
 def test_elegir_archivo_visible_ignora_lo_que_otra_empresa_sube_o_le_rechazan(
     estado: AttachmentFileStatus,
 ) -> None:
-    ajeno = _archivo(ws=OTRA, estado=estado, visibilidad=AttachmentVisibility.SHARED)
+    ajeno = _archivo(ws=OTRA, estado=estado)
 
     assert elegir_archivo_visible([ajeno], WS) is None
 
 
+def test_elegir_archivo_visible_no_devuelve_una_canonica_oculta() -> None:
+    # Suspendida por un conflicto o reemplazada: sin empresa, pero privada. Con
+    # `workspace_id is None` a ambos lados, `None == None` la haría "propia".
+    oculta = _canonico(
+        visibilidad=AttachmentVisibility.PRIVATE, confianza=AttachmentTrust.CONFLICT
+    )
+
+    assert elegir_archivo_visible([oculta], WS) is None
+    assert elegir_archivo_visible([oculta], None) is None
+
+
 def test_elegir_archivo_visible_sin_empresa_solo_elige_compartidos() -> None:
     propio = _archivo()
-    compartido = _archivo(ws=OTRA, visibilidad=AttachmentVisibility.SHARED)
+    compartido = _canonico()
 
     assert elegir_archivo_visible([propio, compartido], None) is compartido
     assert elegir_archivo_visible([propio], None) is None
@@ -302,10 +350,16 @@ def test_el_plazo_de_subida_incompleta_es_un_dia() -> None:
 
 def test_visible_para() -> None:
     privado = _archivo()
-    compartido = _archivo(visibilidad=AttachmentVisibility.SHARED)
+    compartido = _canonico()
+    oculto = _canonico(
+        visibilidad=AttachmentVisibility.PRIVATE, confianza=AttachmentTrust.REJECTED
+    )
 
     assert privado.visible_para(WS) is True
     assert privado.visible_para(OTRA) is False
     assert privado.visible_para(None) is False
     assert compartido.visible_para(OTRA) is True
     assert compartido.visible_para(None) is True
+    # Una canónica oculta no es de nadie: ni siquiera de quien no tiene empresa.
+    assert oculto.visible_para(WS) is False
+    assert oculto.visible_para(None) is False

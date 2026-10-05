@@ -64,3 +64,8 @@ class IAttachmentStorage(ABC):
     async def delete(self, key: str) -> None:
         """Borra el objeto. Idempotente: que no exista no es un error."""
         ...
+
+    @abstractmethod
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        """Sube bytes directamente al almacenamiento."""
+        ...

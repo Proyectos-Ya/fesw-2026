@@ -32,6 +32,18 @@ del lado del motor, así que no puede quedarse corto.
 licitaciones, regiones y comunas no dependen de una cuenta: no se tocan, y no
 hace falta recargar el corpus ni regenerar embeddings.
 
+Anexos compartidos
+------------------
+`TRUNCATE ... CASCADE` vacía tablas *enteras*, sin importar el `ON DELETE` de cada
+clave foránea. Los aportes de cada empresa en `attachment_file` apuntan a
+`supplier`, así que el reset vaciaría la tabla completa, y con ella las versiones
+canónicas (`workspace_id` nulo): el documento oficial que dos fuentes confirmaron
+(plan 233, decisión 6). Esas filas no son de ninguna cuenta, y borrar una cuenta no
+debe llevárselas, igual que no lo hace el borrado de una sola empresa. No se puede
+hacer el TRUNCATE selectivo, así que se apartan en una tabla temporal y se reponen
+en la misma transacción. Lo que cuelgue de ellas (las extracciones de la decisión 4)
+sí se pierde y se vuelve a calcular.
+
 Qdrant
 ------
 Cada proveedor tiene además un punto en la colección `suppliers`. Se borran
@@ -96,6 +108,21 @@ _DEPENDIENTES = text("""
 """)
 
 
+# Las versiones canónicas de los anexos (`attachment_file` sin empresa) no son de
+# ninguna cuenta: son el documento oficial que dos fuentes confirmaron (plan 233,
+# decisión 6). `TRUNCATE ... CASCADE` vaciaría la tabla entera, porque los aportes de
+# cada empresa sí apuntan a `supplier`, y no se puede hacer selectivo. Se apartan y se
+# reponen en la misma transacción. Lo que cuelgue de ellas (extracciones de la
+# decisión 4) sí se pierde y se vuelve a calcular.
+_HAY_ANEXOS = text("SELECT to_regclass('attachment_file') IS NOT NULL")
+_CONTAR_COMPARTIDOS = text("SELECT count(*) FROM attachment_file WHERE workspace_id IS NULL")
+_APARTAR_COMPARTIDOS = text(
+    "CREATE TEMP TABLE _anexos_compartidos ON COMMIT DROP AS "
+    "SELECT * FROM attachment_file WHERE workspace_id IS NULL"
+)
+_REPONER_COMPARTIDOS = text("INSERT INTO attachment_file SELECT * FROM _anexos_compartidos")
+
+
 async def _tablas_afectadas(session) -> list[str]:
     resultado = await session.execute(_DEPENDIENTES, {"raices": list(RAICES)})
     return [fila[0] for fila in resultado]
@@ -107,6 +134,22 @@ async def _contar(session, tablas: list[str]) -> dict[str, int]:
         resultado = await session.execute(text(f'SELECT count(*) FROM "{tabla}"'))  # noqa: S608
         conteos[tabla] = resultado.scalar_one()
     return conteos
+
+
+async def _truncar_conservando_compartidos(session) -> int:
+    """TRUNCATE de las cuentas que conserva los anexos compartidos. No hace commit.
+
+    Devuelve cuántas versiones compartidas se repusieron. Todo ocurre en la
+    transacción de `session`: si algo falla, el `rollback` deja la base intacta.
+    """
+    hay_anexos = (await session.execute(_HAY_ANEXOS)).scalar_one()
+    if hay_anexos:
+        await session.execute(_APARTAR_COMPARTIDOS)
+    nombres = ", ".join(f'"{t}"' for t in RAICES)
+    await session.execute(text(f"TRUNCATE TABLE {nombres} CASCADE"))  # noqa: S608
+    if not hay_anexos:
+        return 0
+    return (await session.execute(_REPONER_COMPARTIDOS)).rowcount or 0
 
 
 async def _ids_de_proveedores(session) -> list[str]:
@@ -170,11 +213,12 @@ async def _ejecutar(ejecutar: bool) -> None:
             print("\nNo hay cuentas ni perfiles que borrar.\n")
             return
 
-        # Una sola sentencia y una sola transacción: si algo falla, no queda
-        # media base con proveedores sin dueño.
-        nombres = ", ".join(f'"{t}"' for t in RAICES)
-        await session.execute(text(f"TRUNCATE TABLE {nombres} CASCADE"))  # noqa: S608
+        # Una sola transacción: si algo falla, no queda media base con proveedores
+        # sin dueño ni anexos compartidos apartados y sin reponer.
+        conservados = await _truncar_conservando_compartidos(session)
         await session.commit()
+        if conservados:
+            print(f"  Anexos compartidos conservados: {conservados}.")
 
         await _borrar_vectores(ids_proveedores)
 

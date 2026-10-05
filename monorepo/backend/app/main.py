@@ -8,6 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.bootstrap import (
     bootstrap,
+    build_attachment_processing_runner,
     build_milestone_refresh_runner,
     build_notification_runners,
     build_ranking_telemetry_runner,
@@ -22,6 +23,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.attachment_processing_scheduler import (
+    AttachmentProcessingScheduler,
+)
 from app.infrastructure.services.milestone_refresh_scheduler import (
     MilestoneRefreshScheduler,
 )
@@ -175,6 +179,35 @@ async def lifespan(app: FastAPI):
             ranking_telemetry_scheduler.start_loop()
         )
 
+    # Extracción de anexos con Gemini y resumen (plan 233, decisión 4). Apagado por
+    # defecto porque cuesta: lo subido igual queda en cola y se procesa al encender.
+    attachment_processing_task = None
+    if settings.run_attachment_processing:
+        if app.state.attachment_storage is None:
+            print(
+                "[Main] Procesamiento de anexos sin almacenamiento configurado: no se inicia."
+            )
+        else:
+            process_next, sweep = build_attachment_processing_runner(app)
+            attachment_scheduler = AttachmentProcessingScheduler(
+                process_next=process_next,
+                sweep=sweep,
+                signal=app.state.attachment_processing_signal,
+                poll_interval_seconds=settings.attachment_processing_poll_seconds,
+                sweep_interval_seconds=settings.attachment_processing_sweep_seconds,
+            )
+            print(
+                "[Main] Iniciando el procesamiento de anexos (Gemini, "
+                f"tope {settings.attachment_gemini_daily_budget} llamadas/día)..."
+            )
+            attachment_processing_task = asyncio.create_task(
+                attachment_scheduler.start_loop()
+            )
+    else:
+        print(
+            "[Main] Procesamiento de anexos desactivado (RUN_ATTACHMENT_PROCESSING=false)"
+        )
+
     yield
 
     # `cancel()` solo *pide* la cancelación: marca la tarea y devuelve el control
@@ -193,6 +226,7 @@ async def lifespan(app: FastAPI):
             reminder_task,
             milestone_refresh_task,
             ranking_telemetry_task,
+            attachment_processing_task,
         )
         if t
     ]

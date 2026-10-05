@@ -5,12 +5,20 @@ diverge mucho respecto de `develop` y cada cambio ahí es un conflicto de merge.
 """
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.application.repositories.attachment_file_repository import (
     IAttachmentFileRepository,
+)
+from app.application.repositories.attachment_trust_repository import (
+    IAttachmentTrustRepository,
+    TrustSnapshot,
+)
+from app.application.services.attachment_deleted_listener import (
+    IAttachmentDeletedListener,
 )
 from app.application.services.attachment_storage import (
     IAttachmentStorage,
@@ -20,9 +28,14 @@ from app.application.services.attachment_storage import (
 from app.application.services.attachment_stored_listener import (
     IAttachmentStoredListener,
 )
+from app.application.services.attachment_visibility_listener import (
+    IAttachmentVisibilityListener,
+)
 from app.domain.entities.attachment_file import (
     AttachmentFile,
+    AttachmentFileSource,
     AttachmentFileStatus,
+    AttachmentTrust,
     AttachmentVisibility,
 )
 from app.domain.errors.attachment_errors import (
@@ -31,6 +44,7 @@ from app.domain.errors.attachment_errors import (
     UploadQuotaExceeded,
 )
 from app.domain.services.attachment_files import tiene_archivo
+from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
 
 
 class InMemoryAttachmentFileRepository(IAttachmentFileRepository):
@@ -156,6 +170,7 @@ class FakeAttachmentStorage(IAttachmentStorage):
         self.borradas: list[str] = []
         self.copias: list[tuple[str, str]] = []
         self.heads = 0
+        self.get_bytes_count = 0
         self.falla_con: Exception | None = None
 
     def _fallar(self) -> None:
@@ -193,6 +208,11 @@ class FakeAttachmentStorage(IAttachmentStorage):
     def subir(self, key: str, data: bytes) -> None:
         self.objetos[key] = data
 
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        self._fallar()
+        self.objetos[key] = data
+
+
     async def head(self, key: str) -> StoredObjectInfo | None:
         self.heads += 1
         self._fallar()
@@ -203,6 +223,7 @@ class FakeAttachmentStorage(IAttachmentStorage):
         return StoredObjectInfo(len(data), sha)
 
     async def get_bytes(self, key: str) -> bytes:
+        self.get_bytes_count += 1
         self._fallar()
         return self.objetos[key]
 
@@ -226,3 +247,133 @@ class RecordingStoredListener(IAttachmentStoredListener):
         self.recibidos.append(file)
         if self.falla_con is not None:
             raise self.falla_con
+
+
+class RecordingDeletedListener(IAttachmentDeletedListener):
+    def __init__(self, falla_con: Exception | None = None) -> None:
+        self.recibidos: list[AttachmentFile] = []
+        self.falla_con = falla_con
+
+    async def on_deleted(self, file: AttachmentFile) -> None:
+        self.recibidos.append(file)
+        if self.falla_con is not None:
+            raise self.falla_con
+
+
+class RecordingVisibilityListener(IAttachmentVisibilityListener):
+    def __init__(self, falla_con: Exception | None = None) -> None:
+        self.recibidos: list[AttachmentFile] = []
+        self.falla_con = falla_con
+
+    async def on_visibility_changed(self, file: AttachmentFile) -> None:
+        self.recibidos.append(file)
+        if self.falla_con is not None:
+            raise self.falla_con
+
+
+def canonico(
+    *,
+    tender_attachment_id: UUID,
+    tender_id: UUID,
+    sha256: str,
+    storage_key: str | None = None,
+    size_bytes: int = 4,
+    visibility: AttachmentVisibility = AttachmentVisibility.SHARED,
+    trust: AttachmentTrust = AttachmentTrust.CORROBORATED,
+    source: AttachmentFileSource = AttachmentFileSource.MANUAL,
+    created_at: datetime = datetime(2026, 10, 3, 15, 0),
+) -> AttachmentFile:
+    """Una versión canónica válida (sin empresa ni autor), como la deja la promoción."""
+    return AttachmentFile(
+        id=uuid4(),
+        tender_attachment_id=tender_attachment_id,
+        tender_id=tender_id,
+        sha256=sha256,
+        size_bytes=size_bytes,
+        storage_key=storage_key or f"shared/{tender_id}/1931002/{sha256}.xlsx",
+        source=source,
+        uploader_user_id=None,
+        workspace_id=None,
+        visibility=visibility,
+        trust=trust,
+        status=AttachmentFileStatus.STORED,
+        created_at=created_at,
+        completed_at=created_at,
+    )
+
+
+class InMemoryAttachmentTrustRepository(IAttachmentTrustRepository):
+    """Mismo contrato que el SQL, sin candado real. Cuenta aperturas y cierres.
+
+    Invariante que los tests verifican: toda `lock_for_promotion` termina en un
+    `save_promotion` o en un `release` (`abiertas == liberadas + guardadas`).
+    """
+
+    def __init__(
+        self,
+        *,
+        files: InMemoryAttachmentFileRepository,
+        attachments: InMemoryTenderAttachmentRepository,
+        personas: Mapping[UUID, frozenset[UUID]] | None = None,
+    ) -> None:
+        self.files = files
+        self.attachments = attachments
+        self.personas = dict(personas or {})
+        self.abiertas = 0
+        self.liberadas = 0
+        self.guardadas = 0
+
+    async def lock_for_promotion(self, tender_attachment_id: UUID) -> TrustSnapshot | None:
+        self.abiertas += 1
+        anexo = next(
+            (a for a in self.attachments.filas.values() if a.id == tender_attachment_id),
+            None,
+        )
+        if anexo is None:
+            return None
+        archivos = [
+            f
+            for f in self.files.filas.values()
+            if f.tender_attachment_id == tender_attachment_id
+            and f.status != AttachmentFileStatus.PURGED
+        ]
+        empresas = {f.workspace_id for f in archivos if f.workspace_id is not None}
+        return TrustSnapshot(
+            attachment=anexo,
+            files=archivos,
+            people={e: self.personas.get(e, frozenset()) for e in empresas},
+        )
+
+    async def save_promotion(
+        self, *, updated: Sequence[AttachmentFile], created: Sequence[AttachmentFile]
+    ) -> None:
+        # Se arma el resultado aparte y recién al final se aplica: si un índice lo
+        # rechaza, no queda nada a medias, igual que el rollback de SQL.
+        resultado = dict(self.files.filas)
+        for nuevo in updated:
+            actual = resultado[nuevo.id]
+            resultado[nuevo.id] = actual.model_copy(
+                update={"trust": nuevo.trust, "visibility": nuevo.visibility}
+            )
+        for fila in created:
+            # Emula el único parcial `(anexo, sha) WHERE workspace_id IS NULL`.
+            if any(
+                f.tender_attachment_id == fila.tender_attachment_id
+                and f.sha256 == fila.sha256
+                and f.workspace_id == fila.workspace_id
+                for f in resultado.values()
+            ):
+                raise ConcurrentUploadConflict()
+            resultado[fila.id] = fila
+        # Emula el único parcial `(anexo) WHERE visibility = 'shared'`.
+        compartidas: set[UUID] = set()
+        for f in resultado.values():
+            if f.visibility == AttachmentVisibility.SHARED:
+                assert f.tender_attachment_id not in compartidas, "dos versiones compartidas"
+                compartidas.add(f.tender_attachment_id)
+        self.files.filas.clear()
+        self.files.filas.update(resultado)
+        self.guardadas += 1
+
+    async def release(self) -> None:
+        self.liberadas += 1

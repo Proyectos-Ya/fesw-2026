@@ -46,6 +46,7 @@ from tests.unit.application.attachment_file_fakes import (
     FakeAttachmentStorage,
     InMemoryAttachmentFileRepository,
     RecordingStoredListener,
+    canonico,
 )
 
 T = uuid4()
@@ -265,9 +266,11 @@ async def test_mismo_sha_ya_guardado_por_la_empresa_deduplica(mundo: Mundo) -> N
 
 
 async def test_compartido_guardado_deduplica(mundo: Mundo) -> None:
-    compartido = mundo.sembrar(
-        ws=WS_B, visibilidad=AttachmentVisibility.SHARED
+    # La versión compartida es la canónica, sin empresa (decisión 6).
+    compartido = canonico(
+        tender_attachment_id=mundo.xlsx.id, tender_id=T, sha256=SHA, storage_key="shared/x"
     )
+    mundo.archivos.filas[compartido.id] = compartido
 
     resultado = await mundo.caso().execute(mundo.pedido())
 

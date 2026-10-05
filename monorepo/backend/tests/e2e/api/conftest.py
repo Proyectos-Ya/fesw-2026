@@ -4,6 +4,12 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app import bootstrap
+from app.application.services.attachment_deleted_listener import (
+    NoopAttachmentDeletedListener,
+)
+from app.application.services.attachment_stored_listener import (
+    NoopAttachmentStoredListener,
+)
 from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.main import app
 from tests.support.api_auth import preparar_auth
@@ -51,6 +57,14 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     # las impresiones en la base de desarrollo.
     app.dependency_overrides[bootstrap.get_ranking_impression_logger] = lambda: impresiones
     app.dependency_overrides[bootstrap.get_ranking_registry] = lambda: registro
+    # Sin estos, `complete` y `DELETE` de un anexo abrirían su propia sesión contra la
+    # base del `.env`: la promoción de la decisión 6 no usa la sesión de la petición.
+    app.dependency_overrides[bootstrap.get_attachment_stored_listener] = lambda: (
+        NoopAttachmentStoredListener()
+    )
+    app.dependency_overrides[bootstrap.get_attachment_deleted_listener] = lambda: (
+        NoopAttachmentDeletedListener()
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
