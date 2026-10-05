@@ -10,7 +10,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from sqlalchemy.exc import OperationalError
 
 from app.application.schemas.tender_schema import TenderSearchResult
-from app.bootstrap import get_search_tenders_use_case
+from app.bootstrap.matching import get_search_tenders_use_case
 from app.domain.entities.tender import Tender
 from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.main import app

@@ -281,6 +281,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (isAuthenticated) {
       void refreshWorkspaces();
       void refreshInvitations();
+
+      const handleFocus = () => {
+        void refreshInvitations();
+      };
+
+      if (typeof window !== "undefined") {
+        window.addEventListener("focus", handleFocus);
+      }
+      const timer = setInterval(() => {
+        void refreshInvitations();
+      }, 60_000);
+
+      return () => {
+        if (typeof window !== "undefined") {
+          window.removeEventListener("focus", handleFocus);
+        }
+        clearInterval(timer);
+      };
     } else {
       setWorkspaces([]);
       setActiveWorkspace(null);

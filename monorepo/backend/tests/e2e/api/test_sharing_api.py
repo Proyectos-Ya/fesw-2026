@@ -9,7 +9,11 @@ from datetime import timedelta
 import pytest
 from httpx import AsyncClient
 
-from app import bootstrap
+from app.bootstrap.repositories import (
+    get_matching_result_repo,
+    get_tender_repo,
+    get_tender_share_link_repo,
+)
 from app.domain.entities.tender import Tender
 from app.main import app
 from app.shared.datetime_utils import utc_now_naive
@@ -35,9 +39,9 @@ EMPRESA = {
 def repos():
     tenders = InMemoryTenderRepository()
     links = InMemoryTenderShareLinkRepository()
-    app.dependency_overrides[bootstrap.get_tender_repo] = lambda: tenders
-    app.dependency_overrides[bootstrap.get_tender_share_link_repo] = lambda: links
-    app.dependency_overrides[bootstrap.get_matching_result_repo] = (
+    app.dependency_overrides[get_tender_repo] = lambda: tenders
+    app.dependency_overrides[get_tender_share_link_repo] = lambda: links
+    app.dependency_overrides[get_matching_result_repo] = (
         InMemoryMatchingResultRepository
     )
     tender = Tender(

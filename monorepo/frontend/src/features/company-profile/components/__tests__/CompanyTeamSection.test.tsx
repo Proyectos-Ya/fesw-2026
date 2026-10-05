@@ -95,7 +95,7 @@ describe("CompanyTeamSection", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("solo muestra los roles Miembro y Administrador en el menú desplegable", async () => {
+  it("solo muestra los roles Representante y Administrador en el menú desplegable", async () => {
     vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue(
       baseWorkspaceContext,
     );
@@ -112,7 +112,7 @@ describe("CompanyTeamSection", () => {
     const roleSelect = await screen.findByLabelText(/rol asignado/i);
     const options = within(roleSelect).getAllByRole("option");
     expect(options.map((opt) => opt.textContent)).toEqual([
-      "Miembro",
+      "Representante",
       "Administrador",
     ]);
     expect(within(roleSelect).queryByText(/lector/i)).not.toBeInTheDocument();
@@ -171,6 +171,7 @@ describe("CompanyTeamSection", () => {
     expect(screen.getByText("admin@norte.cl")).toBeInTheDocument();
     expect(screen.getByText("Roberto Representante")).toBeInTheDocument();
     expect(screen.getByText("rep@norte.cl")).toBeInTheDocument();
+    expect(screen.getAllByText("Representante").length).toBeGreaterThanOrEqual(1);
 
     expect(screen.getByText("pendiente@norte.cl")).toBeInTheDocument();
     expect(screen.getByText("Pendiente")).toBeInTheDocument();

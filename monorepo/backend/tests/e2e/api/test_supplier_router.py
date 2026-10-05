@@ -8,7 +8,7 @@ GET /suppliers/me devuelve la empresa del usuario autenticado o 404.
 import pytest
 from httpx import AsyncClient
 
-from app import bootstrap
+from app.bootstrap.services import get_company_lookup_service
 from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
 from app.domain.errors.company_lookup_errors import (
     CompanyLookupUnavailable,
@@ -148,7 +148,7 @@ async def test_rut_exists_returns_true_when_registered(api: AsyncClient):
 
 
 def _fuente(servicio: FakeCompanyLookupService | None) -> None:
-    app.dependency_overrides[bootstrap.get_company_lookup_service] = lambda: servicio
+    app.dependency_overrides[get_company_lookup_service] = lambda: servicio
 
 
 IMPORT_RUT = "76.668.304-5"
@@ -304,7 +304,7 @@ async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
     El 503 le dice al cliente que puede reintentar; lo importante es que no
     quede nada guardado, para que ese reintento funcione.
     """
-    from app import bootstrap
+    from app.bootstrap.services import get_embedding_service
     from app.main import app
     from tests.unit.application.fakes import FakeEmbeddingService
 
@@ -313,7 +313,7 @@ async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
             raise ConnectionError("el proveedor de embeddings no responde")
 
     await _login(api)
-    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
+    app.dependency_overrides[get_embedding_service] = lambda: (
         ProveedorCaido()
     )
 

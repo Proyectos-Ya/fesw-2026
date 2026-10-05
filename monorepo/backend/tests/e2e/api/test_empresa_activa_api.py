@@ -10,13 +10,17 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 
-from app import bootstrap
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
 from app.application.use_cases.quotation import QuotationUseCase
 from app.application.use_cases.tender.get_tender_detail import GetTenderDetailUseCase
+from app.bootstrap.capabilities import get_quotation_use_case
+from app.bootstrap.matching import (
+    get_score_tender_on_demand_use_case,
+    get_tender_detail_use_case,
+)
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.quotation import Quotation, QuotationInput
 from app.main import app
@@ -121,12 +125,12 @@ def licitaciones(api: AsyncClient):
     quotations = InMemoryQuotationRepository()
     suppliers = api.proveedores
 
-    app.dependency_overrides[bootstrap.get_tender_detail_use_case] = lambda: (
+    app.dependency_overrides[get_tender_detail_use_case] = lambda: (
         GetTenderDetailUseCase(
             tender_repo=tenders, supplier_repo=suppliers, matching_result_repo=matching
         )
     )
-    app.dependency_overrides[bootstrap.get_score_tender_on_demand_use_case] = lambda: (
+    app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: (
         ScoreTenderOnDemandUseCase(
             supplier_repo=suppliers,
             tender_repo=tenders,
@@ -138,7 +142,7 @@ def licitaciones(api: AsyncClient):
             ),
         )
     )
-    app.dependency_overrides[bootstrap.get_quotation_use_case] = lambda: (
+    app.dependency_overrides[get_quotation_use_case] = lambda: (
         QuotationUseCase(quotations, suppliers, tenders)
     )
 
