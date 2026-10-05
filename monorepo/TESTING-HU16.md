@@ -12,11 +12,13 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
 
 1. Abrir el detalle de una licitación. La sección **Hitos y fechas importantes** muestra de
    entrada la publicación y el cierre oficiales de Mercado Público.
-2. Adjuntar las bases (PDF, XLSX o PNG) en el **asistente** de la licitación y pulsar
-   **Extraer hitos de las bases**. La IA agrega visitas técnicas, consultas, entregas,
-   adjudicación, etc., cada uno con el párrafo de las bases de donde salió.
-3. Los plazos se destacan en rojo (3 días o menos) o amarillo (**5 días o menos**, que es el
-   umbral que pide el criterio 9).
+2. Adjuntar las bases (PDF, XLSX o PNG) en el **asistente** de la licitación. No hay que
+   pulsar nada más: la IA las lee en segundo plano y la tabla muestra *"La IA está leyendo
+   las bases que subiste…"* hasta que aparecen las visitas técnicas, consultas, entregas,
+   adjudicación, etc., cada uno con el párrafo de las bases de donde salió. El botón
+   **Extraer hitos de las bases** queda para reintentar si la extracción automática falló.
+3. Los plazos a **5 días de calendario o menos** (criterio 9) se destacan en rojo y con la
+   etiqueta entre exclamaciones (*¡En 5 días!*, *¡Mañana!*, *¡Hoy!*); el resto va en gris.
 4. Elegir los hitos y pulsar **Sincronizar con Google Calendar**:
    - si algún hito no tiene hora exacta, se pide confirmar una (propone 09:00);
    - la primera vez, lleva a Google a autorizar el acceso y, al volver, termina la
@@ -97,7 +99,8 @@ simple no relee las variables).
 | Hitos y urgencia | `app/application/use_cases/milestones/` |
 | OAuth, conexión y sincronización | `app/application/use_cases/calendar/`, `app/infrastructure/services/calendar/google_calendar_client.py` |
 | Cambios de fecha (criterio 4) | `refresh_synced_tender_dates.py` + `MilestoneRefreshScheduler` |
-| Urgencia y umbral de 5 días (criterio 9) | `app/domain/entities/tender_milestone.py` (`_DIAS_PROXIMO`) |
+| Urgencia y umbral de 5 días (criterio 9) | `app/domain/entities/tender_milestone.py` (`_DIAS_DESTACADO`) |
+| Extracción automática al subir (criterio 1) | `UploadTenderChatDocumentUseCase` + `infrastructure/services/milestone_extraction_background.py` |
 | Recordatorios (criterio 10) | `set_milestone_reminder.py`, `send_milestone_reminders.py` + `NotificationScheduler.start_reminder_loop` |
 | Frontend | `src/features/tender-milestones/`, ruta `/calendario/callback/[provider]` |
 
@@ -110,6 +113,14 @@ simple no relee las variables).
   volver a extraer, un hito equivalente (mismo tipo y título, sin importar tildes ni
   mayúsculas) conserva su id, así el evento ya sincronizado se actualiza en vez de
   duplicarse. Si Gemini falla, quedan igual los hitos oficiales.
+- **Extracción automática**: subir un documento al asistente agenda la extracción en una
+  tarea de asyncio con sesión propia; la subida no espera a Gemini. Varias subidas seguidas
+  se agrupan (como máximo una pasada más al terminar la que está en curso), y la
+  extracción manual comparte el candado por usuario y licitación, así nunca corren dos a la
+  vez. El estado (`extraction_status`: `idle`, `running`, `failed`) vive en memoria —asume
+  una sola instancia de la API, como las exportaciones de la HdU 19— y el frontend
+  consulta cada 4 s mientras dice `running`. Si la API se reinicia a mitad de camino, la
+  extracción se pierde y se reintenta con el botón.
 - **Sincronización**: el token se refresca antes de vencer; si Google lo rechaza, se
   refresca una vez y se reintenta; si el refresh fue revocado, la conexión queda marcada y
   el frontend lleva a reconectar. Un hito que falla no detiene a los demás: la respuesta
@@ -135,8 +146,8 @@ simple no relee las variables).
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `GET` | `/tenders/{id}/milestones` | Hitos con urgencia y calendarios donde están sincronizados |
-| `POST` | `/tenders/{id}/milestones/extract` | Extrae con IA desde los documentos del asistente |
+| `GET` | `/tenders/{id}/milestones` | Hitos con urgencia, calendarios donde están sincronizados y `extraction_status` |
+| `POST` | `/tenders/{id}/milestones/extract` | Reintenta a mano la extracción con IA desde los documentos del asistente |
 | `POST` | `/tenders/{id}/milestones/sync` | Sincroniza `{provider, milestone_ids, default_time?}`; devuelve el resultado por hito |
 | `PATCH` | `/tenders/{id}/milestones/{hito}/reminder` | Activa el recordatorio con `{days_before: 1\|3\|7}`, o lo apaga con `null` |
 | `GET` | `/calendar/connections` | Estado de la conexión (nunca devuelve tokens) |
@@ -175,7 +186,7 @@ Migraciones, todas compatibles hacia atrás y en una sola cabeza:
 
 | # | Criterio | Evidencia automatizada | Prueba manual |
 |---|---|---|---|
-| 1 | La IA extrae hitos a una tabla | `test_extract_tender_milestones.py`, `test_gemini_milestone_extraction_service.py`, `MilestonesSection.test.tsx` | Subir las bases y pulsar *Extraer hitos* |
+| 1 | La IA extrae hitos a una tabla | `test_extract_tender_milestones.py`, `test_gemini_milestone_extraction_service.py`, `test_milestone_extraction_background.py`, `test_upload_tender_chat_document_use_case.py`, `MilestonesSection.test.tsx`, `useTenderMilestones.test.ts` | Subir las bases en el asistente y esperar, sin pulsar nada |
 | 2 | "Sincronizar" redirige a la autenticación del proveedor | `test_calendar_authorization.py`, `useCalendarSync.test.ts`, `CalendarOAuthCallback.test.tsx` | Sincronizar sin conexión previa |
 | 3 | Evento con título, fecha exacta y enlace de retorno | `test_sync_milestones.py`, `test_google_calendar_client.py` (payload verificado) | Abrir el evento en Google Calendar |
 | 4 | Cambio en Mercado Público → evento actualizado + "Fecha modificada" | `test_refresh_synced_tender_dates.py`, `test_dispatch_pending_deliveries.py`, `NotificationPanel.test.tsx` | Ver abajo |
@@ -219,9 +230,9 @@ Correr el cierre de una licitación abierta contra la base local y recargar su d
 UPDATE tender SET closing_at = now() + interval '4 days' WHERE code = '<código>';
 ```
 
-El plazo queda **amarillo** ("En 4 días"). Con `interval '2 days'` pasa a **rojo**; con
-`interval '8 days'` queda neutro. El borde exacto es 5 días: `interval '6 days'` ya no se
-destaca.
+El plazo queda **rojo** y entre exclamaciones ("¡En 4 días!"); con `interval '8 days'` queda
+gris ("En 8 días"). Se cuentan días de calendario en hora de Chile: lo que vence dentro de 5
+días se destaca a cualquier hora, y a 6 días ya no.
 
 ### Criterio 10 a mano
 
