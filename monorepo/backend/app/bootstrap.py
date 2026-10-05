@@ -54,6 +54,10 @@ from app.application.use_cases.attachment_processing.sweep import (
 from app.application.repositories.calendar_repository import (
     ICalendarConnectionRepository,
 )
+from app.application.repositories.extension_repository import (
+    IExtensionFetchJobRepository,
+    IExtensionInstallationRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -158,6 +162,13 @@ from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import 
 )
 from app.application.use_cases.delete_tender_chat_document_use_case import (
     DeleteTenderChatDocumentUseCase,
+)
+from app.application.use_cases.extension import (
+    CheckExtensionAttachmentsUseCase,
+    GetExtensionCapabilitiesUseCase,
+    LeaseFetchJobsUseCase,
+    PairExtensionUseCase,
+    ReportJobResultUseCase,
 )
 from app.application.use_cases.get_tender_chat_history_use_case import (
     GetTenderChatHistoryUseCase,
@@ -299,6 +310,10 @@ from app.infrastructure.repositories.sql_attachment_processing_status_reader imp
 from app.infrastructure.repositories.sql_attachment_trust_repository import (
     SqlAttachmentTrustRepository,
 )
+from app.infrastructure.repositories.sql_extension_repository import (
+    SqlExtensionFetchJobRepository,
+    SqlExtensionInstallationRepository,
+)
 from app.infrastructure.repositories.sql_gemini_usage_repository import (
     SqlGeminiUsageRepository,
 )
@@ -328,6 +343,7 @@ from app.infrastructure.routers.calendar import (
     create_milestone_sync_router,
 )
 from app.infrastructure.routers.dev_storage import create_dev_storage_router
+from app.infrastructure.routers.extension import create_extension_router
 from app.infrastructure.routers.milestones import create_milestones_router
 from app.infrastructure.routers.quotation import create_quotation_router
 from app.infrastructure.routers.router import create_router
@@ -1289,6 +1305,74 @@ def get_tender_chat_history_use_case(
     return GetTenderChatHistoryUseCase(chat_repo=chat_repo)
 
 
+def get_extension_installation_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IExtensionInstallationRepository:
+    return SqlExtensionInstallationRepository(session)
+
+
+def get_extension_fetch_job_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IExtensionFetchJobRepository:
+    return SqlExtensionFetchJobRepository(session)
+
+
+def get_extension_capabilities_use_case() -> GetExtensionCapabilitiesUseCase:
+    return GetExtensionCapabilitiesUseCase(settings=settings)
+
+
+def get_pair_extension_use_case(
+    installation_repo: Annotated[
+        IExtensionInstallationRepository, Depends(get_extension_installation_repo)
+    ],
+    capabilities_use_case: Annotated[
+        GetExtensionCapabilitiesUseCase, Depends(get_extension_capabilities_use_case)
+    ],
+) -> PairExtensionUseCase:
+    return PairExtensionUseCase(
+        installation_repo=installation_repo,
+        capabilities_use_case=capabilities_use_case,
+    )
+
+
+def get_check_extension_attachments_use_case(
+    tender_attachment_repo: Annotated[
+        ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
+    ],
+    attachment_file_repo: Annotated[
+        IAttachmentFileRepository, Depends(get_attachment_file_repo)
+    ],
+) -> CheckExtensionAttachmentsUseCase:
+    return CheckExtensionAttachmentsUseCase(
+        tender_attachment_repo=tender_attachment_repo,
+        attachment_file_repo=attachment_file_repo,
+    )
+
+
+def get_lease_extension_jobs_use_case(
+    installation_repo: Annotated[
+        IExtensionInstallationRepository, Depends(get_extension_installation_repo)
+    ],
+    job_repo: Annotated[
+        IExtensionFetchJobRepository, Depends(get_extension_fetch_job_repo)
+    ],
+) -> LeaseFetchJobsUseCase:
+    return LeaseFetchJobsUseCase(
+        installation_repo=installation_repo,
+        job_repo=job_repo,
+        max_daily_fetches=settings.extension_max_daily_fetches,
+        lease_duration_seconds=settings.extension_polling_interval_seconds,
+    )
+
+
+def get_report_extension_job_result_use_case(
+    job_repo: Annotated[
+        IExtensionFetchJobRepository, Depends(get_extension_fetch_job_repo)
+    ],
+) -> ReportJobResultUseCase:
+    return ReportJobResultUseCase(job_repo=job_repo)
+
+
 
 class MockRerankerService(IRerankerService):
     """Reranker neutro para cuando está desactivado o falta ONNX en local/tests."""
@@ -1826,6 +1910,18 @@ def bootstrap(app: FastAPI) -> None:
         create_tender_digest_router(
             get_current_user,
             get_tender_digest_use_case,
+            get_optional_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_extension_router(
+            capabilities_use_case=get_extension_capabilities_use_case,
+            pair_extension_use_case=get_pair_extension_use_case,
+            check_attachments_use_case=get_check_extension_attachments_use_case,
+            lease_jobs_use_case=get_lease_extension_jobs_use_case,
+            report_job_result_use_case=get_report_extension_job_result_use_case,
+            installation_repo=get_extension_installation_repo,
+            get_current_user=get_current_user,
             get_optional_workspace_context=get_optional_workspace_context,
         )
     )

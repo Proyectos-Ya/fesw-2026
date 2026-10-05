@@ -1,82 +1,76 @@
 # ADR-0003: Arquitectura de la Extensión de Navegador y Adaptador de Mercado Público
 
-* **Fecha**: 2026-10-04  
-* **Estado**: Propuesto  
+* **Fecha**: 2026-10-05  
+* **Estado**: Aceptado  
 * **Autores**: Equipo Chiripa  
 
 ---
 
 ## 1. Contexto
 
-La indexación de las bases y anexos oficiales de Mercado Público (documentos de Compra Ágil y licitaciones) es fundamental para alimentar el asistente RAG (Decisión 5) y enriquecer el matching semántico con IA (Spike 2). Sin embargo, la API v2 de ChileCompra no sirve los archivos binarios; únicamente expone metadatos elementales (`documentos: [{id, nombre}]`).
+La plataforma Chiripa ayuda a MiPymes chilenas a competir y ganar licitaciones del Estado en Mercado Público y Compra Ágil. En la Fase 2 (Decisiones 2, 4, 5 y 6) se implementó el ecosistema de anexos oficiales, el modelo de confianza comunitaria (ADR 0002) y la extracción semántica con Gemini.
 
-Los archivos binarios están disponibles públicamente en la SPA de Mercado Público (`buscador.mercadopublico.cl/ficha?code=<COT>`) y sus endpoints asociados (`adjunto.mercadopublico.cl/.../adjuntos-compra-agil/`). Para capturar estos archivos sin incurrir en costos exorbitantes de clusters de scraping headless en servidores backend, se plantea que la comunidad de usuarios de Chiripa colabore mediante una **extensión de navegador** oficial.
+Para alimentar este catálogo de documentos y evitar que el backend deba desplegar clusters costosos de navegadores headless (Selenium o Playwright) que saturen los servidores o sufran bloqueos de IP, se requiere una **extensión de navegador** (Decisión 7 del Plan 233). Esta extensión opera en los navegadores de los propios usuarios (Chrome, Edge y Firefox) para detectar fichas de licitaciones, consultar anexos faltantes, descargarlos en el contexto autenticado del usuario en Mercado Público y subirlos de forma deduplicada a Cloudflare R2.
 
-Adicionalmente, el diseño técnico debe anticipar la Historia de Usuario 20 (Plan 230: Generación y postulación automatizada de ofertas), dejando la arquitectura preparada para interactuar con los portales de proveedores de Mercado Público en el futuro.
+El diseño de esta extensión enfrenta varios desafíos técnicos y arquitectónicos:
 
-### Restricciones y desafíos:
-1. **Multi-navegador y Manifest V3 (MV3):** Los usuarios utilizan Google Chrome, Microsoft Edge y Mozilla Firefox. Firefox MV3 no admite `externally_connectable` con páginas web estándar y difiere en el modelo de ejecución de background scripts frente a los Service Workers de Chromium.
-2. **Seguridad y privacidad (Zero-Credential Leakage):** La extensión jamás debe solicitar ni almacenar contraseñas ni RUT de Mercado Público. El emparejamiento con Chiripa debe ser seguro y sin fricción.
-3. **Resiliencia ante la SPA de Mercado Público:** La plataforma de ChileCompra está construida en Angular y carga datos de forma asíncrona; cualquier rediseño no debe romper el cliente en producción sin posibilidad de reacción inmediata.
-4. **Almacenamiento y cuotas:** Las transferencias deben ir directo a Cloudflare R2 con validación criptográfica SHA-256 (`by-code`), sin saturar el ancho de banda del usuario ni la memoria del backend.
+1. **Fragmentación de Manifest V3 (MV3) entre Chromium y Firefox:**
+   - En navegadores Chromium (Chrome, Edge), MV3 exige `background.service_worker`, el cual se suspende tras ~30 segundos de inactividad, destruyendo conexiones persistentes o temporizadores `setInterval`. En Firefox, MV3 utiliza `background.scripts` (event pages).
+   - **Ausencia de `externally_connectable` en Firefox:** En Chrome es posible declarar `externally_connectable` para enviar mensajes directamente desde una página web a la extensión con `chrome.runtime.sendMessage`. **Firefox no soporta esta API para páginas web estándar**. Depender de ella impediría publicar la extensión en Mozilla Add-ons (AMO).
+2. **Políticas estrictas de tiendas de extensiones (Chrome Web Store y Mozilla AMO):**
+   - Mozilla prohíbe terminantemente código evaluado dinámicamente (`eval`, `new Function`) y scripts remotos. El código debe ser auditable y reproducible desde las fuentes del monorepo.
+3. **Scraping resiliente de una Single Page Application (SPA):**
+   - El portal de Mercado Público (`buscador.mercadopublico.cl/ficha`) es una SPA en AngularJS/Angular donde los elementos y tablas de anexos se hidratan asíncronamente mediante peticiones XHR. Un scraper ingenuo que lea el DOM al cargarse la página lee un documento vacío.
+4. **Privacidad, credenciales y seguridad:**
+   - La extensión jamás debe solicitar ni almacenar claves o credenciales de portales gubernamentales de los usuarios (RUT o clave de Mercado Público). Toda descarga debe aprovechar la sesión viva que el usuario ya tenga en su navegador.
+   - La vinculación entre la web de Chiripa y la extensión debe ser resistente a ataques de suplantación desde iframes o páginas maliciosas.
 
 ---
 
 ## 2. Decisión Tomada
 
-Se adopta una **arquitectura basada en el framework WXT con bridge universal por Content Script, scraping reactivo mediante MutationObserver y cola pull distribuida** (Decisión 7 del Plan 233):
+Se adopta una **arquitectura basada en el framework WXT (Web Extension Framework) con TypeScript estricto, React 19, TailwindCSS v4 y un Bridge universal por Content Script**, formalizada en las siguientes decisiones de diseño (D7-1 a D7-12):
 
-### 1. Framework WXT (`monorepo/extension`)
-Se selecciona WXT (Web Extension Framework) con TypeScript, React 19 y TailwindCSS v4. WXT compila a Manifest V3 de forma nativa tanto para Chromium (`target: chrome`) como para Firefox (`target: firefox`), unificando la API `browser`/`chrome` y gestionando la disparidad entre Service Workers y Background Event Pages.
+### Resumen de Decisiones de Diseño (D7-1 a D7-12)
 
-### 2. Bridge Universal por Content Script
-Ante la falta de soporte de `externally_connectable` en Firefox para sitios web externos, el emparejamiento (pairing) entre la SPA de Chiripa y la extensión se implementa mediante un Content Script inyectado en los dominios oficiales (`*.chiripa.cl`, `*.proyectosya.cl`, `localhost:3000`). La comunicación vía `window.postMessage` exige:
-- Validación estricta de `event.origin` coincidente con `window.location.origin`.
-- Canal tipado `target: "CHIRIPA_EXTENSION"`.
-- Nonce criptográfico único por sesión (`crypto.randomUUID()`).
-- Ventana de expiración estricta de 60 segundos.
-Las credenciales de sesión y tokens de refresco se persisten de forma aislada en `chrome.storage.local`.
-
-### 3. Kill Switch y Capacidades Dinámicas (`GET /extension/capabilities`)
-El backend expone capacidades operativas gobernadas por la variable `EXTENSION_ENABLED`. Si Mercado Público altera su estructura o surgen incidencias operativas, el backend puede desactivar selectivamente el scraping (`mp_adapter_enabled: false`) o la cola distribuida (`fetch_jobs_enabled: false`) de inmediato, sin esperar los días de revisión de las tiendas de extensiones.
-
-### 4. `MpFichaAdapter` Resiliente
-El adaptador de Mercado Público implementa selectores jerárquicos con fallback y escucha asíncrona vía `MutationObserver`. Detecta el número de llamado (1.er o 2.º llamado), fechas de cierre y extrae el listado de documentos adjuntos. Si la estructura DOM no responde en 10 segundos, emite telemetría de error `adapter_broken` hacia la API de Chiripa.
-
-### 5. Reutilización de Cookies y Subida Deduplicada a R2
-La extensión utiliza los permisos de host de `*.mercadopublico.cl` para descargar los archivos con las cookies activas del usuario sin pedir credenciales. Antes de descargar, consulta `POST /extension/attachments/check` y solo descarga documentos inexistentes (`missing`). El SHA-256 se calcula en streaming mediante Web Crypto API y el archivo se sube directo a Cloudflare R2 mediante la URL prefirmada emitida por `POST /tenders/{tender_id}/attachments/{attachment_id}/upload-url`, registrándose con `source="extension"` para alimentar el modelo de confianza de la Decisión 6 (ADR 0002).
-
-### 6. Cola Pull Distribuida (`LeaseFetchJobsUseCase` + `JobRunner`)
-Cuando el usuario está inactivo (`chrome.idle == "idle"`), la extensión solicita periódicamente una tarea de descarga mediante `POST /extension/jobs/lease`. La API reserva licitaciones huérfanas mediante `SELECT ... FOR UPDATE SKIP LOCKED` con un arrendamiento de 5 minutos. Se aplica rate-limiting estricto (máximo 1 tarea cada 5 minutos por cliente, tope de 50 tareas diarias y backoff con jitter aleatorio).
-
-### 7. Permisos Mínimos y Opcionales Diferidos
-Se solicitan únicamente los permisos esenciales en el manifiesto (`storage`, `cookies`, `alarms`, hosts de Mercado Público y Chiripa). Los permisos de portales de proveedores requeridos para la postulación futura (HdU 20) se configuran como `optional_host_permissions` y se solicitarán bajo demanda en dicha fase.
+* **D7-1 (Framework WXT en `monorepo/extension`):** Se adopta WXT para compilar de forma nativa a Manifest V3 tanto para Chromium (`target: chrome`) como para Gecko (`target: firefox`), unificando APIs polifill (`browser` / `chrome`), resolviendo la disparidad de background service worker vs script, y ofreciendo Vite HMR para desarrollo.
+* **D7-2 (Emparejamiento seguro sin duplicar login):** La extensión no solicita usuario ni contraseña de Chiripa. La aplicación web inicia el emparejamiento pasando el token de sesión y el ID de workspace a través del Bridge; la extensión almacena la sesión en `chrome.storage.local` y confirma la instalación ante el backend en `POST /extension/pairing/confirm`.
+* **D7-3 (Bridge universal por Content Script):** Para enlazar la web con la extensión en todos los navegadores (Chromium y Firefox) sin requerir `externally_connectable`, se inyecta un Content Script en los dominios de Chiripa. El protocolo `window.postMessage` exige:
+  1. `event.origin` idéntico a la ventana actual (`window.location.origin`).
+  2. Canal explícito `target: "CHIRIPA_EXTENSION"`.
+  3. Nonce criptográfico `crypto.randomUUID()`.
+  4. Marca temporal con caducidad estricta de 60 segundos para evitar ataques de repetición.
+* **D7-4 (Feature Flag y Kill Switch centralizado):** La configuración del backend incluye `extension_enabled: bool = True`. El endpoint público `GET /extension/capabilities` entrega flags operativos: `mp_adapter_enabled`, `fetch_jobs_enabled`, `min_version`, `max_daily_fetches` y lista de hosts soportados. Esto permite desactivar de emergencia el scraper sin esperar la revisión de las tiendas.
+* **D7-5 (`MpFichaAdapter` resiliente):** Adaptador especializado para la ficha pública de Mercado Público y Compra Ágil. Utiliza observadores de hidratación y selectores jerárquicos resilientes con fallback para detectar el código de licitación, la convocatoria (1.er o 2.º llamado), las fechas de cierre y el listado de documentos adjuntos.
+* **D7-6 (Reutilización de cookies de sesión sin credenciales):** La extensión utiliza los permisos de host de `*.mercadopublico.cl` para realizar descargas en el contexto del navegador. No se solicita RUT ni clave de Mercado Público al usuario.
+* **D7-7 (Descarga y subida deduplicada por SHA-256):** Al detectar una ficha, la extensión consulta `POST /extension/attachments/check` y solo descarga los anexos faltantes (`missing`). Calcula el SHA-256 en el navegador con Web Crypto API (`crypto.subtle.digest`), solicita URL prefirmada a la API (`source="extension"`) y sube directo a Cloudflare R2 con `x-amz-checksum-sha256`.
+* **D7-8 (Cola pull de extracción distribuida comunitaria):** En segundo plano y solo cuando el usuario está inactivo (`chrome.idle`), la extensión solicita periódicamente una tarea a la API (`POST /extension/jobs/lease`). La API asigna una licitación con anexos pendientes mediante `FOR UPDATE SKIP LOCKED` con un arrendamiento de 5 minutos, ritmo máximo de 1 descarga cada 5 minutos y límite de 50 tareas diarias por cliente.
+* **D7-9 (Permisos mínimos obligatorios y permisos opcionales diferidos):** Se declaran en el manifiesto únicamente: `storage`, `cookies`, `alarms`, y los hosts de `*.mercadopublico.cl` y de la app de Chiripa. Los permisos para la futura postulación automática (HdU 20) se reservan como `optional_host_permissions` y no se solicitan al instalar.
+* **D7-10 (Empaquetado multi-navegador y validación en CI):** Scripts dedicados `pnpm build:chrome` (`wxt build -b chrome`) y `pnpm build:firefox` (`wxt build -b firefox`). En CI se ejecutan `pnpm exec tsc --noEmit`, Vitest y `pnpm exec web-ext lint` sobre el artefacto de Firefox.
+* **D7-11 (Contratos de API backend para la extensión):** Endpoints formalizados bajo el prefijo `/extension`: capacidades (`/capabilities`), emparejamiento (`/pairing/start`, `/pairing/confirm`), latido (`/installations/heartbeat`), comprobación de anexos (`/attachments/check`), y ciclo de vida de tareas distribuidas (`/jobs/lease`, `/jobs/{job_id}/result`).
+* **D7-12 (Trazabilidad y compatibilidad de base de datos):** Tablas PostgreSQL `extension_installation` y `extension_fetch_job` gestionadas linealmente por Alembic (migración `e3d9b1c7a842`) con claves foráneas seguras en cascada hacia `users` y `tenders`.
 
 ---
 
 ## 3. Alternativas Descartadas
 
-* **Uso de `externally_connectable` en el manifiesto:**  
-  *Descartada.* No es compatible con Mozilla Firefox para páginas web estándar, lo que obligaría a mantener dos bases de código incompatibles y excluiría a los usuarios de Firefox.
-* **Scraping centralizado en servidores con Playwright / Selenium Headless:**  
-  *Descartada.* Costo operativo prohibitivo en infraestructura (CPU/RAM en Railway) y alto riesgo de bloqueo por IP al concentrar miles de peticiones desde un único centro de datos.
-* **Solicitar credenciales de Mercado Público al usuario en el popup:**  
-  *Descartada.* Representa un riesgo inaceptable de seguridad, almacenamiento de credenciales críticas y fricción innecesaria para el usuario.
-* **Uso de `setInterval` continuo en el background service worker:**  
-  *Descartada.* Los Service Workers de Manifest V3 en Chromium se suspenden automáticamente tras 30 segundos de inactividad, cancelando los temporizadores. Se adoptó obligatoriamente `chrome.alarms`.
+| Alternativa | Razón del descarte |
+|---|---|
+| **Cluster de navegadores headless en servidores de backend (Playwright/Selenium en Railway)** | Costo prohibitivo de infraestructura en memoria RAM y CPU; alto riesgo de bloqueos de IP masivos por parte de los cortafuegos gubernamentales de Mercado Público. |
+| **Uso de `externally_connectable` en el manifiesto** | Incompatible con Mozilla Firefox. Firefox no implementa esta API para páginas web arbitrarias, lo que habría dejado fuera a los usuarios de Gecko. |
+| **Solicitar credenciales de Mercado Público (RUT / Clave)** | Riesgo inaceptable de seguridad y privacidad. Violaría el principio de mínimo privilegio y generaría desconfianza justificada en las MiPymes. |
+| **Escribir extensiones separadas nativas para Chrome y Firefox sin framework** | Duplicación masiva de lógica de adapters, hashing y comunicación; divergencia inevitable en el ciclo de vida de desarrollo. |
 
 ---
 
 ## 4. Consecuencias
 
-### Positivas (Beneficios)
-- **Soporte universal multi-navegador:** Misma base de código y protocolo seguro para Chrome, Edge y Firefox.
-- **Eficiencia y escalabilidad:** Distribuye la captura de documentos entre la comunidad de usuarios sin costo de servidores ni bloqueos de IP centralizados.
-- **Seguridad robusta:** Cero almacenamiento de contraseñas de portales externos y aislamiento criptográfico en el emparejamiento.
-- **Continuidad operativa:** Capacidad de apagar o pausar módulos instantáneamente mediante el kill switch remoto.
-- **Preparación para HdU 20:** Estructura modular lista para incorporar submódulos de postulación en el portal de proveedores cuando se apruebe dicha fase.
+### Positivas
+- **Soporte universal multi-navegador:** Funciona idénticamente en Google Chrome, Microsoft Edge y Mozilla Firefox con una sola base de código en TypeScript.
+- **Eficiencia de costos cero para ingesta de anexos:** La extracción de documentos se distribuye de forma transparente entre los usuarios activos sin requerir granjas de servidores en la nube.
+- **Seguridad robusta:** Origen estricto, nonces criptográficos y tokens efímeros previenen ataques de CSRF o suplantación web.
+- **Resiliencia operativa:** El Kill Switch (`GET /extension/capabilities`) permite pausar la extensión al instante si Mercado Público cambia su estructura o surge algún incidente.
 
-### Negativas / Compromisos (Trade-offs)
-- **Dependencia de la actividad del usuario:** La velocidad de indexación de licitaciones huérfanas depende de que existan usuarios con la extensión instalada y navegadores abiertos. Mitigado por el fallback de subida manual del panel (Decisión 2).
-- **Mantenimiento de selectores DOM:** Cambios estructurales en la SPA de Mercado Público requerirán actualizaciones del adaptador, mitigado por el reporte automático de `adapter_broken` y el kill switch remoto.
-- **Proceso de revisión en tiendas:** Cada actualización requiere aprobación en Chrome Web Store y Mozilla Add-ons (AMO).
+### Negativas / Mitigaciones
+- **Dependencia de la actividad del navegador del usuario:** La cola distribuida depende de que los usuarios mantengan el navegador abierto.
+  - *Mitigación:* Se complementa con la subida manual de anexos (Decisión 2) y el modelo de corroboración comunitaria (Decisión 6).

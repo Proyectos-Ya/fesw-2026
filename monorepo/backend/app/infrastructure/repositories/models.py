@@ -26,6 +26,10 @@ from app.infrastructure.repositories.calendar_model import (
 from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
+from app.infrastructure.repositories.extension_model import (
+    ExtensionFetchJobModel,
+    ExtensionInstallationModel,
+)
 from app.infrastructure.repositories.matching_result_model import (
     MatchingResultModel,
 )
@@ -85,6 +89,8 @@ __all__ = [
     "CalendarConnectionModel",
     "CalendarEventLinkModel",
     "CalendarOAuthStateModel",
+    "ExtensionFetchJobModel",
+    "ExtensionInstallationModel",
     "TenderMilestoneModel",
     "QuotationModel",
     "QuotationMaterialModel",

@@ -281,6 +281,13 @@ class Settings(BaseSettings):
     attachment_processing_poll_seconds: int = Field(default=60, gt=0)
     attachment_processing_sweep_seconds: int = Field(default=15 * 60, gt=0)
 
+    # --- Extensión de navegador (plan 233, decisión 7) ---
+    extension_enabled: bool = True
+    extension_min_version: str = "0.1.0"
+    extension_latest_version: str = "0.1.0"
+    extension_max_daily_fetches: int = Field(default=50, ge=0)
+    extension_polling_interval_seconds: int = Field(default=300, gt=0)
+
     @property
     def attachment_extraction_model(self) -> str:
         return self.gemini_extraction_model or self.gemini_model

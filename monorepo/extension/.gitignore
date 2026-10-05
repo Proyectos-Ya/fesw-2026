@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# WXT build artifacts
+.output/
+.wxt/
+
+# Test and coverage
+coverage/
+
+# OS / Editors
+.DS_Store
+Thumbs.db
