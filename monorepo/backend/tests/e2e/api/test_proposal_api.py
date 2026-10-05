@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 
-from app import bootstrap
 from app.application.services.proposal_ai_service import (
     DraftContentDTO,
     DraftParagraphDTO,
@@ -44,6 +43,17 @@ from app.application.use_cases.proposals.start_feasibility import (
 )
 from app.application.use_cases.proposals.sync_proposal_answers import (
     SyncProposalAnswersUseCase,
+)
+from app.bootstrap.capabilities import get_answer_capability_question_use_case
+from app.bootstrap.proposals import (
+    get_answer_proposal_question_use_case,
+    get_decide_discrepancy_use_case,
+    get_export_proposal_use_case,
+    get_generate_proposal_use_case,
+    get_proposal_use_case,
+    get_resume_proposal_use_case,
+    get_start_feasibility_use_case,
+    get_sync_proposal_answers_use_case,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
@@ -125,7 +135,7 @@ def entorno(api: AsyncClient):
         )
     }
 
-    app.dependency_overrides[bootstrap.get_start_feasibility_use_case] = lambda: (
+    app.dependency_overrides[get_start_feasibility_use_case] = lambda: (
         StartFeasibilityUseCase(
             supplier_repo=suppliers,
             tender_repo=tenders,
@@ -139,7 +149,7 @@ def entorno(api: AsyncClient):
             ai_service=ia["servicio"],
         )
     )
-    app.dependency_overrides[bootstrap.get_proposal_use_case] = lambda: (
+    app.dependency_overrides[get_proposal_use_case] = lambda: (
         GetProposalUseCase(
             suppliers,
             tenders,
@@ -148,7 +158,7 @@ def entorno(api: AsyncClient):
             BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences),
         )
     )
-    app.dependency_overrides[bootstrap.get_answer_proposal_question_use_case] = lambda: (
+    app.dependency_overrides[get_answer_proposal_question_use_case] = lambda: (
         AnswerProposalQuestionUseCase(
             supplier_repo=suppliers,
             tender_repo=tenders,
@@ -159,16 +169,16 @@ def entorno(api: AsyncClient):
             ),
         )
     )
-    app.dependency_overrides[bootstrap.get_decide_discrepancy_use_case] = lambda: (
+    app.dependency_overrides[get_decide_discrepancy_use_case] = lambda: (
         DecideDiscrepancyUseCase(suppliers, tenders, drafts)
     )
-    app.dependency_overrides[bootstrap.get_resume_proposal_use_case] = lambda: (
+    app.dependency_overrides[get_resume_proposal_use_case] = lambda: (
         ResumeProposalUseCase(suppliers, tenders, drafts)
     )
-    app.dependency_overrides[bootstrap.get_export_proposal_use_case] = lambda: (
+    app.dependency_overrides[get_export_proposal_use_case] = lambda: (
         ExportProposalDocxUseCase(suppliers, tenders, drafts, DocxProposalExporter())
     )
-    app.dependency_overrides[bootstrap.get_generate_proposal_use_case] = lambda: (
+    app.dependency_overrides[get_generate_proposal_use_case] = lambda: (
         GenerateProposalUseCase(
             supplier_repo=suppliers,
             tender_repo=tenders,
@@ -180,16 +190,16 @@ def entorno(api: AsyncClient):
             ai_service=ia["servicio"],
         )
     )
-    app.dependency_overrides[bootstrap.get_answer_capability_question_use_case] = (
+    app.dependency_overrides[get_answer_capability_question_use_case] = (
         lambda: AnswerCapabilityQuestionUseCase(suppliers, questions, answers)
     )
-    app.dependency_overrides[bootstrap.get_sync_proposal_answers_use_case] = lambda: (
+    app.dependency_overrides[get_sync_proposal_answers_use_case] = lambda: (
         SyncProposalAnswersUseCase(
             suppliers,
             tenders,
             drafts,
             BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences),
-            app.dependency_overrides[bootstrap.get_generate_proposal_use_case](),
+            app.dependency_overrides[get_generate_proposal_use_case](),
         )
     )
 

@@ -9,7 +9,6 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app import bootstrap
 from app.application.use_cases.capabilities.add_capability_evidence import (
     AddCapabilityEvidenceUseCase,
 )
@@ -18,6 +17,11 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 )
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
+)
+from app.bootstrap.capabilities import (
+    get_add_capability_evidence_use_case,
+    get_answer_capability_question_use_case,
+    get_build_experience_catalog_use_case,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
 from app.main import app
@@ -56,13 +60,13 @@ def banco(api: AsyncClient):
     evidences = InMemoryCapabilityEvidenceRepository()
     suppliers = api.proveedores
 
-    app.dependency_overrides[bootstrap.get_build_experience_catalog_use_case] = lambda: (
+    app.dependency_overrides[get_build_experience_catalog_use_case] = lambda: (
         BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences)
     )
-    app.dependency_overrides[bootstrap.get_answer_capability_question_use_case] = (
+    app.dependency_overrides[get_answer_capability_question_use_case] = (
         lambda: AnswerCapabilityQuestionUseCase(suppliers, questions, answers)
     )
-    app.dependency_overrides[bootstrap.get_add_capability_evidence_use_case] = lambda: (
+    app.dependency_overrides[get_add_capability_evidence_use_case] = lambda: (
         AddCapabilityEvidenceUseCase(suppliers, questions, answers, evidences)
     )
     return answers, evidences

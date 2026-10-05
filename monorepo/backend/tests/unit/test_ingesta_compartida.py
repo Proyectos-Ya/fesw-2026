@@ -8,7 +8,7 @@ exist` (primera corrida en `dev test`, 16-sep-2026). En local no se ve porque
 ahí la conexión es directa.
 """
 
-import app.bootstrap
+import app.bootstrap.builders
 import app.infrastructure.db as db
 from app.config import settings
 from scripts.ingesta_compartida import construir_servicio
@@ -23,7 +23,7 @@ def _capturar_engine(monkeypatch) -> list[dict]:
         return original(url, **kwargs)
 
     monkeypatch.setattr(db, "create_async_engine", espia)
-    monkeypatch.setattr(app.bootstrap, "build_embedding_service", lambda: object())
+    monkeypatch.setattr(app.bootstrap.builders, "build_embedding_service", lambda: object())
     return llamadas
 
 

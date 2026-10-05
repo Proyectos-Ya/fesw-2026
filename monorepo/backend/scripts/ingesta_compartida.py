@@ -82,7 +82,7 @@ def construir_servicio(
     *, con_embeddings: bool = True
 ) -> tuple[TenderIngestionService, AsyncEngine, AsyncQdrantClient]:
     """Arma el servicio de ingesta con las mismas piezas que usa la aplicación."""
-    from app.bootstrap import build_embedding_service
+    from app.bootstrap.builders import build_embedding_service
 
     engine = crear_engine()
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)

@@ -6,8 +6,8 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import (
-    bootstrap,
+from app.bootstrap import bootstrap
+from app.bootstrap.runners import (
     build_milestone_refresh_runner,
     build_notification_runners,
     reconcile_export_jobs,
