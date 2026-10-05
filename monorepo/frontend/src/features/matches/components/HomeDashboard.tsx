@@ -136,6 +136,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
         <RecentWorkspacesBar />
+        <PendingInvitationsList />
         <div className="flex flex-col gap-4">
           <TenderCardSkeleton />
           <TenderCardSkeleton />
