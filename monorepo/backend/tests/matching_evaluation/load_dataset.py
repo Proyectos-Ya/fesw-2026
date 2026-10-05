@@ -12,10 +12,14 @@ Lee de Postgres, no del xlsx: así lo indexado es exactamente lo que la aplicaci
 tiene, sin una segunda interpretación del dataset.
 
 **Usa los mismos servicios que la ingesta real** —`TextBuilder`,
-`BgeM3EmbeddingService` y `QdrantTenderRepository`— en vez de reimplementar el
+`build_embedding_service` y `QdrantTenderRepository`— en vez de reimplementar el
 texto, el vector o el payload. Una copia paralela se desincroniza en cuanto
 alguien toca el original, y el síntoma sería un matching que empeora sin causa
 visible.
+
+El embedding sale de `EMBEDDING_PROVIDER`, igual que en la API: con `local` carga
+bge-m3 en este proceso (~1 GB de RAM más), y con `deepinfra` o `huggingface` lo
+pide por API y no carga nada.
 """
 
 import asyncio
@@ -31,13 +35,11 @@ from qdrant_client import AsyncQdrantClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from app.application.services.text_builder import TextBuilder  # noqa: E402
+from app.bootstrap.builders import build_embedding_service  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.infrastructure.db import engine  # noqa: E402
 from app.infrastructure.repositories.qdrant_tender_repository import (  # noqa: E402
     QdrantTenderRepository,
-)
-from app.infrastructure.services.bge_m3_embedding_service import (  # noqa: E402
-    BgeM3EmbeddingService,
 )
 from app.shared.constants import TENDER_STATUS_CODE_BY_ID  # noqa: E402
 from app.shared.datetime_utils import to_utc_epoch  # noqa: E402
@@ -107,7 +109,7 @@ async def main() -> None:
     print(f"[DB] {len(licitaciones)} licitaciones por indexar", flush=True)
 
     constructor = TextBuilder()
-    embeddings = BgeM3EmbeddingService()
+    embeddings = build_embedding_service()
     cliente = AsyncQdrantClient(url=settings.qdrant_url, timeout=60.0)
     repositorio = QdrantTenderRepository(
         client=cliente, vector_size=settings.embedding_vector_size
