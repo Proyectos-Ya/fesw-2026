@@ -12,6 +12,9 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
+from app.application.services.milestone_extraction_background import (
+    MilestoneExtractionStatus,
+)
 from app.domain.entities.calendar import CalendarProvider
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_milestone import (
@@ -37,6 +40,8 @@ class TenderMilestonesResult:
     discarded_count: int = 0
     # Bases subidas cuyo archivo ya no está (el disco del contenedor es efímero).
     unavailable_documents_count: int = 0
+    # Si la IA está leyendo en segundo plano las bases recién subidas.
+    extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE
 
 
 async def get_tender(tenders: ITenderRepository, tender_id: UUID) -> Tender:
@@ -126,6 +131,7 @@ async def describe(
     documents_count: int,
     discarded_count: int = 0,
     unavailable_documents_count: int = 0,
+    extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE,
 ) -> TenderMilestonesResult:
     proveedores = await synced_providers_by_milestone(event_links, [m.id for m in milestones])
     return TenderMilestonesResult(
@@ -140,4 +146,5 @@ async def describe(
         documents_count=documents_count,
         discarded_count=discarded_count,
         unavailable_documents_count=unavailable_documents_count,
+        extraction_status=extraction_status,
     )

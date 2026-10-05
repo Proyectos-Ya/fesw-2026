@@ -4,6 +4,9 @@ from uuid import UUID, uuid4
 
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
 from app.application.services.document_validator_service import IDocumentValidatorService
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+)
 from app.domain.entities.tender_chat import TenderChatDocument
 from app.domain.errors.tender_chat_errors import (
     UnsupportedDocumentTypeError,
@@ -23,9 +26,11 @@ class UploadTenderChatDocumentUseCase:
         self,
         chat_repo: ITenderChatRepository,
         validator_service: Optional[IDocumentValidatorService] = None,
+        milestone_extraction: Optional[IMilestoneExtractionBackground] = None,
     ):
         self.chat_repo = chat_repo
         self.validator_service = validator_service
+        self.milestone_extraction = milestone_extraction
 
     async def execute(
         self,
@@ -80,4 +85,9 @@ class UploadTenderChatDocumentUseCase:
 
         # 5. Persistir documento
         saved_doc = await self.chat_repo.save_document(doc=doc, file_bytes=file_bytes)
+
+        # 6. Extraer los hitos de las bases sin que el usuario tenga que pedirlo
+        # (HU-16, criterio 1). Corre en segundo plano: la subida no espera a la IA.
+        if self.milestone_extraction is not None:
+            self.milestone_extraction.schedule(user_id, tender_id)
         return saved_doc

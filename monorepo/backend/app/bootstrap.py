@@ -308,6 +308,12 @@ from app.application.use_cases.exports.export_tender import ExportTenderUseCase
 from app.infrastructure.repositories.export_job_repository import ExportJobRepository
 from app.infrastructure.routers.exports import create_exports_router
 from app.infrastructure.services.exports.background import AsyncioExportBackground
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+)
+from app.infrastructure.services.milestone_extraction_background import (
+    AsyncioMilestoneExtractionBackground,
+)
 from app.infrastructure.services.exports.excel_renderer import OpenpyxlExcelRenderer
 from app.infrastructure.services.exports.pdf_renderer import ReportLabPdfRenderer
 
@@ -860,6 +866,31 @@ def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAI
     return request.app.state.milestone_extraction_service
 
 
+def get_milestone_extraction_background(request: Request) -> IMilestoneExtractionBackground:
+    return request.app.state.milestone_extraction_background
+
+
+def build_milestone_extraction_background(app: FastAPI) -> AsyncioMilestoneExtractionBackground:
+    """Extrae los hitos de las bases apenas se suben (HU-16, criterio 1).
+
+    Cada pasada abre su propia sesión: cuando la IA termina, la sesión de la
+    subida que la originó ya se cerró.
+    """
+
+    @asynccontextmanager
+    async def open_extraction():
+        async with async_session_maker() as session:
+            yield ExtractTenderMilestonesUseCase(
+                tenders=TenderRepository(session),
+                milestones=TenderMilestoneRepository(session),
+                event_links=CalendarEventLinkRepository(session),
+                chat=SQLTenderChatRepository(session),
+                ai=app.state.milestone_extraction_service,
+            )
+
+    return AsyncioMilestoneExtractionBackground(open_extraction)
+
+
 def get_calendar_providers(request: Request) -> CalendarProviders:
     return request.app.state.calendar_providers
 
@@ -942,12 +973,16 @@ def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient
 def get_tender_milestones_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     chat_repo: Annotated[ITenderChatRepository, Depends(get_tender_chat_repo)],
+    extraction: Annotated[
+        IMilestoneExtractionBackground, Depends(get_milestone_extraction_background)
+    ],
 ) -> GetTenderMilestonesUseCase:
     return GetTenderMilestonesUseCase(
         tenders=TenderRepository(session),
         milestones=TenderMilestoneRepository(session),
         event_links=CalendarEventLinkRepository(session),
         chat=chat_repo,
+        extraction=extraction,
     )
 
 
@@ -1141,9 +1176,14 @@ def get_upload_tender_chat_doc_use_case(
     validator_service: Annotated[
         IDocumentValidatorService, Depends(get_document_validator_service)
     ],
+    milestone_extraction: Annotated[
+        IMilestoneExtractionBackground, Depends(get_milestone_extraction_background)
+    ],
 ) -> UploadTenderChatDocumentUseCase:
     return UploadTenderChatDocumentUseCase(
-        chat_repo=chat_repo, validator_service=validator_service
+        chat_repo=chat_repo,
+        validator_service=validator_service,
+        milestone_extraction=milestone_extraction,
     )
 
 
@@ -1612,6 +1652,7 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     app.state.export_background = build_export_background(app)
+    app.state.milestone_extraction_background = build_milestone_extraction_background(app)
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
@@ -1745,6 +1786,7 @@ def bootstrap(app: FastAPI) -> None:
             get_tender_milestones_use_case,
             get_extract_tender_milestones_use_case,
             get_set_milestone_reminder_use_case,
+            get_milestone_extraction_background,
         )
     )
     app.include_router(

@@ -49,12 +49,19 @@ export interface MilestoneReminderResponse {
   reminder_days_before: ReminderDaysBefore | null;
 }
 
+/**
+ * La IA extrae los hitos sola al subir las bases. `running` mientras lee;
+ * `failed` si la última extracción automática no pudo terminar.
+ */
+export type MilestoneExtractionStatus = "idle" | "running" | "failed";
+
 export interface MilestoneList {
   milestones: TenderMilestone[];
   documents_count: number;
   discarded_count: number;
   /** Bases subidas cuyo archivo ya no está en el servidor: hay que volver a subirlas. */
   unavailable_documents_count: number;
+  extraction_status: MilestoneExtractionStatus;
 }
 
 export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google"];

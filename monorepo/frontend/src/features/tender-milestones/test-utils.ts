@@ -23,6 +23,7 @@ export function buildMilestoneList(overrides: Partial<MilestoneList> = {}): Mile
     documents_count: 0,
     discarded_count: 0,
     unavailable_documents_count: 0,
+    extraction_status: "idle",
     ...overrides,
   };
 }

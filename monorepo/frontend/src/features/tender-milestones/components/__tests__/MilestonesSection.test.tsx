@@ -106,7 +106,31 @@ describe("MilestonesSection", () => {
 
     const boton = await screen.findByRole("button", { name: /extraer hitos de las bases/i });
     expect(boton).toBeDisabled();
-    expect(screen.getByText(/adjunta las bases en el asistente/i)).toBeInTheDocument();
+    expect(screen.getByText(/sube las bases en el asistente/i)).toBeInTheDocument();
+  });
+
+  it("mientras la IA lee las bases recién subidas lo dice y no deja extraer a mano", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, extraction_status: "running" }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByText(/la ia está leyendo las bases que subiste/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /extraer hitos de las bases/i })).toBeDisabled();
+  });
+
+  it("si la extracción automática falló invita a reintentar con el botón", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, extraction_status: "failed" }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(
+      await screen.findByText(/no se pudieron extraer los hitos automáticamente/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /extraer hitos de las bases/i })).toBeEnabled();
   });
 
   it("extrae los hitos de las bases y muestra el resultado", async () => {

@@ -10,6 +10,10 @@ from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
 from app.application.repositories.tender_repository import ITenderRepository
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+    MilestoneExtractionStatus,
+)
 from app.application.use_cases.milestones.milestone_views import (
     TenderMilestonesResult,
     changed,
@@ -34,12 +38,14 @@ class GetTenderMilestonesUseCase:
         milestones: ITenderMilestoneRepository,
         event_links: ICalendarEventLinkRepository,
         chat: ITenderChatRepository,
+        extraction: IMilestoneExtractionBackground | None = None,
         now: Callable[[], datetime] = utc_now_naive,
     ):
         self.tenders = tenders
         self.milestones = milestones
         self.event_links = event_links
         self.chat = chat
+        self.extraction = extraction
         self.now = now
 
     async def execute(self, user_id: UUID, tender_id: UUID) -> TenderMilestonesResult:
@@ -54,4 +60,11 @@ class GetTenderMilestonesUseCase:
             existentes = await self.milestones.list_for_tender(user_id, tender_id)
 
         documentos = await self.chat.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
-        return await describe(existentes, self.event_links, ahora, len(documentos))
+        estado = (
+            self.extraction.status(user_id, tender_id)
+            if self.extraction is not None
+            else MilestoneExtractionStatus.IDLE
+        )
+        return await describe(
+            existentes, self.event_links, ahora, len(documentos), extraction_status=estado
+        )

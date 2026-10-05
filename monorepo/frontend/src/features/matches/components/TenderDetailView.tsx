@@ -98,6 +98,9 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  // Sube al subir bases en el asistente: la tabla de hitos recarga y muestra
+  // que la IA las está leyendo.
+  const [milestonesRefreshKey, setMilestonesRefreshKey] = useState(0);
   const [isSaved, setIsSaved] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -674,7 +677,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
       )}
 
       <Section title="Hitos y fechas importantes" icon="calendar">
-        <MilestonesSection tenderId={tenderId} />
+        <MilestonesSection tenderId={tenderId} refreshKey={milestonesRefreshKey} />
         <p className="mt-4 text-xs text-text-subtle">
           Última modificación en Mercado Público: {formatDateTime(tender.last_change_at)}
         </p>
@@ -758,6 +761,7 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
         tenderTitle={tender.name}
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
+        onDocumentsChanged={() => setMilestonesRefreshKey((k) => k + 1)}
       />
     </section>
   );

@@ -3,6 +3,9 @@ from uuid import uuid4
 
 import pytest
 
+from app.application.services.milestone_extraction_background import (
+    MilestoneExtractionStatus,
+)
 from app.application.use_cases.milestones.get_tender_milestones import (
     GetTenderMilestonesUseCase,
 )
@@ -129,3 +132,42 @@ async def test_licitacion_inexistente(escenario):
 
     with pytest.raises(TenderNotFound):
         await use_case.execute(USUARIO, uuid4())
+
+
+class EstadoFijo:
+    def __init__(self, estado: MilestoneExtractionStatus) -> None:
+        self.estado = estado
+        self.consultas: list[tuple] = []
+
+    def status(self, user_id, tender_id) -> MilestoneExtractionStatus:
+        self.consultas.append((user_id, tender_id))
+        return self.estado
+
+
+async def test_sin_extraccion_en_segundo_plano_el_estado_es_inactivo(escenario):
+    tender, *_, use_case = escenario
+
+    resultado = await use_case.execute(USUARIO, tender.id)
+
+    assert resultado.extraction_status is MilestoneExtractionStatus.IDLE
+
+
+async def test_informa_si_la_ia_esta_leyendo_las_bases(escenario):
+    # Así la ficha puede mostrar "leyendo…" y recargar hasta que termine.
+    tender, hitos, enlaces, chat, _ = escenario
+    tenders = InMemoryTenderRepository()
+    tenders.tenders[tender.id] = tender
+    extraccion = EstadoFijo(MilestoneExtractionStatus.RUNNING)
+    use_case = GetTenderMilestonesUseCase(
+        tenders=tenders,
+        milestones=hitos,
+        event_links=enlaces,
+        chat=chat,
+        extraction=extraccion,
+        now=lambda: AHORA,
+    )
+
+    resultado = await use_case.execute(USUARIO, tender.id)
+
+    assert resultado.extraction_status is MilestoneExtractionStatus.RUNNING
+    assert extraccion.consultas == [(USUARIO, tender.id)]
