@@ -4,10 +4,17 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from app.application.repositories.attachment_extraction_repository import (
+    IAttachmentExtractionRepository,
+)
 from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
 )
+from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.repositories.tender_digest_repository import (
+    ITenderDigestRepository,
+)
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
@@ -17,6 +24,9 @@ from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
 )
 from app.application.services.tender_assistant_ai_service import DocumentContextDTO
+from app.application.use_cases.milestones.milestone_derivation import (
+    derivar_hitos_desde_digest,
+)
 from app.application.use_cases.milestones.milestone_views import (
     TenderMilestonesResult,
     changed,
@@ -26,6 +36,7 @@ from app.application.use_cases.milestones.milestone_views import (
     merge_milestones,
     synced_providers_by_milestone,
 )
+from app.domain.entities.attachment_extraction import EXTRACTION_PROMPT_VERSION
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatDocument
 from app.domain.entities.tender_milestone import (
@@ -48,6 +59,9 @@ class ExtractTenderMilestonesUseCase:
         event_links: ICalendarEventLinkRepository,
         chat: ITenderChatRepository,
         ai: IMilestoneExtractionAIService,
+        digest_repo: ITenderDigestRepository | None = None,
+        extraction_repo: IAttachmentExtractionRepository | None = None,
+        supplier_repo: ISupplierRepository | None = None,
         now: Callable[[], datetime] = utc_now_naive,
     ):
         self.tenders = tenders
@@ -55,6 +69,9 @@ class ExtractTenderMilestonesUseCase:
         self.event_links = event_links
         self.chat = chat
         self.ai = ai
+        self.digest_repo = digest_repo
+        self.extraction_repo = extraction_repo
+        self.supplier_repo = supplier_repo
         self.now = now
 
     async def execute(self, user_id: UUID, tender_id: UUID) -> TenderMilestonesResult:
@@ -67,13 +84,43 @@ class ExtractTenderMilestonesUseCase:
         oficiales = merge_milestones(existentes, mercado_publico_milestones(tender, user_id), ahora)
         await self.milestones.save_many(changed(existentes, oficiales))
 
-        documentos = await self._documentos(user_id, tender_id)
-        extraidos: list[ExtractedMilestone] = []
-        if documentos:
-            contextos = [contexto for _, contexto in documentos]
-            extraidos = await self.ai.extract(contextos, _contexto(tender))
+        # D5-7: Si existen extracciones y digest, derivar directamente sin llamar a Gemini
+        digest_data = None
+        fuentes = []
+        workspace_id = None
+        if self.supplier_repo:
+            try:
+                empresa = await self.supplier_repo.find_by_user(user_id)
+                if empresa:
+                    workspace_id = empresa.id
+            except Exception:
+                pass
 
-        candidatos, descartados = _a_hitos(extraidos, [d for d, _ in documentos], user_id, tender_id)
+        if self.digest_repo:
+            digest_entity = await self.digest_repo.get_current(tender_id, workspace_id)
+            if digest_entity:
+                digest_data = digest_entity.data
+
+        if self.extraction_repo:
+            fuentes = await self.extraction_repo.list_sources(
+                tender_id=tender_id,
+                workspace_id=workspace_id,
+                prompt_version=EXTRACTION_PROMPT_VERSION,
+            )
+
+        if digest_data:
+            candidatos = derivar_hitos_desde_digest(digest_data, fuentes, user_id, tender_id)
+            descartados = 0
+            docs_count = len(fuentes)
+        else:
+            documentos = await self._documentos(user_id, tender_id)
+            extraidos: list[ExtractedMilestone] = []
+            if documentos:
+                contextos = [contexto for _, contexto in documentos]
+                extraidos = await self.ai.extract(contextos, _contexto(tender))
+            candidatos, descartados = _a_hitos(extraidos, [d for d, _ in documentos], user_id, tender_id)
+            docs_count = len(documentos)
+
         de_ia = [m for m in existentes if m.source is MilestoneSource.IA_DOCUMENTO]
         nuevos = merge_milestones(de_ia, candidatos, ahora)
         await self.milestones.save_many(changed(de_ia, nuevos))
@@ -83,7 +130,7 @@ class ExtractTenderMilestonesUseCase:
             await self.milestones.list_for_tender(user_id, tender_id),
             self.event_links,
             ahora,
-            documents_count=len(documentos),
+            documents_count=docs_count,
             discarded_count=descartados,
         )
 

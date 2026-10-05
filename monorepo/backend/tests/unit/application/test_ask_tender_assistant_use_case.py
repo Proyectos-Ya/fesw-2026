@@ -45,6 +45,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        pass_number: int = 1,
     ) -> AIResponseDTO:
         if self.should_fail:
             raise TenderAssistantUnavailableError("Error simulado de conexión con Gemini")

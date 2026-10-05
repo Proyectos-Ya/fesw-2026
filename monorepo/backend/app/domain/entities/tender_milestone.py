@@ -71,6 +71,7 @@ class TenderMilestone(BaseModel):
     description: Annotated[str | None, _recortar(2000)] = None
     source: MilestoneSource
     source_document_id: UUID | None = None
+    source_file_id: UUID | None = None
     source_excerpt: Annotated[str | None, _recortar(1000)] = None
     due_at: UtcDateTime
     has_time: bool

@@ -41,6 +41,11 @@ export function TenderAssistantDrawer({
 
   if (!isOpen) return null;
 
+  const handleNavigateToPanel = () => {
+    onClose();
+    document.getElementById("tender-attachments-panel")?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
     <aside
       aria-label="Asistente virtual de licitación"
@@ -91,9 +96,8 @@ export function TenderAssistantDrawer({
       <div className="p-3 border-b border-slate-100 bg-white">
         <DocumentAttachmentManager
           documents={documents}
-          onUpload={uploadDocument}
           onDelete={removeDocument}
-          isUploading={isUploading}
+          onNavigateToPanel={handleNavigateToPanel}
           externalError={documentError}
         />
       </div>

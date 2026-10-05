@@ -348,4 +348,58 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
 
     expect(screen.queryByText(/Asistente Virtual IA/i)).not.toBeInTheDocument();
   });
+
+  it("al hacer clic en 'Ver panel' cierra el drawer y hace scroll al panel de anexos", async () => {
+    const user = userEvent.setup();
+    const onCloseMock = vi.fn();
+    const scrollMock = vi.fn();
+
+    const panelEl = document.createElement("div");
+    panelEl.id = "tender-attachments-panel";
+    panelEl.scrollIntoView = scrollMock;
+    document.body.appendChild(panelEl);
+
+    vi.mocked(useTenderChatModule.useTenderChat).mockReturnValue({
+      sessionId: "session-1",
+      messages: [],
+      isLoadingHistory: false,
+      isAsking: false,
+      isStartingNewChat: false,
+      error: null,
+      historyError: null,
+      loadHistory: vi.fn(),
+      startNewChat: vi.fn(),
+      retryHistory: vi.fn(),
+      sendMessage: vi.fn(),
+    });
+
+    vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
+      documents: [],
+      isLoading: false,
+      isUploading: false,
+      error: null,
+      canUpload: true,
+      maxDocuments: 10,
+      clearError: vi.fn(),
+      loadDocuments: vi.fn(),
+      uploadDocument: vi.fn(),
+      removeDocument: vi.fn(),
+    });
+
+    render(
+      <TenderAssistantDrawer
+        tenderId="tender-1"
+        isOpen={true}
+        onClose={onCloseMock}
+      />
+    );
+
+    const verPanelBtn = screen.getByRole("button", { name: "Ver panel" });
+    await user.click(verPanelBtn);
+
+    expect(onCloseMock).toHaveBeenCalledOnce();
+    expect(scrollMock).toHaveBeenCalledWith({ behavior: "smooth" });
+
+    document.body.removeChild(panelEl);
+  });
 });

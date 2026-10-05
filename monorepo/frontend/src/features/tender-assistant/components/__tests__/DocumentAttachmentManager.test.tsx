@@ -1,9 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DocumentAttachmentManager } from "../DocumentAttachmentManager";
 import type { TenderChatDocument } from "../../types";
-import { MAX_ATTACHED_DOCUMENTS } from "../../types";
 
 const mockDocs: TenderChatDocument[] = [
   {
@@ -24,141 +23,64 @@ const mockDocs: TenderChatDocument[] = [
   },
 ];
 
-const createMockDocs = (count: number): TenderChatDocument[] =>
-  Array.from({ length: count }, (_, i) => ({
-    id: `doc-${i + 1}`,
-    tender_id: "tender-1",
-    file_name: `doc_${i + 1}.pdf`,
-    file_type: "pdf" as const,
-    file_size_bytes: 1024 * 50,
-    created_at: "2026-06-11T12:00:00Z",
-  }));
-
-describe("DocumentAttachmentManager (HU-05.2)", () => {
-  it("renderiza la lista de documentos adjuntos con contador de 10", () => {
+describe("DocumentAttachmentManager (Decisión 5 / Plan 233)", () => {
+  it("muestra el banner informativo de bases oficiales y no incluye input de archivo", () => {
     render(
       <DocumentAttachmentManager
-        documents={mockDocs}
-        onUpload={vi.fn()}
+        documents={[]}
         onDelete={vi.fn()}
-        isUploading={false}
+        onNavigateToPanel={vi.fn()}
       />
     );
 
-    expect(
-      screen.getByText(`Documentos adjuntos (2/${MAX_ATTACHED_DOCUMENTS})`)
-    ).toBeInTheDocument();
+    expect(screen.getByText("Bases y anexos oficiales sincronizados")).toBeInTheDocument();
+    expect(screen.queryByTestId("file-upload-input")).toBeNull();
+    expect(screen.queryByRole("button", { name: /adjuntar/i })).toBeNull();
+  });
+
+  it("invoca onNavigateToPanel al hacer clic en 'Ver panel'", async () => {
+    const onNavigateToPanel = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <DocumentAttachmentManager
+        documents={[]}
+        onDelete={vi.fn()}
+        onNavigateToPanel={onNavigateToPanel}
+      />
+    );
+
+    const verPanelBtn = screen.getByRole("button", { name: "Ver panel" });
+    await user.click(verPanelBtn);
+
+    expect(onNavigateToPanel).toHaveBeenCalledOnce();
+  });
+
+  it("renderiza documentos legacy del chat con badge 'Chat antiguo'", () => {
+    render(
+      <DocumentAttachmentManager
+        documents={mockDocs}
+        onDelete={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Archivos del chat (2)")).toBeInTheDocument();
     expect(screen.getByText("especificaciones.pdf")).toBeInTheDocument();
     expect(screen.getByText("itemizado.xlsx")).toBeInTheDocument();
     expect(screen.getByText("500.0 KB")).toBeInTheDocument();
+
+    const badges = screen.getAllByText("Chat antiguo");
+    expect(badges).toHaveLength(2);
   });
 
-  it("permite subir un archivo PDF válido", async () => {
-    const onUploadMock = vi.fn().mockResolvedValue(undefined);
-    render(
-      <DocumentAttachmentManager
-        documents={[]}
-        onUpload={onUploadMock}
-        onDelete={vi.fn()}
-        isUploading={false}
-      />
-    );
-
-    const input = screen.getByTestId("file-upload-input");
-    const file = new File(["dummy pdf"], "bases.pdf", {
-      type: "application/pdf",
-    });
-
-    fireEvent.change(input, { target: { files: [file] } });
-
-    expect(onUploadMock).toHaveBeenCalledWith(file);
-  });
-
-  it("rechaza archivos con extensiones no permitidas (.exe, .zip)", () => {
-    const onUploadMock = vi.fn();
-    render(
-      <DocumentAttachmentManager
-        documents={[]}
-        onUpload={onUploadMock}
-        onDelete={vi.fn()}
-        isUploading={false}
-      />
-    );
-
-    const input = screen.getByTestId("file-upload-input");
-    const file = new File(["dummy exe"], "script.exe", {
-      type: "application/x-msdownload",
-    });
-
-    fireEvent.change(input, { target: { files: [file] } });
-
-    expect(onUploadMock).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/Solo se permiten archivos PDF, Excel/i)
-    ).toBeInTheDocument();
-  });
-
-  it("deshabilita la subida e informa al alcanzar el límite de 10 documentos (CA5)", () => {
-    const tenDocs = createMockDocs(10);
-    const onUploadMock = vi.fn();
-
-    render(
-      <DocumentAttachmentManager
-        documents={tenDocs}
-        onUpload={onUploadMock}
-        onDelete={vi.fn()}
-        isUploading={false}
-      />
-    );
-
-    expect(
-      screen.getByText("Documentos adjuntos (10/10)")
-    ).toBeInTheDocument();
-
-    const uploadBtn = screen.getByRole("button", {
-      name: /adjuntar|límite alcanzado/i,
-    });
-    expect(uploadBtn).toBeDisabled();
-
-    const input = screen.getByTestId("file-upload-input");
-    const extraFile = new File(["extra pdf"], "extra.pdf", {
-      type: "application/pdf",
-    });
-    fireEvent.change(input, { target: { files: [extraFile] } });
-
-    expect(onUploadMock).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/límite máximo de 10 documentos/i)
-    ).toBeInTheDocument();
-  });
-
-  it("renderiza mensaje de error externo cuando falla la validación o el archivo está dañado (CA6)", () => {
-    const corruptedMsg =
-      "El archivo 'bases_danadas.pdf' no posee una cabecera PDF válida o está dañado.";
-
-    render(
-      <DocumentAttachmentManager
-        documents={mockDocs}
-        onUpload={vi.fn()}
-        onDelete={vi.fn()}
-        isUploading={false}
-        externalError={corruptedMsg}
-      />
-    );
-
-    expect(screen.getByText(corruptedMsg)).toBeInTheDocument();
-  });
-
-  it("llama a onDelete al hacer clic en el botón de eliminar", async () => {
+  it("permite eliminar documentos legacy con onDelete", async () => {
     const onDeleteMock = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
 
     render(
       <DocumentAttachmentManager
         documents={mockDocs}
-        onUpload={vi.fn()}
         onDelete={onDeleteMock}
-        isUploading={false}
       />
     );
 
@@ -168,5 +90,19 @@ describe("DocumentAttachmentManager (HU-05.2)", () => {
     await user.click(deleteBtns[0]);
 
     expect(onDeleteMock).toHaveBeenCalledWith("doc-1");
+  });
+
+  it("renderiza mensaje de error externo si existe", () => {
+    const errorMsg = "Error al procesar archivo anterior";
+
+    render(
+      <DocumentAttachmentManager
+        documents={mockDocs}
+        onDelete={vi.fn()}
+        externalError={errorMsg}
+      />
+    );
+
+    expect(screen.getByText(errorMsg)).toBeInTheDocument();
   });
 });
