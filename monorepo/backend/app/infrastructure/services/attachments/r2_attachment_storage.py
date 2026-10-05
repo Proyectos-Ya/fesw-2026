@@ -7,6 +7,7 @@ y borra. **Nunca se registra la URL prefirmada, las claves ni el secreto**: la U
 lleva la firma, que es una credencial por 15 minutos.
 """
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
@@ -86,7 +87,11 @@ class R2AttachmentStorage(IAttachmentStorage):
         )
 
     async def _pedir(
-        self, method: str, key: str, headers: dict[str, str] | None = None
+        self,
+        method: str,
+        key: str,
+        headers: dict[str, str] | None = None,
+        content: bytes | None = None,
     ) -> httpx.Response:
         firmadas = sign_request_headers(
             credentials=self._credentials,
@@ -99,7 +104,10 @@ class R2AttachmentStorage(IAttachmentStorage):
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as cliente:
                 return await cliente.request(
-                    method, f"https://{self._host}{self._ruta(key)}", headers=firmadas
+                    method,
+                    f"https://{self._host}{self._ruta(key)}",
+                    headers=firmadas,
+                    content=content,
                 )
         except httpx.HTTPError as exc:
             # Sin la URL ni las cabeceras: llevan la firma.
@@ -135,3 +143,15 @@ class R2AttachmentStorage(IAttachmentStorage):
         respuesta = await self._pedir("DELETE", key)
         if respuesta.status_code not in (200, 204, 404):
             raise AttachmentStorageError(f"R2 respondió {respuesta.status_code} a DELETE")
+
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        checksum = sha256_hex_a_base64(hashlib.sha256(data).hexdigest())
+        headers = {
+            "content-length": str(len(data)),
+            "x-amz-checksum-sha256": checksum,
+            "Content-Type": "application/octet-stream",
+        }
+        respuesta = await self._pedir("PUT", key, headers=headers, content=data)
+        if respuesta.status_code not in (200, 201):
+            raise AttachmentStorageError(f"R2 respondió {respuesta.status_code} a PUT")
+

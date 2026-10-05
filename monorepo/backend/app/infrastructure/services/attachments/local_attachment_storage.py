@@ -161,3 +161,9 @@ class LocalDiskAttachmentStorage(IAttachmentStorage):
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self.ruta_de(key).unlink, missing_ok=True)
+
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        destino = self.ruta_de(key)
+        await asyncio.to_thread(destino.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(destino.write_bytes, data)
+
