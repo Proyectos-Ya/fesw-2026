@@ -29,14 +29,14 @@ describe("urgencyBadge", () => {
 
   it("un hito crítico de hoy se destaca en rojo y entre exclamaciones", () => {
     expect(urgencyBadge("critico", "2026-10-01T20:00:00Z", AHORA)).toEqual({
-      label: "¡Hoy!",
+      label: "¡Vence hoy!",
       tone: "danger",
     });
   });
 
-  it("un hito crítico de mañana dice mañana", () => {
+  it("un hito crítico de mañana dice que vence mañana", () => {
     expect(urgencyBadge("critico", "2026-10-02T15:00:00Z", AHORA)).toEqual({
-      label: "¡Mañana!",
+      label: "¡Vence mañana!",
       tone: "danger",
     });
   });
@@ -44,14 +44,14 @@ describe("urgencyBadge", () => {
   it("a 5 días ya se destaca en rojo, sin un tono amarillo intermedio", () => {
     // Criterio 9: desde "5 días o menos" se destaca.
     expect(urgencyBadge("critico", "2026-10-06T15:00:00Z", AHORA)).toEqual({
-      label: "¡En 5 días!",
+      label: "¡Vence en 5 días!",
       tone: "danger",
     });
   });
 
   it("un hito lejano no se destaca: gris y sin exclamaciones", () => {
     expect(urgencyBadge("normal", "2026-10-21T15:00:00Z", AHORA)).toEqual({
-      label: "En 20 días",
+      label: "Vence en 20 días",
       tone: "neutral",
     });
   });

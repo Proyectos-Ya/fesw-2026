@@ -71,7 +71,7 @@ describe("MilestonesSection", () => {
     expect(visita.getByText("Visita técnica")).toBeInTheDocument();
     expect(visita.getByText("Extraído por IA")).toBeInTheDocument();
     expect(visita.getByText("03 oct 2026, 15:00")).toBeInTheDocument();
-    expect(visita.getByText("¡En 2 días!")).toBeInTheDocument();
+    expect(visita.getByText("¡Vence en 2 días!")).toBeInTheDocument();
     expect(visita.getByText("a las 15:00 del día 3")).toBeInTheDocument();
     expect(within(filas()[1]).getByText("Mercado Público")).toBeInTheDocument();
   });

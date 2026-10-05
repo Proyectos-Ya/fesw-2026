@@ -18,7 +18,8 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
    adjudicación, etc., cada uno con el párrafo de las bases de donde salió. El botón
    **Extraer hitos de las bases** queda para reintentar si la extracción automática falló.
 3. Los plazos a **5 días de calendario o menos** (criterio 9) se destacan en rojo y con la
-   etiqueta entre exclamaciones (*¡En 5 días!*, *¡Mañana!*, *¡Hoy!*); el resto va en gris.
+   etiqueta entre exclamaciones (*¡Vence en 5 días!*, *¡Vence mañana!*, *¡Vence hoy!*); el
+   resto va en gris (*Vence en 8 días*).
 4. Elegir los hitos y pulsar **Sincronizar con Google Calendar**:
    - si algún hito no tiene hora exacta, se pide confirmar una (propone 09:00);
    - la primera vez, lleva a Google a autorizar el acceso y, al volver, termina la
@@ -230,8 +231,8 @@ Correr el cierre de una licitación abierta contra la base local y recargar su d
 UPDATE tender SET closing_at = now() + interval '4 days' WHERE code = '<código>';
 ```
 
-El plazo queda **rojo** y entre exclamaciones ("¡En 4 días!"); con `interval '8 days'` queda
-gris ("En 8 días"). Se cuentan días de calendario en hora de Chile: lo que vence dentro de 5
+El plazo queda **rojo** y entre exclamaciones ("¡Vence en 4 días!"); con `interval '8 days'`
+queda gris ("Vence en 8 días"). Se cuentan días de calendario en hora de Chile: lo que vence dentro de 5
 días se destaca a cualquier hora, y a 6 días ya no.
 
 ### Criterio 10 a mano

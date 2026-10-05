@@ -50,10 +50,11 @@ const URGENCY_TONES: Record<MilestoneUrgency, BadgeTone> = {
   normal: "neutral",
 };
 
+// "Vence" deja claro qué pasa en ese plazo; "En 5 días" solo no lo decía.
 function remaining(days: number): string {
-  if (days === 0) return "Hoy";
-  if (days === 1) return "Mañana";
-  return `En ${days} días`;
+  if (days === 0) return "Vence hoy";
+  if (days === 1) return "Vence mañana";
+  return `Vence en ${days} días`;
 }
 
 /**

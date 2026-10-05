@@ -91,9 +91,9 @@ class TenderMilestone(BaseModel):
         """Vencido, crítico (5 días o menos, criterio 9) o normal.
 
         Los días se cuentan por **fecha de calendario en Chile**, igual que la
-        etiqueta de la tabla ("Hoy", "Mañana", "En 5 días"). Contarlos por horas
-        hacía que un hito rotulado "En 5 días" quedara sin destacar si vencía
-        más tarde en el día que la hora actual.
+        etiqueta de la tabla ("Vence hoy", "Vence mañana", "Vence en 5 días").
+        Contarlos por horas hacía que un hito rotulado "Vence en 5 días" quedara
+        sin destacar si vencía más tarde en el día que la hora actual.
         """
         if self.due_at < now:
             return MilestoneUrgency.VENCIDO
