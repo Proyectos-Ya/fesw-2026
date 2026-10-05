@@ -209,4 +209,34 @@ describe("WorkspaceContext", () => {
       expect(workspaceService.clearActiveWorkspace).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("revalida invitaciones al enfocar la ventana (window focus)", async () => {
+    vi.mocked(workspaceService.listWorkspaces).mockResolvedValue([]);
+    vi.mocked(workspaceService.getCurrentWorkspace).mockResolvedValue({
+      user_id: "u-1",
+      active_supplier_id: "s-1",
+      active_supplier_name: "Empresa 1",
+      role: "admin",
+      permissions: [],
+      is_admin: true,
+    });
+    vi.mocked(workspaceService.getMyInvitations).mockResolvedValue([]);
+
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(workspaceService.getMyInvitations).toHaveBeenCalledTimes(1);
+    });
+
+    // Disparar evento de foco en la ventana
+    fireEvent.focus(window);
+
+    await waitFor(() => {
+      expect(workspaceService.getMyInvitations).toHaveBeenCalledTimes(2);
+    });
+  });
 });
