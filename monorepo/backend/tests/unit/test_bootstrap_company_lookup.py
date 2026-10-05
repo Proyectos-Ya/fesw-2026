@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.bootstrap import build_company_lookup_service
+from app.bootstrap.builders import build_company_lookup_service
 from app.config import settings
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
     SreLookupService,

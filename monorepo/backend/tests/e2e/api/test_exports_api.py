@@ -12,8 +12,14 @@ import pytest
 from httpx import AsyncClient
 from openpyxl import load_workbook
 
-from app import bootstrap
 from app.application.use_cases.exports.export_jobs import CompleteExportJobUseCase
+from app.bootstrap.repositories import (
+    get_export_job_repo,
+    get_matching_result_repo,
+    get_quotation_repo,
+    get_tender_repo,
+)
+from app.bootstrap.services import get_export_background
 from app.config import settings
 from app.domain.entities.tender import Tender
 from app.infrastructure.services.exports.background import AsyncioExportBackground
@@ -73,13 +79,13 @@ class Entorno:
 @pytest.fixture
 def entorno():
     e = Entorno()
-    app.dependency_overrides[bootstrap.get_tender_repo] = lambda: e.tenders
-    app.dependency_overrides[bootstrap.get_matching_result_repo] = (
+    app.dependency_overrides[get_tender_repo] = lambda: e.tenders
+    app.dependency_overrides[get_matching_result_repo] = (
         InMemoryMatchingResultRepository
     )
-    app.dependency_overrides[bootstrap.get_quotation_repo] = InMemoryQuotationRepository
-    app.dependency_overrides[bootstrap.get_export_job_repo] = lambda: e.jobs
-    app.dependency_overrides[bootstrap.get_export_background] = lambda: e.fondo
+    app.dependency_overrides[get_quotation_repo] = InMemoryQuotationRepository
+    app.dependency_overrides[get_export_job_repo] = lambda: e.jobs
+    app.dependency_overrides[get_export_background] = lambda: e.fondo
     return e
 
 
