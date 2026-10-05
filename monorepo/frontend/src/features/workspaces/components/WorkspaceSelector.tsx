@@ -129,15 +129,6 @@ export function WorkspaceSelector() {
               {currentWorkspaceSummary.rut}
             </p>
           </div>
-          {invitations && invitations.length > 0 && (
-            <span
-              data-testid="invitations-badge"
-              className="flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white flex-none"
-              title={`Tienes ${invitations.length} invitación(es) pendiente(s)`}
-            >
-              {invitations.length}
-            </span>
-          )}
           <Icon
             name="chevron-down"
             size={16}

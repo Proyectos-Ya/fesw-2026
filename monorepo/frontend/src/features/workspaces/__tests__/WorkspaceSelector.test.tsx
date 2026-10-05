@@ -152,9 +152,8 @@ describe("WorkspaceSelector", () => {
 
     render(<WorkspaceSelector />);
 
-    // Verifica que el badge numérico o indicador de invitaciones esté presente
-    expect(screen.getByTestId("invitations-badge")).toBeInTheDocument();
-    expect(screen.getByTestId("invitations-badge")).toHaveTextContent("1");
+    // El botón cerrado no debe tener badge para evitar saturar la barra lateral
+    expect(screen.queryByTestId("invitations-badge")).not.toBeInTheDocument();
 
     // Al abrir el dropdown, debe mostrarse el acceso directo a invitaciones pendientes
     const triggerBtn = screen.getByRole("button", {
