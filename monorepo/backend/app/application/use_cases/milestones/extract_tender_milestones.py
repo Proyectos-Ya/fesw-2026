@@ -67,7 +67,7 @@ class ExtractTenderMilestonesUseCase:
         oficiales = merge_milestones(existentes, mercado_publico_milestones(tender, user_id), ahora)
         await self.milestones.save_many(changed(existentes, oficiales))
 
-        documentos = await self._documentos(user_id, tender_id)
+        documentos, perdidos = await self._documentos(user_id, tender_id)
         extraidos: list[ExtractedMilestone] = []
         if documentos:
             contextos = [contexto for _, contexto in documentos]
@@ -85,15 +85,24 @@ class ExtractTenderMilestonesUseCase:
             ahora,
             documents_count=len(documentos),
             discarded_count=descartados,
+            unavailable_documents_count=perdidos,
         )
 
     async def _documentos(
         self, user_id: UUID, tender_id: UUID
-    ) -> list[tuple[TenderChatDocument, DocumentContextDTO]]:
+    ) -> tuple[list[tuple[TenderChatDocument, DocumentContextDTO]], int]:
+        """Las bases con su contenido, y cuántas quedaron sin archivo.
+
+        El contenido vive en el disco del contenedor, que se borra en cada
+        despliegue: el registro del documento sigue, pero el archivo no. Se
+        cuentan para avisarle al usuario en vez de omitirlos en silencio.
+        """
         resultado = []
+        perdidos = 0
         for documento in await self.chat.get_documents_by_chat(user_id=user_id, tender_id=tender_id):
             contenido = await self.chat.get_document_bytes(documento.id, user_id)
             if not contenido:
+                perdidos += 1
                 continue
             resultado.append(
                 (
@@ -105,7 +114,7 @@ class ExtractTenderMilestonesUseCase:
                     ),
                 )
             )
-        return resultado
+        return resultado, perdidos
 
     async def _borrar_obsoletos(
         self, user_id: UUID, previos: list[TenderMilestone], vigentes: list[TenderMilestone]

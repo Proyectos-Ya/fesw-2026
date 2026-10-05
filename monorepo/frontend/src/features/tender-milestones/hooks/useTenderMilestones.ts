@@ -20,6 +20,30 @@ function discardedNotice(count: number): string | null {
   return `${count} fechas no se pudieron interpretar y se omitieron.`;
 }
 
+function unavailableNotice(count: number): string | null {
+  if (count === 0) return null;
+  if (count === 1) {
+    return "1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.";
+  }
+  return `${count} documentos que subiste ya no están disponibles. Vuelve a adjuntarlos en el asistente para extraer sus hitos.`;
+}
+
+/** Lo que conviene contarle al usuario después de extraer, o `null` si nada. */
+function extractionNotice(data: MilestoneList): string | null {
+  // Si la IA leyó bases y no salió ningún hito de ella, la tabla queda igual
+  // que antes de extraer; sin este aviso eso parece un error.
+  const noneFound =
+    data.documents_count > 0 && !data.milestones.some((m) => m.source === "ia_documento")
+      ? "La IA no encontró plazos en las bases adjuntas."
+      : null;
+  const avisos = [
+    discardedNotice(data.discarded_count),
+    unavailableNotice(data.unavailable_documents_count),
+    noneFound,
+  ].filter((aviso): aviso is string => aviso !== null);
+  return avisos.length > 0 ? avisos.join(" ") : null;
+}
+
 export function useTenderMilestones(tenderId: string) {
   const [state, setState] = useState<MilestonesState>({ status: "loading" });
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -68,7 +92,7 @@ export function useTenderMilestones(tenderId: string) {
     try {
       const data = await extractTenderMilestones(tenderId);
       setState({ status: "ready", data });
-      setNotice(discardedNotice(data.discarded_count));
+      setNotice(extractionNotice(data));
     } catch (error: unknown) {
       setExtractError(messageFrom(error, "No se pudieron extraer los hitos de las bases."));
     } finally {

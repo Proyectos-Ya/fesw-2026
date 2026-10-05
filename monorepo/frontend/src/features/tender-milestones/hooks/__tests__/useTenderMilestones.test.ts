@@ -64,6 +64,69 @@ describe("useTenderMilestones", () => {
     expect(result.current.isExtracting).toBe(false);
   });
 
+  async function extraerCon(respuesta: ReturnType<typeof buildMilestoneList>) {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+    vi.mocked(service.extractTenderMilestones).mockResolvedValue(respuesta);
+    const { result } = renderHook(() => useTenderMilestones("t-1"));
+    await waitFor(() => expect(result.current.state.status).toBe("ready"));
+    await act(async () => {
+      await result.current.extract();
+    });
+    return result.current.notice;
+  }
+
+  it("avisa cuando una base subida ya no está disponible y hay que volver a subirla", async () => {
+    // En producción el disco del contenedor se borra en cada despliegue.
+    const aviso = await extraerCon(buildMilestoneList({ unavailable_documents_count: 1 }));
+
+    expect(aviso).toBe(
+      "1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.",
+    );
+  });
+
+  it("habla en plural con varios documentos perdidos", async () => {
+    const aviso = await extraerCon(buildMilestoneList({ unavailable_documents_count: 2 }));
+
+    expect(aviso).toBe(
+      "2 documentos que subiste ya no están disponibles. Vuelve a adjuntarlos en el asistente para extraer sus hitos.",
+    );
+  });
+
+  it("si la IA leyó las bases pero no encontró plazos, lo dice", async () => {
+    // Sin este aviso, la tabla con solo publicación y cierre parece un error.
+    const aviso = await extraerCon(
+      buildMilestoneList({ documents_count: 1, milestones: [buildMilestone()] }),
+    );
+
+    expect(aviso).toBe("La IA no encontró plazos en las bases adjuntas.");
+  });
+
+  it("si la IA encontró plazos no muestra ese aviso", async () => {
+    const aviso = await extraerCon(
+      buildMilestoneList({
+        documents_count: 1,
+        milestones: [buildMilestone(), buildMilestone({ id: "m-2", source: "ia_documento" })],
+      }),
+    );
+
+    expect(aviso).toBeNull();
+  });
+
+  it("junta los avisos cuando hay más de uno", async () => {
+    const aviso = await extraerCon(
+      buildMilestoneList({
+        documents_count: 1,
+        discarded_count: 1,
+        unavailable_documents_count: 1,
+        milestones: [buildMilestone({ source: "ia_documento" })],
+      }),
+    );
+
+    expect(aviso).toBe(
+      "1 fecha no se pudo interpretar y se omitió. 1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.",
+    );
+  });
+
   it("refresh recarga sin pasar por el estado de carga", async () => {
     vi.mocked(service.getTenderMilestones)
       .mockResolvedValueOnce(buildMilestoneList())

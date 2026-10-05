@@ -35,6 +35,8 @@ class TenderMilestonesResult:
     milestones: list[MilestoneView]
     documents_count: int
     discarded_count: int = 0
+    # Bases subidas cuyo archivo ya no está (el disco del contenedor es efímero).
+    unavailable_documents_count: int = 0
 
 
 async def get_tender(tenders: ITenderRepository, tender_id: UUID) -> Tender:
@@ -123,6 +125,7 @@ async def describe(
     now: datetime,
     documents_count: int,
     discarded_count: int = 0,
+    unavailable_documents_count: int = 0,
 ) -> TenderMilestonesResult:
     proveedores = await synced_providers_by_milestone(event_links, [m.id for m in milestones])
     return TenderMilestonesResult(
@@ -136,4 +139,5 @@ async def describe(
         ],
         documents_count=documents_count,
         discarded_count=discarded_count,
+        unavailable_documents_count=unavailable_documents_count,
     )

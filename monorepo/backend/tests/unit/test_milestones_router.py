@@ -49,6 +49,7 @@ def api():
         ],
         documents_count=1,
         discarded_count=2,
+        unavailable_documents_count=1,
     )
     listar, extraer, recordar = AsyncMock(), AsyncMock(), AsyncMock()
     recordar.execute.return_value = hito.model_copy(update={"reminder_days_before": 3})
@@ -106,6 +107,7 @@ def test_extraer_devuelve_los_hitos_y_cuantos_se_descartaron(api):
 
     assert respuesta.status_code == 200
     assert respuesta.json()["discarded_count"] == 2
+    assert respuesta.json()["unavailable_documents_count"] == 1
     api.extraer.execute.assert_awaited_once_with(api.user_id, api.tender_id)
 
 

@@ -50,6 +50,8 @@ class MilestoneListResponse(BaseModel):
     milestones: list[MilestoneResponse]
     documents_count: int
     discarded_count: int
+    # Bases que el usuario subió pero cuyo archivo ya no está: hay que volver a subirlas.
+    unavailable_documents_count: int = 0
 
 
 def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
@@ -72,6 +74,7 @@ def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
         ],
         documents_count=resultado.documents_count,
         discarded_count=resultado.discarded_count,
+        unavailable_documents_count=resultado.unavailable_documents_count,
     )
 
 

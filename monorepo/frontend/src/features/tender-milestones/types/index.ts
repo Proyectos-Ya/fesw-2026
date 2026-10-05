@@ -53,6 +53,8 @@ export interface MilestoneList {
   milestones: TenderMilestone[];
   documents_count: number;
   discarded_count: number;
+  /** Bases subidas cuyo archivo ya no está en el servidor: hay que volver a subirlas. */
+  unavailable_documents_count: number;
 }
 
 export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google"];

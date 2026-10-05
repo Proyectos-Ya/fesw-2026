@@ -14,7 +14,7 @@ from app.infrastructure.services.gemini_milestone_extraction_service import (
 
 URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-test:generateContent?key=clave-test"
+    "gemini-test:generateContent"
 )
 CONTEXTO = "Licitación: Reparación de techumbre. Cierre: 2026-10-20 15:00 (hora de Chile)."
 
@@ -151,3 +151,60 @@ async def test_un_timeout_se_traduce_a_no_disponible(service):
 
     with pytest.raises(MilestoneExtractionUnavailable):
         await service.extract([PDF], CONTEXTO)
+
+
+_LLAVE_INVALIDA = {
+    "error": {
+        "code": 400,
+        "message": "API key not valid. Please pass a valid API key.",
+        "status": "INVALID_ARGUMENT",
+        "details": [{"reason": "API_KEY_INVALID"}],
+    }
+}
+
+
+@respx.mock
+async def test_registra_el_motivo_que_da_gemini_al_rechazar(service, caplog):
+    # Sin el motivo en el log, una llave mal configurada se ve igual que una
+    # caída de Gemini: solo "HTTP 400".
+    respx.post(URL).respond(400, json=_LLAVE_INVALIDA)
+
+    with caplog.at_level("ERROR"), pytest.raises(MilestoneExtractionUnavailable):
+        await service.extract([PDF], CONTEXTO)
+
+    assert "API key not valid" in caplog.text
+    assert "INVALID_ARGUMENT" in caplog.text
+
+
+@respx.mock
+async def test_nunca_registra_la_llave(service, caplog):
+    # La URL lleva la llave como parámetro: no puede llegar al log.
+    respx.post(URL).respond(400, json=_LLAVE_INVALIDA)
+
+    with caplog.at_level("DEBUG"), pytest.raises(MilestoneExtractionUnavailable):
+        await service.extract([PDF], CONTEXTO)
+
+    assert "clave-test" not in caplog.text
+
+
+@respx.mock
+async def test_un_rechazo_sin_cuerpo_json_igual_se_registra(service, caplog):
+    respx.post(URL).respond(503, text="Service Unavailable")
+
+    with caplog.at_level("ERROR"), pytest.raises(MilestoneExtractionUnavailable):
+        await service.extract([PDF], CONTEXTO)
+
+    assert "503" in caplog.text
+
+
+@respx.mock
+async def test_la_llave_viaja_en_una_cabecera_y_no_en_la_url(service):
+    # En la URL quedaría escrita en cualquier log de peticiones (httpx registra
+    # la URL completa a nivel INFO).
+    ruta = respx.post(URL).respond(200, json=_respuesta([]))
+
+    await service.extract([PDF], CONTEXTO)
+
+    peticion = ruta.calls.last.request
+    assert "clave-test" not in str(peticion.url)
+    assert peticion.headers["x-goog-api-key"] == "clave-test"
