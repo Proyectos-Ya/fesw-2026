@@ -41,9 +41,22 @@ Uso
     python -m scripts.sync_estados                              # local
     python -m scripts.sync_estados --confirmar-produccion       # el cron
 
-Códigos de salida: 0 si el listado vino completo; 1 si quedó incompleto, tocó
-el techo de `--limite` o venció el tope de tiempo (lo que sí llegó se aplica
-igual); 2 si se negó a correr contra una base no local o la ventana es inválida.
+Códigos de salida
+-----------------
+Railway manda un correo de "crashed" por cada salida distinta de 0, así que el
+1 se reserva para lo que pide que alguien mire:
+
+- **0**: el listado vino completo, o vino incompleto y es pasajero. En hora
+  punta la API responde 504 casi cada hora (medido el 2026-10-05: once corridas
+  seguidas entre 10:00 y 18:00), y la ventana de 2 h hace que la corrida
+  siguiente vuelva a pedir lo que faltó. Lo avisa en el log con la cuenta.
+- **1**: se juntaron `--incompletas-toleradas` incompletas seguidas (horas sin
+  mirar), se tocó el techo de `--limite` (la configuración se queda corta y
+  esperar no lo arregla) o venció el tope de tiempo. Lo que sí llegó se aplica
+  igual.
+- **2**: se negó a correr contra una base no local o la ventana es inválida.
+
+La racha de incompletas se cuenta en la tabla `sync_estados_run`.
 """
 
 import argparse
@@ -64,6 +77,9 @@ from app.domain.models.cambio_estado import CambioDeEstado, ResultadoSyncEstados
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
+from app.infrastructure.repositories.sync_estados_run_repository import (
+    SyncEstadosRunRepository,
+)
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     ListadoCambios,
@@ -76,11 +92,12 @@ from scripts.ingesta_compartida import (
 )
 from scripts.sync_diaria import verificar_destino
 
-# Los valores por defecto de ventana, tope de ítems y tope de tiempo vienen de
-# `SYNC_ESTADOS_VENTANA_HORAS`, `SYNC_ESTADOS_LIMITE` y
-# `SYNC_ESTADOS_TIMEOUT_MINUTOS` (ver `app/config.py`): 2 h, 9.000 (bajo los
-# 10.000 en que corta la API) y 50 min (en hora punta una corrida lista ~150
-# páginas, 15-30 min, y el tope tiene que quedar bajo el intervalo de 1 h).
+# Los valores por defecto de ventana, tope de ítems, tope de tiempo e
+# incompletas toleradas vienen de `SYNC_ESTADOS_VENTANA_HORAS`,
+# `SYNC_ESTADOS_LIMITE`, `SYNC_ESTADOS_TIMEOUT_MINUTOS` y
+# `SYNC_ESTADOS_INCOMPLETAS_TOLERADAS` (ver `app/config.py`): 2 h, 9.000 (bajo
+# los 10.000 en que corta la API), 50 min (en hora punta una corrida lista ~150
+# páginas, 15-30 min, y el tope tiene que quedar bajo el intervalo de 1 h) y 3.
 MAX_VENTANA_HORAS = 6.0
 
 
@@ -121,12 +138,17 @@ async def sincronizar_estados(
     aplicar: Callable[[list[CambioDeEstado]], Awaitable[ResultadoSyncEstados]],
     marcar_vencidas: Callable[[], Awaitable[int]],
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
+    registrar_corrida: Callable[[bool, int], Awaitable[int]] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
     Recibe sus colaboradores en vez de construirlos, igual que `sync_diaria`:
     el orden de las etapas y el código de salida se prueban sin Postgres ni
     Qdrant.
+
+    `registrar_corrida(completo, listadas)` guarda la corrida y devuelve cuántas
+    incompletas van seguidas contándola. Sin él no hay historial y cualquier
+    incompleta sale con 1, como antes.
     """
     inicio = time.perf_counter()
     if preparar_destino is not None:
@@ -149,21 +171,39 @@ async def sincronizar_estados(
         print(f"Vencidas marcadas como cerradas: {await marcar_vencidas()}")
 
     techo = listado.listadas >= args.limite
+    seguidas = (
+        await registrar_corrida(listado.completo, listado.listadas)
+        if registrar_corrida is not None
+        else 0
+    )
     if techo:
         print(
             f"\nAVISO: se listaron {listado.listadas}, que es el techo de la corrida.\n"
             "Quedaron cambios sin mirar. Achica --ventana-horas o sube --limite\n"
             "(sin pasar de 10.000, donde corta la API)."
         )
-    elif not listado.completo:
+        codigo = 1
+    elif listado.completo:
+        codigo = 0
+    elif registrar_corrida is not None and seguidas < args.incompletas_toleradas:
         print(
             "\nAVISO: el listado quedó incompleto (la API cortó la paginación o se\n"
             "agotó la cuota). Lo que llegó se aplicó; la corrida siguiente vuelve\n"
-            "a pedir la ventana."
+            f"a pedir la ventana. Incompletas seguidas: {seguidas} de "
+            f"{args.incompletas_toleradas}\n"
+            "toleradas antes de salir con error."
         )
+        codigo = 0
+    else:
+        print(
+            f"\nERROR: el listado quedó incompleto ({seguidas or 1} corridas seguidas).\n"
+            "La API de Mercado Público lleva horas fallando o la cuota se agotó:\n"
+            "hay cambios de estado sin mirar. Lo que llegó se aplicó."
+        )
+        codigo = 1
 
     print(f"\nCorrida en {(time.perf_counter() - inicio) / 60:.1f} min.")
-    return 1 if techo or not listado.completo else 0
+    return codigo
 
 
 async def _aplicar(
@@ -183,6 +223,13 @@ async def _aplicar(
         return await caso.execute(cambios)
 
 
+async def _registrar(engine: AsyncEngine, completo: bool, listadas: int) -> int:
+    async with AsyncSession(engine) as session:
+        return await SyncEstadosRunRepository(session).registrar(
+            completo=completo, listadas=listadas
+        )
+
+
 async def _correr(args: argparse.Namespace) -> int:
     """Arma las piezas reales y cierra lo que abrió.
 
@@ -197,6 +244,9 @@ async def _correr(args: argparse.Namespace) -> int:
             aplicar=lambda cambios: _aplicar(engine, qdrant, servicio, cambios),
             marcar_vencidas=lambda: marcar_vencidas(engine, qdrant),
             preparar_destino=lambda: preparar_destino(engine, qdrant),
+            registrar_corrida=lambda completo, listadas: _registrar(
+                engine, completo, listadas
+            ),
         )
     finally:
         await engine.dispose()
@@ -241,6 +291,16 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "tope de la corrida (SYNC_ESTADOS_TIMEOUT_MINUTOS, "
             f"{settings.sync_estados_timeout_minutos:g})"
+        ),
+    )
+    p.add_argument(
+        "--incompletas-toleradas",
+        type=int,
+        default=settings.sync_estados_incompletas_toleradas,
+        help=(
+            "corridas incompletas seguidas que salen con 0 antes de dar error "
+            "(SYNC_ESTADOS_INCOMPLETAS_TOLERADAS, "
+            f"{settings.sync_estados_incompletas_toleradas})"
         ),
     )
     return p

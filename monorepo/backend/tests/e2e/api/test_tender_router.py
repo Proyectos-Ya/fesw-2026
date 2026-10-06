@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     DeepAnalysisResult,
 )
-from app.bootstrap import (
+from app.bootstrap.matching import (
     get_list_saved_tenders_use_case,
     get_rank_tenders_use_case,
     get_save_tender_use_case,
@@ -181,7 +181,7 @@ async def test_analyze_tender_compatibility_success(api: AsyncClient) -> None:
     mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
     # Registrar la dependencia mockeada en la app de FastAPI
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -219,7 +219,7 @@ async def test_analyze_tender_compatibility_invalid_prompt(api: AsyncClient) -> 
         "Se detectó un intento de manipulación del prompt (Prompt Injection) mediante la frase: 'ignora las instrucciones'."
     )
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -257,7 +257,7 @@ async def test_analyze_tender_compatibility_not_found(api: AsyncClient) -> None:
     # Simular error de licitación no encontrada
     mock_uc.execute.side_effect = TenderNotFound(tender_id)
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -286,7 +286,7 @@ async def test_analyze_tender_compatibility_validation_error(api: AsyncClient) -
     tender_id = uuid4()
     mock_uc = AsyncMock()
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -338,7 +338,7 @@ async def test_analyze_tender_compatibility_only_if_exists_not_found(
     mock_uc = AsyncMock()
     mock_uc.execute.return_value = DeepAnalysisResult(analysis=None)
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -386,7 +386,7 @@ async def test_analyze_tender_compatibility_only_if_exists_success(
     mock_uc = AsyncMock()
     mock_uc.execute.return_value = DeepAnalysisResult(analysis=mock_analysis)
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -434,7 +434,7 @@ async def test_analyze_tender_compatibility_informa_desactualizado(
         analysis=mock_analysis, is_outdated=True
     )
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -457,7 +457,7 @@ async def test_analyze_tender_compatibility_licitacion_cerrada(
     mock_uc = AsyncMock()
     mock_uc.execute.side_effect = TenderClosedForAnalysis(tender_id)
 
-    from app.bootstrap import get_get_or_create_deep_analysis_use_case
+    from app.bootstrap.matching import get_get_or_create_deep_analysis_use_case
 
     app.dependency_overrides[get_get_or_create_deep_analysis_use_case] = lambda: mock_uc
 
@@ -490,7 +490,7 @@ async def test_score_tender_devuelve_el_porcentaje(api: AsyncClient) -> None:
         calculated_at=now,
     )
 
-    from app.bootstrap import get_score_tender_on_demand_use_case
+    from app.bootstrap.matching import get_score_tender_on_demand_use_case
 
     app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
 
@@ -509,7 +509,7 @@ async def test_score_tender_rechaza_una_licitacion_cerrada(api: AsyncClient) -> 
     mock_uc = AsyncMock()
     mock_uc.execute.side_effect = TenderClosedForScoring(tender_id)
 
-    from app.bootstrap import get_score_tender_on_demand_use_case
+    from app.bootstrap.matching import get_score_tender_on_demand_use_case
 
     app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
 
@@ -526,7 +526,7 @@ async def test_score_tender_licitacion_inexistente(api: AsyncClient) -> None:
     mock_uc = AsyncMock()
     mock_uc.execute.side_effect = TenderNotFound(tender_id)
 
-    from app.bootstrap import get_score_tender_on_demand_use_case
+    from app.bootstrap.matching import get_score_tender_on_demand_use_case
 
     app.dependency_overrides[get_score_tender_on_demand_use_case] = lambda: mock_uc
 

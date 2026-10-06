@@ -11,6 +11,7 @@ from app.domain.errors.deep_analysis_errors import (
     InvalidPromptInstruction,
 )
 from app.shared.datetime_utils import utc_now_naive
+from app.shared.prompt_guard import frase_de_inyeccion
 
 
 class GeminiDeepAnalysisService(IDeepAnalysisService):
@@ -19,27 +20,13 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         self.model_name = model_name
 
     def _validate_prompt_injection(self, prompt_instruction: str | None) -> None:
-        """Realiza una validación sintáctica preventiva para bloquear prompt injection común."""
-        if not prompt_instruction:
-            return
-
-        forbidden_phrases = [
-            "ignora las instrucciones",
-            "ignora los requisitos",
-            "ignore instructions",
-            "ignore previous instructions",
-            "system prompt",
-            "override instructions",
-            "anula las instrucciones",
-            "ignorar las instrucciones",
-            "cambia el porcentaje",
-        ]
-        cleaned = prompt_instruction.lower().strip()
-        for phrase in forbidden_phrases:
-            if phrase in cleaned:
-                raise InvalidPromptInstruction(
-                    f"Se detectó un intento de manipulación del prompt (Prompt Injection) mediante la frase: '{phrase}'."
-                )
+        """Validación sintáctica preventiva contra prompt injection común."""
+        frase = frase_de_inyeccion(prompt_instruction)
+        if frase is not None:
+            raise InvalidPromptInstruction(
+                "Se detectó un intento de manipulación del prompt (Prompt Injection) "
+                f"mediante la frase: '{frase}'."
+            )
 
     def _build_prompt(
         self,

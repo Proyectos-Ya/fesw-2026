@@ -73,12 +73,12 @@ class TestListadoCompleto:
 class TestListadoTruncado:
     @respx.mock
     async def test_un_5xx_persistente_marca_el_listado_incompleto(self):
-        respx.get(URL).mock(
-            side_effect=[
-                _pagina(20, 5),
-                *[httpx.Response(500, json={}) for _ in range(4)],
-            ]
-        )
+        def responder(request: httpx.Request) -> httpx.Response:
+            if request.url.params["numero_pagina"] == "1":
+                return _pagina(20, 5)
+            return httpx.Response(500, json={})
+
+        respx.get(URL).mock(side_effect=responder)
 
         listado = await _cliente().get_tenders(DESDE, HASTA, 100)
 

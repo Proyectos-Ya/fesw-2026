@@ -6,10 +6,11 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import (
-    bootstrap,
+from app.bootstrap import bootstrap
+from app.bootstrap.runners import (
     build_milestone_refresh_runner,
     build_notification_runners,
+    reconcile_export_jobs,
 )
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
@@ -18,11 +19,11 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.seeder import seed_database_metadata
-from app.infrastructure.services.notifications.notification_scheduler import (
-    NotificationScheduler,
-)
 from app.infrastructure.services.milestone_refresh_scheduler import (
     MilestoneRefreshScheduler,
+)
+from app.infrastructure.services.notifications.notification_scheduler import (
+    NotificationScheduler,
 )
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -69,6 +70,12 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
+
+    # Exportaciones en segundo plano (HdU 19): viven en la memoria del proceso,
+    # así que las que quedaron a medias antes de este arranque ya no terminarán.
+    colgadas, purgadas = await reconcile_export_jobs()
+    if colgadas or purgadas:
+        print(f"[Main] Exportaciones: {colgadas} interrumpidas, {purgadas} vencidas limpiadas")
 
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
@@ -167,6 +174,8 @@ async def lifespan(app: FastAPI):
         tarea.cancel()
     if tareas:
         await asyncio.gather(*tareas, return_exceptions=True)
+    await app.state.export_background.shutdown()
+    await app.state.milestone_extraction_background.shutdown()
 
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()

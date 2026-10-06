@@ -82,6 +82,9 @@ describe("guardia de borde", () => {
     // Google comprueba que la política de privacidad responda, y lo hace sin
     // sesión: si el guardia la mandara a /login, la app no se puede publicar.
     "/privacidad",
+    // HdU 19: quien recibe un enlace compartido no tiene cuenta.
+    "/compartido/abc_DEF-123",
+    "/enlace-caducado",
   ])(
     "deja pasar %s sin sesión",
     async (ruta) => {

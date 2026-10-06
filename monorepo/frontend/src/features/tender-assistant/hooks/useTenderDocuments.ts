@@ -11,7 +11,11 @@ import {
 } from "../services/tenderAssistantService";
 import { formatTenderAssistantError } from "../services/tenderErrorUtils";
 
-export function useTenderDocuments(tenderId: string) {
+/**
+ * @param onDocumentsChanged Se llama tras subir un documento: la IA extrae sus
+ *   hitos en segundo plano (HU-16) y la ficha tiene que recargar la tabla.
+ */
+export function useTenderDocuments(tenderId: string, onDocumentsChanged?: () => void) {
   const [documents, setDocuments] = useState<TenderChatDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -53,6 +57,7 @@ export function useTenderDocuments(tenderId: string) {
     try {
       const newDoc = await uploadTenderDocument(tenderId, file);
       setDocuments((prev) => [...prev, newDoc]);
+      onDocumentsChanged?.();
       return newDoc;
     } catch (err) {
       const msg = formatTenderAssistantError(

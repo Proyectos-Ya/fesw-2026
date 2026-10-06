@@ -10,7 +10,7 @@ from uuid import UUID
 
 from httpx import AsyncClient
 
-from app import bootstrap
+from app.bootstrap.services import get_identity_directory, get_token_verifier
 from app.infrastructure.services.supabase_token_service import SupabaseJwtService
 from tests.support.supabase_tokens import AUDIENCIA, EMISOR, ClavesDePrueba
 from tests.unit.application.fakes import FakeIdentityDirectory
@@ -29,12 +29,12 @@ def preparar_auth(app, cliente: AsyncClient) -> None:
     claves = ClavesDePrueba()
     directorio = FakeIdentityDirectory()
 
-    app.dependency_overrides[bootstrap.get_token_verifier] = lambda: SupabaseJwtService(
+    app.dependency_overrides[get_token_verifier] = lambda: SupabaseJwtService(
         jwks_source=claves.fuente_jwks,
         issuer=EMISOR,
         audience=AUDIENCIA,
     )
-    app.dependency_overrides[bootstrap.get_identity_directory] = lambda: directorio
+    app.dependency_overrides[get_identity_directory] = lambda: directorio
 
     cliente.claves = claves
     cliente.directorio_de_identidad = directorio
