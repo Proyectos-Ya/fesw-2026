@@ -13,6 +13,7 @@ import {
 import { Icon } from "@/features/shared/components/Icon";
 import type { KanbanCard as KanbanCardType } from "../kanbanTypes";
 import { useKanban } from "../hooks/useKanban";
+import { InsertColumnSlot } from "./InsertColumnSlot";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 
@@ -24,7 +25,10 @@ export function KanbanBoard() {
     loading,
     error,
     addColumn,
+    insertColumn,
     renameColumn,
+    recolorColumn,
+    reorderColumn,
     deleteColumn,
     addCard,
     moveCard,
@@ -136,21 +140,31 @@ export function KanbanBoard() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-3 h-full">
-            {columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={cardsInColumn(column.id)}
-                tenders={tenders}
-                onRename={(id, name) => void renameColumn(id, name)}
-                onDelete={(id) => void deleteColumn(id)}
-                onAddCard={addCard}
-                onRemoveCard={(tender_id) => void removeCard(tender_id)}
-              />
+          <div className="flex h-full">
+            {columns.map((column, i) => (
+              <React.Fragment key={column.id}>
+                <KanbanColumn
+                  column={column}
+                  cards={cardsInColumn(column.id)}
+                  tenders={tenders}
+                  onRename={(id, name) => void renameColumn(id, name)}
+                  onRecolor={(id, color) => void recolorColumn(id, color)}
+                  onDelete={(id) => void deleteColumn(id)}
+                  onReorder={(dir) => void reorderColumn(column.id, dir)}
+                  canMoveLeft={i > 0}
+                  canMoveRight={i < columns.length - 1}
+                  onAddCard={addCard}
+                  onRemoveCard={(tender_id) => void removeCard(tender_id)}
+                />
+                {i < columns.length - 1 && (
+                  <InsertColumnSlot
+                    onInsert={(name) => insertColumn(name, i + 1)}
+                  />
+                )}
+              </React.Fragment>
             ))}
 
-            <div className="flex-none w-[302px] self-start">
+            <div className="flex-none w-[302px] self-start ml-3">
               {addingColumn ? (
                 <div className="bg-bg-sunken rounded-lg border border-border-subtle p-3">
                   <input
