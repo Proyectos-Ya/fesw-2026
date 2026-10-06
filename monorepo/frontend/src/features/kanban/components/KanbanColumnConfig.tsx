@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "@/features/shared/components/Icon";
 import type { KanbanColumn } from "../kanbanTypes";
 
@@ -22,13 +22,31 @@ interface Props {
   onRecolor: (id: string, color: string) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  onReorder?: (direction: "left" | "right") => void;
+  canMoveLeft?: boolean;
+  canMoveRight?: boolean;
 }
 
-export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onClose }: Props) {
+export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onClose, onReorder, canMoveLeft, canMoveRight }: Props) {
   const [nameValue, setNameValue] = useState(column.name);
   const [hexValue, setHexValue] = useState(column.color);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+  };
+
+  const handleMouseLeave = () => {
+    if (containerRef.current?.matches(":focus-within")) return;
+    idleTimerRef.current = setTimeout(onClose, 1500);
+  };
 
   const handleSave = () => {
     const trimmed = nameValue.trim();
@@ -64,7 +82,12 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
   };
 
   return (
-    <div className="mt-2 rounded-md bg-surface-card border border-border-default shadow-md p-3 space-y-3">
+    <div
+      ref={containerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className="mt-2 rounded-md bg-surface-card border border-border-default shadow-md p-3 space-y-3"
+    >
       <div>
         <label className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide mb-1 block">
           Nombre
@@ -127,6 +150,29 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
         >
           Guardar
         </button>
+
+        {onReorder && (
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onReorder("left")}
+              disabled={!canMoveLeft}
+              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-warm-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Mover columna a la izquierda"
+            >
+              <Icon name="chevron-left" size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onReorder("right")}
+              disabled={!canMoveRight}
+              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-warm-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Mover columna a la derecha"
+            >
+              <Icon name="chevron-right" size={14} />
+            </button>
+          </div>
+        )}
 
         {showDeleteConfirm ? (
           <div className="flex items-center gap-2 text-xs">

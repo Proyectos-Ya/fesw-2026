@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import type { Tender } from "@/features/matches/tenderTypes";
@@ -17,6 +17,9 @@ interface Props {
   onRename: (id: string, name: string) => void;
   onRecolor: (id: string, color: string) => void;
   onDelete: (id: string) => void;
+  onReorder?: (direction: "left" | "right") => void;
+  canMoveLeft?: boolean;
+  canMoveRight?: boolean;
   onAddCard: (tender_id: string, column_id: string, tender: Tender) => Promise<void>;
   onRemoveCard: (tender_id: string) => void;
 }
@@ -28,11 +31,26 @@ export function KanbanColumn({
   onRename,
   onRecolor,
   onDelete,
+  onReorder,
+  canMoveLeft,
+  canMoveRight,
   onAddCard,
   onRemoveCard,
 }: Props) {
   const [showConfig, setShowConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const configAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showConfig) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (configAreaRef.current && !configAreaRef.current.contains(e.target as Node)) {
+        setShowConfig(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [showConfig]);
 
   const cardIds = cards.map((c) => c.id);
 
@@ -52,36 +70,41 @@ export function KanbanColumn({
       }`}
     >
       <div className="px-3.5 pt-3 pb-2">
-        <div className="flex items-center gap-2">
-          <h2 className="flex-1 font-display text-[15px] font-bold text-text-strong truncate">
-            {column.name}
-          </h2>
-          <span className="h-5 px-2 rounded-full text-xs font-semibold tabular-nums bg-warm-200 text-text-body flex items-center flex-none">
-            {column.card_count}
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowConfig((v) => !v)}
-            className={`flex-none p-1 rounded transition-colors ${
-              showConfig
-                ? "text-primary bg-primary/10"
-                : "text-text-subtle hover:text-text-strong hover:bg-warm-100"
-            }`}
-            aria-label="Configurar columna"
-          >
-            <Icon name="settings" size={14} />
-          </button>
-        </div>
+        <div ref={configAreaRef}>
+          <div className="flex items-center gap-2">
+            <h2 className="flex-1 font-display text-[15px] font-bold text-text-strong truncate">
+              {column.name}
+            </h2>
+            <span className="h-5 px-2 rounded-full text-xs font-semibold tabular-nums bg-warm-200 text-text-body flex items-center flex-none">
+              {column.card_count}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowConfig((v) => !v)}
+              className={`flex-none p-1 rounded transition-colors ${
+                showConfig
+                  ? "text-primary bg-primary/10"
+                  : "text-text-subtle hover:text-text-strong hover:bg-warm-100"
+              }`}
+              aria-label="Configurar columna"
+            >
+              <Icon name="settings" size={14} />
+            </button>
+          </div>
 
-        {showConfig && (
-          <KanbanColumnConfig
-            column={column}
-            onRename={onRename}
-            onRecolor={onRecolor}
-            onDelete={onDelete}
-            onClose={() => setShowConfig(false)}
-          />
-        )}
+          {showConfig && (
+            <KanbanColumnConfig
+              column={column}
+              onRename={onRename}
+              onRecolor={onRecolor}
+              onDelete={onDelete}
+              onClose={() => setShowConfig(false)}
+              onReorder={onReorder}
+              canMoveLeft={canMoveLeft}
+              canMoveRight={canMoveRight}
+            />
+          )}
+        </div>
       </div>
 
       <div

@@ -59,6 +59,29 @@ export function useKanban() {
     [columns],
   );
 
+  const insertColumn = useCallback(
+    async (name: string, atIndex: number) => {
+      const sorted = [...columns].sort((a, b) => a.position - b.position);
+      const toShift = sorted.slice(atIndex);
+
+      const col = await kanbanService.createColumn(name, atIndex);
+
+      const shifted = await Promise.all(
+        toShift.map((c) =>
+          kanbanService.updateColumn(c.id, { position: c.position + 1 }),
+        ),
+      );
+
+      const shiftedMap = new Map(shifted.map((c) => [c.id, c]));
+      setColumns((prev) =>
+        [...prev.map((c) => shiftedMap.get(c.id) ?? c), col].sort(
+          (a, b) => a.position - b.position,
+        ),
+      );
+    },
+    [columns],
+  );
+
   const renameColumn = useCallback(
     async (id: string, name: string) => {
       const prev = columns.find((c) => c.id === id);
@@ -89,6 +112,46 @@ export function useKanban() {
       } catch {
         setColumns((cols) =>
           cols.map((c) => (c.id === id ? { ...c, color: prev.color } : c)),
+        );
+      }
+    },
+    [columns],
+  );
+
+  const reorderColumn = useCallback(
+    async (id: string, direction: "left" | "right") => {
+      const sorted = [...columns].sort((a, b) => a.position - b.position);
+      const idx = sorted.findIndex((c) => c.id === id);
+      const targetIdx = direction === "left" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= sorted.length) return;
+
+      const col = sorted[idx];
+      const neighbor = sorted[targetIdx];
+
+      setColumns((prev) =>
+        prev
+          .map((c) => {
+            if (c.id === col.id) return { ...c, position: neighbor.position };
+            if (c.id === neighbor.id) return { ...c, position: col.position };
+            return c;
+          })
+          .sort((a, b) => a.position - b.position),
+      );
+
+      try {
+        await Promise.all([
+          kanbanService.updateColumn(col.id, { position: neighbor.position }),
+          kanbanService.updateColumn(neighbor.id, { position: col.position }),
+        ]);
+      } catch {
+        setColumns((prev) =>
+          prev
+            .map((c) => {
+              if (c.id === col.id) return { ...c, position: col.position };
+              if (c.id === neighbor.id) return { ...c, position: neighbor.position };
+              return c;
+            })
+            .sort((a, b) => a.position - b.position),
         );
       }
     },
@@ -220,8 +283,10 @@ export function useKanban() {
     loading,
     error,
     addColumn,
+    insertColumn,
     renameColumn,
     recolorColumn,
+    reorderColumn,
     deleteColumn,
     addCard,
     moveCard,
