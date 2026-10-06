@@ -1,7 +1,7 @@
 """kanban-column-color
 
 Revision ID: b3c2d1e0f9a8
-Revises: fa511ba1ba22
+Revises: 923b0917a80b
 Create Date: 2026-09-29 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlmodel
 from alembic import op
 
 revision: str = "b3c2d1e0f9a8"
-down_revision: str | Sequence[str] | None = "e4849ff0c0dd"
+down_revision: str | Sequence[str] | None = "923b0917a80b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
