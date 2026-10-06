@@ -12,15 +12,15 @@ from app.domain.entities.quotation import MaterialItem, QuotationInput
 
 def material(**changes):
     return MaterialItem(
-        **dict(description="Cemento", unit="saco", quantity="2.5", unit_price="100.25")
+        **dict(description="Cemento", unit="saco", quantity="2", unit_price="100")
         | changes
     )
 
 
-def test_decimal_totals_round_each_line():
+def test_integer_totals():
     data = QuotationInput(items=[material(), material(quantity="1", unit_price="0")])
-    assert data.items[0].subtotal == Decimal("250.63")
-    assert data.total == Decimal("250.63")
+    assert data.items[0].subtotal == Decimal("200")
+    assert data.total == Decimal("200")
 
 
 @pytest.mark.parametrize(
@@ -32,6 +32,8 @@ def test_decimal_totals_round_each_line():
         {"quantity": "-1"},
         {"unit_price": "-0.01"},
         {"quantity": "NaN"},
+        {"quantity": "1.5"},
+        {"unit_price": "10.5"},
         {"unit_price": "Infinity"},
     ],
 )
@@ -93,3 +95,13 @@ async def test_company_is_the_active_one_when_given():
     suppliers.get_by_id.assert_awaited_once_with(active_id)
     suppliers.get_by_user_id.assert_not_awaited()
     repo.save.assert_awaited_once_with(active_id, tender_id, data)
+
+
+def test_legacy_fractional_quotation_can_be_read_but_not_saved():
+    from app.domain.entities.quotation import Quotation
+    from app.shared.datetime_utils import utc_now_naive
+    data = dict(currency="CLP", items=[dict(description="Arena", unit="m3", quantity="2.5", unit_price="100.25")])
+    old = Quotation(id=uuid4(), supplier_id=uuid4(), tender_id=uuid4(), updated_at=utc_now_naive(), **data)
+    assert old.total == Decimal("250.63")
+    with pytest.raises(ValidationError):
+        QuotationInput(**data)

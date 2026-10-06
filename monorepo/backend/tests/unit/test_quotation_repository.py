@@ -53,8 +53,8 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
                     MaterialItem(
                         description="Cemento",
                         unit="saco",
-                        quantity="2.5",
-                        unit_price="100.25",
+                        quantity="2",
+                        unit_price="100",
                     )
                 ]
             )
@@ -63,7 +63,7 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
             repo = QuotationRepository(session)
             retrieved = await repo.get(supplier, tender)
             assert retrieved.id == first.id
-            assert str(retrieved.total) == "250.63"
+            assert str(retrieved.total) == "200"
             assert await repo.get(uuid4(), tender) is None
             updated = await repo.save(
                 supplier,
@@ -83,6 +83,16 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
             assert retrieved.currency == "CLP"
             assert [item.description for item in retrieved.items] == ["Arena"]
             assert retrieved.total == 0
+            serialized = retrieved.model_dump(mode="json")
+            assert serialized["items"][0]["quantity"] == "1"
+            assert serialized["items"][0]["unit_price"] == "0"
+            assert serialized["total"] == "0"
+            # Datos de una versión anterior siguen siendo legibles desde la BD.
+            await session.exec(text("UPDATE quotation_material SET quantity = 2.5, unit_price = 100.25"))
+            await session.commit()
+            session.expire_all()
+            legacy = await QuotationRepository(session).get(supplier, tender)
+            assert str(legacy.total) == "250.63"
             assert (
             await session.exec(text("SELECT count(*) FROM quotation"))
             ).scalar() == 1
