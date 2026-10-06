@@ -1,4 +1,6 @@
 import asyncio
+import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -65,6 +67,38 @@ TAMANO_PAGINA = 20
 
 # Ventana por defecto cuando el delta no es positivo.
 VENTANA_POR_DEFECTO_MS = 86400000
+
+# Paciencia del listado ante un 5xx o un timeout. Medido el 2026-10-05: entre las
+# 10:00 y las 18:00 (Chile) el gateway devuelve 504 casi cada hora, y con cuatro
+# intentos (esperas de 2, 4 y 8 s) una página caída cortaba la paginación
+# entera. Seis intentos con tope de 30 s son ~1 min de espera por página en el
+# peor caso, más lo que tarde el gateway en cortar cada uno (~30 s): una página
+# irrecuperable cuesta unos 4 min, que el tope de 50 min del cron aguanta.
+#
+# El 429 no usa esto: sus cuatro intentos deciden cuándo rotar de ticket.
+INTENTOS_SERVIDOR_LISTADO = 6
+INTENTOS_CUOTA = 4
+ESPERA_MAXIMA_REINTENTO = 30.0
+
+# Páginas caídas seguidas que se saltan antes de dar la API por caída. Una
+# suelta es inestabilidad del gateway y conviene seguir con las siguientes; tres
+# seguidas, ya no.
+PAGINAS_CAIDAS_SEGUIDAS_MAX = 3
+
+
+def espera_reintento(
+    base: float,
+    intento: int,
+    *,
+    azar: Callable[[], float] = random.random,
+) -> float:
+    """Segundos antes del reintento siguiente: exponencial, con tope y con azar.
+
+    El azar solo recorta hasta la mitad, para que los crons que coinciden no
+    reintenten todos en el mismo instante sin perder del todo la espera.
+    """
+    bruta = min(ESPERA_MAXIMA_REINTENTO, base * (2**intento))
+    return bruta * (0.5 + 0.5 * azar())
 
 
 def _desfase_chile(momento: datetime) -> timedelta:
@@ -202,8 +236,12 @@ class MercadoPublicoClient:
         all_items: list[dict[str, Any]] = []
         current_page = 1
         # Optimista: solo se baja a False si la paginación se corta antes de
-        # haber visto la última página que la API declara.
+        # haber visto la última página que la API declara, o si se saltó alguna.
         completo = True
+        # Lo declara la primera página. Sin ella no se sabe hasta dónde seguir,
+        # así que si esa cae no se salta: se corta.
+        total_pages: int | None = None
+        caidas_seguidas = 0
 
         async with httpx.AsyncClient() as client:
             while len(all_items) < quantity:
@@ -220,19 +258,32 @@ class MercadoPublicoClient:
                     )
                     response = await self._get_con_reintentos(client, params)
                     if response is None:
-                        # Agotados los reintentos. Se corta, pero avisando: antes
-                        # un 5xx pasajero detenía la paginación en silencio y la
-                        # ingesta parecía haber terminado bien.
+                        # Agotados los reintentos ante 5xx o timeouts. La página
+                        # se pierde, pero las siguientes suelen responder: el
+                        # gateway falla de a una, no en bloque.
+                        completo = False
+                        caidas_seguidas += 1
+                        if (
+                            total_pages is None
+                            or caidas_seguidas >= PAGINAS_CAIDAS_SEGUIDAS_MAX
+                        ):
+                            print(
+                                f"[API MP] Página {current_page} no respondió tras varios "
+                                "intentos. Se detiene la paginación con "
+                                f"{len(all_items)} licitaciones listadas."
+                            )
+                            break
                         print(
                             f"[API MP] Página {current_page} no respondió tras varios "
-                            "intentos. Se detiene la paginación con "
-                            f"{len(all_items)} licitaciones listadas."
+                            "intentos. Se salta y se sigue con la siguiente."
                         )
-                        completo = False
-                        break
+                        if current_page >= total_pages:
+                            break
+                        current_page += 1
+                        continue
                     if response.status_code == 429:
-                        # Llega aquí solo tras agotar los reintentos: un 429
-                        # pasajero ya se reintentó dentro de _get_con_reintentos.
+                        # Llega aquí solo tras agotar los reintentos y todos los
+                        # tickets: seguir pidiendo solo gasta más.
                         print(
                             "[API MP] Cuota agotada (429 tras varios reintentos). "
                             f"Se detiene la paginación con {len(all_items)} "
@@ -250,6 +301,7 @@ class MercadoPublicoClient:
                         break
 
                     all_items.extend(items)
+                    caidas_seguidas = 0
 
                     paginacion = payload.get("paginacion", {}) or {}
                     total_pages = paginacion.get("total_paginas", 1)
@@ -331,11 +383,10 @@ class MercadoPublicoClient:
         self,
         client: httpx.AsyncClient,
         params: dict[str, Any],
-        intentos: int = 4,
     ) -> httpx.Response | None:
         """GET al listado, agotando un ticket antes de pasar al siguiente."""
         while True:
-            respuesta = await self._get_con_un_ticket(client, params, intentos)
+            respuesta = await self._get_con_un_ticket(client, params)
             agotado = respuesta is not None and respuesta.status_code == 429
             if agotado and self._rotar_ticket():
                 continue
@@ -345,26 +396,31 @@ class MercadoPublicoClient:
         self,
         client: httpx.AsyncClient,
         params: dict[str, Any],
-        intentos: int = 4,
+        intentos_cuota: int = INTENTOS_CUOTA,
+        intentos_servidor: int = INTENTOS_SERVIDOR_LISTADO,
     ) -> httpx.Response | None:
         """GET al listado, reintentando ante fallas pasajeras del servidor.
 
-        La API falla de dos formas transitorias:
+        La API falla de dos formas transitorias, y cada una lleva su propia
+        cuenta de intentos:
 
-        - **5xx.** Devuelve 504 cuando la consulta tarda de su lado, y 500
-          ("Servicio no disponible") sin más. Rendirse al primero descarta
-          licitaciones que sí están disponibles.
+        - **5xx o timeout.** Devuelve 504 cuando la consulta tarda de su lado, y
+          500 ("Servicio no disponible") sin más. En hora punta pasa casi cada
+          hora, así que se le tiene paciencia (`INTENTOS_SERVIDOR_LISTADO`).
         - **429.** La versión anterior lo trataba como terminal, siguiendo la
           guía de la API, que manda esperar al día siguiente. Medido el 28 de
           agosto de 2026, eso no se sostiene: la API aplica un balde de tokens
           de capacidad pequeña que se recarga en segundos, y aparecen 429
-          sueltos entre respuestas correctas. Cortando al primero, una carga
-          inicial de horas no llega nunca al final.
+          sueltos entre respuestas correctas. Sus intentos (`INTENTOS_CUOTA`)
+          son los que deciden cuándo rotar de ticket.
 
-        Un 429 que sobrevive a todos los reintentos sí se devuelve: ahí la cuota
-        se agotó de verdad y el llamador debe parar.
+        Un 429 que sobrevive a sus intentos sí se devuelve: ahí la cuota se
+        agotó de verdad y el llamador debe parar. Un 5xx que sobrevive a los
+        suyos devuelve None.
         """
-        for intento in range(1, intentos + 1):
+        fallas_cuota = 0
+        fallas_servidor = 0
+        while True:
             try:
                 respuesta = await client.get(
                     self.base_url,
@@ -374,23 +430,33 @@ class MercadoPublicoClient:
                 )
                 if respuesta.status_code < 500 and respuesta.status_code != 429:
                     return respuesta
-                if respuesta.status_code == 429 and intento == intentos:
-                    # Agotados los reintentos: se devuelve para que el llamador
-                    # distinga "cuota agotada" de "el servidor no respondió".
-                    return respuesta
+                if respuesta.status_code == 429:
+                    fallas_cuota += 1
+                    if fallas_cuota >= intentos_cuota:
+                        # Se devuelve para que el llamador distinga "cuota
+                        # agotada" de "el servidor no respondió".
+                        return respuesta
+                    intento, de = fallas_cuota, intentos_cuota
+                else:
+                    fallas_servidor += 1
+                    if fallas_servidor >= intentos_servidor:
+                        return None
+                    intento, de = fallas_servidor, intentos_servidor
                 motivo = f"HTTP {respuesta.status_code}"
             except (httpx.TimeoutException, httpx.TransportError) as e:
+                fallas_servidor += 1
+                if fallas_servidor >= intentos_servidor:
+                    return None
+                intento, de = fallas_servidor, intentos_servidor
                 motivo = type(e).__name__
 
-            if intento < intentos:
-                espera = self._espera_base * (2**intento)
-                print(
-                    f"[API MP] {motivo} en el listado. Reintento {intento}/{intentos - 1} "
-                    f"en {espera}s..."
-                )
-                if espera:
-                    await asyncio.sleep(espera)
-        return None
+            espera = espera_reintento(self._espera_base, intento)
+            print(
+                f"[API MP] {motivo} en el listado. Reintento {intento}/{de - 1} "
+                f"en {espera:.1f}s..."
+            )
+            if espera:
+                await asyncio.sleep(espera)
 
     # Obtiene el detalle crudo de una licitación específica
     async def get_tender_detail(self, id: str) -> dict[str, Any]:

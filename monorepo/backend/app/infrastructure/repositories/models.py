@@ -48,6 +48,9 @@ from app.infrastructure.repositories.supplier_member_model import (
     SupplierMemberModel,
 )
 from app.infrastructure.repositories.supplier_model import SupplierModel
+from app.infrastructure.repositories.sync_estados_run_model import (
+    SyncEstadosRunModel,
+)
 from app.infrastructure.repositories.tender_chat_model import (
     TenderChatDocumentModel,
     TenderChatMessageModel,
@@ -71,6 +74,7 @@ from app.infrastructure.repositories.tender_share_link_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "SyncEstadosRunModel",
     "CapabilityAnswerModel",
     "CapabilityEvidenceModel",
     "CapabilityQuestionModel",
