@@ -161,6 +161,21 @@ class TestExtraccionConIA:
 
         assert escenario.ia.llamadas == []
         assert resultado.documents_count == 0
+        # Se informa para que el usuario sepa que tiene que volver a subirlo: en
+        # producción el disco del contenedor se borra en cada despliegue.
+        assert resultado.unavailable_documents_count == 1
+
+    async def test_con_algunos_archivos_perdidos_extrae_de_los_que_quedan(self):
+        escenario = Escenario([_hito_ia()])
+        escenario.subir("bases.pdf")
+        escenario.subir("anexo-perdido.pdf", contenido=None)
+
+        resultado = await escenario.extraer()
+
+        documentos, _ = escenario.ia.llamadas[0]
+        assert [d.document_name for d in documentos] == ["bases.pdf"]
+        assert resultado.documents_count == 1
+        assert resultado.unavailable_documents_count == 1
 
     async def test_si_la_ia_falla_igual_quedan_los_hitos_de_mercado_publico(self):
         escenario = Escenario(falla_ia=True)

@@ -198,3 +198,46 @@ async def test_upload_valid_document_with_validator_service_success(repo):
     assert doc.file_name == "bases_validas.pdf"
     assert doc.file_type == "pdf"
 
+
+
+class ExtraccionFalsa:
+    """Registra qué licitaciones quedaron agendadas para extraer hitos (HU-16)."""
+
+    def __init__(self, repo: InMemoryTenderChatRepository | None = None) -> None:
+        self.agendadas: list[tuple] = []
+        self.repo = repo
+        self.documentos_al_agendar: int | None = None
+
+    def schedule(self, user_id, tender_id) -> None:
+        self.agendadas.append((user_id, tender_id))
+        if self.repo is not None:
+            self.documentos_al_agendar = len(self.repo.documents)
+
+
+@pytest.mark.asyncio
+async def test_subir_las_bases_agenda_la_extraccion_de_hitos_despues_de_guardar(repo):
+    # Criterio 1 de la HU-16: el sistema procesa las bases sin que el usuario
+    # tenga que pulsar nada más.
+    extraccion = ExtraccionFalsa(repo)
+    use_case = UploadTenderChatDocumentUseCase(chat_repo=repo, milestone_extraction=extraccion)
+    tender_id, user_id = uuid4(), uuid4()
+
+    await use_case.execute(
+        tender_id=tender_id, user_id=user_id, file_name="bases.pdf", file_bytes=b"%PDF-1.4"
+    )
+
+    assert extraccion.agendadas == [(user_id, tender_id)]
+    assert extraccion.documentos_al_agendar == 1
+
+
+@pytest.mark.asyncio
+async def test_un_archivo_rechazado_no_agenda_la_extraccion(repo):
+    extraccion = ExtraccionFalsa()
+    use_case = UploadTenderChatDocumentUseCase(chat_repo=repo, milestone_extraction=extraccion)
+
+    with pytest.raises(UnsupportedDocumentTypeError):
+        await use_case.execute(
+            tender_id=uuid4(), user_id=uuid4(), file_name="malware.exe", file_bytes=b"MZ"
+        )
+
+    assert extraccion.agendadas == []

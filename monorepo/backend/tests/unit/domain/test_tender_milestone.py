@@ -33,18 +33,27 @@ class TestUrgencia:
         ("falta", "esperado"),
         [
             (timedelta(minutes=-1), MilestoneUrgency.VENCIDO),
+            # Mismo día, más tarde: vence hoy.
             (timedelta(hours=2), MilestoneUrgency.CRITICO),
             (timedelta(days=3), MilestoneUrgency.CRITICO),
-            (timedelta(days=3, minutes=1), MilestoneUrgency.PROXIMO),
-            # El criterio 9 pide destacar desde "5 días o menos".
-            (timedelta(days=5), MilestoneUrgency.PROXIMO),
-            (timedelta(days=5, minutes=1), MilestoneUrgency.NORMAL),
+            # Criterio 9: desde "5 días o menos" se destaca, sin un tono intermedio.
+            (timedelta(days=5), MilestoneUrgency.CRITICO),
+            # 6-oct 23:30 en Chile: son 5 días de calendario aunque falten más de
+            # 5x24 horas. Es lo que dice la tabla ("Vence en 5 días"), así que se destaca.
+            (timedelta(days=5, hours=14, minutes=30), MilestoneUrgency.CRITICO),
+            # 7-oct 00:30 en Chile: ya son 6 días de calendario.
+            (timedelta(days=5, hours=15, minutes=30), MilestoneUrgency.NORMAL),
         ],
     )
-    def test_destaca_los_hitos_a_cinco_dias_o_menos(
+    def test_destaca_los_hitos_a_cinco_dias_de_calendario_o_menos(
         self, falta: timedelta, esperado: MilestoneUrgency
     ):
+        # AHORA es el 1-oct a las 09:00 en Chile (12:00 UTC).
         assert _hito(due_at=AHORA + falta).urgencia(AHORA) is esperado
+
+    def test_solo_hay_tres_estados_sin_tono_intermedio(self):
+        # Gris (normal o vencido) y rojo (crítico): no hay amarillo.
+        assert {u.value for u in MilestoneUrgency} == {"vencido", "critico", "normal"}
 
 
 class TestRecordatorio:

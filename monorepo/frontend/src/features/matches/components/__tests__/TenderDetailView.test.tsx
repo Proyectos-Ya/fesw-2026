@@ -37,12 +37,24 @@ vi.mock("../../services/tenderService", () => ({
 }));
 
 vi.mock("@/features/tender-assistant/components/TenderAssistantDrawer", () => ({
-  TenderAssistantDrawer: () => null,
+  TenderAssistantDrawer: ({ onDocumentsChanged }: { onDocumentsChanged?: () => void }) => (
+    <button type="button" onClick={onDocumentsChanged}>
+      simular subida de bases
+    </button>
+  ),
+}));
+
+vi.mock("@/features/proposals/components/ProposalEntryCard", () => ({
+  ProposalEntryCard: ({ isClosed }: { isClosed: boolean }) => (
+    <div data-testid="proposal-entry-card">{String(isClosed)}</div>
+  ),
 }));
 
 vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
-  MilestonesSection: ({ tenderId }: { tenderId: string }) => (
-    <div data-testid="milestones-section">{tenderId}</div>
+  MilestonesSection: ({ tenderId, refreshKey }: { tenderId: string; refreshKey?: number }) => (
+    <div data-testid="milestones-section" data-refresh-key={refreshKey}>
+      {tenderId}
+    </div>
   ),
 }));
 
@@ -50,6 +62,18 @@ vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   fetchSavedTenders: vi.fn(),
   saveTenderApi: vi.fn(),
   unsaveTenderApi: vi.fn(),
+}));
+
+vi.mock("@/features/tender-export/components/ExportActions", () => ({
+  ExportActions: ({ tenderId }: { tenderId: string }) => (
+    <div data-testid="exportar">Exportar {tenderId}</div>
+  ),
+}));
+
+// El diálogo tiene sus propios tests; acá solo importa que la ficha lo abra.
+vi.mock("@/features/tender-sharing/components/ShareDialog", () => ({
+  ShareDialog: ({ open, tenderId }: { open: boolean; tenderId: string }) =>
+    open ? <div role="dialog" aria-label={`Compartir ${tenderId}`} /> : null,
 }));
 
 const mockMatch: MatchingResult = {
@@ -102,6 +126,25 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
   });
 
+  it("al subir bases en el asistente recarga la tabla de hitos (HU-16)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+    const seccion = await screen.findByTestId("milestones-section");
+    const antes = seccion.getAttribute("data-refresh-key");
+
+    await user.click(screen.getByRole("button", { name: "simular subida de bases" }));
+
+    expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
+  });
+
+  it("monta la entrada a la postulación (HU-20)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByTestId("proposal-entry-card")).toBeInTheDocument();
+  });
+
   it("aplica rollback al estado previo y muestra alerta ante fallo al guardar licitación", async () => {
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(savedService.saveTenderApi).mockRejectedValue(
@@ -115,7 +158,8 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     });
 
     const saveButton = screen.getByRole("button", { name: "Guardar licitación" });
-    expect(screen.getByRole("button", { name: "Generar cotización" })).toBeInTheDocument();
+    // El cotizador vive en la postulación (HU-20), no en la ficha.
+    expect(screen.queryByRole("button", { name: "Generar cotización" })).not.toBeInTheDocument();
     await user.click(saveButton);
 
     const alert = await screen.findByText(SAVED_TENDERS_ERRORS.SAVE_FAILED);
@@ -126,6 +170,24 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
 
     // Rollback: el botón vuelve a estar desmarcado
     expect(screen.getByRole("button", { name: "Guardar licitación" })).toBeInTheDocument();
+  });
+
+  it("el botón Compartir abre el diálogo de la licitación (HdU 19)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByText("Servicios de Seguridad y Redes");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Compartir licitación" }));
+
+    expect(screen.getByRole("dialog", { name: "Compartir tender-50" })).toBeInTheDocument();
+  });
+
+  it("ofrece exportar la licitación a PDF y Excel (HdU 19)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByTestId("exportar")).toHaveTextContent("Exportar tender-50");
   });
 
   it("aplica rollback al estado previo y muestra alerta ante fallo al quitar licitación guardada", async () => {

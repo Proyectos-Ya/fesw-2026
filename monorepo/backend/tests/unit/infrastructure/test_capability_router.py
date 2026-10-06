@@ -22,7 +22,14 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
-from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
+from app.application.use_cases.capabilities.list_pending_questions import (
+    ListPendingCapabilityQuestionsUseCase,
+)
+from app.domain.entities.capability import (
+    CapabilityAnswer,
+    CapabilityOption,
+    CapabilityQuestion,
+)
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.supplier_member import (
     ALL_PERMISSIONS,
@@ -37,6 +44,7 @@ from tests.unit.application.fakes import (
     InMemoryCapabilityEvidenceRepository,
     InMemoryCapabilityQuestionRepository,
     InMemorySupplierRepository,
+    InMemoryTenderRepository,
 )
 
 SEC = CapabilityQuestion(
@@ -104,6 +112,12 @@ class Api:
                 ),
                 get_add_evidence_use_case=lambda: AddCapabilityEvidenceUseCase(
                     self.suppliers, self.questions, self.answers, self.evidences
+                ),
+                get_list_pending_use_case=lambda: ListPendingCapabilityQuestionsUseCase(
+                    self.suppliers,
+                    self.questions,
+                    self.answers,
+                    InMemoryTenderRepository(),
                 ),
                 get_current_workspace_context=lambda: contexto,
             )
@@ -231,3 +245,23 @@ class TestCatalogo:
         api = await Api(role=None).preparar()
 
         assert api.client.get("/capabilities/catalog").status_code == 404
+
+
+class TestPendientes:
+    async def test_lista_las_pendientes_de_la_empresa_activa(self, api: Api):
+        await api.answers.save(
+            CapabilityAnswer(supplier_id=api.empresa.id, question_id=SEC.id)
+        )
+
+        response = api.client.get("/capabilities/questions/pending")
+
+        assert response.status_code == 200
+        [pendiente] = response.json()
+        assert pendiente["question"]["id"] == str(SEC.id)
+        assert pendiente["tender_id"] is None
+        assert "supplier_id" not in pendiente
+
+    async def test_un_viewer_tambien_las_ve(self):
+        api = await Api(MemberRole.VIEWER).preparar()
+
+        assert api.client.get("/capabilities/questions/pending").status_code == 200

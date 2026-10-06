@@ -162,7 +162,7 @@ export function PendingInvitationsList() {
                         {inv.role === "admin"
                           ? "Administrador"
                           : inv.role === "member"
-                            ? "Miembro"
+                            ? "Representante"
                             : "Lector"}
                       </span>
                     </p>

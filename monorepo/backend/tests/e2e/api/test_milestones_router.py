@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app import bootstrap
 from app.application.services.milestone_extraction_ai_service import ExtractedMilestone
 from app.application.use_cases.milestones.extract_tender_milestones import (
     ExtractTenderMilestonesUseCase,
@@ -19,6 +18,12 @@ from app.application.use_cases.milestones.extract_tender_milestones import (
 from app.application.use_cases.milestones.get_tender_milestones import (
     GetTenderMilestonesUseCase,
 )
+from app.bootstrap.calendar import (
+    get_extract_tender_milestones_use_case,
+    get_tender_milestones_use_case,
+)
+from app.bootstrap.repositories import get_supplier_repo, get_user_repo
+from app.bootstrap.services import get_embedding_service, get_supplier_vector_repo
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatDocument
 from app.main import app
@@ -79,11 +84,11 @@ async def dobles() -> Dobles:
 
 @pytest_asyncio.fixture
 async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
-    app.dependency_overrides[bootstrap.get_user_repo] = lambda: dobles.users
-    app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: InMemorySupplierRepository()
-    app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: FakeSupplierVectorRepository()
-    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: FakeEmbeddingService()
-    app.dependency_overrides[bootstrap.get_tender_milestones_use_case] = lambda: (
+    app.dependency_overrides[get_user_repo] = lambda: dobles.users
+    app.dependency_overrides[get_supplier_repo] = lambda: InMemorySupplierRepository()
+    app.dependency_overrides[get_supplier_vector_repo] = lambda: FakeSupplierVectorRepository()
+    app.dependency_overrides[get_embedding_service] = lambda: FakeEmbeddingService()
+    app.dependency_overrides[get_tender_milestones_use_case] = lambda: (
         GetTenderMilestonesUseCase(
             tenders=dobles.tenders,
             milestones=dobles.milestones,
@@ -91,7 +96,7 @@ async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
             chat=dobles.chat,
         )
     )
-    app.dependency_overrides[bootstrap.get_extract_tender_milestones_use_case] = lambda: (
+    app.dependency_overrides[get_extract_tender_milestones_use_case] = lambda: (
         ExtractTenderMilestonesUseCase(
             tenders=dobles.tenders,
             milestones=dobles.milestones,

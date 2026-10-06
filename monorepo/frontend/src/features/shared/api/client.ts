@@ -52,6 +52,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Código estable que manda el backend cuando un status no alcanza para distinguir el caso. */
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -67,17 +69,12 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de Chiripa.
+ * Hace la petición contra la API y devuelve la respuesta ya validada.
  * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
- * que vienen como `{ detail: string }`.
- *
- * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
- * agrega esta función.
+ * que vienen como `{ detail: string }`. Lo comparten `apiFetch` (JSON) y
+ * `apiDownload` (archivos).
  */
-export async function apiFetch<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
+async function solicitar(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -110,15 +107,13 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     let detail = response.statusText;
+    let code: string | undefined;
     try {
       const body: unknown = await response.json();
-      if (
-        body &&
-        typeof body === "object" &&
-        "detail" in body &&
-        typeof (body as { detail: unknown }).detail === "string"
-      ) {
-        detail = (body as { detail: string }).detail;
+      if (body && typeof body === "object") {
+        const campos = body as { detail?: unknown; code?: unknown };
+        if (typeof campos.detail === "string") detail = campos.detail;
+        if (typeof campos.code === "string") code = campos.code;
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el statusText.
@@ -130,8 +125,25 @@ export async function apiFetch<T>(
     ) {
       notificarRevocacionAcceso(detail);
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
+
+  return response;
+}
+
+/**
+ * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`.
+ *
+ * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
+ * agrega esta función.
+ */
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await solicitar(path, options);
 
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
   if (response.status === 204) {
@@ -139,4 +151,71 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+/** Un archivo descargado de la API. */
+export interface ArchivoDescargado {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Descarga un archivo de la API (por ejemplo, un `.docx`). El nombre sale del
+ * `Content-Disposition`; si no viene, se usa `nombrePorDefecto`.
+ */
+export async function apiDownload(
+  path: string,
+  nombrePorDefecto = "archivo",
+): Promise<ArchivoDescargado> {
+  const response = await solicitar(path);
+  return {
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")) ?? nombrePorDefecto,
+  };
+}
+
+export type ExportDownloadResult =
+  | { kind: "file"; blob: Blob; filename: string | null }
+  /** 202: el backend aceptó el pedido pero el archivo todavía no está (HdU 19). */
+  | { kind: "accepted"; body: unknown };
+
+function filenameFrom(disposition: string | null): string | null {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Como `apiDownload`, pero para endpoints que pueden responder 202 porque el
+ * archivo sigue generándose (exportaciones de la HdU 19).
+ */
+export async function apiDownloadOrAccepted(
+  path: string,
+  options?: RequestInit,
+): Promise<ExportDownloadResult> {
+  const response = await solicitar(path, options);
+
+  if (response.status === 202) {
+    return { kind: "accepted", body: (await response.json()) as unknown };
+  }
+
+  return {
+    kind: "file",
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")),
+  };
+}
+
+/**
+ * Guarda un archivo recibido del backend, con el mismo truco de ancla que la
+ * descarga del CSV de cotizaciones.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
