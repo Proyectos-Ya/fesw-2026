@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
     sync_estados_limite: int = Field(default=9000, gt=0)
     sync_estados_timeout_minutos: float = Field(default=50.0, gt=0)
+    # Corridas incompletas seguidas (la API cortó el listado) que se toleran
+    # saliendo con 0. Una suelta la cubre la ventana de la siguiente; recién al
+    # juntar estas hay horas sin mirar y vale el correo de "crashed" de Railway.
+    sync_estados_incompletas_toleradas: int = Field(default=3, gt=0)
     # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
