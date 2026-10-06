@@ -21,6 +21,9 @@ from app.application.use_cases.exports.export_jobs import (
     ReconcileExportJobsUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
+from app.application.use_cases.milestones.extract_tender_milestones import (
+    ExtractTenderMilestonesUseCase,
+)
 from app.application.use_cases.milestones.send_milestone_reminders import (
     SendMilestoneRemindersUseCase,
 )
@@ -54,6 +57,9 @@ from app.infrastructure.repositories.notification_repository import (
     NotificationPreferenceRepository,
     NotificationRepository,
 )
+from app.infrastructure.repositories.sql_tender_chat_repository import (
+    SQLTenderChatRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_milestone_repository import (
     TenderMilestoneRepository,
@@ -61,6 +67,9 @@ from app.infrastructure.repositories.tender_milestone_repository import (
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.services.exports.background import AsyncioExportBackground
+from app.infrastructure.services.milestone_extraction_background import (
+    AsyncioMilestoneExtractionBackground,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +91,27 @@ def build_export_background(app: FastAPI) -> AsyncioExportBackground:
             )
 
     return AsyncioExportBackground(open_completion)
+
+
+def build_milestone_extraction_background(app: FastAPI) -> AsyncioMilestoneExtractionBackground:
+    """Extrae los hitos de las bases apenas se suben (HU-16, criterio 1).
+
+    Cada pasada abre su propia sesión: cuando la IA termina, la sesión de la
+    subida que la originó ya se cerró.
+    """
+
+    @asynccontextmanager
+    async def open_extraction():
+        async with async_session_maker() as session:
+            yield ExtractTenderMilestonesUseCase(
+                tenders=TenderRepository(session),
+                milestones=TenderMilestoneRepository(session),
+                event_links=CalendarEventLinkRepository(session),
+                chat=SQLTenderChatRepository(session),
+                ai=app.state.milestone_extraction_service,
+            )
+
+    return AsyncioMilestoneExtractionBackground(open_extraction)
 
 
 async def reconcile_export_jobs() -> tuple[int, int]:

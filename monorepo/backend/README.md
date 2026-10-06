@@ -8,8 +8,8 @@ Backend de **Chiripa**, construido con FastAPI, SQLModel, Alembic, PostgreSQL (S
 
 ## Requisitos Previos
 
-* **Python 3.12+**
-* **Docker Desktop** (con al menos **4 GB de RAM asignados** para los modelos de embeddings)
+* **Python 3.12+** ([**uv**](https://docs.astral.sh/uv/) es opcional)
+* **Docker Desktop** (con al menos **4 GB de RAM asignados**: los modelos de embeddings y reranker corren dentro del contenedor)
 * **Supabase CLI**
 
 > **Windows**: Trabajar dentro de **WSL2**. Si usas Windows directo, agrega `WATCHFILES_FORCE_POLLING=1` al `.env`.
@@ -18,33 +18,43 @@ Backend de **Chiripa**, construido con FastAPI, SQLModel, Alembic, PostgreSQL (S
 
 ## Configuración Inicial
 
-1. **Variables de entorno**:
+1. **Variables de entorno.** Hay un solo `.env`, en `monorepo/`: lo leen tanto
+   `docker compose` como la API y Alembic (`app/config.py` lo busca ahí). Desde
+   `monorepo/`:
    ```bash
    cp .env.example .env
    ```
-   Genera el secreto de JWT y agrégalo al `.env`:
-   ```bash
-   python -c "import secrets; print(f'JWT_SECRET_KEY={secrets.token_urlsafe(48)}')" >> .env
-   ```
+   Completa al menos `MERCADO_PUBLICO_API_KEY`, `GEMINI_API_KEY` y `GEMINI_MODEL`, que son
+   obligatorias: sin ellas la API no arranca.
 
-2. **Entorno virtual local (`.venv`)**:
+2. **Entorno virtual local (`.venv`)**, desde `monorepo/backend/`. Crea el entorno con
+   cualquiera de estas dos opciones:
    ```bash
-   python -m venv .venv
+   python3.12 -m venv .venv           # con el Python del sistema
+   uv venv --seed --python 3.12       # o con uv, si lo usas
+   ```
+   Después actívalo e instala las dependencias:
+   ```bash
    source .venv/bin/activate    # En Windows: .venv\Scripts\Activate.ps1
    pip install -r requirements-dev.txt
    ```
+   Las dependencias viven en los `requirements*.txt` (el `Dockerfile` instala desde ahí),
+   así que no se usa `uv add` ni `pyproject.toml` para gestionarlas.
+   `requirements-dev.txt` incluye `requirements-test.txt` y suma los modelos en proceso
+   (`sentence-transformers`, `onnxruntime`), que arrastran PyTorch. Si solo vas a correr
+   tests, basta con `pip install -r requirements-test.txt`.
 
-3. **Clave de firma Supabase Auth**:
+3. **Clave de firma de Supabase Auth**, desde la raíz del repositorio:
    ```bash
-   echo '[]' > supabase/signing_keys.json
-   supabase gen signing-key --algorithm ES256 --append
+   supabase gen signing-key --algorithm ES256 > supabase/signing_keys.json
    ```
 
 ---
 
 ## Cómo Levantar el Proyecto
 
-El backend se ejecuta siempre a través de **Docker Compose**:
+La API se ejecuta a través de **Docker Compose**. Postgres y Auth los pone Supabase, no el
+compose:
 
 ```bash
 # 1. Base de datos y Auth local (desde la raíz del repo)
@@ -52,31 +62,65 @@ supabase start
 
 # 2. API y Qdrant (desde monorepo/)
 docker compose up -d
+
+# 3. Frontend (desde monorepo/frontend/)
+pnpm dev
 ```
 
+El contenedor de la API corre `alembic upgrade head` antes de arrancar `uvicorn --reload`,
+así que en local no hace falta migrar a mano.
+
 * **API / Swagger**: [http://localhost:8000](http://localhost:8000) (documentación en `/docs`)
+* **Frontend**: [http://localhost:3000](http://localhost:3000)
 * **Supabase Studio**: [http://localhost:54323](http://localhost:54323)
 * **Qdrant Dashboard**: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
 * **Mailpit (correos locales)**: [http://localhost:54324](http://localhost:54324)
 
-> **Nota**: El primer arranque descarga los modelos de embeddings (`bge-m3` y reranker, ~4.9 GB). Comprueba que la API esté lista con:
-> `curl http://localhost:8000/health` (responderá `{"status":"healthy"}`).
+**Espera a que la API esté lista antes de abrir el navegador.** El primer arranque
+descarga los modelos (`bge-m3`, ~2 GB, y el reranker ONNX, ~1,3 GB) a un volumen que se
+conserva entre reinicios; los siguientes solo los cargan en memoria. Si entras antes, el
+frontend muestra `Failed to fetch`:
+
+```bash
+curl http://localhost:8000/health    # En PowerShell: curl.exe ...
+```
+
+Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
+
+### Modelos: local vs. producción
+
+| | Local (compose) | Producción |
+|---|---|---|
+| `EMBEDDING_PROVIDER` | `local` (bge-m3 en proceso) | `huggingface` (por API) |
+| `RERANKER_PROVIDER` | `local` (ONNX en proceso) | `pinecone` (por API) |
+| Imagen (`Dockerfile`) | target `dev`: con torch y onnxruntime, `--reload`, root | target `runtime` (por defecto): sin modelos, usuario `app` |
+
+El compose fija los dos proveedores en `local` a propósito, aunque el `.env` diga otra
+cosa: en local no hace falta ninguna cuenta de terceros ni se gastan créditos. Si la
+máquina no tiene RAM para el reranker, `DISABLE_RERANKER=true` lo apaga.
+
+### Crear tu cuenta
+
+No hay script de siembra de usuarios: las cuentas las emite Supabase Auth. Regístrate en
+`/register`, confirma el correo desde Mailpit (http://localhost:54324) y completa el
+onboarding de la empresa.
 
 ---
 
 ## Base de Datos y Datos de Prueba
 
 ### Migraciones con Alembic
-El esquema se gestiona **únicamente con Alembic** (ver [AGENTS.md](../../AGENTS.md) y la [Guía Operativa de Alembic](../../docs/guides/alembic-migraciones.md)):
+El esquema se gestiona **únicamente con Alembic** (ver [AGENTS.md](../../AGENTS.md) y la [Guía Operativa de Alembic](../../docs/guides/alembic-migraciones.md)). Desde `monorepo/backend/` con el `.venv` activo:
 ```bash
 alembic upgrade head
 alembic revision --autogenerate -m "descripcion"
 ```
-* **Cabezas múltiples**: Antes de abrir un PR, ejecuta `alembic heads`. Debe devolver una sola línea. Si hay conflicto entre ramas, repunta `down_revision` a la cabeza de `develop` (ver [SKILL.md](../../SKILL.md) §1).
+* **Cabezas múltiples**: Antes de abrir un PR, ejecuta `python -m scripts.migraciones` (el mismo chequeo que corre el CI). Si hay más de una cabeza, te dice cómo resolverlo y con `--arreglar` repunta tu migración a la cabeza de `develop` (ver [SKILL.md](../../SKILL.md) §1).
 * **Guía Completa y Troubleshooting**: Consulta la [Guía Operativa de Migraciones con Alembic](../../docs/guides/alembic-migraciones.md) para resolver cabezas múltiples, revisiones huérfanas, drift o errores de `EsquemaSinMigrar`.
 
 ### Cargar Datos desde el Dump
-Para sembrar licitaciones vigentes de prueba en PostgreSQL y Qdrant:
+Para sembrar licitaciones de prueba (`project-data/chiripa_tenders.xlsx`, en la raíz del
+repo) en PostgreSQL y Qdrant:
 ```bash
 # Desde monorepo/backend/ con .venv activo:
 python tests/matching_evaluation/load_postgres_robust.py
@@ -90,35 +134,13 @@ prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
 dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
 para probar la aplicación da lo mismo.
 
-**3.** Crea tu cuenta desde la aplicación. Ya no hay script de siembra: las
-cuentas las emite Supabase Auth, así que hay que registrarse en `/register`,
-confirmar el correo desde Mailpit (http://localhost:54324) y completar el
-onboarding de la empresa. Ver el pendiente **5.3** para el script que lo
-automatizaría.
+Para vaciar licitaciones o resetear usuarios y empresas sin borrar el catálogo, ver la
+[Guía de Scripts Utilitarios](../../docs/guides/scripts-utilitarios.md).
 
-**4.** Levanta la aplicación:
+### Ingestar desde Mercado Público
 
-```bash
-cd monorepo && docker compose up -d
-cd frontend && pnpm dev
-```
-
-**Espera a que la API esté lista antes de abrir el navegador** — tarda porque carga
-el modelo de embeddings. Si entras antes, el frontend muestra `Failed to fetch`:
-
-```bash
-curl http://localhost:8000/health
-```
-
-En Windows (PowerShell), `curl` es un alias de `Invoke-WebRequest`:
-
-```powershell
-curl.exe http://localhost:8000/health
-```
-
-Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
-
-### Ingestar desde Mercado Público (Modo B)
+La ingesta **no corre dentro de la API**: la hacen dos crons, que también se pueden
+lanzar a mano.
 
 Con la infraestructura arriba y `MERCADO_PUBLICO_API_KEY` en `monorepo/.env`:
 
@@ -251,8 +273,10 @@ empresa y avisa por dos canales: un aviso en la plataforma y un correo.
 
 ### Cómo funciona
 
-Tres bucles `asyncio` arrancan con la API, igual que los de ingesta
-(`app/infrastructure/services/notifications/notification_scheduler.py`):
+Tres bucles `asyncio` arrancan en el lifespan de la API (`app/main.py`), si
+`RUN_NOTIFICATION_SCAN=true`
+(`app/infrastructure/services/notifications/notification_scheduler.py`). Leen lo que ya
+está en la base, venga de los crons de ingesta o del dump:
 
 | Bucle | Cada cuánto | Qué hace |
 |---|---|---|
@@ -272,7 +296,7 @@ definitiva, la entrega queda en `failed_permanent`, se apaga
 `notification_preference.email_delivery_enabled` y el usuario ve el motivo en
 `/configuracion/notificaciones`, donde puede reactivarlo.
 
-> Como el scheduler de ingesta, esto asume **una sola instancia** de la API. Con dos
+> Esto asume **una sola instancia** de la API. Con dos
 > réplicas ambas escanearían y los correos saldrían duplicados.
 
 ### Correo en desarrollo
@@ -400,6 +424,9 @@ Desde la ficha de una licitación se puede compartir un **enlace público de 7 d
   **una sola instancia** de la API; al arrancar se marcan fallidas las que quedaron a medias.
 - El correo de "archivo listo" usa el mismo `SmtpEmailService` que las alertas, pero se
   envía directo: no depende de `RUN_NOTIFICATION_SCAN` ni de las preferencias de alertas.
+
+---
+
 ## Hitos y sincronización con Google Calendar (HU-16)
 
 La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que
@@ -422,7 +449,7 @@ endpoints, las migraciones y cómo comprobar cada criterio a mano— está en
 Sin `GOOGLE_CALENDAR_CLIENT_ID` la sincronización queda apagada y el resto funciona igual.
 Con el ID puesto, el secreto y la llave son obligatorios: sin ellos la API no arranca.
 
-Los bucles de la HU-16 se suman a los de ingesta y alertas, con la misma premisa de
+Los bucles de la HU-16 se suman a los de alertas, con la misma premisa de
 **una sola instancia**:
 
 | Bucle | Cada cuánto | Qué hace |
@@ -436,34 +463,28 @@ recordatorios.
 
 ---
 
-## Calidad de código
+## Calidad de Código y Pruebas
 
-Ruff cubre el linting y el formateo. La configuración está en `pyproject.toml`.
+Desde `monorepo/backend/` con el `.venv` activo. Ruff cubre linting y formateo; su
+configuración está en `pyproject.toml`.
 
 ```bash
 ruff check .          # detectar problemas
 ruff check . --fix    # corregir los que se pueden automáticamente
 ruff format .         # formatear
+pytest                                        # suite completa
+pytest -m "not integration and not network"   # sin Postgres real ni DNS público
 ```
 
-Ambos vienen en `requirements-dev.txt`, así que están disponibles con el venv activado.
+* **TDD** es obligatorio para el código de producción; los experimentos en `spikes/` no requieren tests (ver [AGENTS.md](../../AGENTS.md)).
+* **OpenAPI**: Toda ruta de la API debe definir `summary`, `tags` y `response_model` para la documentación en `/docs`.
 
 ---
 
 ## Endpoints principales
 - `GET /` — Mensaje de bienvenida
-- `GET /health` — Estado del servicio
-- `GET /docs` — Documentación interactiva (Swagger UI)
----
-
-## Estructura de Carpetas
-
-La arquitectura del backend sigue los principios de **Clean Architecture** (Arquitectura Limpia), separando la lógica de negocio de los detalles tecnológicos e infraestructura. La estructura del directorio `app/` es la siguiente:
-Las licitaciones del archivo `project-data/chiripa_tenders.xlsx` se cargan con fechas desplazadas hacia el futuro para que aparezcan siempre vigentes en la plataforma.
-
-### Limpieza y Reseteo
-Existen utilidades para vaciar licitaciones o resetear usuarios y perfiles de empresa sin borrar el catálogo. Consulta la guía detallada:
-👉 [Guía de Scripts Utilitarios](../../docs/guides/scripts-utilitarios.md)
+- `GET /health` — Estado del servicio (lo usa el `HEALTHCHECK` del `Dockerfile`)
+- `GET /docs` — Documentación interactiva (Swagger UI) con el resto de las rutas
 
 ---
 
@@ -471,22 +492,30 @@ Existen utilidades para vaciar licitaciones o resetear usuarios y perfiles de em
 
 ```text
 app/
-├── domain/                  # Núcleo de negocio (entities, models, errors)
-├── application/             # Casos de uso (use_cases, schemas, repositories, rules)
-├── infrastructure/          # Detalles técnicos (routers, repositories, services, db)
-└── shared/                  # Constantes y utilidades comunes
+├── domain/                  # Núcleo de negocio (entities, models, errors, services)
+├── application/             # Casos de uso (use_cases, schemas, repositories, rules, services)
+├── infrastructure/          # Detalles técnicos (routers, repositories, services, auth, db)
+├── bootstrap/               # Composition root: arma servicios, repositorios, rutas y runners
+├── shared/                  # Constantes y utilidades comunes
+├── config.py                # Settings (lee monorepo/.env)
+└── main.py                  # Fábrica de la app y lifespan (bucles en segundo plano)
+scripts/                     # Crons y utilidades (`python -m scripts.<nombre>`)
+alembic/                     # Migraciones
 ```
 * Las dependencias van en una sola dirección: `infrastructure` → `application` → `domain`.
-* Los casos de uso dependen de interfaces abstractas; las implementaciones de base de datos van en `infrastructure/repositories/`.
+* Los casos de uso dependen de interfaces abstractas; las implementaciones de base de datos van en `infrastructure/repositories/`. `bootstrap/` es el único lugar que conoce las implementaciones concretas y las inyecta.
 
 ---
 
-## Pruebas y Calidad
+## Despliegue
 
-* **Linter y formato**: `ruff check . --fix && ruff format .`
-* **Tests**: `pytest` (o `pytest -m "not integration and not network"` para pruebas rápidas unitarias).
-* **Spikes**: Los experimentos en `spikes/` no requieren tests obligatorios (ver [AGENTS.md](../../AGENTS.md)).
-* **OpenAPI**: Toda ruta de la API debe definir `summary`, `tags` y `response_model` para la documentación en `/docs` (ver [AGENTS.md](../../AGENTS.md)).
+Railway construye `monorepo/backend/Dockerfile` (target `runtime`) y corre
+`alembic upgrade head` como `preDeployCommand` (`railway.toml`). Por eso las migraciones
+deben ser compatibles hacia atrás. Esa configuración **caduca el 2026-12-01**: ver
+[AGENTS.md](../../AGENTS.md) §3.
+
+La imagen corre **un solo worker**: los bucles de alertas, hitos y exportaciones viven en
+el proceso de la API y se duplicarían con más de una instancia.
 
 ---
 
@@ -496,3 +525,4 @@ app/
 * [SKILL.md](../../SKILL.md) — Convenciones de Git, commits y checklist pre-PR.
 * [docs/README.md](../../docs/README.md) — Índice de ADRs, planes y guías técnicas.
 * [docs/guides/scripts-utilitarios.md](../../docs/guides/scripts-utilitarios.md) — Scripts de mantenimiento y reseteo.
+* [monorepo/TESTING-HU16.md](../TESTING-HU16.md) y [monorepo/TESTING-HU19.md](../TESTING-HU19.md) — Guías de prueba de hitos/calendario y de compartir/exportar.

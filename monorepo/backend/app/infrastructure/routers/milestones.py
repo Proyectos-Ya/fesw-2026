@@ -5,6 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+    MilestoneExtractionStatus,
+)
 from app.application.use_cases.milestones.extract_tender_milestones import (
     ExtractTenderMilestonesUseCase,
 )
@@ -50,6 +54,10 @@ class MilestoneListResponse(BaseModel):
     milestones: list[MilestoneResponse]
     documents_count: int
     discarded_count: int
+    # Bases que el usuario subió pero cuyo archivo ya no está: hay que volver a subirlas.
+    unavailable_documents_count: int = 0
+    # "running" mientras la IA lee en segundo plano las bases recién subidas.
+    extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE
 
 
 def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
@@ -72,6 +80,8 @@ def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
         ],
         documents_count=resultado.documents_count,
         discarded_count=resultado.discarded_count,
+        unavailable_documents_count=resultado.unavailable_documents_count,
+        extraction_status=resultado.extraction_status,
     )
 
 
@@ -87,6 +97,9 @@ def create_milestones_router(
     get_tender_milestones_use_case: Callable,
     get_extract_tender_milestones_use_case: Callable,
     get_set_milestone_reminder_use_case: Callable,
+    get_milestone_extraction_background: Callable[[], IMilestoneExtractionBackground | None] = (
+        lambda: None
+    ),
 ) -> APIRouter:
     router = APIRouter(prefix="/tenders", tags=["Milestones"])
 
@@ -108,9 +121,15 @@ def create_milestones_router(
         use_case: Annotated[
             ExtractTenderMilestonesUseCase, Depends(get_extract_tender_milestones_use_case)
         ],
+        background: Annotated[
+            IMilestoneExtractionBackground | None, Depends(get_milestone_extraction_background)
+        ],
     ):
         try:
-            return _respuesta(await use_case.execute(user.id, tender_id))
+            if background is None:
+                return _respuesta(await use_case.execute(user.id, tender_id))
+            # Con el mismo candado que la automática: si está en curso, espera.
+            return _respuesta(await background.run_now(user.id, tender_id, use_case))
         except TenderNotFound as error:
             raise HTTPException(404, "La licitación no existe.") from error
         except MilestoneExtractionUnavailable as error:

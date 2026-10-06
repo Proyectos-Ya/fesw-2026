@@ -73,8 +73,9 @@ del todo. Cuando choque, **manda el proyecto**:
 
 - **Dependencias**: la skill propone `uv` y `uv add <paquete>`. Acá las dependencias
   viven en `monorepo/backend/requirements.txt` y `requirements-dev.txt`, y el
-  `Dockerfile` instala desde el primero. `uv` se usa solo para crear el entorno
-  (`uv venv`). No migrar a `pyproject.toml` ni ejecutar `uv add`.
+  `Dockerfile` instala desde el primero. `uv` es opcional: no todo el equipo lo usa,
+  y quien lo usa lo hace solo para crear el entorno (`uv venv`); la alternativa es
+  `python -m venv .venv`. No migrar a `pyproject.toml` ni ejecutar `uv add`.
 - **Arranque**: la skill prefiere `fastapi dev` / `fastapi run` y un
   `[tool.fastapi] entrypoint`. Acá se arranca con `uvicorn app.main:app`, declarado
   en el `Dockerfile`, y `pyproject.toml` solo tiene configuración de Ruff.

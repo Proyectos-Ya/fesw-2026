@@ -58,6 +58,16 @@ _ESQUEMA = {
 }
 
 
+def _motivo(respuesta: httpx.Response) -> str:
+    """El `status` y el `message` del error de Gemini, o el inicio del cuerpo."""
+    try:
+        error = respuesta.json().get("error", {})
+        motivo = f"{error.get('status', '')} {error.get('message', '')}".strip()
+    except (ValueError, AttributeError):
+        motivo = ""
+    return motivo or respuesta.text[:200]
+
+
 class GeminiMilestoneExtractionService(IMilestoneExtractionAIService):
     def __init__(self, api_key: str, model_name: str, timeout_seconds: float = 90.0):
         self.api_key = api_key
@@ -67,9 +77,11 @@ class GeminiMilestoneExtractionService(IMilestoneExtractionAIService):
     async def extract(
         self, documents: list[DocumentContextDTO], tender_context: str
     ) -> list[ExtractedMilestone]:
+        # La llave va en la cabecera y no como `?key=` en la URL: httpx registra
+        # la URL completa de cada petición, y ahí quedaría escrita.
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model_name}:generateContent?key={self.api_key}"
+            f"{self.model_name}:generateContent"
         )
         payload = {
             "contents": [{"role": "user", "parts": self._partes(documents, tender_context)}],
@@ -81,13 +93,24 @@ class GeminiMilestoneExtractionService(IMilestoneExtractionAIService):
         }
         try:
             async with httpx.AsyncClient() as client:
-                respuesta = await client.post(url, json=payload, timeout=self.timeout_seconds)
+                respuesta = await client.post(
+                    url,
+                    json=payload,
+                    headers={"x-goog-api-key": self.api_key},
+                    timeout=self.timeout_seconds,
+                )
         except httpx.HTTPError as error:
             logger.warning("Gemini no respondió al extraer hitos: %s", type(error).__name__)
             raise MilestoneExtractionUnavailable() from error
 
         if respuesta.status_code != 200:
-            logger.error("Gemini respondió HTTP %s al extraer hitos", respuesta.status_code)
+            # Con el motivo, una llave mal configurada ("API key not valid") no
+            # se confunde con una caída de Gemini.
+            logger.error(
+                "Gemini rechazó la extracción de hitos (HTTP %s): %s",
+                respuesta.status_code,
+                _motivo(respuesta),
+            )
             raise MilestoneExtractionUnavailable()
 
         try:
