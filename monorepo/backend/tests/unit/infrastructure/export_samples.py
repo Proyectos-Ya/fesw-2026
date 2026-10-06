@@ -10,7 +10,7 @@ from app.application.use_cases.exports.export_snapshot import (
     key_dates_for,
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
-from app.domain.entities.quotation import MaterialItem, Quotation
+from app.domain.entities.quotation import StoredMaterialItem, Quotation
 from app.domain.entities.tender import Tender, TenderItem
 
 # 28-sep-2026 15:00 UTC = 12:00 en Chile (horario de verano, UTC-3).
@@ -48,19 +48,20 @@ def snapshot(**cambios: object) -> ExportSnapshot:
             ]
         }
     )
+    # Incluye una cotización histórica con fracciones para verificar su lectura.
     quotation = Quotation(
         id=uuid4(),
         supplier_id=uuid4(),
         tender_id=tender.id,
         currency="CLP",
         items=[
-            MaterialItem(
+            StoredMaterialItem(
                 description="Semilla de pasto",
                 unit="kg",
                 quantity=Decimal("10"),
                 unit_price=Decimal("1500"),
             ),
-            MaterialItem(
+            StoredMaterialItem(
                 description="Fertilizante",
                 unit="saco",
                 quantity=Decimal("2.5"),
