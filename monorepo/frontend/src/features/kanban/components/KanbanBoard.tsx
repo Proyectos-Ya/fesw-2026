@@ -25,6 +25,7 @@ export function KanbanBoard() {
     error,
     addColumn,
     renameColumn,
+    recolorColumn,
     deleteColumn,
     addCard,
     moveCard,
@@ -144,6 +145,7 @@ export function KanbanBoard() {
                 cards={cardsInColumn(column.id)}
                 tenders={tenders}
                 onRename={(id, name) => void renameColumn(id, name)}
+                onRecolor={(id, color) => void recolorColumn(id, color)}
                 onDelete={(id) => void deleteColumn(id)}
                 onAddCard={addCard}
                 onRemoveCard={(tender_id) => void removeCard(tender_id)}

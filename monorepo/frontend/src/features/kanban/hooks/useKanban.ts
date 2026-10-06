@@ -77,6 +77,24 @@ export function useKanban() {
     [columns],
   );
 
+  const recolorColumn = useCallback(
+    async (id: string, color: string) => {
+      const prev = columns.find((c) => c.id === id);
+      if (!prev || prev.color === color) return;
+      setColumns((cols) =>
+        cols.map((c) => (c.id === id ? { ...c, color } : c)),
+      );
+      try {
+        await kanbanService.updateColumn(id, { color });
+      } catch {
+        setColumns((cols) =>
+          cols.map((c) => (c.id === id ? { ...c, color: prev.color } : c)),
+        );
+      }
+    },
+    [columns],
+  );
+
   const deleteColumn = useCallback(
     async (id: string) => {
       const backupColumns = columns;
@@ -203,6 +221,7 @@ export function useKanban() {
     error,
     addColumn,
     renameColumn,
+    recolorColumn,
     deleteColumn,
     addCard,
     moveCard,
