@@ -24,8 +24,8 @@ describe("editor de cotización", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
     expect(await screen.findByDisplayValue("Cemento Portland")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Arena")).toBeInTheDocument();
-    expect(screen.getByLabelText("Cantidad 1")).toHaveValue(4);
-    expect(screen.getByLabelText("Precio unitario 1")).toHaveValue(null);
+    expect(screen.getByLabelText("Cantidad 1")).toHaveValue("4");
+    expect(screen.getByLabelText("Precio unitario 1")).toHaveValue("");
     expect(screen.queryByLabelText("Moneda")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Unidad 1")).toHaveValue("saco");
     fireEvent.change(screen.getByLabelText("Cantidad 1"), { target: { value: "2" } });
@@ -54,7 +54,7 @@ describe("editor de cotización", () => {
     expect(screen.getByLabelText("Subtotal 1")).toHaveTextContent("300 CLP");
     fireEvent.click(screen.getByRole("button", { name: "Cerrar cotización" }));
     fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
-    expect(screen.getByLabelText("Cantidad 1")).toHaveValue(3);
+    expect(screen.getByLabelText("Cantidad 1")).toHaveValue("3");
     fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
     await screen.findByText("Cotización guardada.");
     expect(apiFetch).toHaveBeenLastCalledWith("/tenders/tender/quotation", { method: "PUT", body: JSON.stringify({ currency: "CLP", items: [{ description: "Cemento", unit: "saco", quantity: "3", unit_price: "100" }] }) });
@@ -75,7 +75,7 @@ describe("editor de cotización", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
     expect(await screen.findByDisplayValue("Cemento")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("Arena")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Cantidad 1")).toHaveValue(2);
+    expect(screen.getByLabelText("Cantidad 1")).toHaveValue("2");
   });
   it("no convierte silenciosamente cotizaciones antiguas de otra moneda", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ ...saved, currency: "USD" });
@@ -113,8 +113,8 @@ it("marca los cuatro campos obligatorios y bloquea fracciones antiguas", async (
 it("normaliza ceros decimales almacenados sin redondear", async () => {
   vi.mocked(apiFetch).mockResolvedValueOnce({...saved, items: [{...saved.items[0], quantity: "2.000", unit_price: "100.00"}]});
   await open();
-  expect(screen.getByLabelText("Cantidad 1")).toHaveValue(2);
-  expect(screen.getByLabelText("Precio unitario 1")).toHaveValue(100);
+  expect(screen.getByLabelText("Cantidad 1")).toHaveValue("2");
+  expect(screen.getByLabelText("Precio unitario 1")).toHaveValue("100");
   expect(screen.getByLabelText("Subtotal 1")).toHaveTextContent("200 CLP");
 });
 it("no descarga PDF si falla el guardado y conserva el borrador", async () => {
@@ -123,6 +123,23 @@ it("no descarga PDF si falla el guardado y conserva el borrador", async () => {
   fireEvent.change(screen.getByLabelText("Cantidad 1"), {target: {value: "4"}});
   fireEvent.click(screen.getByRole("button", {name: "Descargar PDF"}));
   expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo guardar");
-  expect(screen.getByLabelText("Cantidad 1")).toHaveValue(4);
+  expect(screen.getByLabelText("Cantidad 1")).toHaveValue("4");
   expect(screen.getByText("Cambios sin guardar.")).toBeInTheDocument();
+});
+
+it("muestra miles y guarda los valores sin separadores", async () => {
+  vi.mocked(apiFetch).mockResolvedValue({...saved, items: [{...saved.items[0], quantity: "2000", unit_price: "1500"}]});
+  await open();
+  const price = screen.getByLabelText("Precio unitario 1");
+  expect(price).toHaveValue("1.500");
+  expect(screen.getByLabelText("Cantidad 1")).toHaveValue("2.000");
+  expect(screen.getByLabelText("Subtotal 1")).toHaveTextContent("3.000.000 CLP");
+  fireEvent.focus(price);
+  expect(price).toHaveValue("1500");
+  fireEvent.change(price, {target: {value: "2500"}});
+  fireEvent.blur(price);
+  expect(price).toHaveValue("2.500");
+  fireEvent.click(screen.getByRole("button", {name: "Guardar cotización"}));
+  await screen.findByText("Cotización guardada.");
+  expect(apiFetch).toHaveBeenLastCalledWith("/tenders/tender/quotation", {method: "PUT", body: JSON.stringify({currency: "CLP", items: [{description: "Cemento", unit: "saco", quantity: "2000", unit_price: "2500"}]})});
 });

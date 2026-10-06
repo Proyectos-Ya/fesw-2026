@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { subtotal, total, validate, toCsv, materialsFromTender } from "../quotation";
+import { subtotal, total, validate, toCsv, materialsFromTender, formatInteger } from "../quotation";
 
 const item = { description: "Cemento", unit: "saco", quantity: "2", unit_price: "100" };
 
@@ -38,4 +38,11 @@ it("precarga cantidades enteras sin redondear fracciones", () => {
 });
 it("mantiene precisión más allá de Number.MAX_SAFE_INTEGER", () => {
   expect(total([{ ...item, quantity: "999999999", unit_price: "999999999999" }])).toBe("999999998999000000001");
+});
+
+it("separa miles con puntos sin perder precisión", () => {
+  expect(formatInteger("1250000")).toBe("1.250.000");
+  expect(formatInteger("999999998999000000001")).toBe("999.999.998.999.000.000.001");
+  expect(formatInteger("0")).toBe("0");
+  expect(toCsv([{...item, quantity: "2000", unit_price: "1500"}], "CLP", "123", "empresa")).toContain('"2.000";"1.500";"3.000.000";"3.000.000"');
 });

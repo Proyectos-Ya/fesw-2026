@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import { type Quotation, subtotal, total, validate } from "./quotation";
+import { type Quotation, subtotal, total, validate, formatInteger } from "./quotation";
 
 /** Se carga solo al descargar; los datos nunca salen del navegador. */
 export function quotationPdf(quotation: Quotation, tenderCode: string): Blob {
@@ -12,8 +12,8 @@ export function quotationPdf(quotation: Quotation, tenderCode: string): Blob {
   const date = new Date(quotation.updated_at).toLocaleDateString("es-CL", { timeZone: "America/Santiago" });
   autoTable(doc, {
     head: [["Descripción", "Unidad", "Cantidad", "Precio unitario (CLP)", "Subtotal (CLP)"]],
-    body: quotation.items.map(item => [item.description.trim(), item.unit.trim(), item.quantity, item.unit_price, subtotal(item)]),
-    foot: [[{ content: "Total cotización", colSpan: 4 }, `${total(quotation.items)} CLP`]],
+    body: quotation.items.map(item => [item.description.trim(), item.unit.trim(), formatInteger(item.quantity), formatInteger(item.unit_price), formatInteger(subtotal(item))]),
+    foot: [[{ content: "Total cotización", colSpan: 4 }, `${formatInteger(total(quotation.items))} CLP`]],
     theme: "striped",
     margin: { top: 48, bottom: 20, left: 14, right: 14 },
     styles: { font: "helvetica", fontSize: 9, cellPadding: 3, overflow: "linebreak", valign: "top" },

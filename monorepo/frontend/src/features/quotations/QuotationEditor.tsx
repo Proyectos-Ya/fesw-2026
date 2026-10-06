@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, apiFetch } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
-import { type TenderMaterial, type Material, type Quotation, materialsFromTender, subtotal, total, validate, toCsv, normalizeInteger } from "./quotation";
+import { type TenderMaterial, type Material, type Quotation, materialsFromTender, subtotal, total, validate, toCsv, normalizeInteger, formatInteger } from "./quotation";
 
 const blank = (): Material => ({ description: "", unit: "", quantity: "", unit_price: "" });
 const currency = "CLP" as const;
@@ -108,14 +108,14 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: Qu
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">Descripción (obligatorio)<input aria-label={`Descripción ${index + 1}`} className={inputClass} value={item.description} maxLength={500} required onChange={event => update(item.key, "description", event.target.value)} /></label>
           <label className="text-sm">Unidad de medida (obligatorio)<input aria-label={`Unidad ${index + 1}`} className={inputClass} value={item.unit} maxLength={40} placeholder="Ej. saco, m², unidad" required onChange={event => update(item.key, "unit", event.target.value)} /></label>
-          <label className="text-sm">Cantidad (obligatorio)<input aria-label={`Cantidad ${index + 1}`} className={inputClass} type="number" min="1" max="999999999" step="1" value={item.quantity} required onChange={event => update(item.key, "quantity", event.target.value)} /></label>
-          <label className="text-sm">Precio unitario ({currency}) (obligatorio)<input aria-label={`Precio unitario ${index + 1}`} className={inputClass} type="number" min="0" max="999999999999" step="1" value={item.unit_price} required onChange={event => update(item.key, "unit_price", event.target.value)} /></label>
+          <label className="text-sm">Cantidad (obligatorio)<IntegerInput aria-label={`Cantidad ${index + 1}`} className={inputClass}  value={item.quantity} required onChange={value => update(item.key, "quantity", value)} /></label>
+          <label className="text-sm">Precio unitario ({currency}) (obligatorio)<IntegerInput aria-label={`Precio unitario ${index + 1}`} className={inputClass}  value={item.unit_price} required onChange={value => update(item.key, "unit_price", value)} /></label>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3"><output aria-label={`Subtotal ${index + 1}`}>Subtotal: {subtotal(item) === "" ? "Pendiente" : `${subtotal(item)} ${currency}`}</output>
+        <div className="mt-3 flex items-center justify-between gap-3"><output aria-label={`Subtotal ${index + 1}`}>Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}</output>
           <button type="button" className="text-sm text-danger underline" onClick={() => { changed(); setItems(items.filter(value => value.key !== item.key)); }} aria-label={`Eliminar material ${index + 1}`}>Eliminar material</button></div>
       </fieldset>)}
       <Button type="button" disabled={items.length >= 200} onClick={() => { changed(); setItems([...items, row(blank())]); }}>Agregar material</Button>
-      <p className="text-xl font-bold" aria-live="polite">Total: {total(items) === "" ? "Pendiente" : `${total(items)} ${currency}`}</p>
+      <p className="text-xl font-bold" aria-live="polite">Total: {total(items) === "" ? "Pendiente" : `${formatInteger(total(items))} ${currency}`}</p>
       {dirty && <p className="text-sm text-text-muted">Cambios sin guardar.</p>}
       <div className="flex flex-wrap gap-3"><Button type="submit">{busy ? "Guardando…" : "Guardar cotización"}</Button>
         <Button type="button" onClick={() => void save("csv")}>Descargar CSV</Button>
@@ -125,4 +125,22 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: Qu
     {errors.length > 0 && <ul role="alert" className="text-sm text-danger">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
     {message && <p role="status">{message}</p>}
   </form>;
+}
+
+function IntegerInput({ value, onChange, ...props }: {
+  value: string;
+  onChange: (value: string) => void;
+  "aria-label": string;
+  className: string;
+  required: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
+  return <input {...props} type="text" inputMode="numeric"
+    value={focused ? value : formatInteger(value)}
+    onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+    onChange={event => {
+      const input = event.target.value;
+      // Acepta pegados como 1.250.000 sin convertir fracciones como 1.5.
+      onChange(/^\d{1,3}(\.\d{3})+$/.test(input) ? input.replaceAll(".", "") : input);
+    }} />;
 }

@@ -67,5 +67,5 @@ test("descarga PDF de 200 materiales con descripciones largas", async ({ page },
   await download.saveAs(testInfo.outputPath("quotation-long.pdf"));
   const text = (await readFile((await download.path())!)).toString("latin1");
   expect(text).toContain("Material 200");
-  expect(text).toContain("40000 CLP");
+  expect(text).toContain("40.000 CLP");
 });

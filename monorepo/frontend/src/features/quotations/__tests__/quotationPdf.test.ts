@@ -17,7 +17,7 @@ describe("PDF de cotizaciones", () => {
     const text = await quotationPdf({...quote, items, total: "40000"}, "227-15-COT26").text();
     expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(1);
     expect(text).toContain("Material 200");
-    expect(text).toContain("40000 CLP");
+    expect(text).toContain("40.000 CLP");
   });
   it("rechaza fracciones antes de exportar", () => {
     expect(() => quotationPdf({...quote, items: [{...quote.items[0], quantity: "2.5"}]}, "227")).toThrow(/entero/);

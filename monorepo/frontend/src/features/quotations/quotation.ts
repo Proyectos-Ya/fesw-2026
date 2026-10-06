@@ -35,6 +35,11 @@ export function normalizeInteger(value: string): string {
   return value.replace(/\.0+$/, "");
 }
 
+/** Formato chileno exacto: no convierte importes grandes a Number. */
+export function formatInteger(value: string): string {
+  return /^\d+$/.test(value) ? value.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : value;
+}
+
 export function validate(items: Material[]): string[] {
   if (!items.length) return ["Agrega al menos un material."];
   if (items.length > 200) return ["Puedes agregar hasta 200 materiales."];
@@ -69,7 +74,7 @@ export function toCsv(items: Material[], currency: Currency, tenderCode: string,
   };
   const rows = [
     ["Licitación", "Empresa", "Moneda", "Descripción", "Unidad", "Cantidad", "Precio unitario", "Subtotal", "Total cotización"],
-    ...items.map(item => [tenderCode, company, currency, item.description.trim(), item.unit.trim(), item.quantity, item.unit_price, subtotal(item), total(items)]),
+    ...items.map(item => [tenderCode, company, currency, item.description.trim(), item.unit.trim(), formatInteger(item.quantity), formatInteger(item.unit_price), formatInteger(subtotal(item)), formatInteger(total(items))]),
   ];
   return "\uFEFF" + rows.map(row => row.map(cell).join(";")).join("\r\n");
 }
