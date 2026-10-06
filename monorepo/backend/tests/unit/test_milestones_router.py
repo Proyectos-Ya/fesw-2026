@@ -7,6 +7,9 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from app.application.services.milestone_extraction_background import (
+    MilestoneExtractionStatus,
+)
 from app.application.use_cases.milestones.milestone_views import (
     MilestoneView,
     TenderMilestonesResult,
@@ -43,12 +46,13 @@ def api():
         milestones=[
             MilestoneView(
                 milestone=hito,
-                urgency=MilestoneUrgency.PROXIMO,
+                urgency=MilestoneUrgency.CRITICO,
                 synced_providers=[CalendarProvider.GOOGLE],
             )
         ],
         documents_count=1,
         discarded_count=2,
+        unavailable_documents_count=1,
     )
     listar, extraer, recordar = AsyncMock(), AsyncMock(), AsyncMock()
     recordar.execute.return_value = hito.model_copy(update={"reminder_days_before": 3})
@@ -94,7 +98,7 @@ def test_lista_los_hitos_con_fecha_utc_urgencia_y_sincronizacion(api):
         "source_excerpt": "a las 15:00 del día 20",
         "due_at": "2026-10-20T18:00:00Z",
         "has_time": True,
-        "urgency": "proximo",
+        "urgency": "critico",
         "synced_providers": ["google"],
         "reminder_days_before": None,
     }
@@ -106,6 +110,7 @@ def test_extraer_devuelve_los_hitos_y_cuantos_se_descartaron(api):
 
     assert respuesta.status_code == 200
     assert respuesta.json()["discarded_count"] == 2
+    assert respuesta.json()["unavailable_documents_count"] == 1
     api.extraer.execute.assert_awaited_once_with(api.user_id, api.tender_id)
 
 
@@ -184,3 +189,41 @@ class TestRecordatorio:
 
         assert api.client.patch(self._ruta(api), json={"days_before": 1}).status_code == 401
         api.recordar.execute.assert_not_awaited()
+
+
+def test_la_lista_dice_si_la_ia_esta_leyendo_las_bases(api):
+    api.listar.execute.return_value = TenderMilestonesResult(
+        milestones=[],
+        documents_count=1,
+        extraction_status=MilestoneExtractionStatus.RUNNING,
+    )
+
+    respuesta = api.client.get(api.path)
+
+    assert respuesta.json()["extraction_status"] == "running"
+
+
+def test_por_defecto_no_hay_extraccion_en_curso(api):
+    assert api.client.get(api.path).json()["extraction_status"] == "idle"
+
+
+def test_la_extraccion_manual_pasa_por_el_candado_de_la_automatica(api):
+    # Si hay una extracción automática en curso, la manual espera en vez de
+    # correr en paralelo y duplicar hitos.
+    fondo = AsyncMock()
+    fondo.run_now.return_value = api.listar.execute.return_value
+    app = FastAPI()
+    app.include_router(
+        create_milestones_router(
+            api.current_user,
+            lambda: api.listar,
+            lambda: api.extraer,
+            lambda: api.recordar,
+            lambda: fondo,
+        )
+    )
+
+    respuesta = TestClient(app).post(f"{api.path}/extract")
+
+    assert respuesta.status_code == 200
+    fondo.run_now.assert_awaited_once_with(api.user_id, api.tender_id, api.extraer)

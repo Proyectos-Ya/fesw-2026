@@ -24,7 +24,10 @@ from app.bootstrap.builders import (
     build_reranker_service,
 )
 from app.bootstrap.routes import register_routes
-from app.bootstrap.runners import build_export_background
+from app.bootstrap.runners import (
+    build_export_background,
+    build_milestone_extraction_background,
+)
 from app.config import settings
 from app.infrastructure.services.field_weighting_service import FieldWeightingService
 from app.infrastructure.services.gemini_deep_analysis_service import (
@@ -104,6 +107,7 @@ def bootstrap(app: FastAPI) -> None:
     )
 
     app.state.export_background = build_export_background(app)
+    app.state.milestone_extraction_background = build_milestone_extraction_background(app)
 
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo

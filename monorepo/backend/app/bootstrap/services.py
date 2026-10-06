@@ -24,6 +24,9 @@ from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.milestone_extraction_ai_service import (
     IMilestoneExtractionAIService,
 )
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+)
 from app.application.services.proposal_ai_service import IProposalAIService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.tender_assistant_ai_service import (
@@ -115,6 +118,10 @@ def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAI
     return request.app.state.milestone_extraction_service
 
 
+def get_milestone_extraction_background(request: Request) -> IMilestoneExtractionBackground:
+    return request.app.state.milestone_extraction_background
+
+
 def get_calendar_providers(request: Request) -> CalendarProviders:
     return request.app.state.calendar_providers
 
@@ -155,3 +162,8 @@ DocumentValidatorDep = Annotated[
 
 
 ProposalAIServiceDep = Annotated[IProposalAIService, Depends(get_proposal_ai_service)]
+
+
+MilestoneExtractionBackgroundDep = Annotated[
+    IMilestoneExtractionBackground, Depends(get_milestone_extraction_background)
+]

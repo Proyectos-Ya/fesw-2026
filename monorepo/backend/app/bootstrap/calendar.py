@@ -47,6 +47,7 @@ from app.bootstrap.repositories import (
 )
 from app.bootstrap.services import (
     CalendarProvidersDep,
+    MilestoneExtractionBackgroundDep,
     get_milestone_extraction_service,
     get_token_cipher,
 )
@@ -150,12 +151,14 @@ def get_tender_milestones_use_case(
     milestones: TenderMilestoneRepoDep,
     event_links: CalendarEventLinkRepoDep,
     chat: TenderChatRepoDep,
+    extraction: MilestoneExtractionBackgroundDep,
 ) -> GetTenderMilestonesUseCase:
     return GetTenderMilestonesUseCase(
         tenders=tenders,
         milestones=milestones,
         event_links=event_links,
         chat=chat,
+        extraction=extraction,
     )
 
 

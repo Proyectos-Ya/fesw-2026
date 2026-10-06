@@ -23,15 +23,17 @@ import { DefaultTimeDialog } from "./DefaultTimeDialog";
 
 interface MilestonesSectionProps {
   tenderId: string;
+  /** Cambia cuando se suben bases en el asistente, para recargar la tabla. */
+  refreshKey?: number;
   /** Solo para pruebas: fija el "ahora" con que se calculan los plazos. */
   now?: Date;
 }
 
 const NO_MILESTONES: TenderMilestone[] = [];
 
-export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
+export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSectionProps) {
   const { state, reload, refresh, extract, isExtracting, extractError, notice } =
-    useTenderMilestones(tenderId);
+    useTenderMilestones(tenderId, refreshKey);
   const milestones = state.status === "ready" ? state.data.milestones : NO_MILESTONES;
   const onSynced = useCallback(() => void refresh(), [refresh]);
   const calendar = useCalendarSync({ tenderId, milestones, onSynced });
@@ -64,6 +66,7 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
   }
 
   const documentsCount = state.data.documents_count;
+  const extraction = state.data.extraction_status;
 
   return (
     <div className="space-y-4">
@@ -75,7 +78,7 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
           variant="ghost"
           onClick={() => void extract()}
           isLoading={isExtracting}
-          disabled={documentsCount === 0 || isExtracting}
+          disabled={documentsCount === 0 || isExtracting || extraction === "running"}
           className="shrink-0 border border-border-subtle"
         >
           <Icon name="sparkles" size={14} />
@@ -85,8 +88,22 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
 
       {documentsCount === 0 && (
         <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
-          Adjunta las bases en el asistente de la licitación para que la IA extraiga visitas
+          Sube las bases en el asistente de la licitación y la IA extraerá sola las visitas
           técnicas, entregas y otros plazos.
+        </p>
+      )}
+
+      {extraction === "running" && !isExtracting && (
+        <p role="status" className="flex items-center gap-2 text-xs font-medium text-primary">
+          <Icon name="sparkles" size={12} />
+          La IA está leyendo las bases que subiste. Los plazos que encuentre aparecerán aquí.
+        </p>
+      )}
+
+      {extraction === "failed" && !isExtracting && !extractError && (
+        <p role="alert" className="text-xs font-medium text-danger">
+          No se pudieron extraer los hitos automáticamente. Inténtalo con el botón «Extraer hitos de
+          las bases».
         </p>
       )}
 

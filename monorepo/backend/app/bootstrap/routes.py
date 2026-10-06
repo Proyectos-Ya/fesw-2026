@@ -87,6 +87,7 @@ from app.bootstrap.services import (
     get_email_service,
     get_embedding_service,
     get_identity_directory,
+    get_milestone_extraction_background,
     get_supplier_vector_repo,
     get_token_verifier,
 )
@@ -289,6 +290,7 @@ def register_routes(app: FastAPI) -> None:
             get_tender_milestones_use_case,
             get_extract_tender_milestones_use_case,
             get_set_milestone_reminder_use_case,
+            get_milestone_extraction_background,
         )
     )
     app.include_router(
