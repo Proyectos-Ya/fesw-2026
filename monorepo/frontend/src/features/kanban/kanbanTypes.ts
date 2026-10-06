@@ -2,6 +2,7 @@ export interface KanbanColumn {
   id: string;
   name: string;
   position: number;
+  color: string;
   card_count: number;
   created_at: string;
 }

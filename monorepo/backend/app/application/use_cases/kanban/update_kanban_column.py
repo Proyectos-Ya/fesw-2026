@@ -10,7 +10,12 @@ class UpdateKanbanColumnUseCase:
         self.column_repo = column_repo
 
     async def execute(
-        self, column_id: UUID, user_id: UUID, name: str | None, position: int | None
+        self,
+        column_id: UUID,
+        user_id: UUID,
+        name: str | None,
+        position: int | None,
+        color: str | None = None,
     ) -> KanbanColumn:
         column = await self.column_repo.get(column_id, user_id)
         if column is None:
@@ -20,5 +25,7 @@ class UpdateKanbanColumnUseCase:
             column.name = name
         if position is not None:
             column.position = position
+        if color is not None:
+            column.color = color
 
         return await self.column_repo.update(column)

@@ -6,12 +6,14 @@ export interface Material {
 }
 
 export type Currency = "CLP" | "USD" | "EUR" | "UF";
-export interface TenderMaterial { name: string; description: string | null; unit_of_measure?: string | null; }
+export interface TenderMaterial { name: string; description: string | null; unit_of_measure?: string | null; quantity?: number | null; }
 
 export function materialsFromTender(items: TenderMaterial[]): Material[] {
   return items.flatMap(item => {
     const description = item.description?.trim() || item.name.trim();
-    return description ? [{ description, unit: item.unit_of_measure?.trim() || "", quantity: "", unit_price: "" }] : [];
+    const quantity = item.quantity;
+    const validQuantity = typeof quantity === "number" && Number.isInteger(quantity) && quantity > 0 && quantity <= 999999999;
+    return description ? [{ description, unit: item.unit_of_measure?.trim() || "", quantity: validQuantity ? String(quantity) : "", unit_price: "" }] : [];
   });
 }
 export interface Quotation {
@@ -24,8 +26,18 @@ export interface Quotation {
   updated_at: string;
 }
 
-function validDecimal(value: string, integers: number, decimals: number): boolean {
-  return new RegExp(`^\\d{1,${integers}}(?:\\.\\d{1,${decimals}})?$`).test(value);
+function validInteger(value: string, digits: number): boolean {
+  return new RegExp(`^\\d{1,${digits}}$`).test(value);
+}
+
+// El almacenamiento histórico puede devolver "2.000"; solo se quitan ceros.
+export function normalizeInteger(value: string): string {
+  return value.replace(/\.0+$/, "");
+}
+
+/** Formato chileno exacto: no convierte importes grandes a Number. */
+export function formatInteger(value: string): string {
+  return /^\d+$/.test(value) ? value.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : value;
 }
 
 export function validate(items: Material[]): string[] {
@@ -36,28 +48,22 @@ export function validate(items: Material[]): string[] {
     const label = `Material ${index + 1}: `;
     if (!item.description.trim() || item.description.trim().length > 500) errors.push(label + "indica una descripción de hasta 500 caracteres.");
     if (!item.unit.trim() || item.unit.trim().length > 40) errors.push(label + "indica una unidad de hasta 40 caracteres.");
-    if (!validDecimal(item.quantity, 9, 3) || Number(item.quantity) <= 0) errors.push(label + "la cantidad debe ser mayor que cero, con hasta 9 enteros y 3 decimales.");
-    if (!validDecimal(item.unit_price, 12, 2)) errors.push(label + "el precio debe ser cero o positivo, con hasta 12 enteros y 2 decimales.");
+    if (!validInteger(item.quantity, 9) || BigInt(item.quantity) <= BigInt(0)) errors.push(label + "la cantidad debe ser un entero mayor que cero, de hasta 9 dígitos.");
+    if (!validInteger(item.unit_price, 12)) errors.push(label + "el precio debe ser un entero cero o positivo, de hasta 12 dígitos.");
     return errors;
   });
 }
 
-function scaled(value: string, places: number): bigint {
-  const [whole, fraction = ""] = value.split(".");
-  return BigInt(whole + fraction.padEnd(places, "0"));
+export function subtotal(item: Material): string {
+  if (!validInteger(item.quantity, 9) || BigInt(item.quantity) <= BigInt(0) || !validInteger(item.unit_price, 12)) return "";
+  return (BigInt(item.quantity) * BigInt(item.unit_price)).toString();
 }
 
-function cents(item: Material): bigint {
-  if (!validDecimal(item.quantity, 9, 3) || !validDecimal(item.unit_price, 12, 2)) return BigInt(0);
-  return (scaled(item.quantity, 3) * scaled(item.unit_price, 2) + BigInt(500)) / BigInt(1000);
+export function total(items: Material[]): string {
+  const subtotals = items.map(subtotal);
+  if (!items.length || subtotals.some(value => value === "")) return "";
+  return subtotals.reduce((sum, value) => sum + BigInt(value), BigInt(0)).toString();
 }
-
-function money(value: bigint): string {
-  return `${value / BigInt(100)}.${(value % BigInt(100)).toString().padStart(2, "0")}`;
-}
-
-export function subtotal(item: Material): string { return money(cents(item)); }
-export function total(items: Material[]): string { return money(items.reduce((sum, item) => sum + cents(item), BigInt(0))); }
 
 export function toCsv(items: Material[], currency: Currency, tenderCode: string, company: string): string {
   const errors = validate(items);
@@ -68,7 +74,7 @@ export function toCsv(items: Material[], currency: Currency, tenderCode: string,
   };
   const rows = [
     ["Licitación", "Empresa", "Moneda", "Descripción", "Unidad", "Cantidad", "Precio unitario", "Subtotal", "Total cotización"],
-    ...items.map(item => [tenderCode, company, currency, item.description.trim(), item.unit.trim(), item.quantity, item.unit_price, subtotal(item), total(items)]),
+    ...items.map(item => [tenderCode, company, currency, item.description.trim(), item.unit.trim(), formatInteger(item.quantity), formatInteger(item.unit_price), formatInteger(subtotal(item)), formatInteger(total(items))]),
   ];
   return "\uFEFF" + rows.map(row => row.map(cell).join(";")).join("\r\n");
 }

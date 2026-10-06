@@ -21,6 +21,7 @@ diferencia ya existente entre las variantes INT8 y fp32 del modelo (0,010,
 registrada en PENDIENTES 7.1).
 """
 
+import logging
 import math
 from uuid import UUID
 
@@ -28,6 +29,8 @@ import httpx
 
 from app.application.services.reranker_service import IRerankerService
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -92,8 +95,24 @@ class ApiRerankerService(IRerankerService):
                     # El texto ya lo tenemos: pedirlo de vuelta solo infla la
                     # respuesta, y en una tanda de candidatas eso pesa.
                     "return_documents": False,
+                    # El modelo acepta 1024 tokens por par consulta + licitación,
+                    # y por omisión un solo par que se pase tumba la petición
+                    # entera con 400. Una licitación con decenas de ítems se
+                    # pasa. Es un parche: ver
+                    # docs/decisions/0001-truncar-textos-del-reranker.md.
+                    "parameters": {"truncate": "END"},
                 },
             )
+            if respuesta.is_error:
+                # `raise_for_status()` solo dice el código. El motivo viene en el
+                # cuerpo, y si nombra un `index`, los ids en orden lo traducen
+                # a una licitación.
+                logger.error(
+                    "Pinecone rechazó el rerank (%s): %s. Candidatas en orden: %s",
+                    respuesta.status_code,
+                    respuesta.text[:1000],
+                    [str(tid) for tid, _ in candidates],
+                )
             # Un 429 devolviendo la lista sin ordenar sería indistinguible de un
             # reranker que simplemente no acertó, y nadie lo notaría.
             respuesta.raise_for_status()

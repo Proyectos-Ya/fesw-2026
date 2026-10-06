@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/features/auth/AuthContext";
+import { getRecommendedTenders, getTenderDetail } from "@/features/matches/services/tenderService";
+import type { TenderDetail } from "@/features/notifications/notificationTypes";
 import { searchTenders } from "@/features/search/services/searchService";
 import type { Tender } from "@/features/matches/tenderTypes";
 import { daysUntilClosing } from "@/features/matches/utils/format";
@@ -23,17 +26,44 @@ const CLOSING_TONE_MAP = {
 } as const;
 
 export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Tender[]>([]);
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recommended, setRecommended] = useState<Tender[]>([]);
+  const [loadingRec, setLoadingRec] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!user) { setLoadingRec(false); return; }
+    void (async () => {
+      try {
+        const matches = await getRecommendedTenders(user.id);
+        const details = await Promise.allSettled(
+          matches.slice(0, 8).map((m) => getTenderDetail(m.tender_id)),
+        );
+        setRecommended(
+          details
+            .filter(
+              (r): r is PromiseFulfilledResult<TenderDetail> =>
+                r.status === "fulfilled",
+            )
+            .map((r) => r.value.tender),
+        );
+      } catch {
+        // silent fallback — empty recommended list
+      } finally {
+        setLoadingRec(false);
+      }
+    })();
+  }, [user]);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -126,17 +156,31 @@ export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) 
         </div>
 
         <div className="overflow-y-auto flex-1">
-          {results.length === 0 && query.trim() && !searching && (
+          {!query.trim() && (
+            <>
+              {loadingRec && (
+                <div className="flex justify-center p-4">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              )}
+              {!loadingRec && recommended.length > 0 && (
+                <p className="px-4 pt-3 pb-1 text-[11px] font-semibold text-text-subtle uppercase tracking-wide">
+                  Tus matches
+                </p>
+              )}
+              {!loadingRec && recommended.length === 0 && (
+                <p className="p-4 text-sm text-text-subtle text-center">
+                  Escribe para buscar licitaciones
+                </p>
+              )}
+            </>
+          )}
+          {query.trim() && results.length === 0 && !searching && (
             <p className="p-4 text-sm text-text-subtle text-center">
               Sin resultados para &quot;{query}&quot;
             </p>
           )}
-          {results.length === 0 && !query.trim() && (
-            <p className="p-4 text-sm text-text-subtle text-center">
-              Escribe para buscar licitaciones
-            </p>
-          )}
-          {results.map((tender) => {
+          {(query.trim() ? results : recommended).map((tender) => {
             const closing = daysUntilClosing(tender.closing_at);
             return (
               <button

@@ -22,12 +22,15 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
 * **Convención de nombre**: `<número-issue>-<slug-descriptivo>.md` (ejemplo: `240-integracion-notificaciones.md`).
 * **Regla**: El plan debe ser revisado por un humano antes de comenzar a escribir código de producción. Las issues de GitHub definen el **QUÉ** y los planes el **CÓMO** (siempre enlazar con `Refs #NNN`).
 * **Planes activos / registrados**:
+  * [227-mejoras-cotizaciones.md](./plans/227-mejoras-cotizaciones.md): Cantidades automáticas, enteros y PDF.
   * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
 * **Convención de nombre**: `<NNNN>-<slug>.md` con cuatro dígitos correlativos (ejemplo: `0001-seleccion-motor-vectorial.md`).
 * **Estructura**: Contexto, Decisión tomada, Alternativas descartadas y Consecuencias.
+* **Decisiones registradas**:
+  * [0001-truncar-textos-del-reranker.md](./decisions/0001-truncar-textos-del-reranker.md): Pinecone recorta los pares que pasan los 1024 tokens en vez de rechazar el rerank. Solución provisoria con investigación pendiente.
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:
