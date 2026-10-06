@@ -28,6 +28,8 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
 * **Convención de nombre**: `<NNNN>-<slug>.md` con cuatro dígitos correlativos (ejemplo: `0001-seleccion-motor-vectorial.md`).
 * **Estructura**: Contexto, Decisión tomada, Alternativas descartadas y Consecuencias.
+* **Decisiones registradas**:
+  * [0001-truncar-textos-del-reranker.md](./decisions/0001-truncar-textos-del-reranker.md): Pinecone recorta los pares que pasan los 1024 tokens en vez de rechazar el rerank. Solución provisoria con investigación pendiente.
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:
