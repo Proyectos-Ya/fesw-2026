@@ -545,3 +545,75 @@ async def test_sin_mencion_de_adjuntos_queda_en_falso():
     resultado, _ = await _analizar(_respuesta(RESULTADO))
 
     assert resultado.mentions_attachments is False
+
+
+# --- presupuesto de tiempo (plan 292) -----------------------------------------
+# Vercel corta un request reenviado a los 120 s. Los intentos a Gemini comparten
+# un presupuesto total para que el backend responda antes de ese corte.
+
+
+class _RelojFalso:
+    """Devuelve los instantes indicados, uno por llamada; repite el último."""
+
+    def __init__(self, *instantes: float):
+        self._instantes = list(instantes)
+
+    def __call__(self) -> float:
+        if len(self._instantes) > 1:
+            return self._instantes.pop(0)
+        return self._instantes[0]
+
+
+async def _analizar_con_reloj(reloj, respuestas):
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo", reloj=reloj)
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = respuestas
+        try:
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+        except ProposalAIServiceError:
+            pass
+    return post
+
+
+async def test_el_primer_intento_espera_hasta_60_segundos():
+    post = await _analizar_con_reloj(_RelojFalso(0.0), [_respuesta(RESULTADO)])
+
+    assert post.call_args.kwargs["timeout"] == 60.0
+
+
+async def test_el_reintento_usa_solo_lo_que_queda_del_presupuesto():
+    # Empieza en 0 y el primer intento vuelve con 503 a los 50 s. Tras 2 s de
+    # espera quedan 100 - 52 = 48 s.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 50.0, 52.0),
+        [_respuesta({"error": "sobrecarga"}, 503), _respuesta(RESULTADO)],
+    )
+
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["timeout"] == pytest.approx(48.0)
+
+
+async def test_no_reintenta_si_queda_poco_presupuesto():
+    # El 503 llega a los 85 s: un reintento no alcanzaría antes del corte.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 85.0), [_respuesta({"error": "sobrecarga"}, 503)]
+    )
+
+    assert post.call_count == 1
+
+
+async def test_sin_presupuesto_para_reintentar_es_un_error_del_servicio():
+    servicio = GeminiProposalService(
+        api_key="clave", model_name="modelo", reloj=_RelojFalso(0.0, 85.0)
+    )
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.return_value = _respuesta({"error": "sobrecarga"}, 503)
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )

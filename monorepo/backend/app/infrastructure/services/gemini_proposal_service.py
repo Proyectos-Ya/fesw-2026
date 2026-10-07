@@ -8,6 +8,8 @@ y el índice de fragmentos quedaron fuera de esta HdU (plan 230, §5).
 import asyncio
 import base64
 import json
+import time
+from collections.abc import Callable
 
 import httpx
 from pydantic import ValidationError
@@ -32,6 +34,12 @@ _TIMEOUT_SEGUNDOS = 60.0
 # Sobrecarga (503), cuota momentánea (429) y fallas del servidor: se reintenta una vez.
 _ESTADOS_PASAJEROS = {429, 500, 502, 503, 504}
 _ESPERA_REINTENTO_SEGUNDOS = 2.0
+# Vercel corta a los 120 s un request reenviado a un origen externo, y no se
+# puede subir. Todos los intentos a Gemini comparten este presupuesto para que
+# el backend responda (aunque sea con error) antes de ese corte.
+_PRESUPUESTO_SEGUNDOS = 100.0
+# Con menos tiempo que esto, un reintento casi seguro no alcanza: mejor fallar ya.
+_MINIMO_PARA_REINTENTAR_SEGUNDOS = 20.0
 _MIME_POR_TIPO = {"pdf": "application/pdf", "png": "image/png"}
 
 _INSTRUCCIONES = """[INSTRUCCIONES DEL SISTEMA - PRIORIDAD MÁXIMA]
@@ -388,9 +396,16 @@ def _indicaciones_del_usuario(instructions: str | None) -> list[dict]:
 
 
 class GeminiProposalService(IProposalAIService):
-    def __init__(self, api_key: str, model_name: str):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str,
+        reloj: Callable[[], float] = time.monotonic,
+    ):
         self.api_key = api_key
         self.model_name = model_name
+        # Inyectable para probar el presupuesto sin esperar de verdad.
+        self.reloj = reloj
 
     async def analyze_feasibility(
         self,
@@ -471,12 +486,20 @@ class GeminiProposalService(IProposalAIService):
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model_name}:generateContent?key={self.api_key}"
         )
-        response = await self._post(url, payload)
-        if response.status_code in _ESTADOS_PASAJEROS:
+        inicio = self.reloj()
+        response = await self._post(url, payload, _TIMEOUT_SEGUNDOS)
+        restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
+        if (
+            response.status_code in _ESTADOS_PASAJEROS
+            and restante - _ESPERA_REINTENTO_SEGUNDOS
+            >= _MINIMO_PARA_REINTENTAR_SEGUNDOS
+        ):
             # Sobrecarga o cuota momentánea: un reintento suele bastar y evita
-            # devolverle un 502 al usuario por algo que se arregla solo.
+            # devolverle un 502 al usuario por algo que se arregla solo. Usa
+            # solo lo que queda del presupuesto.
             await asyncio.sleep(_ESPERA_REINTENTO_SEGUNDOS)
-            response = await self._post(url, payload)
+            restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
+            response = await self._post(url, payload, min(_TIMEOUT_SEGUNDOS, restante))
 
         if response.status_code != 200:
             raise ProposalAIServiceError(
@@ -491,10 +514,10 @@ class GeminiProposalService(IProposalAIService):
             ) from error
 
     @staticmethod
-    async def _post(url: str, payload: dict) -> httpx.Response:
+    async def _post(url: str, payload: dict, timeout: float) -> httpx.Response:
         try:
             async with httpx.AsyncClient() as client:
-                return await client.post(url, json=payload, timeout=_TIMEOUT_SEGUNDOS)
+                return await client.post(url, json=payload, timeout=timeout)
         except httpx.HTTPError as error:
             raise ProposalAIServiceError(
                 f"Error de conexión con la API de Gemini: {error!r}"
