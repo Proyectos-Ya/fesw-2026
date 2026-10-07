@@ -8,7 +8,12 @@ import {
   startCalendarAuthorization,
   syncMilestones,
 } from "../services/calendarService";
-import type { CalendarConnection, CalendarProvider, TenderMilestone } from "../types";
+import {
+  CALENDAR_PROVIDER_LABELS,
+  type CalendarConnection,
+  type CalendarProvider,
+  type TenderMilestone,
+} from "../types";
 import {
   consumePendingCalendarSync,
   rememberCalendarReturnTender,
@@ -54,6 +59,7 @@ export function useCalendarSync({
   const [loadingConnection, setLoadingConnection] = useState(true);
   const lastTime = useRef<string | null>(null);
   const pendingHandled = useRef(false);
+  const label = CALENDAR_PROVIDER_LABELS[provider];
 
   useEffect(() => {
     let cancelled = false;
@@ -89,13 +95,13 @@ export function useCalendarSync({
       } catch (error: unknown) {
         setState({
           status: "error",
-          message: errorDetail(error) || "No se pudo iniciar la conexión con Google Calendar.",
+          message: errorDetail(error) || `No se pudo iniciar la conexión con ${label}.`,
           retryIds: ids,
           reconnect: true,
         });
       }
     },
-    [navigate, provider, tenderId],
+    [label, navigate, provider, tenderId],
   );
 
   const run = useCallback(
@@ -110,7 +116,7 @@ export function useCalendarSync({
         if (failed.length > 0) {
           setState({
             status: "error",
-            message: `${SYNC_FAILED} ${failed.length} de ${ids.length} hitos no se enviaron a Google Calendar.`,
+            message: `${SYNC_FAILED} ${failed.length} de ${ids.length} hitos no se enviaron a ${label}.`,
             retryIds: failed,
             reconnect: false,
           });
@@ -132,18 +138,19 @@ export function useCalendarSync({
         });
       }
     },
-    [authorize, onSynced, provider, tenderId],
+    [authorize, label, onSynced, provider, tenderId],
   );
 
-  // Al volver de Google: completa lo que el usuario había pedido sincronizar.
+  // Al volver de autorizar: completa lo que el usuario había pedido sincronizar
+  // con este proveedor.
   useEffect(() => {
     if (pendingHandled.current) return;
     pendingHandled.current = true;
-    const pending = consumePendingCalendarSync(tenderId);
+    const pending = consumePendingCalendarSync(tenderId, provider);
     // Sincroniza contra el backend al montar, como la carga inicial de useTenderDocuments.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (pending) void run(pending.milestone_ids, pending.default_time);
-  }, [run, tenderId]);
+  }, [provider, run, tenderId]);
 
   const sync = useCallback(
     async (ids: string[], time?: string) => {
@@ -189,14 +196,15 @@ export function useCalendarSync({
     } catch (error: unknown) {
       setState({
         status: "error",
-        message: errorDetail(error) || "No se pudo desconectar Google Calendar.",
+        message: errorDetail(error) || `No se pudo desconectar ${label}.`,
         retryIds: [],
         reconnect: false,
       });
     }
-  }, [provider]);
+  }, [label, provider]);
 
   return {
+    provider,
     state,
     connection,
     available,
