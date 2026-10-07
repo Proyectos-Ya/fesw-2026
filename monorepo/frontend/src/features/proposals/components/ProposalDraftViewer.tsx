@@ -6,6 +6,7 @@ import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
 import { NextSteps } from "./NextSteps";
 import { RegenerateDialog } from "./RegenerateDialog";
+import { MAX_DETALLE_COTIZACION } from "../utils/proposal";
 import type { DraftParagraph, DraftSection, ProposalStage, ProposalView } from "../types";
 
 interface ProposalDraftViewerProps {
@@ -40,6 +41,28 @@ function BotonCopiar({ texto, etiqueta }: { texto: string; etiqueta: string }) {
       <Icon name={copiado ? "check" : "copy"} size={14} />
       {copiado ? "Copiado" : "Copiar"}
     </Button>
+  );
+}
+
+/**
+ * Cuántos caracteres se copian al "Detalle de la cotización", que en Mercado
+ * Público acepta 255. Cuenta el mismo texto que copia el botón.
+ */
+function ContadorDetalle({ texto }: { texto: string }) {
+  const largo = texto.length;
+  const excede = largo > MAX_DETALLE_COTIZACION;
+  return (
+    <div className="mt-2 flex flex-col items-end gap-1 px-3">
+      <p className={`text-xs ${excede ? "font-semibold text-danger" : "text-text-muted"}`}>
+        {largo}/{MAX_DETALLE_COTIZACION}
+      </p>
+      {excede && (
+        <p className="self-start text-xs text-danger">
+          Supera los {MAX_DETALLE_COTIZACION} caracteres que acepta Mercado Público. Acórtalo
+          antes de pegarlo, o regenera pidiendo un texto más corto.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -123,7 +146,8 @@ export function ProposalDraftViewer({
 
   const secciones: { key: string; titulo: string; seccion: DraftSection }[] = [
     { key: "nombre", titulo: "Nombre de la oferta", seccion: contenido.offer_name },
-    { key: "descripcion", titulo: "Descripción de la oferta", seccion: contenido.offer_description },
+    // Así se llama el campo en el formulario de Mercado Público.
+    { key: "descripcion", titulo: "Detalle de la cotización", seccion: contenido.offer_description },
   ];
   const todos: Record<string, DraftParagraph> = {};
   secciones.forEach(({ key, seccion }) =>
@@ -211,6 +235,7 @@ export function ProposalDraftViewer({
                   onSelect={() => setSeleccionado(`${key}-${i}`)}
                 />
               ))}
+              {key === "descripcion" && <ContadorDetalle texto={textoDe(seccion)} />}
             </section>
           ))}
 

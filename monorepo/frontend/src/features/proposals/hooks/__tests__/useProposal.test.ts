@@ -1,9 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
+import * as capacidades from "../../services/capabilityService";
 import * as service from "../../services/proposalService";
 import { useProposal } from "../useProposal";
-import { vista } from "../../testing/fixtures";
+import { VIALES, vista } from "../../testing/fixtures";
 
 vi.mock("../../services/proposalService", () => ({
   getProposal: vi.fn(),
@@ -18,6 +19,8 @@ vi.mock("../../services/proposalService", () => ({
   syncProposalAnswers: vi.fn(),
   downloadTechnicalDocument: vi.fn(),
 }));
+
+vi.mock("../../services/capabilityService", () => ({ addCapabilityEvidence: vi.fn() }));
 
 const svc = vi.mocked(service);
 
@@ -65,7 +68,7 @@ describe("useProposal", () => {
     const { result } = await montado();
     svc.getProposal.mockResolvedValue(vista());
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.start();
     });
@@ -88,7 +91,7 @@ describe("useProposal", () => {
     );
     const { result } = await montado();
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.generate();
     });
@@ -109,7 +112,7 @@ describe("useProposal", () => {
     );
     const { result } = await montado();
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.regenerate("Más formal");
     });
@@ -143,7 +146,7 @@ describe("useProposal", () => {
     );
     const { result } = await montado();
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.answer("q-sec", "Sí");
     });
@@ -295,6 +298,65 @@ describe("useProposal", () => {
 
       expect(svc.getProposal).toHaveBeenCalledTimes(1);
       expect(result.current.actionError).toBe("Falló Gemini");
+    });
+  });
+  describe("proyectos de experiencia", () => {
+    const PROYECTO = { title: "Bacheo", year: 2023, buyer: "Serviu" };
+
+    it("tras un Sí a una pregunta de proyectos sugiere agregar uno", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValue(vista());
+      const { result } = await montado();
+
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      expect(result.current.suggestedEvidence).toBe(VIALES.id);
+      act(() => result.current.dismissEvidence());
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("un No, otra clase de pregunta o un error no sugieren nada", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValueOnce(vista());
+      svc.answerProposalQuestion.mockResolvedValueOnce(vista());
+      svc.answerProposalQuestion.mockRejectedValueOnce(new ApiError(409, "Falla"));
+      const { result } = await montado();
+
+      await act(() => result.current.answer(VIALES.id, "No"));
+      await act(() => result.current.answer("q-sec", "Sí"));
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("agregar un proyecto lo guarda, recarga y confirma", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValue(vista());
+      vi.mocked(capacidades.addCapabilityEvidence).mockResolvedValue({});
+      const { result } = await montado();
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      await act(() => result.current.addEvidence(VIALES.id, PROYECTO));
+
+      expect(capacidades.addCapabilityEvidence).toHaveBeenCalledWith(VIALES.id, PROYECTO);
+      expect(svc.getProposal).toHaveBeenCalledTimes(3);
+      expect(result.current.toast?.message).toBe(
+        "Proyecto agregado. Se usará al redactar o regenerar.",
+      );
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("si falla, el error sube al formulario y no confirma", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      vi.mocked(capacidades.addCapabilityEvidence).mockRejectedValue(new ApiError(409, "x"));
+      const { result } = await montado();
+
+      await expect(result.current.addEvidence(VIALES.id, PROYECTO)).rejects.toBeInstanceOf(
+        ApiError,
+      );
+
+      expect(result.current.toast).toBeNull();
+      expect(result.current.actionError).toBeNull();
     });
   });
 });

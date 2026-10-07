@@ -106,6 +106,19 @@ export interface ExperienceItem {
   answered_at: string | null;
 }
 
+/**
+ * Un proyecto que respalda un "Sí" a una pregunta `experiencia_proyecto`
+ * (`POST /capabilities/questions/{id}/evidence`). El catálogo lo trae después
+ * como `evidencia:<id>` y la redacción lo puede citar.
+ */
+export interface CapabilityEvidenceInput {
+  title: string;
+  year: number;
+  buyer?: string | null;
+  amount_clp?: number | null;
+  description?: string | null;
+}
+
 export interface ProposalDraft {
   id: string;
   supplier_id: string;

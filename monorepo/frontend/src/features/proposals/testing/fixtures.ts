@@ -54,6 +54,27 @@ export const SEC_NEGATIVA: ExperienceItem = {
   answered_at: "2026-09-12T15:00:00Z",
 };
 
+/** La respuesta vigente de la empresa a una pregunta, como la trae el catálogo. */
+export function respuesta(
+  pregunta: CapabilityQuestion,
+  detail: string,
+  overrides: Partial<ExperienceItem> = {},
+): ExperienceItem {
+  const opcion = pregunta.options.find((o) => o.label === detail);
+  return {
+    id: `capacidad:${pregunta.id}`,
+    origin: "capacidad",
+    kind: pregunta.kind,
+    title: pregunta.question,
+    detail,
+    polarity: opcion?.polarity ?? null,
+    answered_by_user_id: "u-1",
+    tender_id: "t-1",
+    answered_at: "2026-10-01T12:00:00Z",
+    ...overrides,
+  };
+}
+
 export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
   return {
     id: "p-1",

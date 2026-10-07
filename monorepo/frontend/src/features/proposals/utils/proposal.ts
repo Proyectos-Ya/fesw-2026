@@ -1,9 +1,27 @@
 import {
   KINDS_SIN_PREGUNTA,
   type CapabilityQuestion,
+  type ExperienceItem,
   type ProposalView,
   type Requirement,
 } from "../types";
+
+/**
+ * Lo que acepta el campo "Detalle de la cotización" del formulario de Mercado
+ * Público. Es el mismo `MAX_DETALLE_COTIZACION` del dominio del backend.
+ */
+export const MAX_DETALLE_COTIZACION = 255;
+
+const DECLARACION_DE_HABILIDAD = /declaraci[oó]n\s+jurada\s+de\s+habilidad/i;
+
+/**
+ * La Declaración Jurada de Habilidad se acepta en una ventana de Mercado
+ * Público al enviar la cotización: no se adjunta. Misma regla que el backend
+ * (`es_declaracion_de_habilidad`), para no listarla en los documentos.
+ */
+export function esDeclaracionDeHabilidad(texto: string): boolean {
+  return DECLARACION_DE_HABILIDAD.test(texto);
+}
 
 /** Exigencias que esperan la respuesta de la empresa. */
 export function pendingRequirements(view: ProposalView): Requirement[] {
@@ -38,6 +56,15 @@ export function questionFor(
 ): CapabilityQuestion | null {
   if (!requirement.capability_question_id) return null;
   return view.questions.find((q) => q.id === requirement.capability_question_id) ?? null;
+}
+
+/**
+ * La respuesta vigente de la empresa a una pregunta del banco: el ítem
+ * `capacidad:<id>` del catálogo. Dice qué opción eligió, cuándo y en qué
+ * licitación. `null` si el catálogo no la trae.
+ */
+export function currentAnswer(view: ProposalView, questionId: string): ExperienceItem | null {
+  return view.catalog_items.find((i) => i.id === `capacidad:${questionId}`) ?? null;
 }
 
 export function pausedRequirement(view: ProposalView): Requirement | null {

@@ -2,6 +2,7 @@ import { expect, test, type Route } from "@playwright/test";
 import type {
   DiscrepancyDecision,
   DraftContent,
+  ExperienceItem,
   ProposalView,
   Requirement,
 } from "../src/features/proposals/types";
@@ -191,4 +192,132 @@ test("postular sin bases, detener, reanudar, responder de nuevo y regenerar", as
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true);
+});
+
+const VIALES_QUESTION = {
+  ...SEC_QUESTION,
+  id: "q-viales",
+  question: "¿Tiene experiencia en obras viales?",
+  target_field: "experiencia:obras-viales",
+  kind: "experiencia_proyecto" as const,
+  work_type: "obras viales",
+};
+
+function exigenciaViales(status: Requirement["status"]): Requirement {
+  return {
+    ...exigencia(status),
+    id: "req-2",
+    text: "Se valorará experiencia en obras viales.",
+    kind: "experiencia",
+    mandatory: false,
+    capability_question_id: VIALES_QUESTION.id,
+  };
+}
+
+function respuestaViales(detail: "Sí" | "No", tenderId: string): ExperienceItem {
+  return {
+    id: `capacidad:${VIALES_QUESTION.id}`,
+    origin: "capacidad",
+    kind: "experiencia_proyecto",
+    title: VIALES_QUESTION.question,
+    detail,
+    polarity: detail === "Sí" ? "afirmativa" : "negativa",
+    answered_by_user_id: "u-1",
+    tender_id: tenderId,
+    answered_at: "2026-09-12T15:00:00Z",
+  };
+}
+
+test("con el borrador listo, cambiar una respuesta y agregar un proyecto", async ({ page }) => {
+  let actual: ProposalView = borrador({
+    status: "READY",
+    content: {
+      ...CONTENIDO,
+      offer_description: {
+        paragraphs: [{ text: "a".repeat(300), sources: [], placeholders: [] }],
+      },
+    },
+    requirements: [exigencia("cumple"), exigenciaViales("no_cumple")],
+    questions: [SEC_QUESTION, VIALES_QUESTION],
+    // La respuesta "No" se dio en otra licitación.
+    catalog_items: [respuestaViales("No", "t-otra")],
+  });
+  let proyecto: unknown = null;
+
+  await page.route("**/api/tenders/t-1", (route) =>
+    route.fulfill({
+      json: {
+        tender: { id: "t-1", code: "657-70-COT26", name: "Bacheo", items: [] },
+        score_pct: null,
+        is_closed: false,
+      },
+    }),
+  );
+  await page.route("**/api/tenders/t-1/assistant/documents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/tenders/t-1/quotation", (route) =>
+    route.fulfill({ status: 404, json: { detail: "No existe" } }),
+  );
+  await page.route("**/api/capabilities/questions/q-viales/evidence", (route) => {
+    proyecto = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { id: "ev-1" } });
+  });
+  await page.route("**/api/tenders/t-1/proposal**", async (route: Route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      // Responder en READY deja el borrador listo y marca el texto desactualizado.
+      actual = {
+        ...actual,
+        requirements: [exigencia("cumple"), exigenciaViales("cumple")],
+        catalog_items: [respuestaViales("Sí", "t-1")],
+        changed_requirement_ids: ["req-2"],
+        updated_at: "2026-10-07T13:00:00Z",
+      };
+    }
+    return route.fulfill({ json: actual });
+  });
+
+  await page.goto("/");
+
+  // El detalle de la cotización cuenta los caracteres que acepta Mercado Público.
+  const detalle = page.getByRole("region", { name: "Detalle de la cotización" });
+  await expect(detalle).toContainText("300/255");
+  await expect(detalle).toContainText("Supera los 255 caracteres");
+
+  await page.getByText(/Ver exigencias evaluadas/).click();
+  const evaluadas = page.getByRole("region", { name: "Exigencias evaluadas" });
+  await evaluadas.getByRole("button", { name: "Cambiar respuesta" }).nth(1).click();
+  await expect(evaluadas).toContainText(
+    "en otra licitación. Cambiarla la actualiza para todas tus postulaciones.",
+  );
+  await expect(evaluadas.getByRole("button", { name: "No", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await evaluadas.getByRole("button", { name: "Sí", exact: true }).click();
+
+  await expect(page.getByText("Respuesta guardada.")).toBeVisible();
+  await expect(page.getByText(/Cambiaron respuestas de tu empresa/)).toBeVisible();
+
+  // Tras el "Sí" a una pregunta de proyectos se sugiere respaldarlo.
+  const sugerencia = page.getByRole("status", { name: "Agregar un proyecto" });
+  await sugerencia.getByRole("button", { name: "Agregar proyecto" }).click();
+  const formulario = page.getByRole("dialog", { name: "Agregar proyecto" });
+  await formulario.getByLabel("Título del proyecto").fill("Bacheo calle Prat");
+  await formulario.getByLabel("Mandante").fill("Municipalidad de Pica");
+  await formulario.getByLabel("Año").fill("2024");
+  await formulario.getByLabel("Monto en CLP").fill("12.000.000");
+  await formulario.getByRole("button", { name: "Guardar proyecto" }).click();
+
+  await expect(page.getByText("Proyecto agregado. Se usará al redactar o regenerar.")).toBeVisible();
+  await expect(formulario).toHaveCount(0);
+  expect(proyecto).toEqual({
+    title: "Bacheo calle Prat",
+    buyer: "Municipalidad de Pica",
+    year: 2024,
+    amount_clp: 12_000_000,
+    description: null,
+  });
+  await expect(sugerencia).toHaveCount(0);
+  // El "Sí" vigente también se puede respaldar desde la lista.
+  await expect(evaluadas.getByRole("button", { name: "Agregar proyecto" })).toBeVisible();
 });

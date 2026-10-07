@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  esDeclaracionDeHabilidad,
   basesNotice,
   canGenerate,
+  currentAnswer,
   pauseOrigin,
   pausedRequirement,
   pendingRequirements,
@@ -10,7 +12,7 @@ import {
   requirementsToReanswer,
 } from "../proposal";
 import type { DiscrepancyDecision, DraftContent } from "../../types";
-import { SEC, SEC_NEGATIVA, requisito, vista } from "../../testing/fixtures";
+import { SEC, SEC_NEGATIVA, VIALES, requisito, respuesta, vista } from "../../testing/fixtures";
 
 describe("pendingRequirements", () => {
   it("son las que esperan una respuesta", () => {
@@ -265,5 +267,30 @@ describe("basesNotice", () => {
   it("avisa los archivos que no se pudieron leer", () => {
     const v = vista({ analysis_documents: [{ name: "bases.pdf", corrupted: true }] });
     expect(basesNotice(v, ["bases.pdf"])).toMatch(/No se pudo leer bases.pdf/);
+  });
+});
+
+describe("currentAnswer", () => {
+  it("es el ítem capacidad:<pregunta> del catálogo", () => {
+    const view = vista({ catalog_items: [respuesta(VIALES, "Sí"), SEC_NEGATIVA] });
+
+    expect(currentAnswer(view, SEC.id)).toBe(SEC_NEGATIVA);
+    expect(currentAnswer(view, VIALES.id)?.detail).toBe("Sí");
+  });
+
+  it("sin respuesta en el catálogo es null", () => {
+    expect(currentAnswer(vista(), SEC.id)).toBeNull();
+  });
+});
+
+describe("esDeclaracionDeHabilidad", () => {
+  it("reconoce la declaración que se acepta al enviar", () => {
+    expect(esDeclaracionDeHabilidad("Declaración Jurada de Habilidad")).toBe(true);
+    expect(esDeclaracionDeHabilidad("adjuntar declaracion jurada de habilidad firmada")).toBe(true);
+  });
+
+  it("no confunde otros documentos", () => {
+    expect(esDeclaracionDeHabilidad("Declaración jurada simple")).toBe(false);
+    expect(esDeclaracionDeHabilidad("Cotización formal")).toBe(false);
   });
 });

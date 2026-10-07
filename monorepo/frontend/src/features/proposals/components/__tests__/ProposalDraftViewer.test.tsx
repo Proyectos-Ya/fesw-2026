@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProposalDraftViewer } from "../ProposalDraftViewer";
 import { vista } from "../../testing/fixtures";
+import { MAX_DETALLE_COTIZACION } from "../../utils/proposal";
 import type { DraftContent, ProposalStage, ProposalView } from "../../types";
 
 const CONTENIDO: DraftContent = {
@@ -195,5 +196,52 @@ describe("ProposalDraftViewer", () => {
     renderViewer(listo(), false);
 
     expect(screen.queryByRole("button", { name: /Regenerar/ })).not.toBeInTheDocument();
+  });
+  describe("detalle de la cotización", () => {
+    const detalle = (texto: string) =>
+      listo({
+        content: {
+          ...CONTENIDO,
+          offer_description: { paragraphs: [{ text: texto, sources: [], placeholders: [] }] },
+        },
+      });
+
+    it("se rotula como en Mercado Público y cuenta los caracteres que se copian", () => {
+      renderViewer();
+
+      const seccion = screen.getByRole("region", { name: "Detalle de la cotización" });
+      const copiado = CONTENIDO.offer_description.paragraphs.map((p) => p.text).join("\n\n");
+      expect(seccion).toHaveTextContent(`${copiado.length}/255`);
+      expect(screen.queryByText(/Supera los 255/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Descripción de la oferta" })).toBeNull();
+    });
+
+    it("con 255 caracteres justos no avisa", () => {
+      renderViewer(detalle("a".repeat(MAX_DETALLE_COTIZACION)));
+
+      expect(screen.getByText("255/255")).not.toHaveClass("text-danger");
+      expect(screen.queryByText(/Supera los 255/)).not.toBeInTheDocument();
+    });
+
+    it("sobre 255 caracteres lo marca y sugiere acortarlo o regenerar", () => {
+      renderViewer(detalle("a".repeat(300)));
+
+      expect(screen.getByText("300/255")).toHaveClass("text-danger");
+      expect(
+        screen.getByText(
+          "Supera los 255 caracteres que acepta Mercado Público. Acórtalo antes de pegarlo, o regenera pidiendo un texto más corto.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("se copia con su propio botón", async () => {
+      renderViewer(detalle("Servicio de bacheo para Pica."));
+
+      await userEvent.click(
+        screen.getByRole("button", { name: "Copiar detalle de la cotización" }),
+      );
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Servicio de bacheo para Pica.");
+    });
   });
 });

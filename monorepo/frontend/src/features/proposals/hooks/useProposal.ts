@@ -15,7 +15,9 @@ import {
   startFeasibility,
   syncProposalAnswers,
 } from "../services/proposalService";
+import { addCapabilityEvidence } from "../services/capabilityService";
 import type {
+  CapabilityEvidenceInput,
   DecisionAction,
   PendingAnswer,
   ProposalStage,
@@ -67,6 +69,9 @@ export function useProposal(tenderId: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const [answering, setAnswering] = useState<PendingAnswer | null>(null);
   const [toast, setToast] = useState<ProposalToast | null>(null);
+  // La pregunta de proyectos a la que se acaba de responder "Sí": se ofrece
+  // agregar el proyecto que lo respalda.
+  const [suggestedEvidence, setSuggestedEvidence] = useState<string | null>(null);
   const toastId = useRef(0);
   // La última versión leída, para saber si una acción que perdió la conexión
   // alcanzó a guardar algo en el backend.
@@ -100,14 +105,15 @@ export function useProposal(tenderId: string) {
 
   /**
    * Ejecuta una acción, recarga y deja el error a la vista si falla. Si se pasa
-   * `confirmacion`, la muestra en un `Toast` cuando todo salió bien.
+   * `confirmacion`, la muestra en un `Toast` cuando todo salió bien. Devuelve
+   * si la acción terminó.
    */
   const ejecutar = useCallback(
     async (
       accion: () => Promise<unknown>,
       etapa: ProposalStage = null,
       confirmacion: string | null = null,
-    ) => {
+    ): Promise<boolean> => {
       setActionError(null);
       setNotice(null);
       setBusy(true);
@@ -117,10 +123,11 @@ export function useProposal(tenderId: string) {
         await accion();
         await reload();
         if (confirmacion) confirmar(confirmacion);
+        return true;
       } catch (error) {
         if (!conexionPerdida(error)) {
           setActionError(mensajeDe(error));
-          return;
+          return false;
         }
         // El backend sigue trabajando aunque el navegador cortó: si el borrador
         // cambió, la acción terminó y se muestra como si nada. Así nadie
@@ -131,12 +138,13 @@ export function useProposal(tenderId: string) {
             ultimaVersion.current = view.updated_at;
             setState({ kind: "ready", view });
             confirmar(confirmacion ?? "Listo. Se perdió la conexión, pero el cambio se guardó.");
-            return;
+            return true;
           }
         } catch {
           // Sin conexión todavía: queda el aviso de abajo.
         }
         setActionError(CONEXION_PERDIDA);
+        return false;
       } finally {
         setBusy(false);
         setStage(null);
@@ -166,18 +174,42 @@ export function useProposal(tenderId: string) {
     async (questionId: string, label: string) => {
       // Para que solo el botón pulsado muestre que carga.
       setAnswering({ questionId, label });
+      setSuggestedEvidence(null);
+      const pregunta =
+        state.kind === "ready"
+          ? state.view.questions.find((q) => q.id === questionId)
+          : undefined;
+      const afirmaProyecto =
+        pregunta?.kind === "experiencia_proyecto" &&
+        pregunta.options.some((o) => o.label === label && o.polarity === "afirmativa");
       try {
-        await ejecutar(
+        const guardada = await ejecutar(
           () => answerProposalQuestion(tenderId, questionId, label),
           null,
           "Respuesta guardada.",
         );
+        if (guardada && afirmaProyecto) setSuggestedEvidence(questionId);
       } finally {
         setAnswering(null);
       }
     },
-    [ejecutar, tenderId],
+    [ejecutar, tenderId, state],
   );
+
+  /**
+   * Agrega un proyecto de experiencia. No pasa por `ejecutar`: los errores
+   * (409, 422) los muestra el formulario, no el aviso de la página.
+   */
+  const addEvidence = useCallback(
+    async (questionId: string, data: CapabilityEvidenceInput) => {
+      await addCapabilityEvidence(questionId, data);
+      setSuggestedEvidence(null);
+      await reload();
+      confirmar("Proyecto agregado. Se usará al redactar o regenerar.");
+    },
+    [reload, confirmar],
+  );
+  const dismissEvidence = useCallback(() => setSuggestedEvidence(null), []);
   const decide = useCallback(
     (requirementId: string, action: DecisionAction) =>
       ejecutar(() => decideDiscrepancy(tenderId, requirementId, action)),
@@ -237,6 +269,9 @@ export function useProposal(tenderId: string) {
     stage,
     busy,
     answering,
+    suggestedEvidence,
+    dismissEvidence,
+    addEvidence,
     toast,
     clearToast,
     actionError,

@@ -84,6 +84,12 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       )
     : null;
   const sinBases = !documentos.isLoading && documentos.documents.length === 0;
+  // Proyectos de experiencia: se ofrecen en el análisis, plegado o no.
+  const evidencia = {
+    onAddEvidence: proposal.addEvidence,
+    suggestedEvidence: proposal.suggestedEvidence,
+    onDismissEvidence: proposal.dismissEvidence,
+  };
 
   const volverAAnalizar = () => {
     // Con texto redactado se pide confirmación: si hubo cambios, se descarta.
@@ -252,6 +258,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                         answering={answering}
                         onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
                         onGenerate={() => void proposal.generate()}
+                        {...evidencia}
                       />
                     </div>
                   </details>
@@ -263,6 +270,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                     answering={answering}
                     onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
                     onGenerate={() => void proposal.generate()}
+                    {...evidencia}
                   />
                 ))}
             </div>
