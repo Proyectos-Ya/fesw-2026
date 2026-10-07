@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -104,6 +104,15 @@ export function KanbanBoard() {
     }
   };
 
+  // IDs de licitaciones presentes en cualquier columna del tablero. Lo pasamos a
+  // cada KanbanColumn para que el modal "Agregar licitación" oculte las guardadas
+  // que ya están en el tablero, sin necesidad de refetch. Se calcula antes de
+  // cualquier return condicional para no romper el orden de hooks.
+  const boardTenderIds = useMemo(
+    () => cards.map((c) => c.tender_id),
+    [cards],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-text-subtle">
@@ -155,6 +164,7 @@ export function KanbanBoard() {
                   canMoveRight={i < columns.length - 1}
                   onAddCard={addCard}
                   onRemoveCard={(tender_id) => void removeCard(tender_id)}
+                  boardTenderIds={boardTenderIds}
                 />
                 {i < columns.length - 1 && (
                   <InsertColumnSlot
