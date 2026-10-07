@@ -62,6 +62,10 @@ export interface MilestoneList {
   /** Bases subidas cuyo archivo ya no está en el servidor: hay que volver a subirlas. */
   unavailable_documents_count: number;
   extraction_status: MilestoneExtractionStatus;
+  /** Bases que todavía no se leen (nuevas o que fallaron). Cada base se lee una sola vez. */
+  pending_documents_count: number;
+  /** Bases que la IA no pudo leer en esta extracción. */
+  failed_documents_count: number;
 }
 
 export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google", "outlook"];

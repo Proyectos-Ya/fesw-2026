@@ -2,11 +2,14 @@
 
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
+)
+from app.application.repositories.tender_milestone_repository import (
+    ITenderMilestoneRepository,
 )
 from app.application.repositories.tender_repository import (
     ITenderRepository,
@@ -24,6 +27,11 @@ from app.domain.entities.tender_milestone import (
     TenderMilestone,
 )
 from app.domain.errors.tender_errors import TenderNotFound
+from app.shared.datetime_utils import CHILE_TZ
+
+# Los que ya vienen de Mercado Público. Los de la IA con estos tipos aparecían
+# duplicados junto al oficial.
+OFFICIAL_KINDS = frozenset({MilestoneKind.PUBLICACION, MilestoneKind.CIERRE_POSTULACION})
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,10 @@ class TenderMilestonesResult:
     unavailable_documents_count: int = 0
     # Si la IA está leyendo en segundo plano las bases recién subidas.
     extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE
+    # Bases que todavía no se leen (nuevas, o que fallaron): habilitan el botón.
+    pending_documents_count: int = 0
+    # Bases que la IA no pudo leer en esta extracción.
+    failed_documents_count: int = 0
 
 
 async def get_tender(tenders: ITenderRepository, tender_id: UUID) -> Tender:
@@ -104,6 +116,49 @@ def merge_milestones(
     return list(resultado.values())
 
 
+def _dia_en_chile(milestone: TenderMilestone) -> date:
+    return milestone.due_at.replace(tzinfo=UTC).astimezone(CHILE_TZ).date()
+
+
+def _clave_de_dia(milestone: TenderMilestone) -> tuple[MilestoneKind, date] | None:
+    # "Otro" agrupa hitos distintos: dos el mismo día no son el mismo hito.
+    if milestone.kind is MilestoneKind.OTRO:
+        return None
+    return milestone.kind, _dia_en_chile(milestone)
+
+
+def merge_ai_milestones(
+    existing: list[TenderMilestone], candidates: list[TenderMilestone], now: datetime
+) -> list[TenderMilestone]:
+    """Como `merge_milestones`, pero tolerante a cómo la IA nombra un hito.
+
+    Un mismo hito puede volver como "Visita técnica obligatoria" o "Visita a
+    terreno": se reconoce primero por tipo y día (en Chile) y después por
+    título. Así se deduplican también los candidatos que la IA repite.
+    """
+    por_dia = {clave: m for m in existing if (clave := _clave_de_dia(m)) is not None}
+    por_titulo = {_clave(m): m for m in existing}
+    usados: set[UUID] = set()
+    vistos: set[object] = set()
+    resultado: list[TenderMilestone] = []
+    for candidato in candidates:
+        de_dia = _clave_de_dia(candidato)
+        claves: set[object] = {_clave(candidato)} | ({de_dia} if de_dia is not None else set())
+        if claves & vistos:
+            continue
+        vistos |= claves
+        previo = por_dia.get(de_dia) if de_dia is not None else None
+        if previo is None or previo.id in usados:
+            previo = por_titulo.get(_clave(candidato))
+        if previo is not None and previo.id not in usados:
+            usados.add(previo.id)
+            candidato = candidato.model_copy(
+                update={"id": previo.id, "created_at": previo.created_at, "updated_at": now}
+            )
+        resultado.append(candidato)
+    return resultado
+
+
 def changed(existing: list[TenderMilestone], merged: list[TenderMilestone]) -> list[TenderMilestone]:
     """Los hitos que son nuevos o cambiaron de fecha, título o descripción."""
     por_id = {m.id: m for m in existing}
@@ -124,6 +179,65 @@ async def synced_providers_by_milestone(
     return proveedores
 
 
+async def save_official_milestones(
+    milestones: ITenderMilestoneRepository,
+    event_links: ICalendarEventLinkRepository,
+    tender: Tender,
+    user_id: UUID,
+    now: datetime,
+) -> None:
+    """Guarda publicación y cierre fusionándolos **solo** contra las filas oficiales.
+
+    Antes se fusionaban contra todos los hitos: uno de la IA con el mismo tipo y
+    título que el cierre se quedaba con su id, y la fila cambiaba de origen y
+    fecha en cada consulta (hitos duplicados o que desaparecían). Además repara
+    lo que eso dejó: filas oficiales repetidas y cierres o publicaciones de la
+    IA. Nunca borra un hito que ya está en un calendario.
+    """
+    existentes = await milestones.list_for_tender(user_id, tender.id)
+    oficiales = [m for m in existentes if m.source is MilestoneSource.MERCADO_PUBLICO]
+    ia_de_tipo_oficial = [
+        m for m in existentes
+        if m.source is MilestoneSource.IA_DOCUMENTO and m.kind in OFFICIAL_KINDS
+    ]
+    revisar = oficiales + ia_de_tipo_oficial
+    sincronizados = await synced_providers_by_milestone(event_links, [m.id for m in revisar])
+    # Entre dos filas oficiales repetidas gana la sincronizada: en la fusión,
+    # la última de la lista se queda con la clave.
+    oficiales.sort(key=lambda m: m.id in sincronizados)
+    fusion = merge_milestones(oficiales, mercado_publico_milestones(tender, user_id), now)
+    cambios = changed(oficiales, fusion)
+    if cambios:
+        await milestones.save_many(cambios)
+    vigentes = {m.id for m in fusion}
+    sobrantes = [m.id for m in revisar if m.id not in vigentes and m.id not in sincronizados]
+    if sobrantes:
+        await milestones.delete_many(user_id, sobrantes)
+
+
+async def remove_orphan_ai_milestones(
+    milestones: ITenderMilestoneRepository,
+    event_links: ICalendarEventLinkRepository,
+    user_id: UUID,
+    tender_id: UUID,
+    document_ids: set[UUID],
+) -> None:
+    """Quita los hitos de IA de documentos que el usuario borró, salvo los sincronizados."""
+    huerfanos = [
+        m.id
+        for m in await milestones.list_for_tender(user_id, tender_id)
+        if m.source is MilestoneSource.IA_DOCUMENTO
+        and m.source_document_id is not None
+        and m.source_document_id not in document_ids
+    ]
+    if not huerfanos:
+        return
+    sincronizados = await synced_providers_by_milestone(event_links, huerfanos)
+    borrar = [i for i in huerfanos if i not in sincronizados]
+    if borrar:
+        await milestones.delete_many(user_id, borrar)
+
+
 async def describe(
     milestones: list[TenderMilestone],
     event_links: ICalendarEventLinkRepository,
@@ -132,6 +246,8 @@ async def describe(
     discarded_count: int = 0,
     unavailable_documents_count: int = 0,
     extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE,
+    pending_documents_count: int = 0,
+    failed_documents_count: int = 0,
 ) -> TenderMilestonesResult:
     proveedores = await synced_providers_by_milestone(event_links, [m.id for m in milestones])
     return TenderMilestonesResult(
@@ -147,4 +263,6 @@ async def describe(
         discarded_count=discarded_count,
         unavailable_documents_count=unavailable_documents_count,
         extraction_status=extraction_status,
+        pending_documents_count=pending_documents_count,
+        failed_documents_count=failed_documents_count,
     )

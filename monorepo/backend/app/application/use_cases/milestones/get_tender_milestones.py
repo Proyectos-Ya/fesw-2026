@@ -5,6 +5,9 @@ from uuid import UUID
 from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
 )
+from app.application.repositories.milestone_document_repository import (
+    IMilestoneDocumentRepository,
+)
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
@@ -16,11 +19,10 @@ from app.application.services.milestone_extraction_background import (
 )
 from app.application.use_cases.milestones.milestone_views import (
     TenderMilestonesResult,
-    changed,
     describe,
     get_tender,
-    mercado_publico_milestones,
-    merge_milestones,
+    remove_orphan_ai_milestones,
+    save_official_milestones,
 )
 from app.shared.datetime_utils import utc_now_naive
 
@@ -38,6 +40,7 @@ class GetTenderMilestonesUseCase:
         milestones: ITenderMilestoneRepository,
         event_links: ICalendarEventLinkRepository,
         chat: ITenderChatRepository,
+        processed: IMilestoneDocumentRepository,
         extraction: IMilestoneExtractionBackground | None = None,
         now: Callable[[], datetime] = utc_now_naive,
     ):
@@ -45,26 +48,31 @@ class GetTenderMilestonesUseCase:
         self.milestones = milestones
         self.event_links = event_links
         self.chat = chat
+        self.processed = processed
         self.extraction = extraction
         self.now = now
 
     async def execute(self, user_id: UUID, tender_id: UUID) -> TenderMilestonesResult:
         ahora = self.now()
         tender = await get_tender(self.tenders, tender_id)
-        existentes = await self.milestones.list_for_tender(user_id, tender_id)
-
-        oficiales = merge_milestones(existentes, mercado_publico_milestones(tender, user_id), ahora)
-        pendientes = changed(existentes, oficiales)
-        if pendientes:
-            await self.milestones.save_many(pendientes)
-            existentes = await self.milestones.list_for_tender(user_id, tender_id)
+        await save_official_milestones(self.milestones, self.event_links, tender, user_id, ahora)
 
         documentos = await self.chat.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
+        # Al borrar una base en el asistente, sus hitos se van en la próxima consulta.
+        await remove_orphan_ai_milestones(
+            self.milestones, self.event_links, user_id, tender_id, {d.id for d in documentos}
+        )
+        procesados = await self.processed.list_processed(user_id, tender_id)
         estado = (
             self.extraction.status(user_id, tender_id)
             if self.extraction is not None
             else MilestoneExtractionStatus.IDLE
         )
         return await describe(
-            existentes, self.event_links, ahora, len(documentos), extraction_status=estado
+            await self.milestones.list_for_tender(user_id, tender_id),
+            self.event_links,
+            ahora,
+            len(documentos),
+            extraction_status=estado,
+            pending_documents_count=sum(1 for d in documentos if d.id not in procesados),
         )

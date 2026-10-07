@@ -73,6 +73,7 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
   }
 
   const documentsCount = state.data.documents_count;
+  const pendingCount = state.data.pending_documents_count;
   const extraction = state.data.extraction_status;
 
   return (
@@ -85,7 +86,8 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
           variant="ghost"
           onClick={() => void extract()}
           isLoading={isExtracting}
-          disabled={documentsCount === 0 || isExtracting || extraction === "running"}
+          // Cada base se lee una sola vez: volver a leerla daba hitos duplicados o perdidos.
+          disabled={pendingCount === 0 || isExtracting || extraction === "running"}
           className="shrink-0 border border-border-subtle"
         >
           <Icon name="sparkles" size={14} />
@@ -97,6 +99,13 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
         <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
           Sube las bases en el asistente de la licitación y la IA extraerá sola las visitas
           técnicas, entregas y otros plazos.
+        </p>
+      )}
+
+      {documentsCount > 0 && pendingCount === 0 && extraction !== "running" && (
+        <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
+          Ya se extrajeron los hitos de todas las bases subidas. Para volver a leer una, elimínala
+          y súbela de nuevo en el asistente.
         </p>
       )}
 

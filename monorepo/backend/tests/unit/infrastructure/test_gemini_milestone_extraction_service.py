@@ -21,7 +21,10 @@ CONTEXTO = "Licitación: Reparación de techumbre. Cierre: 2026-10-20 15:00 (hor
 
 @pytest.fixture
 def service() -> GeminiMilestoneExtractionService:
-    return GeminiMilestoneExtractionService(api_key="clave-test", model_name="gemini-test")
+    # Sin espera entre reintentos: los tests no deben dormir.
+    return GeminiMilestoneExtractionService(
+        api_key="clave-test", model_name="gemini-test", retry_backoff_seconds=0
+    )
 
 
 def _respuesta(hitos: list[dict[str, object]]) -> dict[str, object]:
@@ -208,3 +211,122 @@ async def test_la_llave_viaja_en_una_cabecera_y_no_en_la_url(service):
     peticion = ruta.calls.last.request
     assert "clave-test" not in str(peticion.url)
     assert peticion.headers["x-goog-api-key"] == "clave-test"
+
+
+_UNA_VISITA = [{"kind": "visita_tecnica", "title": "Visita técnica", "fecha": "2026-10-20"}]
+
+
+def _sin_contenido(motivo: str) -> dict[str, object]:
+    return {"candidates": [{"finishReason": motivo}]}
+
+
+@respx.mock
+async def test_reintenta_una_sobrecarga_y_luego_responde(service):
+    # 503 "model overloaded" es pasajero: sin reintento el usuario veía
+    # "no se pudo" y tenía que pulsar de nuevo.
+    ruta = respx.post(URL).mock(
+        side_effect=[
+            httpx.Response(503, json={"error": {"status": "UNAVAILABLE", "message": "overloaded"}}),
+            httpx.Response(200, json=_respuesta(_UNA_VISITA)),
+        ]
+    )
+
+    hitos = await service.extract([PDF], CONTEXTO)
+
+    assert [h.title for h in hitos] == ["Visita técnica"]
+    assert ruta.call_count == 2
+
+
+@respx.mock
+async def test_reintenta_un_429_y_un_timeout(service):
+    ruta = respx.post(URL).mock(
+        side_effect=[
+            httpx.Response(429, json={"error": {"status": "RESOURCE_EXHAUSTED", "message": "cuota"}}),
+            httpx.ReadTimeout("lento"),
+            httpx.Response(200, json=_respuesta(_UNA_VISITA)),
+        ]
+    )
+
+    hitos = await service.extract([PDF], CONTEXTO)
+
+    assert len(hitos) == 1
+    assert ruta.call_count == 3
+
+
+@respx.mock
+async def test_reintenta_una_respuesta_cortada_por_recitacion_y_la_registra(service, caplog):
+    # Gemini responde 200 pero sin texto cuando cree que está copiando el
+    # documento (RECITATION). Antes eso era un "no se pudo" sin explicación.
+    ruta = respx.post(URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_sin_contenido("RECITATION")),
+            httpx.Response(200, json=_respuesta(_UNA_VISITA)),
+        ]
+    )
+
+    with caplog.at_level("WARNING"):
+        hitos = await service.extract([PDF], CONTEXTO)
+
+    assert len(hitos) == 1
+    assert ruta.call_count == 2
+    assert "RECITATION" in caplog.text
+
+
+@respx.mock
+async def test_reintenta_un_json_cortado(service):
+    cortado = {"candidates": [{"content": {"parts": [{"text": '{"hitos": [{"kind": "ent'}]}, "finishReason": "MAX_TOKENS"}]}
+    ruta = respx.post(URL).mock(
+        side_effect=[httpx.Response(200, json=cortado), httpx.Response(200, json=_respuesta(_UNA_VISITA))]
+    )
+
+    assert len(await service.extract([PDF], CONTEXTO)) == 1
+    assert ruta.call_count == 2
+
+
+@respx.mock
+async def test_se_rinde_despues_de_tres_intentos(service):
+    ruta = respx.post(URL).respond(503, text="Service Unavailable")
+
+    with pytest.raises(MilestoneExtractionUnavailable):
+        await service.extract([PDF], CONTEXTO)
+
+    assert ruta.call_count == 3
+
+
+@respx.mock
+async def test_no_reintenta_una_llave_invalida(service):
+    # Un 400 no se arregla solo: reintentar solo gasta tiempo.
+    ruta = respx.post(URL).respond(400, json=_LLAVE_INVALIDA)
+
+    with pytest.raises(MilestoneExtractionUnavailable):
+        await service.extract([PDF], CONTEXTO)
+
+    assert ruta.call_count == 1
+
+
+@respx.mock
+async def test_une_el_texto_de_varias_partes(service):
+    texto = json.dumps({"hitos": _UNA_VISITA})
+    mitad = len(texto) // 2
+    respx.post(URL).respond(
+        200,
+        json={"candidates": [{"content": {"parts": [{"text": texto[:mitad]}, {"text": texto[mitad:]}]}, "finishReason": "STOP"}]},
+    )
+
+    assert len(await service.extract([PDF], CONTEXTO)) == 1
+
+
+@respx.mock
+async def test_pide_respuestas_estables_y_citas_breves(service):
+    ruta = respx.post(URL).respond(200, json=_respuesta([]))
+
+    await service.extract([PDF], CONTEXTO)
+
+    cuerpo = json.loads(ruta.calls.last.request.content)
+    assert cuerpo["generationConfig"]["temperature"] == 0
+    assert "seed" in cuerpo["generationConfig"]
+    instruccion = cuerpo["contents"][0]["parts"][0]["text"]
+    # Copiar el párrafo completo dispara RECITATION; una cita breve no.
+    assert "cita breve" in instruccion
+    # Publicación y cierre vienen de Mercado Público: pedirlos a la IA los duplicaba.
+    assert "No incluyas la publicación ni el cierre" in instruccion
