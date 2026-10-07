@@ -17,6 +17,7 @@ from app.application.services.proposal_ai_service import (
     FeasibilityResultDTO,
     ProposalAIServiceError,
     TechnicalDocumentDTO,
+    TechnicalSectionDTO,
 )
 from app.application.use_cases.capabilities.answer_capability_question import (
     AnswerCapabilityQuestionUseCase,
@@ -56,6 +57,7 @@ from app.bootstrap.proposals import (
     get_sync_proposal_answers_use_case,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
+from app.domain.entities.proposal import AnalysisDocument
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.main import app
 from app.shared.constants import TENDER_STATUSES
@@ -514,7 +516,7 @@ async def test_un_viewer_descarga_el_documento_tecnico(
     headers_a, _, headers_c, _ = empresas
     ia["servicio"].resultado.requires_technical_document = True
     ia["servicio"].borrador.technical_document = TechnicalDocumentDTO(
-        metodologia=DraftSectionDTO(
+        metodologia=TechnicalSectionDTO(
             paragraphs=[DraftParagraphDTO(text="Clases presenciales.")]
         )
     )
@@ -654,6 +656,28 @@ async def test_corregir_una_respuesta_en_el_banco_se_avisa_y_se_aplica(
 
 
 @pytest.mark.asyncio
+async def test_cambiar_una_respuesta_con_el_borrador_listo_avisa_sin_redactar(
+    api: AsyncClient, entorno, empresas
+):
+    """Plan 292, §2.7 B: "Cambiar respuesta" en las exigencias evaluadas."""
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+    antes = (await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)).json()
+    [exigencia] = [
+        r for r in antes["requirements"] if r["capability_question_id"] == str(SEC.id)
+    ]
+
+    resp = await _responder(api, tender_id, headers_a, "Sí")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "READY"
+    assert resp.json()["content"] == antes["content"]
+    vista = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+    assert vista.json()["changed_requirement_ids"] == [exigencia["id"]]
+
+
+@pytest.mark.asyncio
 async def test_un_viewer_no_aplica_las_respuestas(api: AsyncClient, entorno, empresas):
     tender_id, *_ = entorno
     headers_a, _, headers_c, _ = empresas
@@ -664,3 +688,104 @@ async def test_un_viewer_no_aplica_las_respuestas(api: AsyncClient, entorno, emp
     )
 
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_la_vista_dice_con_que_adjuntos_se_analizo(
+    api: AsyncClient, entorno, empresas
+):
+    """Contrato con el frontend (plan 292, §2.3): `analysis_documents` es una
+    lista de `{name, corrupted}` o null, y `mentions_attachments` un booleano o
+    null."""
+    tender_id, _, drafts, _, ia = entorno
+    headers_a, _, _, empresa_2 = empresas
+    ia["servicio"].resultado = ia["servicio"].resultado.model_copy(
+        update={"mentions_attachments": True}
+    )
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["analysis_documents"] == []
+    assert resp.json()["mentions_attachments"] is True
+
+    borrador = await drafts.get(empresa_2, tender_id)
+    assert borrador is not None
+    borrador.analysis_documents = [
+        AnalysisDocument(name="bases.pdf", corrupted=False),
+        AnalysisDocument(name="anexo.pdf", corrupted=True),
+    ]
+    await drafts.save(borrador)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.json()["analysis_documents"] == [
+        {"name": "bases.pdf", "corrupted": False},
+        {"name": "anexo.pdf", "corrupted": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_un_borrador_anterior_expone_los_campos_en_null(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, _, drafts, _, _ = entorno
+    headers_a, _, _, empresa_2 = empresas
+    await _iniciar(api, tender_id, headers_a)
+    borrador = await drafts.get(empresa_2, tender_id)
+    assert borrador is not None
+    borrador.analysis_documents = None
+    borrador.mentions_attachments = None
+    borrador.technical_document_ambiguous = None
+    await drafts.save(borrador)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.json()["analysis_documents"] is None
+    assert resp.json()["mentions_attachments"] is None
+    assert resp.json()["technical_document_ambiguous"] is None
+
+
+@pytest.mark.asyncio
+async def test_la_vista_dice_si_el_documento_tecnico_es_ambiguo(
+    api: AsyncClient, entorno, empresas
+):
+    """Contrato con el frontend (plan 292, §2.8): `technical_document_ambiguous`
+    es un booleano o null, y cada sección del documento técnico trae `guidance`
+    y `hint` (texto o null)."""
+    tender_id, *_, ia = entorno
+    headers_a, *_ = empresas
+    ia["servicio"].resultado = ia["servicio"].resultado.model_copy(
+        update={
+            "technical_document_ambiguous": True,
+            "technical_document_quote": "Se debe entregar informe técnico",
+        }
+    )
+    cita = 'Las bases solicitan un informe técnico: "Se debe entregar informe técnico".'
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["technical_document_ambiguous"] is True
+    assert resp.json()["technical_document_reason"] == cita
+
+    ia["servicio"].borrador.technical_document = TechnicalDocumentDTO(
+        equipo=TechnicalSectionDTO(paragraphs=[], hint="Menciona las certificaciones.")
+    )
+    await _redactado(api, tender_id, headers_a)
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/technical-document", headers=headers_a
+    )
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["technical_document_ambiguous"] is False
+    assert cuerpo["technical_document_reason"] == f"Lo pidió la empresa. {cita}"
+    secciones = {
+        s["key"]: s for s in cuerpo["content"]["technical_document"]["sections"]
+    }
+    assert secciones["equipo"]["hint"] == "Menciona las certificaciones."
+    assert secciones["equipo"]["guidance"]
+    assert secciones["antecedentes"]["hint"] is None

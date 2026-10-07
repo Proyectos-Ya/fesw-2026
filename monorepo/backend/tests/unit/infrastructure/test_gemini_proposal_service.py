@@ -117,7 +117,7 @@ RESULTADO = {
         },
     ],
     "requires_technical_document": True,
-    "technical_document_reason": "Las bases piden una memoria técnica.",
+    "technical_document_quote": None,
 }
 
 
@@ -209,7 +209,10 @@ async def test_una_exigencia_con_forma_invalida_es_un_error_del_servicio():
 
 async def test_un_error_de_conexion_es_un_error_del_servicio():
     servicio = GeminiProposalService(api_key="clave", model_name="modelo")
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         post.side_effect = httpx.ConnectTimeout("lento")
         with pytest.raises(ProposalAIServiceError):
             await servicio.analyze_feasibility(
@@ -416,6 +419,69 @@ async def test_redaccion_trata_las_instrucciones_como_datos_de_baja_prioridad():
     assert "PRIORIDAD BAJA" in texto
 
 
+async def test_redaccion_pide_el_detalle_de_la_cotizacion_en_un_parrafo_corto():
+    """Plan 292, §2.7 A: el campo del formulario admite 255 caracteres."""
+    _, post = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(post)
+    assert "Detalle de la cotización" in texto
+    assert "un solo párrafo de hasta 230 caracteres" in texto
+    assert "1 a 3 párrafos" not in texto
+    # La cotización ganadora de 657-70-COT26 va como referencia de forma.
+    assert "Plan de Aseguramiento de Calidad (PAC)" in texto
+
+
+async def test_redaccion_no_pide_adjuntar_la_declaracion_jurada_de_habilidad():
+    _, post = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(post)
+    assert "Declaración Jurada de Habilidad" in texto
+    assert "no es un documento a adjuntar" in texto
+
+
+def _exigencia(**kwargs) -> Requirement:
+    datos = dict(
+        id="req-x",
+        text="Deberá contar con certificación SEC.",
+        kind="certificacion",
+        mandatory=True,
+        origin="Descripción",
+        status="cumple",
+    )
+    datos.update(kwargs)
+    return Requirement(**datos)
+
+
+async def test_redaccion_enlaza_la_exigencia_con_la_respuesta_que_la_cubre():
+    """Plan 292, §2.7 C: el id es el que el catálogo usa para esa respuesta."""
+    pregunta = uuid4()
+
+    _, post = await _redactar(
+        _respuesta(REDACCION),
+        requirements=[_exigencia(capability_question_id=pregunta)],
+    )
+
+    assert f"| cubierta por: capacidad:{pregunta}" in _texto_del_prompt(post)
+
+
+async def test_redaccion_prefiere_el_elemento_del_catalogo_si_lo_hay():
+    pregunta = uuid4()
+
+    _, post = await _redactar(
+        _respuesta(REDACCION),
+        requirements=[
+            _exigencia(
+                catalog_item_id="perfil:certificacion:sec",
+                capability_question_id=pregunta,
+            )
+        ],
+    )
+
+    texto = _texto_del_prompt(post)
+    assert "| cubierta por: perfil:certificacion:sec" in texto
+    assert f"capacidad:{pregunta}" not in texto
+
+
 async def test_redaccion_con_json_invalido_es_error_del_servicio():
     with pytest.raises(ProposalAIServiceError):
         await _redactar(_respuesta({"offer_name": "no es una sección"}))
@@ -449,3 +515,477 @@ async def test_factibilidad_pide_hasta_tres_preguntas_para_fortalecer_la_oferta(
     )
     assert "offer_questions" in texto
     assert len(resultado.offer_questions) == 1
+
+
+# --- Adjuntos primero (plan 292, §2.2) ---------------------------------------
+
+DOCUMENTOS = [
+    DocumentContextDTO(document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"),
+    DocumentContextDTO(
+        document_name="roto.pdf", file_type="pdf", file_bytes=b"", is_corrupted=True
+    ),
+]
+
+
+def _posiciones(post) -> tuple[list[int], int]:
+    """Índices de las partes de los adjuntos y de la ficha en el mensaje."""
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    adjuntos = [
+        i
+        for i, p in enumerate(partes)
+        if "inlineData" in p or p.get("text", "").startswith("Adjunto")
+    ]
+    [ficha] = [
+        i
+        for i, p in enumerate(partes)
+        if p.get("text", "").startswith("## COMPRA ÁGIL")
+    ]
+    return adjuntos, ficha
+
+
+async def test_factibilidad_manda_los_adjuntos_antes_que_la_ficha():
+    _, post = await _analizar(_respuesta(RESULTADO), DOCUMENTOS)
+
+    adjuntos, ficha = _posiciones(post)
+    assert len(adjuntos) == 3
+    assert max(adjuntos) < ficha
+    # Las instrucciones siguen primero.
+    assert min(adjuntos) == 1
+
+
+async def test_redaccion_manda_los_adjuntos_antes_que_la_ficha():
+    _, post = await _redactar(_respuesta(REDACCION), documents=DOCUMENTOS)
+
+    adjuntos, ficha = _posiciones(post)
+    assert len(adjuntos) == 3
+    assert max(adjuntos) < ficha
+    assert min(adjuntos) == 1
+
+
+async def test_las_instrucciones_dicen_que_los_adjuntos_mandan():
+    _, analisis = await _analizar(_respuesta(RESULTADO))
+    _, redaccion = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(analisis)
+    assert "fuente principal" in texto
+    assert "mandan" in texto
+    assert "mentions_attachments" in texto
+    assert "fallback_question" in texto
+    assert "salen de los adjuntos" in _texto_del_prompt(redaccion)
+
+
+async def test_factibilidad_pide_e_interpreta_respaldo_y_mencion_de_adjuntos():
+    con_respaldo = {
+        **RESULTADO,
+        "mentions_attachments": True,
+        "requirements": [
+            {
+                "text": "Experiencia en obras viales.",
+                "kind": "experiencia",
+                "mandatory": True,
+                "origin": "bases.pdf",
+                "catalog_item_id": "perfil:descripcion",
+                "fallback_question": {
+                    "question": "¿Tiene experiencia en obras viales?",
+                    "target_field": "experiencia:obras-viales",
+                    "kind": "experiencia_proyecto",
+                    "work_type": "obras viales",
+                },
+            }
+        ],
+    }
+
+    resultado, post = await _analizar(_respuesta(con_respaldo))
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    propiedades = esquema["properties"]["requirements"]["items"]["properties"]
+    assert propiedades["fallback_question"] == propiedades["new_question"]
+    assert esquema["properties"]["mentions_attachments"] == {"type": "BOOLEAN"}
+    assert "mentions_attachments" in esquema["required"]
+    assert resultado.mentions_attachments is True
+    respaldo = resultado.requirements[0].fallback_question
+    assert respaldo is not None and respaldo.target_field == "experiencia:obras-viales"
+
+
+async def test_sin_mencion_de_adjuntos_queda_en_falso():
+    resultado, _ = await _analizar(_respuesta(RESULTADO))
+
+    assert resultado.mentions_attachments is False
+
+
+# --- presupuesto de tiempo (plan 292) -----------------------------------------
+# Vercel corta un request reenviado a los 120 s. Los intentos a Gemini comparten
+# un presupuesto total para que el backend responda antes de ese corte.
+
+
+class _RelojFalso:
+    """Devuelve los instantes indicados, uno por llamada; repite el último."""
+
+    def __init__(self, *instantes: float):
+        self._instantes = list(instantes)
+
+    def __call__(self) -> float:
+        if len(self._instantes) > 1:
+            return self._instantes.pop(0)
+        return self._instantes[0]
+
+
+async def _analizar_con_reloj(reloj, respuestas):
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo", reloj=reloj)
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = respuestas
+        try:
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+        except ProposalAIServiceError:
+            pass
+    return post
+
+
+async def test_el_primer_intento_espera_hasta_60_segundos():
+    post = await _analizar_con_reloj(_RelojFalso(0.0), [_respuesta(RESULTADO)])
+
+    assert post.call_args.kwargs["timeout"] == 60.0
+
+
+async def test_el_reintento_usa_solo_lo_que_queda_del_presupuesto():
+    # Empieza en 0 y el primer intento vuelve con 503 a los 50 s. Tras 2 s de
+    # espera quedan 100 - 52 = 48 s.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 50.0, 52.0),
+        [_respuesta({"error": "sobrecarga"}, 503), _respuesta(RESULTADO)],
+    )
+
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["timeout"] == pytest.approx(48.0)
+
+
+async def test_no_reintenta_si_queda_poco_presupuesto():
+    # El 503 llega a los 85 s: un reintento no alcanzaría antes del corte.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 85.0), [_respuesta({"error": "sobrecarga"}, 503)]
+    )
+
+    assert post.call_count == 1
+
+
+async def test_sin_presupuesto_para_reintentar_es_un_error_del_servicio():
+    servicio = GeminiProposalService(
+        api_key="clave", model_name="modelo", reloj=_RelojFalso(0.0, 85.0)
+    )
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.return_value = _respuesta({"error": "sobrecarga"}, 503)
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+
+def test_factibilidad_no_cuenta_la_declaracion_de_habilidad_como_documento():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "NO incluyas la Declaración Jurada de Habilidad" in _INSTRUCCIONES
+
+
+# --- reintento ante timeout ---------------------------------------------------
+# Si Gemini no responde a tiempo, se reintenta igual que ante un 503: una vez y
+# solo con lo que queda del presupuesto.
+
+
+async def test_reintenta_si_gemini_no_responde_a_tiempo():
+    # El primer intento corta a los 60 s; tras 2 s de espera quedan 38.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 60.0, 62.0),
+        [httpx.ReadTimeout(""), _respuesta(RESULTADO)],
+    )
+
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["timeout"] == pytest.approx(38.0)
+
+
+async def test_tras_un_timeout_no_reintenta_si_queda_poco_presupuesto():
+    post = await _analizar_con_reloj(_RelojFalso(0.0, 85.0), [httpx.ReadTimeout("")])
+
+    assert post.call_count == 1
+
+
+async def test_si_el_reintento_tambien_se_demora_es_un_error_del_servicio():
+    servicio = GeminiProposalService(
+        api_key="clave", model_name="modelo", reloj=_RelojFalso(0.0, 60.0, 62.0)
+    )
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = [httpx.ReadTimeout(""), httpx.ReadTimeout("")]
+        with pytest.raises(ProposalAIServiceError, match="no respondió a tiempo"):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 2
+
+
+async def test_un_error_de_red_que_no_es_timeout_no_se_reintenta():
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.side_effect = httpx.ConnectError("sin red")
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 1
+
+
+# --- documento técnico ambiguo y sugerencias (plan 292, §2.8) -----------------
+
+
+def _instrucciones(post) -> str:
+    """Las instrucciones del sistema, sin los saltos de línea del prompt."""
+    texto = post.call_args.kwargs["json"]["contents"][0]["parts"][0]["text"]
+    return " ".join(texto.split())
+
+
+async def test_factibilidad_pide_la_cita_y_no_un_motivo_libre():
+    """La IA ya no escribe el motivo: solo devuelve la frase de las bases (§2.8)."""
+    _, post = await _analizar(_respuesta(RESULTADO))
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    propiedades = esquema["properties"]
+    assert "technical_document_reason" not in propiedades
+    assert propiedades["technical_document_quote"] == {
+        "type": "STRING",
+        "nullable": True,
+    }
+    assert propiedades["technical_document_ambiguous"] == {"type": "BOOLEAN"}
+    assert "technical_document_ambiguous" in esquema["required"]
+
+
+# La descripción de `_licitacion()` dice: "Instalación eléctrica en liceo.
+# Deberá contar con SEC."
+
+
+async def test_una_cita_que_esta_en_la_ficha_se_conserva():
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "Deberá contar con SEC.",
+            }
+        )
+    )
+
+    # Sin el punto final: el mensaje la cierra con comillas y su propio punto.
+    assert resultado.technical_document_quote == "Deberá contar con SEC"
+
+
+async def test_la_cita_se_compara_sin_importar_mayusculas_ni_espacios():
+    resultado, _ = await _analizar(
+        _respuesta(
+            {**RESULTADO, "technical_document_quote": "deberá   contar\ncon SEC"}
+        )
+    )
+
+    assert resultado.technical_document_quote == "deberá contar con SEC"
+
+
+async def test_una_cita_que_no_esta_en_las_bases_se_descarta():
+    """El guardrail contra alucinaciones: lo que no está escrito no llega al usuario."""
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "El informe se entrega al finalizar el servicio.",
+            }
+        )
+    )
+
+    assert resultado.technical_document_quote is None
+
+
+async def test_una_cita_de_un_pdf_con_texto_se_conserva(monkeypatch):
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: (
+            "3. CONDICIONES. Se debe entregar informe técnico y certificado "
+            "individual por cada equipo. " * 5
+        ),
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "Se debe entregar informe técnico y "
+                "certificado individual por cada equipo",
+            }
+        ),
+        documentos,
+    )
+
+    assert resultado.technical_document_quote == (
+        "Se debe entregar informe técnico y certificado individual por cada equipo"
+    )
+
+
+async def test_factibilidad_sin_ambiguedad_queda_en_falso():
+    resultado, _ = await _analizar(_respuesta(RESULTADO))
+
+    assert resultado.technical_document_ambiguous is False
+
+
+async def test_factibilidad_trata_los_entregables_de_ejecucion_como_condicion():
+    _, post = await _analizar(_respuesta(RESULTADO))
+
+    instrucciones = _instrucciones(post)
+    assert "technical_document_ambiguous" in instrucciones
+    assert "copiada exacta" in instrucciones
+
+
+async def test_redaccion_pide_una_sugerencia_por_seccion_del_documento_tecnico():
+    con_tecnico = {
+        **REDACCION,
+        "technical_document": {
+            "equipo": {
+                "paragraphs": [],
+                "hint": "Las bases exigen personal certificado.",
+            },
+        },
+    }
+
+    resultado, post = await _redactar(
+        _respuesta(con_tecnico), include_technical_document=True
+    )
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    seccion = esquema["properties"]["technical_document"]["properties"]["equipo"]
+    assert seccion["properties"]["hint"] == {"type": "STRING"}
+    assert seccion["required"] == ["paragraphs", "hint"]
+    # Las secciones del formulario no llevan sugerencia.
+    assert "hint" not in esquema["properties"]["offer_name"]["properties"]
+    tecnico = resultado.technical_document
+    assert tecnico is not None and tecnico.equipo is not None
+    assert tecnico.equipo.hint == "Las bases exigen personal certificado."
+
+
+async def test_redaccion_pide_secciones_breves_y_lo_de_las_bases_completo():
+    _, post = await _redactar(_respuesta(REDACCION), include_technical_document=True)
+
+    texto = _texto_del_prompt(post)
+    assert "2 o 3 frases como máximo" in texto
+    assert "se escribe completo" in texto
+    assert "hint:" in texto
+
+
+# --- PDF como texto (plan 292) ------------------------------------------------
+# Medido el 2026-10-07 con 1377068-65-COT26: la redacción con el PDF en línea
+# tardó 60,2 s (Gemini lo procesa como imágenes) y con su texto extraído, 2,9 s.
+
+BASES_CON_TEXTO = "Requerimiento técnico. " * 20
+
+
+async def test_un_pdf_con_texto_se_manda_como_texto(monkeypatch):
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: BASES_CON_TEXTO,
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    _, post = await _analizar(_respuesta(RESULTADO), documentos)
+
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    assert not [p for p in partes if "inlineData" in p]
+    assert any(
+        "bases.pdf" in p.get("text", "") and BASES_CON_TEXTO.strip() in p["text"]
+        for p in partes
+    )
+
+
+async def test_un_pdf_casi_sin_texto_se_manda_en_linea(monkeypatch):
+    """Un escaneo no tiene texto que extraer: se manda el archivo para no perderlo."""
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: "Página 1",
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="escaneo.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    _, post = await _analizar(_respuesta(RESULTADO), documentos)
+
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    assert [p["inlineData"]["mimeType"] for p in partes if "inlineData" in p] == [
+        "application/pdf"
+    ]
+
+
+def test_un_pdf_ilegible_no_tiene_texto():
+    from app.infrastructure.services.gemini_proposal_service import _texto_del_pdf
+
+    assert _texto_del_pdf(b"no es un pdf") is None
+
+
+# --- documento técnico: no deducir (plan 292, §2.8) ----------------------------
+# Con 1377068-65-COT26, Gemini escribió que el informe técnico "se entrega al
+# finalizar el servicio", algo que las bases no dicen.
+
+
+def _plano(texto: str) -> str:
+    """El prompt sin saltos de línea, para buscar frases que cruzan líneas."""
+    return " ".join(texto.split())
+
+
+def test_factibilidad_no_razona_sobre_cuando_se_entrega_un_documento():
+    """Con 1377068-65-COT26, Gemini agregó "al finalizar el servicio" a la
+    exigencia y decidió por eso que las bases no pedían el informe. El prompt
+    ya no le pide razonar sobre el momento de entrega (plan 292, §2.8)."""
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "al ejecutar o terminar el servicio" not in plano
+    assert "No decidas cuándo se entrega ni si va con la oferta" in plano
+    assert "basta con que las bases lo soliciten" in plano
+
+
+def test_un_informe_tecnico_solicitado_no_va_en_las_exigencias():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "Un informe o documento técnico solicitado NO va en requirements" in (
+        _plano(_INSTRUCCIONES)
+    )
+
+
+def test_las_exigencias_usan_las_palabras_de_las_bases():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "con las palabras de las bases" in plano
+    assert "no agregues momentos, plazos, lugares ni cantidades" in plano
+
+
+def test_el_prompt_pide_la_frase_textual_y_nada_mas():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "technical_document_quote" in plano
+    assert "copiada exacta" in plano
+    assert "technical_document_reason" not in plano

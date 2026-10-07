@@ -64,6 +64,10 @@ export interface TechnicalSection {
   key: string;
   title: string;
   paragraphs: DraftParagraph[];
+  /** Qué poner en esta sección; es fija. `null` en los borradores antiguos. */
+  guidance?: string | null;
+  /** Sugerencia de la IA para esta licitación. `null` en los borradores antiguos. */
+  hint?: string | null;
 }
 
 export interface TechnicalDocument {
@@ -106,6 +110,19 @@ export interface ExperienceItem {
   answered_at: string | null;
 }
 
+/**
+ * Un proyecto que respalda un "Sí" a una pregunta `experiencia_proyecto`
+ * (`POST /capabilities/questions/{id}/evidence`). El catálogo lo trae después
+ * como `evidencia:<id>` y la redacción lo puede citar.
+ */
+export interface CapabilityEvidenceInput {
+  title: string;
+  year: number;
+  buyer?: string | null;
+  amount_clp?: number | null;
+  description?: string | null;
+}
+
 export interface ProposalDraft {
   id: string;
   supplier_id: string;
@@ -115,6 +132,11 @@ export interface ProposalDraft {
   paused_requirement_id: string | null;
   requires_technical_document: boolean;
   technical_document_reason: string | null;
+  /**
+   * Las bases mencionan un informe o documento técnico sin aclarar si va con la
+   * cotización. `null` en los borradores anteriores a este dato.
+   */
+  technical_document_ambiguous: boolean | null;
   warnings: ProposalWarning[];
   discrepancy_decisions: DiscrepancyDecision[];
   content: DraftContent | null;
@@ -124,6 +146,12 @@ export interface ProposalDraft {
   updated_at: string;
 }
 
+/** Un adjunto que el análisis recibió. `corrupted`: no se pudo leer. */
+export interface AnalysisDocument {
+  name: string;
+  corrupted: boolean;
+}
+
 /** Lo que devuelve `GET /tenders/{id}/proposal`. */
 export interface ProposalView extends ProposalDraft {
   is_expired: boolean;
@@ -131,10 +159,23 @@ export interface ProposalView extends ProposalDraft {
   catalog_items: ExperienceItem[];
   /** Exigencias cuya respuesta en el banco cambió desde que se usó. */
   changed_requirement_ids: string[];
+  /**
+   * Con qué adjuntos se hizo el análisis. `null` en los borradores anteriores a
+   * este dato: ahí no se sabe y no se recomienda nada sobre las bases.
+   */
+  analysis_documents: AnalysisDocument[] | null;
+  /** Si la ficha menciona bases, TDR o anexos. `null` igual que arriba. */
+  mentions_attachments: boolean | null;
 }
 
 /** Etapa en curso, para el indicador del CA6. */
-export type ProposalStage = "analyzing" | "drafting" | null;
+export type ProposalStage = "analyzing" | "drafting" | "regenerating" | null;
+
+/** La opción que el usuario acaba de pulsar, mientras se guarda. */
+export interface PendingAnswer {
+  questionId: string;
+  label: string;
+}
 
 /** Las que no se preguntan: definen la oferta, no a la empresa. */
 export const KINDS_SIN_PREGUNTA: readonly RequirementKind[] = ["condicion", "documento"];

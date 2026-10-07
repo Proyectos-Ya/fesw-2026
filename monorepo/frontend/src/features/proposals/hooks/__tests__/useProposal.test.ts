@@ -1,9 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/features/shared/api/client";
+import { ApiError, TimeoutError } from "@/features/shared/api/client";
+import * as capacidades from "../../services/capabilityService";
 import * as service from "../../services/proposalService";
 import { useProposal } from "../useProposal";
-import { vista } from "../../testing/fixtures";
+import { VIALES, vista } from "../../testing/fixtures";
 
 vi.mock("../../services/proposalService", () => ({
   getProposal: vi.fn(),
@@ -18,6 +19,8 @@ vi.mock("../../services/proposalService", () => ({
   syncProposalAnswers: vi.fn(),
   downloadTechnicalDocument: vi.fn(),
 }));
+
+vi.mock("../../services/capabilityService", () => ({ addCapabilityEvidence: vi.fn() }));
 
 const svc = vi.mocked(service);
 
@@ -65,7 +68,7 @@ describe("useProposal", () => {
     const { result } = await montado();
     svc.getProposal.mockResolvedValue(vista());
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.start();
     });
@@ -88,7 +91,7 @@ describe("useProposal", () => {
     );
     const { result } = await montado();
 
-    let pendiente: Promise<void> = Promise.resolve();
+    let pendiente: Promise<unknown> = Promise.resolve();
     act(() => {
       pendiente = result.current.generate();
     });
@@ -99,6 +102,66 @@ describe("useProposal", () => {
     });
 
     expect(result.current.stage).toBeNull();
+  });
+
+  it("regenerar muestra su propia etapa y confirma al terminar", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    let terminar: () => void = () => {};
+    svc.regenerateProposal.mockImplementation(
+      () => new Promise((resolve) => (terminar = () => resolve(vista()))),
+    );
+    const { result } = await montado();
+
+    let pendiente: Promise<unknown> = Promise.resolve();
+    act(() => {
+      pendiente = result.current.regenerate("Más formal");
+    });
+    await waitFor(() => expect(result.current.stage).toBe("regenerating"));
+    await act(async () => {
+      terminar();
+      await pendiente;
+    });
+
+    expect(svc.regenerateProposal).toHaveBeenCalledWith("t-1", "Más formal");
+    expect(result.current.stage).toBeNull();
+    expect(result.current.toast?.message).toBe("Borrador regenerado con tus instrucciones.");
+  });
+
+  it("si regenerar falla no confirma", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    svc.regenerateProposal.mockRejectedValue(new ApiError(502, "Falla"));
+    const { result } = await montado();
+
+    await act(() => result.current.regenerate("Más formal"));
+
+    expect(result.current.actionError).toBe("Falla");
+    expect(result.current.toast).toBeNull();
+  });
+
+  it("mientras responde dice qué opción se pulsó, y confirma al terminar", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    let terminar: () => void = () => {};
+    svc.answerProposalQuestion.mockImplementation(
+      () => new Promise((resolve) => (terminar = () => resolve(vista()))),
+    );
+    const { result } = await montado();
+
+    let pendiente: Promise<unknown> = Promise.resolve();
+    act(() => {
+      pendiente = result.current.answer("q-sec", "Sí");
+    });
+    await waitFor(() =>
+      expect(result.current.answering).toEqual({ questionId: "q-sec", label: "Sí" }),
+    );
+    await act(async () => {
+      terminar();
+      await pendiente;
+    });
+
+    expect(result.current.answering).toBeNull();
+    expect(result.current.toast?.message).toBe("Respuesta guardada.");
+    act(() => result.current.clearToast());
+    expect(result.current.toast).toBeNull();
   });
 
   it("pedir el documento técnico muestra la etapa de redacción", async () => {
@@ -185,6 +248,115 @@ describe("useProposal", () => {
 
     expect(click).toHaveBeenCalled();
     expect(revocar).toHaveBeenCalledWith("blob:url");
+    expect(result.current.toast?.message).toBe("Documento descargado.");
     vi.unstubAllGlobals();
+  });
+
+  describe("si se pierde la conexión durante una acción con IA", () => {
+    const despues = vista({ status: "READY", updated_at: "2026-10-01T12:05:00Z" });
+
+    it("tras un timeout relee el borrador y, si cambió, muestra el resultado", async () => {
+      svc.getProposal.mockResolvedValueOnce(vista()).mockResolvedValueOnce(despues);
+      svc.regenerateProposal.mockRejectedValue(new TimeoutError());
+      const { result } = await montado();
+
+      await act(() => result.current.regenerate("Más formal"));
+
+      expect(result.current.actionError).toBeNull();
+      expect(result.current.state).toEqual({ kind: "ready", view: despues });
+      expect(result.current.toast?.message).toBe("Borrador regenerado con tus instrucciones.");
+    });
+
+    it("tras un error de red también lo intenta", async () => {
+      svc.getProposal.mockResolvedValueOnce(vista()).mockResolvedValueOnce(despues);
+      svc.generateProposal.mockRejectedValue(new TypeError("Failed to fetch"));
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(result.current.actionError).toBeNull();
+      expect(result.current.state).toEqual({ kind: "ready", view: despues });
+    });
+
+    it("si el borrador no cambió avisa que se perdió la conexión", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.generateProposal.mockRejectedValue(new TimeoutError());
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(result.current.actionError).toMatch(/Se perdió la conexión/);
+      expect(result.current.toast).toBeNull();
+    });
+
+    it("un error del backend no relee: se muestra tal cual", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.generateProposal.mockRejectedValue(new ApiError(502, "Falló Gemini"));
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(svc.getProposal).toHaveBeenCalledTimes(1);
+      expect(result.current.actionError).toBe("Falló Gemini");
+    });
+  });
+  describe("proyectos de experiencia", () => {
+    const PROYECTO = { title: "Bacheo", year: 2023, buyer: "Serviu" };
+
+    it("tras un Sí a una pregunta de proyectos sugiere agregar uno", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValue(vista());
+      const { result } = await montado();
+
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      expect(result.current.suggestedEvidence).toBe(VIALES.id);
+      act(() => result.current.dismissEvidence());
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("un No, otra clase de pregunta o un error no sugieren nada", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValueOnce(vista());
+      svc.answerProposalQuestion.mockResolvedValueOnce(vista());
+      svc.answerProposalQuestion.mockRejectedValueOnce(new ApiError(409, "Falla"));
+      const { result } = await montado();
+
+      await act(() => result.current.answer(VIALES.id, "No"));
+      await act(() => result.current.answer("q-sec", "Sí"));
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("agregar un proyecto lo guarda, recarga y confirma", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.answerProposalQuestion.mockResolvedValue(vista());
+      vi.mocked(capacidades.addCapabilityEvidence).mockResolvedValue({});
+      const { result } = await montado();
+      await act(() => result.current.answer(VIALES.id, "Sí"));
+
+      await act(() => result.current.addEvidence(VIALES.id, PROYECTO));
+
+      expect(capacidades.addCapabilityEvidence).toHaveBeenCalledWith(VIALES.id, PROYECTO);
+      expect(svc.getProposal).toHaveBeenCalledTimes(3);
+      expect(result.current.toast?.message).toBe(
+        "Proyecto agregado. Se usará al redactar o regenerar.",
+      );
+      expect(result.current.suggestedEvidence).toBeNull();
+    });
+
+    it("si falla, el error sube al formulario y no confirma", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      vi.mocked(capacidades.addCapabilityEvidence).mockRejectedValue(new ApiError(409, "x"));
+      const { result } = await montado();
+
+      await expect(result.current.addEvidence(VIALES.id, PROYECTO)).rejects.toBeInstanceOf(
+        ApiError,
+      );
+
+      expect(result.current.toast).toBeNull();
+      expect(result.current.actionError).toBeNull();
+    });
   });
 });

@@ -174,3 +174,46 @@ def test_sin_documento_tecnico_no_hay_word():
 
     with pytest.raises(ValueError):
         DocxProposalExporter().to_docx(borrador, crear_licitacion(borrador.tender_id))
+
+
+def _con_sugerencias(hint: str | None) -> ProposalDraft:
+    """Equipo con un vacío y metodología sin vacíos, ambas con sugerencias."""
+    tecnico = _tecnico()
+    for seccion in tecnico.sections:
+        seccion.guidance = f"Guía fija de {seccion.title}."
+        seccion.hint = hint and f"{hint} ({seccion.title})"
+    return _borrador(tecnico)
+
+
+def _revisar_de(documento, inicio: str) -> str:
+    parrafos = documento.paragraphs
+    indice = next(i for i, p in enumerate(parrafos) if p.text.startswith(inicio))
+    return parrafos[indice + 1].text
+
+
+def test_el_bloque_revisar_lleva_la_sugerencia_de_la_ia():
+    documento, _ = _documento(_con_sugerencias("Menciona sus certificaciones"))
+
+    assert _revisar_de(documento, "Relator:") == (
+        "Revisar: completar nombre y experiencia del equipo. "
+        "Sugerencia: Menciona sus certificaciones (Equipo de trabajo)"
+    )
+
+
+def test_sin_sugerencia_de_la_ia_usa_la_de_la_plantilla():
+    documento, _ = _documento(_con_sugerencias(None))
+
+    assert _revisar_de(documento, "Relator:") == (
+        "Revisar: completar nombre y experiencia del equipo. "
+        "Sugerencia: Guía fija de Equipo de trabajo."
+    )
+
+
+def test_una_seccion_sin_vacios_no_muestra_sugerencias():
+    """El Word va al comprador: las sugerencias solo acompañan a un vacío."""
+    documento, _ = _documento(_con_sugerencias("Menciona sus certificaciones"))
+
+    texto = "\n".join(p.text for p in documento.paragraphs)
+    assert "Guía fija de Metodología." not in texto
+    assert "(Metodología)" not in texto
+    assert "(Antecedentes de la empresa)" not in texto

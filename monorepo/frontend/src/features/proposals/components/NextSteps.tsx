@@ -10,11 +10,12 @@ interface NextStepsProps {
 /**
  * Qué hacer con el borrador listo: Chiripa no postula por la empresa, así que
  * el último paso es llevar el texto y los archivos al formulario de la Compra
- * Ágil en Mercado Público.
+ * Ágil en Mercado Público. Los pasos siguen el orden de ese formulario (guía
+ * del proveedor de Compra Ágil, paso 2). `tenderCode` es `null` mientras no se
+ * carga la ficha, y entonces tampoco está el cotizador de esta página.
  */
 export function NextSteps({ view, tenderCode }: NextStepsProps) {
   const documentos = view.content?.required_documents.paragraphs ?? [];
-  const pideCotizacion = documentos.some((d) => /cotizaci[oó]n/i.test(d.text));
   const tecnico = view.content?.technical_document ?? null;
 
   return (
@@ -45,27 +46,35 @@ export function NextSteps({ view, tenderCode }: NextStepsProps) {
           .
         </li>
         <li>
-          Copia el nombre y la descripción de la oferta al formulario con los botones
-          &quot;Copiar&quot;. Completa antes lo resaltado en amarillo.
+          Ingresa el valor unitario neto de cada ítem, con el despacho incluido, y elige el
+          tipo de impuesto: exento, IVA, honorario o zona franca.
+          {tenderCode && (
+            <>
+              {" "}
+              Puedes calcularlo en el{" "}
+              <a href="#cotizacion" className="font-semibold text-primary underline">
+                cotizador
+              </a>{" "}
+              de esta página.
+            </>
+          )}
         </li>
-        {documentos.length > 0 && (
+        {documentos.length > 0 && <li>Adjunta los documentos necesarios.</li>}
+        {tecnico && (
           <li>
-            Adjunta los documentos necesarios.
-            {pideCotizacion && (
-              <>
-                {" "}
-                Para la cotización puedes usar el{" "}
-                <a href="#cotizacion" className="font-semibold text-primary underline">
-                  cotizador
-                </a>{" "}
-                de esta página.
-              </>
-            )}
+            Descarga el documento técnico en Word, revísalo y súbelo como adjunto. El
+            formulario acepta archivos de hasta 20 MB.
           </li>
         )}
-        {tecnico && (
-          <li>Descarga el documento técnico en Word, revísalo y súbelo como adjunto.</li>
-        )}
+        <li>
+          Copia el nombre de la oferta y el detalle de la cotización con los botones
+          &quot;Copiar&quot;. Completa antes lo resaltado en amarillo.
+        </li>
+        <li>Indica la fecha de vigencia de tu oferta.</li>
+        <li>
+          Al enviar, acepta la Declaración Jurada de Habilidad en la ventana que muestra la
+          plataforma. No se adjunta.
+        </li>
       </ol>
     </section>
   );

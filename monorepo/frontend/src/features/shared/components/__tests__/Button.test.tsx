@@ -16,3 +16,8 @@ test('renders ghost button variant', () => {
   expect(button).toBeInTheDocument();
   expect(button).toHaveClass('text-text-muted');
 });
+
+test('anuncia que está cargando con aria-busy', () => {
+  render(<Button isLoading>Guardar</Button>);
+  expect(screen.getByRole('button', { name: /guardar/i })).toHaveAttribute('aria-busy', 'true');
+});

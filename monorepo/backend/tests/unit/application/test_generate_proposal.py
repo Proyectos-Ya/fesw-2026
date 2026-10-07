@@ -17,6 +17,10 @@ from app.application.services.proposal_ai_service import (
     FeasibilityResultDTO,
     ProposalAIServiceError,
     TechnicalDocumentDTO,
+    TechnicalSectionDTO,
+)
+from app.application.use_cases.capabilities.answer_capability_question import (
+    AnswerCapabilityQuestionUseCase,
 )
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
@@ -24,7 +28,12 @@ from app.application.use_cases.capabilities.build_experience_catalog import (
 from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
-from app.domain.entities.proposal import ProposalDraft, Requirement
+from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
+from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
+    ProposalDraft,
+    Requirement,
+)
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
@@ -282,6 +291,82 @@ class TestFuentes:
         assert parrafo.placeholders == []
 
 
+class TestDetalleDeLaCotizacion:
+    """Plan 292, §2.7 A: el formulario tiene un solo campo de 255 caracteres."""
+
+    async def test_un_solo_parrafo_queda_igual(self):
+        e = await Escenario().preparar()
+
+        borrador = await e.redactar()
+
+        assert _textos(borrador.content.offer_description) == [  # type: ignore[union-attr]
+            "Operamos en la Región de Aysén."
+        ]
+
+    async def test_junta_varios_parrafos_en_uno_con_sus_fuentes_y_vacios(self):
+        pregunta = CapabilityQuestion(
+            question="¿Tiene experiencia en capacitaciones PAC?",
+            target_field="experiencia:pac",
+            category="general",
+            kind="capacidad",
+            options=[
+                CapabilityOption(label="Sí", polarity="afirmativa"),
+                CapabilityOption(label="No", polarity="negativa"),
+            ],
+        )
+        capacidad = f"capacidad:{pregunta.id}"
+        e = Escenario(
+            _redaccion(
+                offer_description=_seccion(
+                    _parrafo(
+                        "Capacitación PAC para [[INSERTAR: número de funcionarios]] "
+                        "funcionarios.\n",
+                        "perfil:region:aysen",
+                    ),
+                    _parrafo(
+                        "Operamos en Aysén y dictamos cursos PAC.",
+                        "perfil:region:aysen",
+                        capacidad,
+                        afirma=True,
+                    ),
+                    _parrafo("Plazo: [[INSERTAR: fecha de inicio]]."),
+                )
+            )
+        )
+        await e.questions.add(pregunta)
+        await e.preparar()
+        await AnswerCapabilityQuestionUseCase(
+            e.suppliers, e.questions, e.answers
+        ).execute(
+            user_id=e.user_id,
+            supplier_id=e.empresa.id,
+            question_id=pregunta.id,
+            answer="Sí",
+        )
+
+        borrador = await e.redactar()
+
+        [parrafo] = borrador.content.offer_description.paragraphs  # type: ignore[union-attr]
+        assert parrafo.text == (
+            "Capacitación PAC para (Por favor, inserte aquí el valor número de "
+            "funcionarios) funcionarios. Operamos en Aysén y dictamos cursos PAC. "
+            "Plazo: (Por favor, inserte aquí el valor fecha de inicio)."
+        )
+        assert [f.id for f in parrafo.sources] == ["perfil:region:aysen", capacidad]
+        assert parrafo.placeholders == ["número de funcionarios", "fecha de inicio"]
+
+    async def test_no_trunca_un_texto_largo(self):
+        largo = "Servicio de capacitación presencial. " * 10
+        e = await Escenario(
+            _redaccion(offer_description=_seccion(_parrafo(largo)))
+        ).preparar()
+
+        borrador = await e.redactar()
+
+        [parrafo] = borrador.content.offer_description.paragraphs  # type: ignore[union-attr]
+        assert parrafo.text == largo
+
+
 class TestDocumentos:
     async def test_lista_los_documentos_de_la_factibilidad_y_suma_los_nuevos(self):
         e = await Escenario(
@@ -301,9 +386,34 @@ class TestDocumentos:
             "Declaración jurada simple",
         ]
 
+    async def test_no_lista_la_declaracion_jurada_de_habilidad(self):
+        """Se acepta en una ventana de Mercado Público al enviar: no se adjunta."""
+        e = await Escenario(
+            _redaccion(
+                required_documents=_seccion(
+                    _parrafo("Declaración Jurada de Habilidad firmada"),
+                    _parrafo("Declaración jurada simple"),
+                )
+            )
+        ).preparar()
+
+        borrador = await e.redactar()
+
+        assert "Declaración Jurada de Habilidad firmada" not in _textos(
+            borrador.content.required_documents  # type: ignore[union-attr]
+        )
+        assert "Declaración jurada simple" in _textos(
+            borrador.content.required_documents  # type: ignore[union-attr]
+        )
+
 
 def _tecnico(**secciones: DraftSectionDTO) -> TechnicalDocumentDTO:
-    return TechnicalDocumentDTO(**secciones)
+    return TechnicalDocumentDTO(
+        **{
+            clave: TechnicalSectionDTO.model_validate(seccion.model_dump())
+            for clave, seccion in secciones.items()
+        }
+    )
 
 
 def _secciones(borrador) -> dict:
@@ -399,6 +509,43 @@ class TestDocumentoTecnico:
         borrador = await e.redactar()
 
         assert borrador.content.technical_document is None  # type: ignore[union-attr]
+
+
+class TestSugerenciasPorSeccion:
+    """Plan 292, §2.8: `guidance` fija de la plantilla y `hint` de la IA."""
+
+    _GUIA = {p.key: p.guidance for p in TECHNICAL_SECTIONS}
+
+    async def test_cada_seccion_lleva_la_sugerencia_de_la_plantilla(self):
+        e = await Escenario().preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        for clave, seccion in _secciones(borrador).items():
+            assert seccion.guidance == self._GUIA[clave]
+
+    async def test_la_sugerencia_de_la_ia_llega_a_su_seccion(self):
+        pista = "Las bases exigen personal certificado: menciona sus certificaciones."
+        e = await Escenario(
+            _redaccion(
+                technical_document=TechnicalDocumentDTO(
+                    metodologia=TechnicalSectionDTO(
+                        paragraphs=[_parrafo("Revisión de cada extintor.")],
+                        hint="Detalla los pasos de la mantención.",
+                    ),
+                    equipo=TechnicalSectionDTO(paragraphs=[], hint=pista),
+                )
+            )
+        ).preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        secciones = _secciones(borrador)
+        assert secciones["metodologia"].hint == "Detalla los pasos de la mantención."
+        # También en una sección que quedó como vacío por completar.
+        assert secciones["equipo"].hint == pista
+        assert secciones["equipo"].paragraphs[0].placeholders
+        assert secciones["antecedentes"].hint is None
 
 
 class TestPausaDeLaRedaccion:

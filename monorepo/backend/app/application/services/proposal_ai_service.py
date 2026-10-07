@@ -40,6 +40,10 @@ class FeasibilityRequirementDTO(BaseModel):
     - `catalog_item_id`: un elemento del catálogo la cubre, a favor o en contra;
     - `question_key`: una pregunta del banco que la empresa aún no respondió;
     - `new_question`: ninguna pregunta del banco sirve, y se propone una.
+
+    `fallback_question` es aparte: la pregunta a usar si el caso de uso descarta
+    la cobertura de `catalog_item_id` porque el perfil genérico no prueba esa
+    exigencia (`perfil_cubre`, plan 292, §2.1).
     """
 
     text: str
@@ -49,6 +53,7 @@ class FeasibilityRequirementDTO(BaseModel):
     catalog_item_id: str | None = None
     question_key: str | None = None
     new_question: NewQuestionDTO | None = None
+    fallback_question: NewQuestionDTO | None = None
 
 
 class FeasibilityResultDTO(BaseModel):
@@ -57,7 +62,15 @@ class FeasibilityResultDTO(BaseModel):
     # oferta: no las piden las bases, pero dan datos de la empresa para redactar.
     offer_questions: list[FeasibilityRequirementDTO] = Field(default_factory=list)
     requires_technical_document: bool = False
-    technical_document_reason: str | None = None
+    # Las bases mencionan un informe o documento técnico sin aclarar si va con
+    # la oferta o se entrega al ejecutar el servicio (plan 292, §2.8).
+    technical_document_ambiguous: bool = False
+    # La frase textual de las bases que solicita el informe técnico, ya
+    # verificada contra lo que se envió a la IA (`None` si no hay o no estaba).
+    # La IA no escribe el mensaje: lo arma el caso de uso (plan 292, §2.8).
+    technical_document_quote: str | None = None
+    # La ficha menciona bases, TDR o anexos: con eso se recomienda subirlos.
+    mentions_attachments: bool = False
 
 
 class DraftParagraphDTO(BaseModel):
@@ -80,6 +93,16 @@ class DraftSectionDTO(BaseModel):
     paragraphs: list[DraftParagraphDTO] = Field(default_factory=list)
 
 
+class TechnicalSectionDTO(DraftSectionDTO):
+    """Una sección del documento técnico, con lo que la empresa debería agregar.
+
+    `hint` es una frase específica de esta licitación, basada en las bases
+    (plan 292, §2.8). Llega aunque la sección venga sin párrafos.
+    """
+
+    hint: str | None = None
+
+
 class TechnicalDocumentDTO(BaseModel):
     """Documento técnico con las secciones de `TECHNICAL_SECTIONS`.
 
@@ -88,13 +111,13 @@ class TechnicalDocumentDTO(BaseModel):
     como vacío por completar.
     """
 
-    antecedentes: DraftSectionDTO | None = None
-    comprension: DraftSectionDTO | None = None
-    metodologia: DraftSectionDTO | None = None
-    plan_de_trabajo: DraftSectionDTO | None = None
-    equipo: DraftSectionDTO | None = None
+    antecedentes: TechnicalSectionDTO | None = None
+    comprension: TechnicalSectionDTO | None = None
+    metodologia: TechnicalSectionDTO | None = None
+    plan_de_trabajo: TechnicalSectionDTO | None = None
+    equipo: TechnicalSectionDTO | None = None
     # Solo si las bases piden algo que no calza en las anteriores.
-    otros: DraftSectionDTO | None = None
+    otros: TechnicalSectionDTO | None = None
 
 
 class DraftContentDTO(BaseModel):

@@ -47,6 +47,16 @@ export function registrarManejadorRevocacionAcceso(
 const REQUEST_TIMEOUT_MS = 60_000; 
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
+/**
+ * Opciones de una petición: las de `fetch` más el tiempo límite propio.
+ *
+ * `timeoutMs` reemplaza los 60 s por defecto para las rutas que se sabe que
+ * tardan más, como las que esperan a la IA. No viaja a `fetch`.
+ */
+export interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
 /** Error de una respuesta HTTP no exitosa del backend. */
 export class ApiError extends Error {
   constructor(
@@ -74,9 +84,10 @@ export class TimeoutError extends Error {
  * que vienen como `{ detail: string }`. Lo comparten `apiFetch` (JSON) y
  * `apiDownload` (archivos).
  */
-async function solicitar(path: string, options?: RequestInit): Promise<Response> {
+async function solicitar(path: string, opciones?: ApiRequestOptions): Promise<Response> {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...options } = opciones ?? {};
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // Es una lectura local de la sesión en memoria: solo toca la red cuando el
   // token está por vencer y hay que refrescarlo.
@@ -89,10 +100,10 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
       signal: controller.signal,
       credentials: "include",
       headers: {
-        ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         // Antes de `options.headers` para que quien llame pueda sobreescribirlo.
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options?.headers,
+        ...options.headers,
       },
 
     });
@@ -141,7 +152,7 @@ async function solicitar(path: string, options?: RequestInit): Promise<Response>
  */
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit,
+  options?: ApiRequestOptions,
 ): Promise<T> {
   const response = await solicitar(path, options);
 

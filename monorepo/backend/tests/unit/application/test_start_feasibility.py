@@ -25,6 +25,7 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.proposals import start_feasibility
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
@@ -339,7 +340,6 @@ class TestBorrador:
         e = await Escenario(
             _exigencia(question_key="registro_mop"),
             requires_technical_document=True,
-            technical_document_reason="Las bases piden una memoria técnica.",
         ).preparar()
 
         borrador = await e.ejecutar()
@@ -348,8 +348,8 @@ class TestBorrador:
         assert guardado == borrador
         assert borrador.created_by_user_id == e.user_id
         assert borrador.requires_technical_document is True
-        assert (
-            borrador.technical_document_reason == "Las bases piden una memoria técnica."
+        assert borrador.technical_document_reason == (
+            "Las bases solicitan un informe técnico."
         )
         assert [r.id for r in borrador.requirements] == ["req-1"]
 
@@ -543,6 +543,20 @@ class TestVolverAAnalizar:
         assert mismo.status == "READY"
         assert mismo.content is not None
         assert len(e.ai.llamadas) == 1
+
+    async def test_una_version_nueva_del_analisis_cuenta_como_cambio(self, monkeypatch):
+        """Cambiar el prompt o la lógica de la factibilidad no toca la ficha, el
+        perfil ni los adjuntos. Sin la versión en la huella, "Volver a analizar"
+        mantendría para siempre los borradores hechos con la lógica anterior."""
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        monkeypatch.setattr(
+            start_feasibility, "VERSION_DEL_ANALISIS", "una-version-posterior"
+        )
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 2
 
     async def test_subir_bases_nuevas_cuenta_como_cambio(self):
         e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
@@ -754,3 +768,233 @@ class TestPreguntasSugeridasEnLaFactibilidad:
         borrador = await e.ejecutar()
 
         assert borrador.requirements == []
+
+
+_RESPALDO = NewQuestionDTO(
+    question="¿Tiene experiencia en obras viales?",
+    target_field="experiencia:obras-viales",
+    kind="experiencia_proyecto",
+    work_type="obras viales",
+)
+
+
+class TestCoberturaDelPerfil:
+    """El perfil genérico no prueba experiencia ni certificaciones (plan 292, §2.1).
+
+    Si la IA cita la descripción o un rubro para una exigencia de experiencia, la
+    cobertura se descarta y se pregunta con `fallback_question`.
+    """
+
+    async def _con_descripcion(self, *exigencias) -> "Escenario":
+        e = await Escenario(*exigencias).preparar()
+        empresa = await e.suppliers.get_by_id(e.empresa.id)
+        assert empresa is not None
+        empresa.description = "Constructora con 20 años en obras civiles."
+        empresa.certifications = ["ISO 9001"]
+        await e.suppliers.save(empresa)
+        return e
+
+    @pytest.mark.parametrize(
+        "item_id",
+        [
+            "perfil:descripcion",
+            "perfil:sector:obras-de-construccion-e-infraestructura",
+        ],
+    )
+    async def test_el_perfil_generico_citado_para_una_experiencia_genera_pregunta(
+        self, item_id
+    ):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="experiencia",
+                text="Experiencia en obras viales",
+                catalog_item_id=item_id,
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        nueva = await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales")
+        assert nueva is not None
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.capability_question_id == nueva.id
+        assert req.status == "desconocido"
+
+    async def test_si_trae_question_key_la_prefiere_al_respaldo(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="certificacion",
+                catalog_item_id="perfil:descripcion",
+                question_key="registro_mop",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        assert _req(borrador, 0).capability_question_id == MOP.id
+        assert (
+            await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales") is None
+        )
+
+    async def test_sin_respaldo_queda_parcial(self):
+        e = await self._con_descripcion(
+            _exigencia(kind="experiencia", catalog_item_id="perfil:descripcion")
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.status == "parcial"
+
+    async def test_una_certificacion_del_perfil_cubre_la_misma_certificacion(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="certificacion",
+                text="ISO 9001 vigente",
+                catalog_item_id="perfil:certificacion:iso-9001",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.status == "cumple"
+        assert req.catalog_item_id == "perfil:certificacion:iso-9001"
+        assert (
+            await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales") is None
+        )
+
+    async def test_una_region_cubre_la_disponibilidad(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="disponibilidad",
+                text="Entrega en Valparaíso",
+                catalog_item_id="perfil:region:valparaiso",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.status == "cumple"
+        assert req.catalog_item_id == "perfil:region:valparaiso"
+
+    async def test_una_region_no_cubre_una_experiencia(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="experiencia",
+                catalog_item_id="perfil:region:valparaiso",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.status == "desconocido"
+
+
+class TestConQueSeAnalizo:
+    """El borrador guarda qué adjuntos se leyeron y si la ficha menciona bases."""
+
+    async def test_guarda_los_adjuntos_con_los_daniados_marcados(self):
+        e = await Escenario(mentions_attachments=True).preparar()
+        await _subir_bases(e, "bases.pdf")
+        await e.chat.save_document(
+            TenderChatDocument(
+                tender_id=e.tender_id,
+                user_id=e.user_id,
+                file_name="anexo.pdf",
+                file_type="pdf",
+                file_size_bytes=4,
+                storage_path="x/anexo.pdf",
+            ),
+            b"",
+        )
+
+        borrador = await e.ejecutar()
+
+        documentos = {d.name: d.corrupted for d in borrador.analysis_documents or []}
+        assert documentos == {"bases.pdf": False, "anexo.pdf": True}
+        assert borrador.mentions_attachments is True
+        assert await e.drafts.get(e.empresa.id, e.tender_id) == borrador
+
+    async def test_sin_adjuntos_guarda_una_lista_vacia(self):
+        e = await Escenario().preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.analysis_documents == []
+        assert borrador.mentions_attachments is False
+
+
+class TestDocumentoTecnicoAmbiguo:
+    """El mensaje del documento técnico lo escribe el backend, no la IA (§2.8).
+
+    La IA solo devuelve la frase de las bases (ya verificada por el servicio).
+    Así no puede llegar al usuario una interpretación como "se entrega al
+    finalizar el servicio", que las bases no decían.
+    """
+
+    _FRASE = "Se debe entregar informe técnico y certificado individual por cada equipo"
+
+    async def test_si_lo_solicitan_con_cita_la_muestra_tal_cual(self):
+        e = await Escenario(
+            requires_technical_document=False,
+            technical_document_ambiguous=True,
+            technical_document_quote=self._FRASE,
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_ambiguous is True
+        assert borrador.technical_document_reason == (
+            f'Las bases solicitan un informe técnico: "{self._FRASE}".'
+        )
+        assert await e.drafts.get(e.empresa.id, e.tender_id) == borrador
+
+    async def test_si_lo_solicitan_sin_cita_verificada_no_inventa_una(self):
+        e = await Escenario(requires_technical_document=True).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_reason == (
+            "Las bases solicitan un informe técnico."
+        )
+
+    async def test_si_no_lo_solicitan_lo_dice(self):
+        e = await Escenario().preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_ambiguous is False
+        assert borrador.technical_document_reason == (
+            "Las bases no solicitan un informe técnico."
+        )
+
+    async def test_una_cita_sin_que_lo_soliciten_no_se_muestra(self):
+        e = await Escenario(technical_document_quote=self._FRASE).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_reason == (
+            "Las bases no solicitan un informe técnico."
+        )
+
+    async def test_si_la_ia_marca_exigido_y_ambiguo_manda_exigido(self):
+        e = await Escenario(
+            requires_technical_document=True,
+            technical_document_ambiguous=True,
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.requires_technical_document is True
+        assert borrador.technical_document_ambiguous is False

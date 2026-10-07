@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:quotation": "playwright test --config playwright.quotation.config.ts"
+    "test:e2e:quotation": "playwright test --config playwright.quotation.config.ts",
+    "test:e2e:proposal": "playwright test --config playwright.proposal.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

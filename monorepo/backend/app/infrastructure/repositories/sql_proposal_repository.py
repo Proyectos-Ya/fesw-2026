@@ -7,6 +7,15 @@ from app.application.repositories.proposal_repository import IProposalDraftRepos
 from app.domain.entities.proposal import ProposalDraft
 from app.infrastructure.repositories.proposal_model import ProposalDraftModel
 
+# Los campos que van a columnas JSONB.
+_JSONB = {
+    "requirements",
+    "warnings",
+    "discrepancy_decisions",
+    "content",
+    "analysis_documents",
+}
+
 
 class SqlProposalDraftRepository(IProposalDraftRepository):
     def __init__(self, session: AsyncSession):
@@ -20,13 +29,8 @@ class SqlProposalDraftRepository(IProposalDraftRepository):
     def _columnas(draft: ProposalDraft) -> dict:
         # `mode="json"` para lo que va a JSONB: UUID y fechas anidadas no son
         # serializables tal cual. Las columnas escalares van en modo Python.
-        datos = draft.model_dump(
-            exclude={"requirements", "warnings", "discrepancy_decisions", "content"}
-        )
-        anidados = draft.model_dump(
-            mode="json",
-            include={"requirements", "warnings", "discrepancy_decisions", "content"},
-        )
+        datos = draft.model_dump(exclude=_JSONB)
+        anidados = draft.model_dump(mode="json", include=_JSONB)
         return datos | anidados
 
     async def get(self, supplier_id: UUID, tender_id: UUID) -> ProposalDraft | None:
