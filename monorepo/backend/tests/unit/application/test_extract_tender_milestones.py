@@ -7,10 +7,17 @@ from app.application.services.milestone_extraction_ai_service import ExtractedMi
 from app.application.use_cases.milestones.extract_tender_milestones import (
     ExtractTenderMilestonesUseCase,
 )
+from app.application.use_cases.milestones.get_tender_milestones import (
+    GetTenderMilestonesUseCase,
+)
 from app.domain.entities.calendar import CalendarEventLink, CalendarProvider
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatDocument
-from app.domain.entities.tender_milestone import MilestoneKind, MilestoneSource
+from app.domain.entities.tender_milestone import (
+    MilestoneKind,
+    MilestoneSource,
+    TenderMilestone,
+)
 from app.domain.errors.milestone_errors import MilestoneExtractionUnavailable
 from app.domain.errors.tender_errors import TenderNotFound
 from tests.unit.application.fakes import (
@@ -20,6 +27,7 @@ from tests.unit.application.fakes import (
 from tests.unit.application.milestone_fakes import (
     FakeMilestoneExtractionAIService,
     InMemoryCalendarEventLinkRepository,
+    InMemoryMilestoneDocumentRepository,
     InMemoryTenderMilestoneRepository,
 )
 
@@ -54,20 +62,38 @@ def _hito_ia(**cambios: object) -> ExtractedMilestone:
 
 
 class Escenario:
-    def __init__(self, hitos_ia: list[ExtractedMilestone] | None = None, falla_ia: bool = False):
+    def __init__(
+        self,
+        hitos_ia: list[ExtractedMilestone] | None = None,
+        falla_ia: bool = False,
+        por_documento: dict[str, list[ExtractedMilestone]] | None = None,
+        fallan: set[str] | None = None,
+    ):
         self.tender = _licitacion()
         self.tenders = InMemoryTenderRepository()
         self.tenders.tenders[self.tender.id] = self.tender
         self.chat = InMemoryTenderChatRepository()
         self.hitos = InMemoryTenderMilestoneRepository()
-        self.enlaces = InMemoryCalendarEventLinkRepository()
-        self.ia = FakeMilestoneExtractionAIService(hitos_ia, falla=falla_ia)
+        self.enlaces = InMemoryCalendarEventLinkRepository(self.hitos)
+        self.procesados = InMemoryMilestoneDocumentRepository()
+        self.ia = FakeMilestoneExtractionAIService(
+            hitos_ia, falla=falla_ia, por_documento=por_documento, fallan=fallan
+        )
         self.use_case = ExtractTenderMilestonesUseCase(
             tenders=self.tenders,
             milestones=self.hitos,
             event_links=self.enlaces,
             chat=self.chat,
             ai=self.ia,
+            processed=self.procesados,
+            now=lambda: AHORA,
+        )
+        self.consulta = GetTenderMilestonesUseCase(
+            tenders=self.tenders,
+            milestones=self.hitos,
+            event_links=self.enlaces,
+            chat=self.chat,
+            processed=self.procesados,
             now=lambda: AHORA,
         )
 
@@ -85,6 +111,24 @@ class Escenario:
 
     async def extraer(self):
         return await self.use_case.execute(USUARIO, self.tender.id)
+
+    async def guardados(self) -> list[TenderMilestone]:
+        return await self.hitos.list_for_tender(USUARIO, self.tender.id)
+
+    async def sincronizar(self, hito: TenderMilestone) -> None:
+        await self.enlaces.save(
+            CalendarEventLink(
+                user_id=USUARIO,
+                milestone_id=hito.id,
+                provider=CalendarProvider.GOOGLE,
+                external_event_id=f"evento-{hito.id}",
+                synced_due_at=hito.due_at,
+            )
+        )
+
+
+def _de_ia(hitos: list[TenderMilestone]) -> list[TenderMilestone]:
+    return [h for h in hitos if h.source is MilestoneSource.IA_DOCUMENTO]
 
 
 class TestHitosDeMercadoPublico:
@@ -121,7 +165,7 @@ class TestExtraccionConIA:
         assert "2026-10-20 15:00" in contexto  # cierre en hora de Chile
         assert resultado.documents_count == 1
 
-    async def test_guarda_los_hitos_de_la_ia_normalizados_y_con_su_fuente(self):
+    async def test_guarda_los_hitos_de_la_ia_normalizados_y_con_su_documento(self):
         escenario = Escenario([_hito_ia()])
         documento_id = escenario.subir("bases.pdf")
 
@@ -133,7 +177,20 @@ class TestExtraccionConIA:
         assert visita.has_time is True
         assert visita.source_excerpt == "La visita será el día 10 a las 10:00 horas."
         assert visita.source_document_id == documento_id
-        assert len(await escenario.hitos.list_for_tender(USUARIO, escenario.tender.id)) == 3
+        assert len(await escenario.guardados()) == 3
+
+    async def test_cada_documento_se_envia_por_separado(self):
+        # Una petición por archivo: más corta, y si uno falla no arrastra al resto.
+        escenario = Escenario([_hito_ia()])
+        escenario.subir("bases.pdf")
+        escenario.subir("anexo.pdf")
+
+        await escenario.extraer()
+
+        assert [[d.document_name for d in docs] for docs, _ in escenario.ia.llamadas] == [
+            ["bases.pdf"],
+            ["anexo.pdf"],
+        ]
 
     async def test_descarta_fechas_invalidas_y_las_cuenta(self):
         escenario = Escenario([_hito_ia(), _hito_ia(title="Consultas", kind="consultas", fecha="2026-02-30")])
@@ -160,10 +217,10 @@ class TestExtraccionConIA:
         resultado = await escenario.extraer()
 
         assert escenario.ia.llamadas == []
-        assert resultado.documents_count == 0
         # Se informa para que el usuario sepa que tiene que volver a subirlo: en
         # producción el disco del contenedor se borra en cada despliegue.
         assert resultado.unavailable_documents_count == 1
+        assert resultado.pending_documents_count == 1
 
     async def test_con_algunos_archivos_perdidos_extrae_de_los_que_quedan(self):
         escenario = Escenario([_hito_ia()])
@@ -172,10 +229,9 @@ class TestExtraccionConIA:
 
         resultado = await escenario.extraer()
 
-        documentos, _ = escenario.ia.llamadas[0]
-        assert [d.document_name for d in documentos] == ["bases.pdf"]
-        assert resultado.documents_count == 1
+        assert [[d.document_name for d in docs] for docs, _ in escenario.ia.llamadas] == [["bases.pdf"]]
         assert resultado.unavailable_documents_count == 1
+        assert len(_de_ia(await escenario.guardados())) == 1
 
     async def test_si_la_ia_falla_igual_quedan_los_hitos_de_mercado_publico(self):
         escenario = Escenario(falla_ia=True)
@@ -184,51 +240,230 @@ class TestExtraccionConIA:
         with pytest.raises(MilestoneExtractionUnavailable):
             await escenario.extraer()
 
-        guardados = await escenario.hitos.list_for_tender(USUARIO, escenario.tender.id)
+        guardados = await escenario.guardados()
         assert {h.kind for h in guardados} == {MilestoneKind.PUBLICACION, MilestoneKind.CIERRE_POSTULACION}
+
+    async def test_si_un_documento_falla_se_procesan_los_otros(self):
+        escenario = Escenario([_hito_ia()], fallan={"anexo.pdf"})
+        escenario.subir("bases.pdf")
+        escenario.subir("anexo.pdf")
+
+        resultado = await escenario.extraer()
+
+        assert resultado.failed_documents_count == 1
+        assert resultado.pending_documents_count == 1
+        assert len(_de_ia(await escenario.guardados())) == 1
+
+    async def test_un_documento_que_fallo_se_reintenta_en_la_proxima_extraccion(self):
+        escenario = Escenario([_hito_ia()], fallan={"bases.pdf"})
+        escenario.subir("bases.pdf")
+        with pytest.raises(MilestoneExtractionUnavailable):
+            await escenario.extraer()
+
+        escenario.ia.fallan = set()
+        resultado = await escenario.extraer()
+
+        assert resultado.pending_documents_count == 0
+        assert len(_de_ia(await escenario.guardados())) == 1
+
+
+class TestSinMezclarConLosOficiales:
+    async def test_la_ia_no_agrega_publicacion_ni_cierre(self):
+        # Ya vienen de Mercado Público: el de la IA aparecía duplicado.
+        escenario = Escenario(
+            [
+                _hito_ia(),
+                _hito_ia(kind="cierre_postulacion", title="Cierre de recepción de ofertas", fecha="2026-10-20"),
+                _hito_ia(kind="publicacion", title="Publicación", fecha="2026-09-28"),
+            ]
+        )
+        escenario.subir()
+
+        await escenario.extraer()
+
+        guardados = await escenario.guardados()
+        assert sorted(h.kind for h in guardados) == sorted(
+            [MilestoneKind.PUBLICACION, MilestoneKind.CIERRE_POSTULACION, MilestoneKind.VISITA_TECNICA]
+        )
+        assert [h.source for h in guardados if h.kind is MilestoneKind.CIERRE_POSTULACION] == [
+            MilestoneSource.MERCADO_PUBLICO
+        ]
+
+    async def test_consultar_despues_de_extraer_no_cambia_el_origen_de_ninguna_fila(self):
+        escenario = Escenario([_hito_ia()])
+        escenario.subir()
+        await escenario.extraer()
+        antes = {h.id: (h.source, h.due_at) for h in await escenario.guardados()}
+
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+
+        assert {h.id: (h.source, h.due_at) for h in await escenario.guardados()} == antes
+
+    async def test_un_hito_de_ia_con_el_titulo_del_cierre_no_pisa_al_oficial(self):
+        # El bug: la fusión no miraba el origen, y un hito de la IA llamado
+        # igual que el cierre se quedaba con su id.
+        escenario = Escenario()
+        oficial = (await escenario.consulta.execute(USUARIO, escenario.tender.id)).milestones[1].milestone
+        de_ia = TenderMilestone(
+            user_id=USUARIO,
+            tender_id=escenario.tender.id,
+            kind=MilestoneKind.CIERRE_POSTULACION,
+            title="Cierre de recepción de ofertas",
+            source=MilestoneSource.IA_DOCUMENTO,
+            due_at=datetime(2026, 10, 21, 18, 0),
+            has_time=True,
+        )
+        await escenario.hitos.save_many([de_ia])
+        # Sincronizado: no se limpia, así se ve que tampoco se mezcla.
+        await escenario.sincronizar(de_ia)
+
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+
+        assert escenario.hitos.items[oficial.id].source is MilestoneSource.MERCADO_PUBLICO
+        assert escenario.hitos.items[oficial.id].due_at == escenario.tender.closing_at
+        assert escenario.hitos.items[de_ia.id].source is MilestoneSource.IA_DOCUMENTO
 
 
 class TestReextraccion:
-    async def test_conserva_el_id_del_mismo_hito_y_actualiza_su_fecha(self):
-        escenario = Escenario([_hito_ia()])
-        escenario.subir()
-        primero = await escenario.extraer()
-        visita_id = next(v.milestone.id for v in primero.milestones if v.milestone.kind is MilestoneKind.VISITA_TECNICA)
-
-        escenario.ia.hitos = [_hito_ia(title="  VISITA técnica   obligatoria ", fecha="2026-10-11")]
-        segundo = await escenario.extraer()
-
-        visitas = [v.milestone for v in segundo.milestones if v.milestone.kind is MilestoneKind.VISITA_TECNICA]
-        assert [v.id for v in visitas] == [visita_id]
-        assert visitas[0].due_at == datetime(2026, 10, 11, 13, 0)
-
-    async def test_borra_hitos_de_ia_que_ya_no_aparecen_si_no_estan_sincronizados(self):
+    async def test_un_documento_ya_procesado_no_se_vuelve_a_enviar(self):
         escenario = Escenario([_hito_ia()])
         escenario.subir()
         await escenario.extraer()
 
-        escenario.ia.hitos = []
         resultado = await escenario.extraer()
 
-        assert all(v.milestone.source is MilestoneSource.MERCADO_PUBLICO for v in resultado.milestones)
+        assert len(escenario.ia.llamadas) == 1
+        assert resultado.pending_documents_count == 0
 
-    async def test_conserva_hitos_de_ia_ya_sincronizados_aunque_no_aparezcan(self):
-        escenario = Escenario([_hito_ia()])
+    async def test_volver_a_extraer_no_duplica_ni_borra(self):
+        escenario = Escenario([_hito_ia(), _hito_ia(kind="entrega", title="Entrega de muestras", fecha="2026-10-25")])
         escenario.subir()
-        primero = await escenario.extraer()
-        visita = next(v.milestone for v in primero.milestones if v.milestone.kind is MilestoneKind.VISITA_TECNICA)
-        await escenario.enlaces.save(
-            CalendarEventLink(
-                user_id=USUARIO,
-                milestone_id=visita.id,
-                provider=CalendarProvider.GOOGLE,
-                external_event_id="evento",
-                synced_due_at=visita.due_at,
-            )
+        await escenario.extraer()
+        antes = sorted(h.id for h in await escenario.guardados())
+
+        # Aunque la IA respondiera otra cosa, el documento ya no se vuelve a leer.
+        escenario.ia.hitos = [_hito_ia(title="Visita a terreno")]
+        await escenario.extraer()
+
+        assert sorted(h.id for h in await escenario.guardados()) == antes
+
+    async def test_al_subir_otra_base_solo_se_agregan_sus_hitos(self):
+        escenario = Escenario(
+            por_documento={
+                "bases.pdf": [_hito_ia()],
+                "aclaracion.pdf": [_hito_ia(kind="consultas", title="Cierre de consultas", fecha="2026-10-05")],
+            }
+        )
+        escenario.subir("bases.pdf")
+        await escenario.extraer()
+        visita = _de_ia(await escenario.guardados())[0]
+
+        escenario.subir("aclaracion.pdf")
+        await escenario.extraer()
+
+        de_ia = _de_ia(await escenario.guardados())
+        assert sorted(h.kind for h in de_ia) == sorted([MilestoneKind.VISITA_TECNICA, MilestoneKind.CONSULTAS])
+        assert visita in de_ia
+        assert [[d.document_name for d in docs] for docs, _ in escenario.ia.llamadas][-1] == ["aclaracion.pdf"]
+
+    async def test_la_ia_repite_un_hito_en_el_mismo_documento_y_queda_uno(self):
+        escenario = Escenario([_hito_ia(), _hito_ia(title="Visita a terreno obligatoria", hora="11:00")])
+        escenario.subir()
+
+        await escenario.extraer()
+
+        assert len(_de_ia(await escenario.guardados())) == 1
+
+    async def test_un_titulo_distinto_el_mismo_dia_actualiza_la_fila_existente(self):
+        # Hitos guardados antes de este cambio: el documento no figura como
+        # procesado y se vuelve a leer una vez; no debe duplicar.
+        escenario = Escenario([_hito_ia(title="Visita a terreno")])
+        documento_id = escenario.subir()
+        previo = TenderMilestone(
+            user_id=USUARIO,
+            tender_id=escenario.tender.id,
+            kind=MilestoneKind.VISITA_TECNICA,
+            title="Visita técnica obligatoria",
+            source=MilestoneSource.IA_DOCUMENTO,
+            source_document_id=documento_id,
+            due_at=datetime(2026, 10, 10, 13, 0),
+            has_time=True,
+        )
+        await escenario.hitos.save_many([previo])
+
+        await escenario.extraer()
+
+        de_ia = _de_ia(await escenario.guardados())
+        assert [h.id for h in de_ia] == [previo.id]
+        assert de_ia[0].title == "Visita a terreno"
+
+    async def test_al_borrar_un_documento_se_van_sus_hitos_salvo_los_sincronizados(self):
+        escenario = Escenario(
+            por_documento={
+                "bases.pdf": [_hito_ia()],
+                "anexo.pdf": [
+                    _hito_ia(kind="entrega", title="Entrega", fecha="2026-10-25"),
+                    _hito_ia(kind="consultas", title="Consultas", fecha="2026-10-05"),
+                ],
+            }
+        )
+        escenario.subir("bases.pdf")
+        anexo = escenario.subir("anexo.pdf")
+        await escenario.extraer()
+        entrega = next(h for h in await escenario.guardados() if h.kind is MilestoneKind.ENTREGA)
+        await escenario.sincronizar(entrega)
+
+        del escenario.chat.documents[anexo]
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+
+        tipos = sorted(h.kind for h in _de_ia(await escenario.guardados()))
+        assert tipos == sorted([MilestoneKind.VISITA_TECNICA, MilestoneKind.ENTREGA])
+
+
+class TestReparacionDeDatosPrevios:
+    async def test_borra_filas_oficiales_duplicadas_por_el_bug(self):
+        escenario = Escenario()
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+        cierre = next(h for h in await escenario.guardados() if h.kind is MilestoneKind.CIERRE_POSTULACION)
+        await escenario.hitos.save_many([cierre.model_copy(update={"id": uuid4()})])
+
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+
+        cierres = [h for h in await escenario.guardados() if h.kind is MilestoneKind.CIERRE_POSTULACION]
+        assert len(cierres) == 1
+
+    async def test_conserva_la_fila_oficial_sincronizada_al_reparar(self):
+        escenario = Escenario()
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+        cierre = next(h for h in await escenario.guardados() if h.kind is MilestoneKind.CIERRE_POSTULACION)
+        copia = cierre.model_copy(update={"id": uuid4()})
+        await escenario.hitos.save_many([copia])
+        await escenario.sincronizar(copia)
+
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
+
+        cierres = [h for h in await escenario.guardados() if h.kind is MilestoneKind.CIERRE_POSTULACION]
+        assert [h.id for h in cierres] == [copia.id]
+
+    async def test_borra_cierres_o_publicaciones_que_la_ia_habia_agregado(self):
+        escenario = Escenario()
+        documento_id = escenario.subir()
+        await escenario.hitos.save_many(
+            [
+                TenderMilestone(
+                    user_id=USUARIO,
+                    tender_id=escenario.tender.id,
+                    kind=MilestoneKind.CIERRE_POSTULACION,
+                    title="Cierre de ofertas",
+                    source=MilestoneSource.IA_DOCUMENTO,
+                    source_document_id=documento_id,
+                    due_at=datetime(2026, 10, 20, 18, 0),
+                    has_time=True,
+                )
+            ]
         )
 
-        escenario.ia.hitos = []
-        resultado = await escenario.extraer()
+        await escenario.consulta.execute(USUARIO, escenario.tender.id)
 
-        conservada = next(v for v in resultado.milestones if v.milestone.id == visita.id)
-        assert conservada.synced_providers == [CalendarProvider.GOOGLE]
+        assert _de_ia(await escenario.guardados()) == []

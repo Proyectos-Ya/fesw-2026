@@ -8,6 +8,9 @@ from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
     ICalendarOAuthStateRepository,
 )
+from app.application.repositories.milestone_document_repository import (
+    IMilestoneDocumentRepository,
+)
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
@@ -111,18 +114,53 @@ class InMemoryCalendarEventLinkRepository(ICalendarEventLinkRepository):
 
 
 class FakeMilestoneExtractionAIService(IMilestoneExtractionAIService):
-    def __init__(self, hitos: list[ExtractedMilestone] | None = None, falla: bool = False) -> None:
+    """Devuelve `hitos`, o lo de `por_documento` si la llamada trae ese archivo.
+
+    `fallan` lista los nombres de archivo con los que la IA no responde.
+    """
+
+    def __init__(
+        self,
+        hitos: list[ExtractedMilestone] | None = None,
+        falla: bool = False,
+        por_documento: dict[str, list[ExtractedMilestone]] | None = None,
+        fallan: set[str] | None = None,
+    ) -> None:
         self.hitos = hitos or []
         self.falla = falla
+        self.por_documento = por_documento or {}
+        self.fallan = fallan or set()
         self.llamadas: list[tuple[list[DocumentContextDTO], str]] = []
 
     async def extract(
         self, documents: list[DocumentContextDTO], tender_context: str
     ) -> list[ExtractedMilestone]:
         self.llamadas.append((documents, tender_context))
-        if self.falla:
+        nombres = {d.document_name for d in documents}
+        if self.falla or nombres & self.fallan:
             raise MilestoneExtractionUnavailable()
+        for nombre in nombres:
+            if nombre in self.por_documento:
+                return self.por_documento[nombre]
         return self.hitos
+
+
+class InMemoryMilestoneDocumentRepository(IMilestoneDocumentRepository):
+    def __init__(self) -> None:
+        self.items: dict[UUID, tuple[UUID, UUID, int]] = {}  # documento: (usuario, licitación, hitos)
+
+    async def list_processed(self, user_id: UUID, tender_id: UUID) -> set[UUID]:
+        return {d for d, (u, t, _) in self.items.items() if u == user_id and t == tender_id}
+
+    async def mark_processed(
+        self,
+        user_id: UUID,
+        tender_id: UUID,
+        document_id: UUID,
+        milestones_found: int,
+        now: datetime,
+    ) -> None:
+        self.items[document_id] = (user_id, tender_id, milestones_found)
 
 
 class InMemoryCalendarConnectionRepository(ICalendarConnectionRepository):

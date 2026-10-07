@@ -51,7 +51,7 @@ describe("CalendarOAuthCallback", () => {
     render(<CalendarOAuthCallback provider="google" code="codigo" state="estado" error={null} />);
 
     await waitFor(() => expect(replace).toHaveBeenCalled());
-    expect(consumePendingCalendarSync("t-1")).toEqual(RESULTADO);
+    expect(consumePendingCalendarSync("t-1", "google")).toEqual(RESULTADO);
   });
 
   it("no usa el código dos veces aunque React monte dos veces el efecto", async () => {
