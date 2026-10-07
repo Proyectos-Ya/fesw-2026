@@ -106,9 +106,9 @@ describe("KanbanBoardEditor", () => {
 
     await user.click(screen.getByRole("button", { name: /eliminar columna por revisar/i }));
     expect(props.onDelete).not.toHaveBeenCalled();
-    expect(screen.getByText(/esta columna tiene 3 tarjetas/i)).toBeInTheDocument();
+    expect(screen.getByText(/tiene 3 tarjetas/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /^sí$/i }));
+    await user.click(screen.getByRole("button", { name: /^eliminar$/i }));
     expect(props.onDelete).toHaveBeenCalledWith("a");
   });
 
@@ -120,7 +120,7 @@ describe("KanbanBoardEditor", () => {
     const { props } = renderEditor({ columns });
 
     await user.click(screen.getByRole("button", { name: /eliminar columna por revisar/i }));
-    await user.click(screen.getByRole("button", { name: /^no$/i }));
+    await user.click(screen.getByRole("button", { name: /^cancelar$/i }));
     expect(props.onDelete).not.toHaveBeenCalled();
   });
 });

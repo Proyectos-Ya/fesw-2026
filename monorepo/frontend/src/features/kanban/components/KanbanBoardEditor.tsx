@@ -118,39 +118,58 @@ function EditorRow({ column, onRename, onRecolor, onDelete }: EditorRowProps) {
         ))}
       </div>
 
-      {confirmingDelete ? (
-        <div className="flex flex-none items-center gap-2 text-xs">
-          <span className="text-text-subtle">
-            Esta columna tiene {column.card_count} tarjeta
-            {column.card_count !== 1 ? "s" : ""}. ¿Eliminar de todas formas?
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmingDelete(false);
-              void onDelete(column.id);
-            }}
-            className="font-semibold text-danger hover:underline"
-          >
-            Sí
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(false)}
-            className="text-text-subtle hover:text-text-strong"
-          >
-            No
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={handleDeleteClick}
-          aria-label={`Eliminar columna ${column.name}`}
-          className="flex-none rounded p-1 text-text-subtle hover:text-danger"
+      <button
+        type="button"
+        onClick={handleDeleteClick}
+        aria-label={`Eliminar columna ${column.name}`}
+        className="flex-none rounded p-1 text-text-subtle hover:text-danger"
+      >
+        <Icon name="trash-2" size={14} />
+      </button>
+
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+          onClick={() => setConfirmingDelete(false)}
         >
-          <Icon name="trash-2" size={14} />
-        </button>
+          <div
+            role="alertdialog"
+            aria-labelledby={`confirm-delete-${column.id}`}
+            className="w-[90%] max-w-sm rounded-lg border border-border-subtle bg-surface-card p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id={`confirm-delete-${column.id}`}
+              className="font-display text-base font-bold text-text-strong mb-2"
+            >
+              Eliminar columna
+            </h3>
+            <p className="text-sm text-text-body mb-4">
+              La columna <strong>{column.name}</strong> tiene {column.card_count}{" "}
+              tarjeta{column.card_count !== 1 ? "s" : ""}. ¿Eliminarla de todas
+              formas?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  void onDelete(column.id);
+                }}
+                className="px-3 py-1.5 text-sm font-semibold bg-danger text-on-primary rounded-md hover:opacity-90"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

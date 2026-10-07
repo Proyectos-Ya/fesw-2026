@@ -122,9 +122,17 @@ export function KanbanCard({ card, tender, onRemove, onArchive }: Props) {
               </div>
             )}
             <button
-              onClick={(e) => { e.stopPropagation(); onRemove(card.tender_id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onArchive) {
+                  setConfirmArchive(true);
+                } else {
+                  onRemove(card.tender_id);
+                }
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
               className="flex-none p-0.5 text-text-subtle opacity-0 group-hover:opacity-100 hover:text-danger transition-all"
-              aria-label="Quitar del tablero"
+              aria-label={onArchive ? "Archivar tarjeta" : "Quitar del tablero"}
               type="button"
             >
               <Icon name="x" size={13} />
