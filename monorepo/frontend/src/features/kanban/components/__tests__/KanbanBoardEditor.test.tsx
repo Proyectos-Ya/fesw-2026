@@ -36,7 +36,6 @@ function renderEditor(overrides: Partial<Parameters<typeof KanbanBoardEditor>[0]
     onAddColumn: vi.fn(),
     onReorder: vi.fn(),
     ...overrides,
-    columns,
   };
   const utils = render(<KanbanBoardEditor {...props} />);
   return { ...utils, props };
