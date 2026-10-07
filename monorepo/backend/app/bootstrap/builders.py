@@ -17,6 +17,9 @@ from app.infrastructure.services.api_reranker_service import ApiRerankerService
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
 )
+from app.infrastructure.services.calendar.outlook_calendar_client import (
+    OutlookCalendarClient,
+)
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
     HttpCompanyLookupService,
     SreLookupService,
@@ -34,6 +37,13 @@ def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient
             client_id=settings.google_calendar_client_id,
             client_secret=settings.google_calendar_client_secret,
             redirect_uri=settings.google_calendar_redirect_uri,
+        )
+    if settings.microsoft_calendar_client_id and settings.microsoft_calendar_client_secret:
+        providers[CalendarProvider.OUTLOOK] = OutlookCalendarClient(
+            client_id=settings.microsoft_calendar_client_id,
+            client_secret=settings.microsoft_calendar_client_secret,
+            redirect_uri=settings.microsoft_calendar_redirect_uri,
+            tenant=settings.microsoft_calendar_tenant,
         )
     return providers
 
