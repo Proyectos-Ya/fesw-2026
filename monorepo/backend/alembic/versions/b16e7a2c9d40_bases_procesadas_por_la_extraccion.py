@@ -1,7 +1,7 @@
 """bases ya leídas por la extracción de hitos (HU-16, criterio 1)
 
 Revision ID: b16e7a2c9d40
-Revises: 923b0917a80b
+Revises: b3c2d1e0f9a8
 Create Date: 2026-10-06 12:00:00.000000
 
 Solo agrega una tabla: compatible con la versión anterior de la API durante el
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b16e7a2c9d40"
-down_revision: str | Sequence[str] | None = "923b0917a80b"
+down_revision: str | Sequence[str] | None = "b3c2d1e0f9a8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

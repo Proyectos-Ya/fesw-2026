@@ -183,7 +183,7 @@ Migraciones, todas compatibles hacia atrás y en una sola cabeza:
   `date_changed`, que no tienen score.
 - `d27a9c3f1b84`: `tender_milestone` gana `reminder_days_before` y `reminder_sent_at`, ambas
   nullable, más el índice parcial que usa el bucle de recordatorios.
-- `b16e7a2c9d40` (después de `923b0917a80b`): tabla `tender_milestone_document`, las bases ya
+- `b16e7a2c9d40` (después de `b3c2d1e0f9a8`): tabla `tender_milestone_document`, las bases ya
   leídas por la extracción (PK y FK a `tender_chat_documents` con borrado en cascada).
 
 ## Seguridad (criterio 8)
