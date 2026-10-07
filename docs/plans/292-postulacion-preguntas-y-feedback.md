@@ -80,6 +80,32 @@ Las etapas reales con Server-Sent Events quedan para una issue aparte, después 
 - **Frontend:** `EventSource` no sirve, porque solo hace `GET` y no manda `Authorization`. Se leería con `fetch` y `response.body.getReader()`.
 - **Límite:** la llamada a Gemini no tiene avance interno. Para tener etapas reales dentro del análisis habría que partirlo en dos llamadas.
 
+### 2.7 Segunda etapa: campos del formulario y uso de las respuestas
+
+Decidida el 2026-10-07, después de revisar la guía del proveedor de Compra Ágil y el detalle de la API.
+
+**Qué pide el formulario de Mercado Público** (guía del proveedor, paso 2, y `proveedores_cotizando[]` de la API):
+
+| Campo | Regla | Dónde se prepara |
+|---|---|---|
+| Valor unitario neto por ítem | Obligatorio; incluye el despacho | Cotizador |
+| Tipo de impuesto | Exento, IVA, honorario o zona franca | Cotizador |
+| Adjuntar archivo | Opcional, 20 MB, "archivos que especifiquen tu cotización" | Documento técnico (Word) |
+| Detalle de la cotización | Obligatorio, **máximo 255 caracteres** | `offer_description` |
+| Fecha de vigencia | Obligatoria, referencial | Próximos pasos |
+| Declaración Jurada de Habilidad | Se acepta en una ventana al enviar; no se adjunta | Próximos pasos |
+
+La guía no muestra un campo de nombre de la oferta y la API no lo guarda por proveedor. Se mantiene "Nombre de la oferta" por decisión del equipo, por si la plataforma actual lo pide. La cotización ganadora de 657-70-COT26 tiene un detalle de 211 caracteres.
+
+**Cambios:**
+
+- **Detalle de la cotización (A).** `offer_description` pasa a ser un solo párrafo de hasta 255 caracteres (`MAX_DETALLE_COTIZACION` en el dominio): qué se ofrece, para quién y las condiciones clave. El prompt pide 230 como máximo para dejar margen. La interfaz lo rotula "Detalle de la cotización" y muestra un contador; si pasa de 255, lo marca y sugiere regenerar pidiendo un texto más corto. La Declaración Jurada de Habilidad no va en "Documentos necesarios", porque se acepta al enviar. "Próximos pasos" suma el tipo de impuesto, la fecha de vigencia y la declaración.
+- **Editar respuestas ya dadas (B).** "Exigencias evaluadas" ofrece "Cambiar respuesta" en las que vienen de una pregunta. `record_answer` acepta respuestas en `READY`: actualiza la exigencia; si todavía se puede redactar, el borrador sigue `READY` y `changed_requirement_ids` avisa que el texto quedó desactualizado; un "No" excluyente pausa. Si la respuesta vino de otra licitación, la interfaz avisa que el cambio aplica a todas.
+- **Exigencia enlazada con su respuesta (C).** En la redacción, cada exigencia con `capability_question_id` dice `cubierta por: capacidad:<id>`.
+- **Proyectos de experiencia (D).** Después de un "Sí" a una pregunta `experiencia_proyecto`, la interfaz ofrece agregar el proyecto (título, mandante, año, monto y descripción) con `POST /capabilities/questions/{id}/evidence`, que ya existe. El catálogo lo incluye como `evidencia:<id>` y la redacción lo puede citar (CA5).
+
+**Fuera de alcance:** la dirección y el plazo de entrega, los nombres de los adjuntos y los flags del detalle de la API. La ingesta no los guarda; quedan en la issue #294.
+
 ---
 
 ## 3. Desglose de Tareas (Checklist)
@@ -124,6 +150,21 @@ Entrega en tres PRs: migración (B1), backend (B2 a B4) y frontend (F1 a F6).
   - [ ] [Green] `features/shared/components/Toast.tsx`, `timeoutMs` en `shared/api/client.ts` y su uso en `proposalService.ts`.
 - [ ] **F6. E2E**
   - [ ] Playwright del flujo de postulación con la API mockeada, siguiendo `frontend/e2e/quotation.spec.ts`.
+
+### Segunda etapa (§2.7)
+
+- [ ] **A. Detalle de la cotización**
+  - [ ] [Red] Backend: el prompt de redacción pide un párrafo de hasta 230 caracteres y aclara que la declaración jurada no se adjunta; `MAX_DETALLE_COTIZACION = 255` en el dominio.
+  - [ ] [Red] Frontend: rótulo "Detalle de la cotización", contador y aviso sobre 255; "Próximos pasos" con impuesto, vigencia y declaración.
+  - [ ] [Green] Ambos.
+- [ ] **B. Editar respuestas**
+  - [ ] [Red] Dominio: responder en `READY` actualiza la exigencia sin redactar; un "No" excluyente pausa; `changed_answers` la informa.
+  - [ ] [Red] Frontend: "Cambiar respuesta" en exigencias evaluadas con pregunta, con aviso si la respuesta vino de otra licitación.
+  - [ ] [Green] Ambos.
+- [ ] **C. Exigencia enlazada** — [Red/Green] `_exigencias` agrega `cubierta por: capacidad:<id>`.
+- [ ] **D. Proyectos**
+  - [ ] [Red] Servicio `addCapabilityEvidence` y formulario `EvidenceForm` tras un "Sí" a `experiencia_proyecto`.
+  - [ ] [Green] Formulario, servicio y toast "Proyecto agregado. Se usará al redactar o regenerar."
 
 ---
 
