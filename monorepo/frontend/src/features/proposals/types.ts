@@ -124,6 +124,12 @@ export interface ProposalDraft {
   updated_at: string;
 }
 
+/** Un adjunto que el análisis recibió. `corrupted`: no se pudo leer. */
+export interface AnalysisDocument {
+  name: string;
+  corrupted: boolean;
+}
+
 /** Lo que devuelve `GET /tenders/{id}/proposal`. */
 export interface ProposalView extends ProposalDraft {
   is_expired: boolean;
@@ -131,10 +137,23 @@ export interface ProposalView extends ProposalDraft {
   catalog_items: ExperienceItem[];
   /** Exigencias cuya respuesta en el banco cambió desde que se usó. */
   changed_requirement_ids: string[];
+  /**
+   * Con qué adjuntos se hizo el análisis. `null` en los borradores anteriores a
+   * este dato: ahí no se sabe y no se recomienda nada sobre las bases.
+   */
+  analysis_documents: AnalysisDocument[] | null;
+  /** Si la ficha menciona bases, TDR o anexos. `null` igual que arriba. */
+  mentions_attachments: boolean | null;
 }
 
 /** Etapa en curso, para el indicador del CA6. */
-export type ProposalStage = "analyzing" | "drafting" | null;
+export type ProposalStage = "analyzing" | "drafting" | "regenerating" | null;
+
+/** La opción que el usuario acaba de pulsar, mientras se guarda. */
+export interface PendingAnswer {
+  questionId: string;
+  label: string;
+}
 
 /** Las que no se preguntan: definen la oferta, no a la empresa. */
 export const KINDS_SIN_PREGUNTA: readonly RequirementKind[] = ["condicion", "documento"];

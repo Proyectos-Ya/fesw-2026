@@ -20,6 +20,13 @@ describe("StageNotice (CA6)", () => {
       "Redactando nombre, descripción y documentos",
     );
   });
+
+  it("mientras regenera dice que usa las instrucciones", () => {
+    render(<StageNotice stage="regenerating" />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Regenerando el borrador con tus instrucciones",
+    );
+  });
 });
 
 describe("HighlightedText (CA2)", () => {

@@ -101,6 +101,66 @@ describe("useProposal", () => {
     expect(result.current.stage).toBeNull();
   });
 
+  it("regenerar muestra su propia etapa y confirma al terminar", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    let terminar: () => void = () => {};
+    svc.regenerateProposal.mockImplementation(
+      () => new Promise((resolve) => (terminar = () => resolve(vista()))),
+    );
+    const { result } = await montado();
+
+    let pendiente: Promise<void> = Promise.resolve();
+    act(() => {
+      pendiente = result.current.regenerate("Más formal");
+    });
+    await waitFor(() => expect(result.current.stage).toBe("regenerating"));
+    await act(async () => {
+      terminar();
+      await pendiente;
+    });
+
+    expect(svc.regenerateProposal).toHaveBeenCalledWith("t-1", "Más formal");
+    expect(result.current.stage).toBeNull();
+    expect(result.current.toast?.message).toBe("Borrador regenerado con tus instrucciones.");
+  });
+
+  it("si regenerar falla no confirma", async () => {
+    svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
+    svc.regenerateProposal.mockRejectedValue(new ApiError(502, "Falla"));
+    const { result } = await montado();
+
+    await act(() => result.current.regenerate("Más formal"));
+
+    expect(result.current.actionError).toBe("Falla");
+    expect(result.current.toast).toBeNull();
+  });
+
+  it("mientras responde dice qué opción se pulsó, y confirma al terminar", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    let terminar: () => void = () => {};
+    svc.answerProposalQuestion.mockImplementation(
+      () => new Promise((resolve) => (terminar = () => resolve(vista()))),
+    );
+    const { result } = await montado();
+
+    let pendiente: Promise<void> = Promise.resolve();
+    act(() => {
+      pendiente = result.current.answer("q-sec", "Sí");
+    });
+    await waitFor(() =>
+      expect(result.current.answering).toEqual({ questionId: "q-sec", label: "Sí" }),
+    );
+    await act(async () => {
+      terminar();
+      await pendiente;
+    });
+
+    expect(result.current.answering).toBeNull();
+    expect(result.current.toast?.message).toBe("Respuesta guardada.");
+    act(() => result.current.clearToast());
+    expect(result.current.toast).toBeNull();
+  });
+
   it("pedir el documento técnico muestra la etapa de redacción", async () => {
     svc.getProposal.mockResolvedValue(vista({ status: "READY" }));
     svc.requestTechnicalDocument.mockResolvedValue(vista());
@@ -185,6 +245,7 @@ describe("useProposal", () => {
 
     expect(click).toHaveBeenCalled();
     expect(revocar).toHaveBeenCalledWith("blob:url");
+    expect(result.current.toast?.message).toBe("Documento descargado.");
     vi.unstubAllGlobals();
   });
 });

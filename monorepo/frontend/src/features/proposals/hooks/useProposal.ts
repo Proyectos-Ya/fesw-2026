@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import {
   answerProposalQuestion,
@@ -15,7 +15,18 @@ import {
   startFeasibility,
   syncProposalAnswers,
 } from "../services/proposalService";
-import type { DecisionAction, ProposalStage, ProposalView } from "../types";
+import type {
+  DecisionAction,
+  PendingAnswer,
+  ProposalStage,
+  ProposalView,
+} from "../types";
+
+/** Confirmación breve para el `Toast`. El `id` cambia en cada una. */
+export interface ProposalToast {
+  id: number;
+  message: string;
+}
 
 export type ProposalState =
   | { kind: "loading" }
@@ -41,6 +52,15 @@ export function useProposal(tenderId: string) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [answering, setAnswering] = useState<PendingAnswer | null>(null);
+  const [toast, setToast] = useState<ProposalToast | null>(null);
+  const toastId = useRef(0);
+
+  const confirmar = useCallback((message: string) => {
+    toastId.current += 1;
+    setToast({ id: toastId.current, message });
+  }, []);
+  const clearToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
     try {
@@ -61,9 +81,16 @@ export function useProposal(tenderId: string) {
     void reload();
   }, [reload]);
 
-  /** Ejecuta una acción, recarga y deja el error a la vista si falla. */
+  /**
+   * Ejecuta una acción, recarga y deja el error a la vista si falla. Si se pasa
+   * `confirmacion`, la muestra en un `Toast` cuando todo salió bien.
+   */
   const ejecutar = useCallback(
-    async (accion: () => Promise<unknown>, etapa: ProposalStage = null) => {
+    async (
+      accion: () => Promise<unknown>,
+      etapa: ProposalStage = null,
+      confirmacion: string | null = null,
+    ) => {
       setActionError(null);
       setNotice(null);
       setBusy(true);
@@ -71,6 +98,7 @@ export function useProposal(tenderId: string) {
       try {
         await accion();
         await reload();
+        if (confirmacion) confirmar(confirmacion);
       } catch (error) {
         setActionError(mensajeDe(error));
       } finally {
@@ -78,7 +106,7 @@ export function useProposal(tenderId: string) {
         setStage(null);
       }
     },
-    [reload],
+    [reload, confirmar],
   );
 
   const start = useCallback(
@@ -99,8 +127,19 @@ export function useProposal(tenderId: string) {
     [ejecutar, tenderId, state],
   );
   const answer = useCallback(
-    (questionId: string, label: string) =>
-      ejecutar(() => answerProposalQuestion(tenderId, questionId, label)),
+    async (questionId: string, label: string) => {
+      // Para que solo el botón pulsado muestre que carga.
+      setAnswering({ questionId, label });
+      try {
+        await ejecutar(
+          () => answerProposalQuestion(tenderId, questionId, label),
+          null,
+          "Respuesta guardada.",
+        );
+      } finally {
+        setAnswering(null);
+      }
+    },
     [ejecutar, tenderId],
   );
   const decide = useCallback(
@@ -131,7 +170,13 @@ export function useProposal(tenderId: string) {
   );
   const regenerate = useCallback(
     (instructions: string) =>
-      ejecutar(() => regenerateProposal(tenderId, instructions), "drafting"),
+      // La confirmación va en un Toast y no en `notice`: se va sola, y `notice`
+      // queda para lo que hay que leer, como "No hubo cambios...".
+      ejecutar(
+        () => regenerateProposal(tenderId, instructions),
+        "regenerating",
+        "Borrador regenerado con tus instrucciones.",
+      ),
     [ejecutar, tenderId],
   );
 
@@ -145,15 +190,19 @@ export function useProposal(tenderId: string) {
       enlace.download = filename;
       enlace.click();
       URL.revokeObjectURL(url);
+      confirmar("Documento descargado.");
     } catch (error) {
       setActionError(mensajeDe(error));
     }
-  }, [tenderId]);
+  }, [tenderId, confirmar]);
 
   return {
     state,
     stage,
     busy,
+    answering,
+    toast,
+    clearToast,
     actionError,
     clearActionError: () => setActionError(null),
     notice,

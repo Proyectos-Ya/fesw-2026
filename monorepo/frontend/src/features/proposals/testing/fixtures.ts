@@ -91,6 +91,9 @@ export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
     questions: [SEC, VIALES],
     catalog_items: [],
     changed_requirement_ids: [],
+    // Borrador anterior a guardar con qué se analizó: no recomienda nada.
+    analysis_documents: null,
+    mentions_attachments: null,
     ...overrides,
   };
 }

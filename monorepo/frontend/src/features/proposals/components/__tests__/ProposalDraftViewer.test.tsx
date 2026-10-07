@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProposalDraftViewer } from "../ProposalDraftViewer";
 import { vista } from "../../testing/fixtures";
-import type { DraftContent, ProposalView } from "../../types";
+import type { DraftContent, ProposalStage, ProposalView } from "../../types";
 
 const CONTENIDO: DraftContent = {
   offer_name: { paragraphs: [{ text: "Capacitación PAC", sources: [], placeholders: [] }] },
@@ -31,7 +31,7 @@ function listo(overrides: Partial<ProposalView> = {}): ProposalView {
   return vista({ status: "READY", content: CONTENIDO, ...overrides });
 }
 
-function renderViewer(view = listo(), canWrite = true) {
+function renderViewer(view = listo(), canWrite = true, stage: ProposalStage = null) {
   const onRegenerate = vi.fn();
   const onDownload = vi.fn();
   const onRequestTechnical = vi.fn();
@@ -39,7 +39,8 @@ function renderViewer(view = listo(), canWrite = true) {
     <ProposalDraftViewer
       view={view}
       canWrite={canWrite}
-      busy={false}
+      busy={stage !== null}
+      stage={stage}
       onRegenerate={onRegenerate}
       onDownload={onDownload}
       onRequestTechnical={onRequestTechnical}
@@ -165,6 +166,29 @@ describe("ProposalDraftViewer", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /Exportar a .docx/ }));
     expect(onDownload).toHaveBeenCalled();
+  });
+
+  it("al regenerar cubre el borrador con una capa de carga y el botón carga", () => {
+    renderViewer(listo(), true, "regenerating");
+
+    expect(screen.getByTestId("capa-de-carga")).toBeInTheDocument();
+    expect(screen.getByTestId("contenido-borrador")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /Regenerar/ })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+  });
+
+  it("al redactar también muestra la capa de carga", () => {
+    renderViewer(listo(), true, "drafting");
+
+    expect(screen.getByTestId("capa-de-carga")).toBeInTheDocument();
+  });
+
+  it("sin etapa en curso no hay capa de carga", () => {
+    renderViewer();
+
+    expect(screen.queryByTestId("capa-de-carga")).not.toBeInTheDocument();
   });
 
   it("sin permiso no deja regenerar", () => {

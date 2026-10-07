@@ -6,13 +6,15 @@ import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
 import { NextSteps } from "./NextSteps";
 import { RegenerateDialog } from "./RegenerateDialog";
-import type { DraftParagraph, DraftSection, ProposalView } from "../types";
+import type { DraftParagraph, DraftSection, ProposalStage, ProposalView } from "../types";
 
 interface ProposalDraftViewerProps {
   view: ProposalView;
   tenderCode?: string | null;
   canWrite: boolean;
   busy: boolean;
+  /** Etapa de la IA en curso: al redactar o regenerar, el borrador se cubre. */
+  stage?: ProposalStage;
   onRegenerate: (instructions: string) => void;
   onDownload: () => void;
   onRequestTechnical: () => void;
@@ -109,6 +111,7 @@ export function ProposalDraftViewer({
   tenderCode = null,
   canWrite,
   busy,
+  stage = null,
   onRegenerate,
   onDownload,
   onRequestTechnical,
@@ -130,6 +133,10 @@ export function ProposalDraftViewer({
     s.paragraphs.forEach((p, i) => (todos[`tecnico-${s.key}-${i}`] = p)),
   );
   const parrafoSeleccionado = seleccionado ? (todos[seleccionado] ?? null) : null;
+  // Mientras la IA reescribe, el texto de abajo ya no vale: se cubre para que
+  // nadie lo copie, y se ve que algo está pasando aunque el aviso de etapa
+  // quede lejos.
+  const actualizando = stage === "drafting" || stage === "regenerating";
 
   return (
     <div>
@@ -144,6 +151,7 @@ export function ProposalDraftViewer({
             variant="ghost"
             className="border border-border-strong"
             disabled={busy}
+            isLoading={stage === "regenerating"}
             onClick={() => setRegenerando(true)}
           >
             <Icon name="refresh-cw" size={16} />
@@ -166,7 +174,24 @@ export function ProposalDraftViewer({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
+      <div
+        data-testid="contenido-borrador"
+        aria-busy={actualizando || undefined}
+        className="relative grid gap-6 lg:grid-cols-[1fr_16rem]"
+      >
+        {actualizando && (
+          // El aviso de etapa ya lo anuncia a los lectores de pantalla.
+          <div
+            data-testid="capa-de-carga"
+            aria-hidden="true"
+            className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-white/70 pt-16 backdrop-blur-[1px]"
+          >
+            <span className="flex items-center gap-2 rounded-full border border-primary/20 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 shadow-md">
+              <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              {stage === "regenerating" ? "Regenerando el borrador…" : "Redactando el borrador…"}
+            </span>
+          </div>
+        )}
         <div className="flex flex-col gap-5">
           {secciones.map(({ key, titulo, seccion }) => (
             <section

@@ -3,6 +3,13 @@ import type { DecisionAction, ProposalDraft, ProposalView } from "../types";
 
 const base = (tenderId: string) => `/tenders/${tenderId}/proposal`;
 
+/**
+ * Tiempo límite de las acciones que esperan a Gemini. El backend le da 60 s y
+ * reintenta una vez, así que puede tardar unos 120 s: con los 60 s por defecto
+ * del cliente el navegador cortaba antes de que el backend respondiera.
+ */
+const IA_TIMEOUT_MS = 130_000;
+
 /** Borrador de la empresa activa, con preguntas y origen de la cobertura. 404 si no hay. */
 export function getProposal(tenderId: string): Promise<ProposalView> {
   return apiFetch<ProposalView>(base(tenderId));
@@ -10,7 +17,10 @@ export function getProposal(tenderId: string): Promise<ProposalView> {
 
 /** Etapa 1 del CA6: "Analizando bases y experiencia". */
 export function startFeasibility(tenderId: string): Promise<ProposalDraft> {
-  return apiFetch<ProposalDraft>(`${base(tenderId)}/feasibility`, { method: "POST" });
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/feasibility`, {
+    method: "POST",
+    timeoutMs: IA_TIMEOUT_MS,
+  });
 }
 
 /**
@@ -18,7 +28,10 @@ export function startFeasibility(tenderId: string): Promise<ProposalDraft> {
  * (adjuntos, perfil o ficha), el backend devuelve el mismo borrador.
  */
 export function reanalyzeProposal(tenderId: string): Promise<ProposalDraft> {
-  return apiFetch<ProposalDraft>(`${base(tenderId)}/reanalyze`, { method: "POST" });
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/reanalyze`, {
+    method: "POST",
+    timeoutMs: IA_TIMEOUT_MS,
+  });
 }
 
 export function answerProposalQuestion(
@@ -50,13 +63,17 @@ export function resumeProposal(tenderId: string): Promise<ProposalDraft> {
 
 /** Etapa 2 del CA6: "Redactando nombre, descripción y documentos". */
 export function generateProposal(tenderId: string): Promise<ProposalDraft> {
-  return apiFetch<ProposalDraft>(`${base(tenderId)}/generate`, { method: "POST" });
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/generate`, {
+    method: "POST",
+    timeoutMs: IA_TIMEOUT_MS,
+  });
 }
 
 /** Redacta incluyendo el documento técnico aunque no se detectó en las bases. */
 export function requestTechnicalDocument(tenderId: string): Promise<ProposalDraft> {
   return apiFetch<ProposalDraft>(`${base(tenderId)}/technical-document`, {
     method: "POST",
+    timeoutMs: IA_TIMEOUT_MS,
   });
 }
 
@@ -66,7 +83,10 @@ export function requestTechnicalDocument(tenderId: string): Promise<ProposalDraf
  * en pausa.
  */
 export function syncProposalAnswers(tenderId: string): Promise<ProposalDraft> {
-  return apiFetch<ProposalDraft>(`${base(tenderId)}/sync-answers`, { method: "POST" });
+  return apiFetch<ProposalDraft>(`${base(tenderId)}/sync-answers`, {
+    method: "POST",
+    timeoutMs: IA_TIMEOUT_MS,
+  });
 }
 
 /** CA4: vuelve a redactar con instrucciones libres. */
@@ -77,6 +97,7 @@ export function regenerateProposal(
   return apiFetch<ProposalDraft>(`${base(tenderId)}/regenerate`, {
     method: "POST",
     body: JSON.stringify({ instructions }),
+    timeoutMs: IA_TIMEOUT_MS,
   });
 }
 

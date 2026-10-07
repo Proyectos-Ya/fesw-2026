@@ -1,24 +1,24 @@
-import type { ProposalStage } from "../types";
+"use client";
 
-const MENSAJE_DE_ETAPA: Record<Exclude<ProposalStage, null>, string> = {
-  analyzing: "Analizando bases y experiencia…",
-  drafting: "Redactando nombre, descripción y documentos…",
-};
+import { useStageMessage } from "../hooks/useStageMessage";
+import type { ProposalStage } from "../types";
 
 /**
  * En qué etapa está la IA mientras trabaja (CA6). Fuera de esos momentos no se
  * muestra nada: la página no es un asistente por pasos y no debe parecer que
- * queda algo pendiente.
+ * queda algo pendiente. Va dentro de los avisos flotantes de `ProposalView`,
+ * para que se vea desde cualquier parte de la página.
  */
 export function StageNotice({ stage }: { stage: ProposalStage }) {
-  if (!stage) return null;
+  const mensaje = useStageMessage(stage);
+  if (!mensaje) return null;
   return (
     <p
       role="status"
-      className="mb-6 flex items-center gap-2 rounded-md border border-primary/20 bg-teal-50/60 px-4 py-3 text-sm font-semibold text-teal-700"
+      className="pointer-events-auto flex w-full max-w-xl items-center gap-2 rounded-md border border-primary/20 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-700 shadow-lg"
     >
-      <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-      {MENSAJE_DE_ETAPA[stage]}
+      <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      {mensaje}
     </p>
   );
 }

@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FeasibilityStep } from "../FeasibilityStep";
-import { SEC, requisito, vista } from "../../testing/fixtures";
+import { SEC, VIALES, requisito, vista } from "../../testing/fixtures";
 
 function renderStep(overrides = {}, props = {}) {
   const onAnswer = vi.fn();
@@ -80,6 +80,65 @@ describe("FeasibilityStep", () => {
     for (const boton of screen.getAllByRole("button", { name: "Sí" })) {
       expect(boton).toBeDisabled();
     }
+  });
+
+  it("en pausa, las pendientes explican por qué no se pueden responder", () => {
+    renderStep({
+      status: "PAUSED",
+      paused_requirement_id: "req-1",
+      requirements: [
+        requisito({ status: "no_cumple" }),
+        requisito({ id: "req-2", capability_question_id: VIALES.id, mandatory: false }),
+      ],
+    });
+
+    const pendientes = screen.getByRole("region", { name: /Preguntas por responder/ });
+    expect(pendientes).toHaveTextContent(/cuando resuelvas la exigencia excluyente/);
+    for (const boton of within(pendientes).getAllByRole("button")) {
+      expect(boton).toBeDisabled();
+    }
+  });
+
+  it("detenida, las pendientes dicen que hay que reanudar", () => {
+    renderStep({ status: "STOPPED" });
+
+    expect(
+      screen.getByRole("region", { name: /Preguntas por responder/ }),
+    ).toHaveTextContent(/Reanúdala para responder/);
+  });
+
+  it("tras reanudar, la exigencia que la detuvo se puede responder de nuevo", async () => {
+    const { onAnswer } = renderStep({
+      requirements: [requisito({ status: "no_cumple" })],
+      discrepancy_decisions: [
+        {
+          requirement_id: "req-1",
+          capability_question_id: SEC.id,
+          action: "stop",
+          user_id: "u-1",
+          decided_at: "2026-10-01T12:00:00Z",
+        },
+      ],
+    });
+
+    const deNuevo = screen.getByRole("region", { name: /Responder de nuevo/ });
+    expect(within(deNuevo).getByText(SEC.question)).toBeInTheDocument();
+    expect(deNuevo).toHaveTextContent(/vuelve a quedar en pausa/);
+    expect(screen.queryByText("Exigencias evaluadas")).not.toBeInTheDocument();
+
+    await userEvent.click(within(deNuevo).getByRole("button", { name: "Sí" }));
+
+    expect(onAnswer).toHaveBeenCalledWith(SEC.id, "Sí");
+  });
+
+  it("el botón pulsado muestra que está cargando", () => {
+    renderStep({}, { busy: true, answering: { questionId: SEC.id, label: "Sí" } });
+
+    const pendientes = screen.getByRole("region", { name: /Preguntas por responder/ });
+    const [si] = within(pendientes).getAllByRole("button", { name: "Sí" });
+    const [no] = within(pendientes).getAllByRole("button", { name: "No" });
+    expect(si).toHaveAttribute("aria-busy", "true");
+    expect(no).not.toHaveAttribute("aria-busy", "true");
   });
 
   it("explica por qué se exige (o no) documento técnico", () => {
