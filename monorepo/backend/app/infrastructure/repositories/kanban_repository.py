@@ -94,6 +94,23 @@ class KanbanColumnRepository(IKanbanColumnRepository):
         )
         return len(result.all())
 
+    async def reorder(
+        self, user_id: UUID, ordered_ids: list[UUID]
+    ) -> list[KanbanColumn]:
+        result = await self.session.exec(
+            select(KanbanColumnModel).where(KanbanColumnModel.user_id == user_id)
+        )
+        models = {m.id: m for m in result.all()}
+        for idx, col_id in enumerate(ordered_ids):
+            model = models.get(col_id)
+            if model is None:
+                continue
+            model.position = idx
+            self.session.add(model)
+        await self.session.commit()
+        reordered = [models[cid] for cid in ordered_ids if cid in models]
+        return [self._to_entity(m) for m in reordered]
+
 
 class KanbanCardRepository(IKanbanCardRepository):
     def __init__(self, session: AsyncSession):

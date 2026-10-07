@@ -31,6 +31,18 @@ class IKanbanColumnRepository(ABC):
     async def count_cards(self, column_id: UUID) -> int:
         pass
 
+    @abstractmethod
+    async def reorder(
+        self, user_id: UUID, ordered_ids: list[UUID]
+    ) -> list[KanbanColumn]:
+        """Reordena las columnas del usuario según el orden dado.
+
+        Asigna `position = índice en ordered_ids` a cada columna, en una sola
+        operación transaccional. Devuelve las columnas del usuario con las
+        nuevas posiciones aplicadas.
+        """
+        pass
+
 
 class IKanbanCardRepository(ABC):
     @abstractmethod

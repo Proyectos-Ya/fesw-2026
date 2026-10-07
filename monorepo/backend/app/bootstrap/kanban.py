@@ -22,6 +22,9 @@ from app.application.use_cases.kanban.remove_tender_from_board import (
     RemoveTenderFromBoardUseCase,
 )
 from app.application.use_cases.kanban.restore_tender import RestoreTenderUseCase
+from app.application.use_cases.kanban.reorder_kanban_columns import (
+    ReorderKanbanColumnsUseCase,
+)
 from app.application.use_cases.kanban.update_kanban_column import (
     UpdateKanbanColumnUseCase,
 )
@@ -90,3 +93,7 @@ def get_list_archived_tenders_use_case(
 
 def get_restore_tender_use_case(card_repo: KanbanCardRepoDep) -> RestoreTenderUseCase:
     return RestoreTenderUseCase(card_repo=card_repo)
+def get_reorder_kanban_columns_use_case(
+    column_repo: KanbanColumnRepoDep,
+) -> ReorderKanbanColumnsUseCase:
+    return ReorderKanbanColumnsUseCase(column_repo=column_repo)

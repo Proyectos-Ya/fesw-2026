@@ -45,6 +45,12 @@ class KanbanColumnResponse(BaseModel):
     created_at: UtcDateTime
 
 
+class ReorderColumnsRequest(BaseModel):
+    """Lista ordenada de IDs de columnas Kanban para reordenamiento en bloque."""
+
+    column_ids: list[UUID]
+
+
 class KanbanCardCreate(BaseModel):
     tender_id: UUID
     column_id: UUID

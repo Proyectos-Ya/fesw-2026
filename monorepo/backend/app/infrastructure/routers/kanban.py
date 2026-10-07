@@ -12,6 +12,7 @@ from app.application.schemas.kanban_schema import (
     KanbanCardResponse,
     KanbanCardMove,
     KanbanCardCreate,
+    ReorderColumnsRequest,
 )
 from app.application.use_cases.kanban.add_tender_to_board import AddTenderToBoardUseCase
 from app.application.use_cases.kanban.archive_tender_from_board import (
@@ -27,6 +28,9 @@ from app.application.use_cases.kanban.list_kanban_columns import ListKanbanColum
 from app.application.use_cases.kanban.move_kanban_card import MoveKanbanCardUseCase
 from app.application.use_cases.kanban.remove_tender_from_board import RemoveTenderFromBoardUseCase
 from app.application.use_cases.kanban.restore_tender import RestoreTenderUseCase
+from app.application.use_cases.kanban.reorder_kanban_columns import (
+    ReorderKanbanColumnsUseCase,
+)
 from app.application.use_cases.kanban.update_kanban_column import UpdateKanbanColumnUseCase
 
 from app.domain.entities.user import User
@@ -50,6 +54,7 @@ def create_kanban_router(
     get_archive_tender_from_board_use_case: Callable,
     get_list_archived_tenders_use_case: Callable,
     get_restore_tender_use_case: Callable,
+    get_reorder_kanban_columns_use_case: Callable,
 ) -> APIRouter:
     router = APIRouter(
         prefix="/kanban",
@@ -81,6 +86,39 @@ def create_kanban_router(
             card_count=0,
             created_at=column.created_at,
         )
+
+    @router.patch(
+        "/columns/reorder",
+        response_model=list[KanbanColumnResponse],
+        summary="Reordena las columnas Kanban del usuario",
+        responses={
+            400: {"description": "Lista inválida (incompleta o con duplicados)"},
+            404: {"description": "Alguna columna no pertenece al usuario"},
+        },
+    )
+    async def reorder_columns(
+        body: ReorderColumnsRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ReorderKanbanColumnsUseCase, Depends(get_reorder_kanban_columns_use_case)
+        ],
+        list_use_case: Annotated[
+            ListKanbanColumnsUseCase, Depends(get_list_kanban_columns_use_case)
+        ],
+    ):
+        try:
+            await use_case.execute(
+                user_id=current_user.id, column_ids=body.column_ids
+            )
+        except KanbanColumnNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        return await list_use_case.execute(user_id=current_user.id)
 
     @router.patch(
         "/columns/{column_id}",
