@@ -3,18 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "@/features/shared/components/Icon";
 import type { KanbanColumn } from "../kanbanTypes";
-
-const PALETTE = [
-  "#A99A7C",
-  "#BF6E4A",
-  "#5C7A52",
-  "#35645B",
-  "#E08E2B",
-  "#A65A2E",
-  "#244024",
-];
-
-const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+import { HEX_RE, PALETTE } from "../constants";
 
 interface Props {
   column: KanbanColumn;

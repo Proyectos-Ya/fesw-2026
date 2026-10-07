@@ -15,6 +15,7 @@ import type { KanbanCard as KanbanCardType } from "../kanbanTypes";
 import { useKanban } from "../hooks/useKanban";
 import { HistoryPanel } from "./HistoryPanel";
 import { InsertColumnSlot } from "./InsertColumnSlot";
+import { KanbanBoardEditor } from "./KanbanBoardEditor";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 
@@ -30,6 +31,7 @@ export function KanbanBoard() {
     renameColumn,
     recolorColumn,
     reorderColumn,
+    reorderColumns,
     deleteColumn,
     addCard,
     moveCard,
@@ -43,6 +45,7 @@ export function KanbanBoard() {
   const [addingColLoading, setAddingColLoading] = useState(false);
   const [activeCard, setActiveCard] = useState<KanbanCardType | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const newColInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -155,8 +158,24 @@ export function KanbanBoard() {
         >
           <Icon name="clock" size={16} />
           <span>Historial</span>
+          onClick={() => setEditorOpen(true)}
+          aria-label="Editar tablero"
+          className="flex-none rounded-md p-2 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors"
+        >
+          <Icon name="settings" size={18} />
         </button>
       </div>
+
+      <KanbanBoardEditor
+        open={editorOpen}
+        columns={columns}
+        onClose={() => setEditorOpen(false)}
+        onRename={(id, name) => void renameColumn(id, name)}
+        onRecolor={(id, color) => void recolorColumn(id, color)}
+        onDelete={(id) => void deleteColumn(id)}
+        onAddColumn={(name) => void addColumn(name)}
+        onReorder={(ids) => void reorderColumns(ids)}
+      />
 
       <div className="flex-1 overflow-x-auto px-6 py-5">
         <DndContext
