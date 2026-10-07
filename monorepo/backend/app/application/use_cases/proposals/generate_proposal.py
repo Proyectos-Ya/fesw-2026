@@ -30,6 +30,7 @@ from app.domain.entities.proposal import (
     ProposalDraft,
     TechnicalDocument,
     TechnicalSection,
+    es_declaracion_de_habilidad,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
 
@@ -69,15 +70,50 @@ def _seccion(dto: DraftSectionDTO, items: dict[str, ExperienceItem]) -> DraftSec
 
 
 def _documentos_necesarios(draft: ProposalDraft, dto: DraftSectionDTO) -> DraftSection:
-    """Primero los detectados en la factibilidad; después los que sume la IA."""
-    textos = [r.text for r in draft.requirements if r.kind == "documento"]
+    """Primero los detectados en la factibilidad; después los que sume la IA.
+
+    Sin la Declaración Jurada de Habilidad: se acepta al enviar, no se adjunta.
+    """
+    textos = [
+        r.text
+        for r in draft.requirements
+        if r.kind == "documento" and not es_declaracion_de_habilidad(r.text)
+    ]
     vistos = {_clave(t) for t in textos}
     for parrafo in dto.paragraphs:
+        if es_declaracion_de_habilidad(parrafo.text):
+            continue
         if _clave(parrafo.text) not in vistos:
             vistos.add(_clave(parrafo.text))
             textos.append(parrafo.text)
     return DraftSection(
         paragraphs=[DraftParagraph.from_ai_text(t, sources=[]) for t in textos]
+    )
+
+
+def _un_solo_parrafo(seccion: DraftSection) -> DraftSection:
+    """El "Detalle de la cotización" es un solo campo del formulario (plan 292,
+    §2.7 A). Si la IA escribió varios párrafos, se juntan en uno con todas sus
+    fuentes (sin repetir) y sus vacíos en orden. No se recorta: si pasa de
+    `MAX_DETALLE_COTIZACION`, la pantalla lo marca y se regenera.
+    """
+    if len(seccion.paragraphs) < 2:
+        return seccion
+    fuentes: dict[str, DraftSource] = {}
+    for parrafo in seccion.paragraphs:
+        for fuente in parrafo.sources:
+            fuentes.setdefault(fuente.id, fuente)
+    texto = " ".join(
+        t for p in seccion.paragraphs if (t := re.sub(r"\s+", " ", p.text).strip())
+    )
+    return DraftSection(
+        paragraphs=[
+            DraftParagraph(
+                text=texto,
+                sources=list(fuentes.values()),
+                placeholders=[v for p in seccion.paragraphs for v in p.placeholders],
+            )
+        ]
     )
 
 
@@ -124,7 +160,7 @@ def armar_contenido(
     items = {item.id: item for item in catalog.items}
     return DraftContent(
         offer_name=_seccion(dto.offer_name, items),
-        offer_description=_seccion(dto.offer_description, items),
+        offer_description=_un_solo_parrafo(_seccion(dto.offer_description, items)),
         required_documents=_documentos_necesarios(draft, dto.required_documents),
         technical_document=_documento_tecnico(draft, dto.technical_document, items),
     )

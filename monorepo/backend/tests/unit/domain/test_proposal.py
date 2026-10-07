@@ -6,6 +6,8 @@ PAUSED ──continuar con advertencia──▶ FEASIBILITY
 PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin pendientes + generar──▶ READY
+READY ──responder sin bloquear la redacción──▶ READY
+READY ──"No" a exigencia excluyente──▶ PAUSED
 ```
 """
 
@@ -23,6 +25,7 @@ from app.domain.entities.proposal import (
     Requirement,
     TechnicalDocument,
     TechnicalSection,
+    es_declaracion_de_habilidad,
     perfil_cubre,
     render_placeholders,
 )
@@ -149,10 +152,9 @@ class TestResponder:
         assert borrador.status == "FEASIBILITY"
         assert len(borrador.pending_requirements()) == 2
 
-    @pytest.mark.parametrize("estado", ["STOPPED", "READY"])
-    def test_detenido_o_listo_no_se_responde(self, estado):
+    def test_detenido_no_se_responde(self):
         borrador = _borrador()
-        borrador.status = estado
+        borrador.status = "STOPPED"
 
         with pytest.raises(InvalidProposalTransition):
             borrador.record_answer(SEC_Q, "afirmativa")
@@ -533,6 +535,66 @@ def _listo() -> ProposalDraft:
     return borrador
 
 
+class TestCambiarRespuestaConElBorradorListo:
+    """Plan 292, §2.7 B: la empresa corrige una respuesta ya usada al redactar."""
+
+    def test_sin_bloquear_la_redaccion_sigue_listo_y_no_toca_el_texto(self):
+        borrador = _listo()
+        contenido = borrador.content
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert _requisito(borrador, "req-viales").status == "no_cumple"
+        assert borrador.status == "READY"
+        assert borrador.content == contenido
+        assert borrador.can_generate()
+
+    def test_un_no_a_una_excluyente_pausa(self):
+        borrador = _listo()
+
+        borrador.record_answer(SEC_Q, "negativa")
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-sec"
+        # El texto anterior se conserva hasta que se vuelva a redactar.
+        assert borrador.content is not None
+
+    def test_con_preguntas_pendientes_vuelve_a_factibilidad(self):
+        borrador = _borrador()
+        borrador.record_answer(VIALES_Q, "afirmativa")
+        # Un borrador listo con una pendiente no sale de las transiciones; se
+        # fuerza para cubrir la rama.
+        borrador.status = "READY"
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.status == "FEASIBILITY"
+        assert not borrador.can_generate()
+
+    def test_cambiar_una_excluyente_aceptada_borra_la_advertencia(self):
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "negativa")
+        borrador.decide("continue", uuid4())
+        borrador.record_answer(VIALES_Q, "afirmativa")
+        borrador.mark_ready(_contenido(), instructions=None)
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert borrador.status == "READY"
+        assert borrador.warnings == []
+
+    def test_la_respuesta_posterior_a_la_redaccion_se_informa(self):
+        borrador = _listo()
+        assert borrador.content is not None
+        despues = borrador.content.generated_at + timedelta(minutes=1)
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.changed_answers(
+            {SEC_Q: ("afirmativa", None), VIALES_Q: ("negativa", despues)}
+        ) == ["req-viales"]
+
+
 class TestFechaDeRedaccion:
     def test_redactar_anota_cuando_se_redacto(self):
         borrador = _listo()
@@ -699,3 +761,24 @@ class TestConQueSeAnalizo:
 
         assert borrador.analysis_documents is None
         assert borrador.mentions_attachments is None
+
+
+class TestDeclaracionDeHabilidad:
+    """La Declaración Jurada de Habilidad se acepta al enviar, no se adjunta."""
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            "Declaración Jurada de Habilidad",
+            "declaracion jurada de habilidad para contratar con el Estado",
+            "Adjuntar DECLARACIÓN JURADA DE HABILIDAD firmada",
+        ],
+    )
+    def test_reconoce_la_declaracion(self, texto):
+        assert es_declaracion_de_habilidad(texto)
+
+    @pytest.mark.parametrize(
+        "texto", ["Declaración jurada simple", "Cotización formal", "Formulario"]
+    )
+    def test_no_confunde_otros_documentos(self, texto):
+        assert not es_declaracion_de_habilidad(texto)

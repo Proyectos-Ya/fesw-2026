@@ -268,7 +268,9 @@ def create_proposal_router(
     ) -> ProposalDraft:
         """Guarda la respuesta en el banco de la empresa y mueve el borrador. Un
         "No" a una exigencia excluyente lo pausa (CA7). En pausa solo se acepta la
-        pregunta de la exigencia pausada, para actualizarla."""
+        pregunta de la exigencia pausada, para actualizarla. Con el borrador
+        listo también se responde: el texto no se vuelve a redactar y la lectura
+        avisa en `changed_requirement_ids` que quedó desactualizado."""
         _exigir_permiso(workspace_context)
         try:
             return await use_case.execute(

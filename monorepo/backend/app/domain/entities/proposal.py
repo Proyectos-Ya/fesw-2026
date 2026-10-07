@@ -7,6 +7,8 @@ Hay un borrador por empresa y licitación. Pasa por dos fases:
    borrador hasta que la empresa decida continuar con advertencia o detener
    (CA7, CA8, CA9).
 2. **Redacción:** con todo respondido, se genera el contenido (CA1, CA2, CA5).
+   Las respuestas se pueden cambiar con el borrador listo: el texto queda como
+   estaba hasta que se vuelva a redactar (plan 292, §2.7 B).
 
 ```text
 FEASIBILITY ──"No" a exigencia excluyente──▶ PAUSED
@@ -14,6 +16,8 @@ PAUSED ──continuar con advertencia──▶ FEASIBILITY
 PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin pendientes + generar──▶ READY ──regenerar──▶ READY
+READY ──cambiar una respuesta sin bloquear la redacción──▶ READY
+READY ──"No" a exigencia excluyente──▶ PAUSED
 ```
 
 "Vencido" no es un estado: se calcula al leer con `Tender.esta_cerrada()`, para
@@ -37,6 +41,11 @@ from app.shared.datetime_utils import (
 )
 
 ProposalStatus = Literal["FEASIBILITY", "PAUSED", "STOPPED", "READY"]
+# Campo "Detalle de la cotización" del formulario de Compra Ágil: obligatorio y
+# de 255 caracteres como máximo (guía del proveedor de Compra Ágil, paso 2). Es
+# lo que se copia desde `offer_description` (plan 292, §2.7 A).
+MAX_DETALLE_COTIZACION = 255
+
 # Dos tipos no describen a la empresa y por eso no se preguntan:
 # - `condicion`: lo que define la oferta (cantidades, duración, fechas, plazos,
 #   especificaciones). Cualquier proveedor que cotiza la acepta; la redacción la
@@ -47,6 +56,19 @@ RequirementKind = Literal[
     "certificacion", "experiencia", "disponibilidad", "condicion", "documento", "otro"
 ]
 KINDS_SIN_PREGUNTA: frozenset[str] = frozenset({"condicion", "documento"})
+
+# La Declaración Jurada de Habilidad se acepta en una ventana de Mercado Público
+# al enviar la cotización (guía del proveedor, paso 2): no es un documento que
+# se adjunte. Otras declaraciones juradas sí pueden pedirse como adjunto.
+_DECLARACION_DE_HABILIDAD = re.compile(
+    r"declaraci[oó]n\s+jurada\s+de\s+habilidad", re.IGNORECASE
+)
+
+
+def es_declaracion_de_habilidad(texto: str) -> bool:
+    """¿Es la Declaración Jurada de Habilidad, que no va en los documentos?"""
+    return _DECLARACION_DE_HABILIDAD.search(texto) is not None
+
 
 # El perfil genérico (descripción, rubro, años) dice a qué se dedica la empresa,
 # pero no prueba una experiencia ni una certificación concreta.
@@ -395,12 +417,16 @@ class ProposalDraft(BaseModel):
         exigencia pausada: así se corrige un "No" (por ejemplo uno de otra
         licitación, si la empresa ya consiguió la certificación) sin detener y
         reanudar. El resto de la cola espera a que se resuelva la discrepancia.
+
+        Con el borrador listo también se responde. Si todavía se puede
+        redactar, sigue listo y el texto no cambia: `changed_answers` avisa que
+        quedó desactualizado. Un "No" excluyente pausa, como en factibilidad.
         """
         corrige_la_pausa = (
             self.status == "PAUSED" and question_id == self._pregunta_en_pausa()
         )
         if not corrige_la_pausa:
-            self._exigir("FEASIBILITY", accion="responder")
+            self._exigir("FEASIBILITY", "READY", accion="responder")
         nuevo_estado = _ESTADO_POR_POLARIDAD[polarity]
         tocadas = [
             r for r in self.requirements if r.capability_question_id == question_id
@@ -412,6 +438,8 @@ class ProposalDraft(BaseModel):
             # exigencia; un "Sí" puede dejar al descubierto otra sin decidir.
             self.status = "FEASIBILITY"
             self.paused_requirement_id = None
+        if self.status == "READY" and not self.can_generate():
+            self.status = "FEASIBILITY"
         self._pausar_si_corresponde()
         self._tocar()
 

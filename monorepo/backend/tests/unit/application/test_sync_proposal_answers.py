@@ -13,6 +13,9 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.proposals.answer_proposal_question import (
+    AnswerProposalQuestionUseCase,
+)
 from app.application.use_cases.proposals.get_proposal import GetProposalUseCase
 from app.application.use_cases.proposals.sync_proposal_answers import (
     SyncProposalAnswersUseCase,
@@ -172,3 +175,46 @@ class TestAplicarLasRespuestas:
 
         with pytest.raises(TenderClosedForProposal):
             await _sincronizar(e)
+
+
+async def _responder_en_la_postulacion(e: Escenario, respuesta: str):
+    return await AnswerProposalQuestionUseCase(
+        e.suppliers,
+        e.tenders,
+        e.drafts,
+        e.questions,
+        AnswerCapabilityQuestionUseCase(e.suppliers, e.questions, e.answers),
+    ).execute(
+        user_id=e.user_id,
+        supplier_id=e.empresa.id,
+        tender_id=e.tender_id,
+        question_id=SEC.id,
+        answer=respuesta,
+    )
+
+
+class TestCambiarRespuestaConElBorradorListo:
+    """Plan 292, §2.7 B: se cambia la respuesta desde "Exigencias evaluadas"."""
+
+    async def test_sigue_listo_sin_redactar_y_la_lectura_avisa(self):
+        e = await _redactado()
+        antes = await e.borrador()
+
+        borrador = await _responder_en_la_postulacion(e, "Sí")
+
+        assert borrador.status == "READY"
+        assert borrador.content == antes.content
+        assert len(e.ai.redacciones) == 1
+        respuesta = await e.answers.get(e.empresa.id, SEC.id)
+        assert respuesta is not None and respuesta.tender_id == e.tender_id
+        # La respuesta es posterior a la redacción: el texto quedó desactualizado.
+        assert (await _leer(e)).changed_requirement_ids == ["req-sec"]
+
+    async def test_un_no_excluyente_pausa(self):
+        e = await _redactado()
+
+        borrador = await _responder_en_la_postulacion(e, "No")
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-sec"
+        assert (await e.borrador()).status == "PAUSED"

@@ -416,6 +416,69 @@ async def test_redaccion_trata_las_instrucciones_como_datos_de_baja_prioridad():
     assert "PRIORIDAD BAJA" in texto
 
 
+async def test_redaccion_pide_el_detalle_de_la_cotizacion_en_un_parrafo_corto():
+    """Plan 292, §2.7 A: el campo del formulario admite 255 caracteres."""
+    _, post = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(post)
+    assert "Detalle de la cotización" in texto
+    assert "un solo párrafo de hasta 230 caracteres" in texto
+    assert "1 a 3 párrafos" not in texto
+    # La cotización ganadora de 657-70-COT26 va como referencia de forma.
+    assert "Plan de Aseguramiento de Calidad (PAC)" in texto
+
+
+async def test_redaccion_no_pide_adjuntar_la_declaracion_jurada_de_habilidad():
+    _, post = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(post)
+    assert "Declaración Jurada de Habilidad" in texto
+    assert "no es un documento a adjuntar" in texto
+
+
+def _exigencia(**kwargs) -> Requirement:
+    datos = dict(
+        id="req-x",
+        text="Deberá contar con certificación SEC.",
+        kind="certificacion",
+        mandatory=True,
+        origin="Descripción",
+        status="cumple",
+    )
+    datos.update(kwargs)
+    return Requirement(**datos)
+
+
+async def test_redaccion_enlaza_la_exigencia_con_la_respuesta_que_la_cubre():
+    """Plan 292, §2.7 C: el id es el que el catálogo usa para esa respuesta."""
+    pregunta = uuid4()
+
+    _, post = await _redactar(
+        _respuesta(REDACCION),
+        requirements=[_exigencia(capability_question_id=pregunta)],
+    )
+
+    assert f"| cubierta por: capacidad:{pregunta}" in _texto_del_prompt(post)
+
+
+async def test_redaccion_prefiere_el_elemento_del_catalogo_si_lo_hay():
+    pregunta = uuid4()
+
+    _, post = await _redactar(
+        _respuesta(REDACCION),
+        requirements=[
+            _exigencia(
+                catalog_item_id="perfil:certificacion:sec",
+                capability_question_id=pregunta,
+            )
+        ],
+    )
+
+    texto = _texto_del_prompt(post)
+    assert "| cubierta por: perfil:certificacion:sec" in texto
+    assert f"capacidad:{pregunta}" not in texto
+
+
 async def test_redaccion_con_json_invalido_es_error_del_servicio():
     with pytest.raises(ProposalAIServiceError):
         await _redactar(_respuesta({"offer_name": "no es una sección"}))
@@ -617,3 +680,9 @@ async def test_sin_presupuesto_para_reintentar_es_un_error_del_servicio():
             await servicio.analyze_feasibility(
                 tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
             )
+
+
+def test_factibilidad_no_cuenta_la_declaracion_de_habilidad_como_documento():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "NO incluyas la Declaración Jurada de Habilidad" in _INSTRUCCIONES

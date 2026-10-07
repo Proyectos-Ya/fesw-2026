@@ -655,6 +655,28 @@ async def test_corregir_una_respuesta_en_el_banco_se_avisa_y_se_aplica(
 
 
 @pytest.mark.asyncio
+async def test_cambiar_una_respuesta_con_el_borrador_listo_avisa_sin_redactar(
+    api: AsyncClient, entorno, empresas
+):
+    """Plan 292, §2.7 B: "Cambiar respuesta" en las exigencias evaluadas."""
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+    antes = (await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)).json()
+    [exigencia] = [
+        r for r in antes["requirements"] if r["capability_question_id"] == str(SEC.id)
+    ]
+
+    resp = await _responder(api, tender_id, headers_a, "Sí")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "READY"
+    assert resp.json()["content"] == antes["content"]
+    vista = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+    assert vista.json()["changed_requirement_ids"] == [exigencia["id"]]
+
+
+@pytest.mark.asyncio
 async def test_un_viewer_no_aplica_las_respuestas(api: AsyncClient, entorno, empresas):
     tender_id, *_ = entorno
     headers_a, _, headers_c, _ = empresas

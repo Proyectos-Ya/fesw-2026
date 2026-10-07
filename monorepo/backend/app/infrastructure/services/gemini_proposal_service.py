@@ -23,6 +23,7 @@ from app.application.services.proposal_ai_service import (
 from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.capability import CapabilityQuestion, ExperienceCatalog
 from app.domain.entities.proposal import (
+    MAX_DETALLE_COTIZACION,
     TECHNICAL_SECTIONS,
     ProposalWarning,
     Requirement,
@@ -68,6 +69,8 @@ Para cada exigencia indica:
   - documento: ANTECEDENTES QUE SE ADJUNTAN a la oferta (cotización,
     formularios, declaraciones juradas, certificados que se piden adjuntar).
     Son la lista de documentos necesarios, no una capacidad de la empresa.
+    NO incluyas la Declaración Jurada de Habilidad: la plataforma la pide
+    en una ventana al enviar la cotización y no se adjunta.
   Una condicion o un documento NO llevan cobertura: deja catalog_item_id,
   question_key y new_question vacíos.
 - mandatory: true si es EXCLUYENTE (redacción como "deberá", "obligatorio",
@@ -251,22 +254,36 @@ def _adjuntos(documents: list[DocumentContextDTO]) -> list[dict]:
     return partes
 
 
-_INSTRUCCIONES_REDACCION = """[INSTRUCCIONES DEL SISTEMA - PRIORIDAD MÁXIMA]
+# Lo que se le pide a la IA para el "Detalle de la cotización": deja margen bajo
+# el máximo del formulario (`MAX_DETALLE_COTIZACION`), porque la IA no cuenta
+# caracteres con exactitud.
+_DETALLE_PEDIDO_CARACTERES = 230
+
+_INSTRUCCIONES_REDACCION = f"""[INSTRUCCIONES DEL SISTEMA - PRIORIDAD MÁXIMA]
 Eres un redactor experto en ofertas para Compra Ágil de Mercado Público (Chile).
 Redacta el borrador de la oferta de una empresa con esta plantilla fija:
 
 - offer_name: el nombre de la oferta. Un solo párrafo, una línea, concreto.
-- offer_description: la descripción de la oferta en 1 a 3 párrafos breves y
-  formales. Describe qué se ofrece usando las CONDICIONES del servicio
-  (cantidades, duración, fechas, lugar) y por qué la empresa puede cumplir,
-  usando solo lo que respalda el CATÁLOGO DE LA EMPRESA.
+- offer_description: el "Detalle de la cotización" del formulario de Mercado
+  Público, que admite {MAX_DETALLE_COTIZACION} caracteres como máximo. Escribe
+  un solo párrafo de hasta {_DETALLE_PEDIDO_CARACTERES} caracteres, formal, que
+  diga qué se ofrece, para quién y las condiciones clave que estén en las bases
+  (cantidad, modalidad, lugar o plazo). Usa las CONDICIONES del servicio y, si
+  afirmas algo de la empresa, solo lo que respalda el CATÁLOGO DE LA EMPRESA.
+  Referencia de forma (una cotización ganadora real, de 211 caracteres; no la
+  copies, adáptala a esta Compra Ágil): 'Se postula a servicio de capacitación
+  denominado "Plan de Aseguramiento de Calidad (PAC)" modalidad presencial,
+  dirigido a 13 funcionarios del Servicio de Vivienda y Urbanización (SERVIU)
+  de la Región de Aysén.'
 
 Si hay adjuntos (bases, términos de referencia, anexos), las condiciones del
 servicio salen de los adjuntos: mandan sobre la ficha si se contradicen. La
 ficha solo completa lo que los adjuntos no dicen.
 - required_documents: SOLO documentos a adjuntar que NO estén ya en la lista
   DOCUMENTOS YA DETECTADOS (esos se incluyen solos). No los repitas con otras
-  palabras. Lo normal es que quede vacío.
+  palabras. Lo normal es que quede vacío. La "Declaración Jurada de Habilidad"
+  no es un documento a adjuntar: la plataforma la pide en una ventana al
+  enviar la cotización. No la incluyas.
 - technical_document: ver la indicación al final.
 
 Reglas para no inventar:
@@ -327,13 +344,26 @@ _SCHEMA_REDACCION = {
 }
 
 
+def _cubierta_por(requirement: Requirement) -> str:
+    """El id del catálogo que respalda la exigencia, si hay uno.
+
+    Sin elemento citado, la respuesta de la empresa a su pregunta también es
+    un elemento del catálogo (`capacidad:<id>`, ver `compose_experience_catalog`):
+    así la redacción sabe qué id citar (plan 292, §2.7 C).
+    """
+    if requirement.catalog_item_id:
+        return f" | cubierta por: {requirement.catalog_item_id}"
+    if requirement.capability_question_id:
+        return f" | cubierta por: capacidad:{requirement.capability_question_id}"
+    return ""
+
+
 def _exigencias(requirements: list[Requirement]) -> str:
     if not requirements:
         return "## EXIGENCIAS\n(ninguna)"
     lineas = [
         f"- [{r.kind}{', excluyente' if r.mandatory else ''}] {r.text} "
-        f"| estado: {r.status}"
-        + (f" | cubierta por: {r.catalog_item_id}" if r.catalog_item_id else "")
+        f"| estado: {r.status}" + _cubierta_por(r)
         for r in requirements
     ]
     return "## EXIGENCIAS (de la factibilidad)\n" + "\n".join(lineas)
