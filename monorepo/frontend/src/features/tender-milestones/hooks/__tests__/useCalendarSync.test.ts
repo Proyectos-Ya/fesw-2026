@@ -264,6 +264,29 @@ describe("useCalendarSync", () => {
       );
     });
 
+    it("sin conexión redirige a autorizar con Microsoft", async () => {
+      vi.mocked(calendarService.startCalendarAuthorization).mockResolvedValue({
+        authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1",
+      });
+      const { result, navigate } = setupOutlook([
+        { provider: "outlook" as const, connected: false, account_email: null, needs_reconnect: false },
+      ]);
+      await waitFor(() => expect(result.current.loadingConnection).toBe(false));
+
+      await act(async () => {
+        await result.current.sync(["m-1"]);
+      });
+
+      expect(calendarService.startCalendarAuthorization).toHaveBeenCalledWith("outlook", {
+        tender_id: "t-1",
+        milestone_ids: ["m-1"],
+        default_time: null,
+      });
+      expect(navigate).toHaveBeenCalledWith(
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1",
+      );
+    });
+
     it("no se lleva lo pendiente de Google", async () => {
       savePendingCalendarSync({
         provider: "google",

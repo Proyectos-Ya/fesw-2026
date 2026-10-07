@@ -19,7 +19,7 @@ import {
   type TenderMilestone,
 } from "../types";
 import { formatMilestoneDate, urgencyBadge } from "../utils/milestoneFormat";
-import { CalendarSyncBar } from "./CalendarSyncBar";
+import { CalendarSyncPanel } from "./CalendarSyncPanel";
 import { DefaultTimeDialog } from "./DefaultTimeDialog";
 
 interface MilestonesSectionProps {
@@ -137,14 +137,13 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
         </p>
       )}
 
-      {calendars.map((calendar) => (
-        <CalendarSyncBar
-          key={calendar.provider}
-          calendar={calendar}
+      {calendars.length > 0 && (
+        <CalendarSyncPanel
+          calendars={calendars}
           selectedCount={selected.size}
-          onSync={() => void calendar.sync(selectedIds())}
+          onSync={(calendar) => void calendar.sync(selectedIds())}
         />
-      ))}
+      )}
 
       {milestones.length === 0 ? (
         <p className="text-sm italic text-text-subtle">Esta licitación todavía no tiene hitos.</p>
