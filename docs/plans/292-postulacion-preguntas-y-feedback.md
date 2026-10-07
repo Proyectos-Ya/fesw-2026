@@ -106,6 +106,16 @@ La guía no muestra un campo de nombre de la oferta y la API no lo guarda por pr
 
 **Fuera de alcance:** la dirección y el plazo de entrega, los nombres de los adjuntos y los flags del detalle de la API. La ingesta no los guarda; quedan en la issue #294.
 
+### 2.8 Documento técnico: casos ambiguos y sugerencias por sección
+
+Decidida el 2026-10-07, a partir de la Compra Ágil 1377068-65-COT26 (mantención de extintores). Sus bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo" en la sección de condiciones de ejecución, sin aclarar si va con la oferta. El análisis respondió "no se exige" sin motivo y guardó la frase como `documento` a adjuntar.
+
+- **Tres casos en la factibilidad.** Las bases pueden pedir una propuesta técnica con la oferta (`requires_technical_document = true`), mencionar un informe o documento técnico sin aclarar cuándo se entrega (`technical_document_ambiguous = true`) o no pedir nada técnico. Un informe o certificado que se entrega al ejecutar el servicio es una `condicion`, no un `documento`.
+- **`technical_document_reason` obligatorio.** En el caso ambiguo cita la frase de las bases y explica la duda. Columna nueva `technical_document_ambiguous` (boolean nullable) en `proposal_drafts`; si la IA marca exigido y ambiguo a la vez, manda exigido.
+- **Documento técnico breve.** Cada sección tiene 2 o 3 frases como máximo. Lo que viene de las bases (cantidades, sedes, plazos, alcance) se escribe completo. Lo de la empresa solo sale del catálogo; si no está, queda un vacío.
+- **Sugerencias por sección.** `TechnicalSection` suma `guidance` (fija, de `TECHNICAL_SECTIONS`) y `hint` (de la IA, específica de la licitación). Viajan en el JSONB de `content`, sin migración. La interfaz las muestra bajo el título de cada sección. El Word las incluye solo en el bloque "Revisar" de las secciones con vacíos.
+- **Interfaz.** En el caso ambiguo, el borrador muestra la frase citada y un botón principal "Generar documento técnico", en vez del aviso "No se detectó".
+
 ---
 
 ## 3. Desglose de Tareas (Checklist)
@@ -165,6 +175,12 @@ Entrega en tres PRs: migración (B1), backend (B2 a B4) y frontend (F1 a F6).
 - [ ] **D. Proyectos**
   - [ ] [Red] Servicio `addCapabilityEvidence` y formulario `EvidenceForm` tras un "Sí" a `experiencia_proyecto`.
   - [ ] [Green] Formulario, servicio y toast "Proyecto agregado. Se usará al redactar o regenerar."
+
+### Documento técnico (§2.8)
+
+- [ ] [Red/Green] Factibilidad: esquema con motivo obligatorio y `technical_document_ambiguous`; entregables de ejecución como `condicion`; migración nullable.
+- [ ] [Red/Green] Redacción: secciones breves, `guidance` fija y `hint` de la IA; Word con la sugerencia en "Revisar".
+- [ ] [Red/Green] Interfaz: caso ambiguo con botón principal; sugerencias bajo cada sección.
 
 ---
 
