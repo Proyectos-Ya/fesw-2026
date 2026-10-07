@@ -47,6 +47,35 @@ RequirementKind = Literal[
     "certificacion", "experiencia", "disponibilidad", "condicion", "documento", "otro"
 ]
 KINDS_SIN_PREGUNTA: frozenset[str] = frozenset({"condicion", "documento"})
+
+# El perfil genérico (descripción, rubro, años) dice a qué se dedica la empresa,
+# pero no prueba una experiencia ni una certificación concreta.
+_PERFIL_GENERICO = ("perfil:descripcion", "perfil:sector:", "perfil:anios-experiencia")
+_NO_PROBADO_POR_EL_PERFIL_GENERICO: frozenset[str] = frozenset(
+    {"experiencia", "certificacion"}
+)
+
+
+def perfil_cubre(kind: str, item_id: str) -> bool:
+    """¿Puede el elemento `item_id` del catálogo cubrir una exigencia de tipo `kind`?
+
+    La IA a veces cita la descripción o un rubro como prueba de una experiencia
+    específica. Esa cobertura no vale: se pregunta (plan 292, §2.1).
+
+    - descripción, rubro y años: todo menos experiencia y certificación;
+    - una certificación del perfil: solo una certificación;
+    - una región del perfil: solo disponibilidad (cobertura geográfica);
+    - respuestas (`capacidad:`) y proyectos (`evidencia:`): cualquier exigencia.
+    """
+    if item_id.startswith(_PERFIL_GENERICO):
+        return kind not in _NO_PROBADO_POR_EL_PERFIL_GENERICO
+    if item_id.startswith("perfil:certificacion:"):
+        return kind == "certificacion"
+    if item_id.startswith("perfil:region:"):
+        return kind == "disponibilidad"
+    return True
+
+
 # `parcial` sale de una respuesta neutra ("En proceso de inscripción"): no es un
 # "No", así que no pausa, pero tampoco es un "Sí" que el borrador pueda afirmar.
 RequirementStatus = Literal["cumple", "no_cumple", "parcial", "desconocido"]
@@ -96,6 +125,16 @@ class DiscrepancyDecision(BaseModel):
     def _en_utc_naive(cls, value: datetime) -> datetime:
         # Vuelve del JSONB con sufijo "Z"; lo persistido es UTC sin zona.
         return aware_to_utc_naive(value) or value
+
+
+class AnalysisDocument(BaseModel):
+    """Un adjunto que leyó el análisis de factibilidad.
+
+    `corrupted`: no se pudo leer y la IA no vio su contenido.
+    """
+
+    name: str
+    corrupted: bool
 
 
 class ProposalWarning(BaseModel):
@@ -220,6 +259,11 @@ class ProposalDraft(BaseModel):
     # Huella de lo que se usó en el análisis (adjuntos, catálogo y ficha). Al
     # volver a analizar, si no cambió, el borrador se mantiene tal cual.
     analysis_fingerprint: str | None = None
+    # Los adjuntos que leyó el análisis y si la ficha menciona bases, TDR o
+    # anexos. Con eso la pantalla recomienda subir las bases. Son `None` en los
+    # borradores analizados antes de existir estos campos.
+    analysis_documents: list[AnalysisDocument] | None = None
+    mentions_attachments: bool | None = None
     created_by_user_id: UUID | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)

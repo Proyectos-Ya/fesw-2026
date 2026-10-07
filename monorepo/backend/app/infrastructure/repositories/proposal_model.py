@@ -39,6 +39,12 @@ class ProposalDraftModel(SQLModel, table=True):
     last_instructions: str | None = None
     # Huella de los insumos del análisis; nula en los borradores anteriores.
     analysis_fingerprint: str | None = None
+    # Con qué se analizó: lista de `{name, corrupted}` y si la ficha menciona
+    # adjuntos. Nulas en los borradores anteriores (plan 292, §2.3).
+    analysis_documents: list[dict[str, Any]] | None = Field(
+        default=None, sa_column=Column(JSONB(none_as_null=True))
+    )
+    mentions_attachments: bool | None = None
     # Si el miembro se va, el borrador sigue siendo de la empresa.
     created_by_user_id: UUID | None = Field(
         default=None, foreign_key="users.id", index=True, ondelete="SET NULL"

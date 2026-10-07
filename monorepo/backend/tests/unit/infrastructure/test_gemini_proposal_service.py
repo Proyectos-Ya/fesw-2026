@@ -449,3 +449,99 @@ async def test_factibilidad_pide_hasta_tres_preguntas_para_fortalecer_la_oferta(
     )
     assert "offer_questions" in texto
     assert len(resultado.offer_questions) == 1
+
+
+# --- Adjuntos primero (plan 292, §2.2) ---------------------------------------
+
+DOCUMENTOS = [
+    DocumentContextDTO(document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"),
+    DocumentContextDTO(
+        document_name="roto.pdf", file_type="pdf", file_bytes=b"", is_corrupted=True
+    ),
+]
+
+
+def _posiciones(post) -> tuple[list[int], int]:
+    """Índices de las partes de los adjuntos y de la ficha en el mensaje."""
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    adjuntos = [
+        i
+        for i, p in enumerate(partes)
+        if "inlineData" in p or p.get("text", "").startswith("Adjunto")
+    ]
+    [ficha] = [
+        i
+        for i, p in enumerate(partes)
+        if p.get("text", "").startswith("## COMPRA ÁGIL")
+    ]
+    return adjuntos, ficha
+
+
+async def test_factibilidad_manda_los_adjuntos_antes_que_la_ficha():
+    _, post = await _analizar(_respuesta(RESULTADO), DOCUMENTOS)
+
+    adjuntos, ficha = _posiciones(post)
+    assert len(adjuntos) == 3
+    assert max(adjuntos) < ficha
+    # Las instrucciones siguen primero.
+    assert min(adjuntos) == 1
+
+
+async def test_redaccion_manda_los_adjuntos_antes_que_la_ficha():
+    _, post = await _redactar(_respuesta(REDACCION), documents=DOCUMENTOS)
+
+    adjuntos, ficha = _posiciones(post)
+    assert len(adjuntos) == 3
+    assert max(adjuntos) < ficha
+    assert min(adjuntos) == 1
+
+
+async def test_las_instrucciones_dicen_que_los_adjuntos_mandan():
+    _, analisis = await _analizar(_respuesta(RESULTADO))
+    _, redaccion = await _redactar(_respuesta(REDACCION))
+
+    texto = _texto_del_prompt(analisis)
+    assert "fuente principal" in texto
+    assert "mandan" in texto
+    assert "mentions_attachments" in texto
+    assert "fallback_question" in texto
+    assert "salen de los adjuntos" in _texto_del_prompt(redaccion)
+
+
+async def test_factibilidad_pide_e_interpreta_respaldo_y_mencion_de_adjuntos():
+    con_respaldo = {
+        **RESULTADO,
+        "mentions_attachments": True,
+        "requirements": [
+            {
+                "text": "Experiencia en obras viales.",
+                "kind": "experiencia",
+                "mandatory": True,
+                "origin": "bases.pdf",
+                "catalog_item_id": "perfil:descripcion",
+                "fallback_question": {
+                    "question": "¿Tiene experiencia en obras viales?",
+                    "target_field": "experiencia:obras-viales",
+                    "kind": "experiencia_proyecto",
+                    "work_type": "obras viales",
+                },
+            }
+        ],
+    }
+
+    resultado, post = await _analizar(_respuesta(con_respaldo))
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    propiedades = esquema["properties"]["requirements"]["items"]["properties"]
+    assert propiedades["fallback_question"] == propiedades["new_question"]
+    assert esquema["properties"]["mentions_attachments"] == {"type": "BOOLEAN"}
+    assert "mentions_attachments" in esquema["required"]
+    assert resultado.mentions_attachments is True
+    respaldo = resultado.requirements[0].fallback_question
+    assert respaldo is not None and respaldo.target_field == "experiencia:obras-viales"
+
+
+async def test_sin_mencion_de_adjuntos_queda_en_falso():
+    resultado, _ = await _analizar(_respuesta(RESULTADO))
+
+    assert resultado.mentions_attachments is False

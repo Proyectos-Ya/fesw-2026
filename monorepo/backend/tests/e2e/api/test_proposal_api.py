@@ -56,6 +56,7 @@ from app.bootstrap.proposals import (
     get_sync_proposal_answers_use_case,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
+from app.domain.entities.proposal import AnalysisDocument
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 from app.main import app
 from app.shared.constants import TENDER_STATUSES
@@ -664,3 +665,58 @@ async def test_un_viewer_no_aplica_las_respuestas(api: AsyncClient, entorno, emp
     )
 
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_la_vista_dice_con_que_adjuntos_se_analizo(
+    api: AsyncClient, entorno, empresas
+):
+    """Contrato con el frontend (plan 292, §2.3): `analysis_documents` es una
+    lista de `{name, corrupted}` o null, y `mentions_attachments` un booleano o
+    null."""
+    tender_id, _, drafts, _, ia = entorno
+    headers_a, _, _, empresa_2 = empresas
+    ia["servicio"].resultado = ia["servicio"].resultado.model_copy(
+        update={"mentions_attachments": True}
+    )
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["analysis_documents"] == []
+    assert resp.json()["mentions_attachments"] is True
+
+    borrador = await drafts.get(empresa_2, tender_id)
+    assert borrador is not None
+    borrador.analysis_documents = [
+        AnalysisDocument(name="bases.pdf", corrupted=False),
+        AnalysisDocument(name="anexo.pdf", corrupted=True),
+    ]
+    await drafts.save(borrador)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.json()["analysis_documents"] == [
+        {"name": "bases.pdf", "corrupted": False},
+        {"name": "anexo.pdf", "corrupted": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_un_borrador_anterior_expone_los_campos_en_null(
+    api: AsyncClient, entorno, empresas
+):
+    tender_id, _, drafts, _, _ = entorno
+    headers_a, _, _, empresa_2 = empresas
+    await _iniciar(api, tender_id, headers_a)
+    borrador = await drafts.get(empresa_2, tender_id)
+    assert borrador is not None
+    borrador.analysis_documents = None
+    borrador.mentions_attachments = None
+    await drafts.save(borrador)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.json()["analysis_documents"] is None
+    assert resp.json()["mentions_attachments"] is None

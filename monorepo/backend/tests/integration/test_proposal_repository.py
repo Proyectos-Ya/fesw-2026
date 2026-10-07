@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.domain.entities.proposal import (
+    AnalysisDocument,
     DraftContent,
     DraftParagraph,
     DraftSection,
@@ -203,3 +204,45 @@ async def test_sin_contenido_se_guarda_como_null_de_sql(db_session):
     ).one()
 
     assert fila[0] is True
+
+
+async def test_guarda_y_lee_con_que_adjuntos_se_analizo(db_session):
+    """`analysis_documents` y `mentions_attachments` (plan 292, §2.3)."""
+    repo = SqlProposalDraftRepository(db_session)
+    supplier_id = await _empresa(db_session)
+    tender_id = await _licitacion(db_session)
+    borrador = _borrador(supplier_id, tender_id)
+    borrador.analysis_documents = [
+        AnalysisDocument(name="bases.pdf", corrupted=False),
+        AnalysisDocument(name="anexo.pdf", corrupted=True),
+    ]
+    borrador.mentions_attachments = True
+
+    await repo.save(borrador)
+    db_session.expunge_all()
+    leido = await repo.get(supplier_id, tender_id)
+
+    assert leido is not None
+    assert leido.analysis_documents == borrador.analysis_documents
+    assert leido.mentions_attachments is True
+
+
+async def test_un_borrador_anterior_guarda_null_de_sql(db_session):
+    """Sin `none_as_null`, None quedaría como el JSON `null`."""
+    from sqlalchemy import text
+
+    repo = SqlProposalDraftRepository(db_session)
+    supplier_id = await _empresa(db_session)
+    tender_id = await _licitacion(db_session)
+    borrador = await repo.save(_borrador(supplier_id, tender_id))
+
+    fila = (
+        await db_session.exec(
+            text(
+                "SELECT analysis_documents IS NULL, mentions_attachments IS NULL "
+                "FROM proposal_drafts WHERE id = :id"
+            ).bindparams(id=borrador.id)
+        )
+    ).one()
+
+    assert tuple(fila) == (True, True)

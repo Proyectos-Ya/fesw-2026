@@ -754,3 +754,168 @@ class TestPreguntasSugeridasEnLaFactibilidad:
         borrador = await e.ejecutar()
 
         assert borrador.requirements == []
+
+
+_RESPALDO = NewQuestionDTO(
+    question="¿Tiene experiencia en obras viales?",
+    target_field="experiencia:obras-viales",
+    kind="experiencia_proyecto",
+    work_type="obras viales",
+)
+
+
+class TestCoberturaDelPerfil:
+    """El perfil genérico no prueba experiencia ni certificaciones (plan 292, §2.1).
+
+    Si la IA cita la descripción o un rubro para una exigencia de experiencia, la
+    cobertura se descarta y se pregunta con `fallback_question`.
+    """
+
+    async def _con_descripcion(self, *exigencias) -> "Escenario":
+        e = await Escenario(*exigencias).preparar()
+        empresa = await e.suppliers.get_by_id(e.empresa.id)
+        assert empresa is not None
+        empresa.description = "Constructora con 20 años en obras civiles."
+        empresa.certifications = ["ISO 9001"]
+        await e.suppliers.save(empresa)
+        return e
+
+    @pytest.mark.parametrize(
+        "item_id",
+        [
+            "perfil:descripcion",
+            "perfil:sector:obras-de-construccion-e-infraestructura",
+        ],
+    )
+    async def test_el_perfil_generico_citado_para_una_experiencia_genera_pregunta(
+        self, item_id
+    ):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="experiencia",
+                text="Experiencia en obras viales",
+                catalog_item_id=item_id,
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        nueva = await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales")
+        assert nueva is not None
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.capability_question_id == nueva.id
+        assert req.status == "desconocido"
+
+    async def test_si_trae_question_key_la_prefiere_al_respaldo(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="certificacion",
+                catalog_item_id="perfil:descripcion",
+                question_key="registro_mop",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        assert _req(borrador, 0).capability_question_id == MOP.id
+        assert (
+            await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales") is None
+        )
+
+    async def test_sin_respaldo_queda_parcial(self):
+        e = await self._con_descripcion(
+            _exigencia(kind="experiencia", catalog_item_id="perfil:descripcion")
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.status == "parcial"
+
+    async def test_una_certificacion_del_perfil_cubre_la_misma_certificacion(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="certificacion",
+                text="ISO 9001 vigente",
+                catalog_item_id="perfil:certificacion:iso-9001",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.status == "cumple"
+        assert req.catalog_item_id == "perfil:certificacion:iso-9001"
+        assert (
+            await e.questions.get_by_key(CATEGORIA, "experiencia:obras-viales") is None
+        )
+
+    async def test_una_region_cubre_la_disponibilidad(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="disponibilidad",
+                text="Entrega en Valparaíso",
+                catalog_item_id="perfil:region:valparaiso",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.status == "cumple"
+        assert req.catalog_item_id == "perfil:region:valparaiso"
+
+    async def test_una_region_no_cubre_una_experiencia(self):
+        e = await self._con_descripcion(
+            _exigencia(
+                kind="experiencia",
+                catalog_item_id="perfil:region:valparaiso",
+                fallback_question=_RESPALDO,
+            )
+        )
+
+        borrador = await e.ejecutar()
+
+        req = _req(borrador, 0)
+        assert req.catalog_item_id is None
+        assert req.status == "desconocido"
+
+
+class TestConQueSeAnalizo:
+    """El borrador guarda qué adjuntos se leyeron y si la ficha menciona bases."""
+
+    async def test_guarda_los_adjuntos_con_los_daniados_marcados(self):
+        e = await Escenario(mentions_attachments=True).preparar()
+        await _subir_bases(e, "bases.pdf")
+        await e.chat.save_document(
+            TenderChatDocument(
+                tender_id=e.tender_id,
+                user_id=e.user_id,
+                file_name="anexo.pdf",
+                file_type="pdf",
+                file_size_bytes=4,
+                storage_path="x/anexo.pdf",
+            ),
+            b"",
+        )
+
+        borrador = await e.ejecutar()
+
+        documentos = {d.name: d.corrupted for d in borrador.analysis_documents or []}
+        assert documentos == {"bases.pdf": False, "anexo.pdf": True}
+        assert borrador.mentions_attachments is True
+        assert await e.drafts.get(e.empresa.id, e.tender_id) == borrador
+
+    async def test_sin_adjuntos_guarda_una_lista_vacia(self):
+        e = await Escenario().preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.analysis_documents == []
+        assert borrador.mentions_attachments is False

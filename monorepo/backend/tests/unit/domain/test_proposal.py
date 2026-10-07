@@ -23,6 +23,7 @@ from app.domain.entities.proposal import (
     Requirement,
     TechnicalDocument,
     TechnicalSection,
+    perfil_cubre,
     render_placeholders,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
@@ -320,6 +321,18 @@ class TestReanudar:
         borrador.record_answer(VIALES_Q, "afirmativa")
 
         assert not borrador.can_generate()
+
+    def test_responder_si_a_la_detenida_habilita_la_redaccion(self):
+        """Tras detener y reanudar, la excluyente detenida se puede responder de nuevo."""
+        borrador = self._detenido()
+        borrador.resume()
+        borrador.record_answer(VIALES_Q, "afirmativa")
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert _requisito(borrador, "req-sec").status == "cumple"
+        assert borrador.discrepancy_decisions == []
+        assert borrador.can_generate()
 
     def test_un_nuevo_no_vuelve_a_pausar(self):
         borrador = self._detenido()
@@ -629,3 +642,60 @@ class TestRespuestasCambiadas:
 
         with pytest.raises(InvalidProposalTransition):
             borrador.sync_answers({SEC_Q: "afirmativa"})
+
+
+class TestCoberturaDelPerfil:
+    """Qué exigencias puede cubrir un dato del perfil (plan 292, §2.1).
+
+    El perfil genérico (descripción, rubro, años) no prueba una experiencia ni
+    una certificación concreta: esas se preguntan.
+    """
+
+    @pytest.mark.parametrize(
+        "item_id",
+        ["perfil:descripcion", "perfil:sector:obras", "perfil:anios-experiencia"],
+    )
+    @pytest.mark.parametrize("kind", ["experiencia", "certificacion"])
+    def test_el_perfil_generico_no_cubre_experiencia_ni_certificacion(
+        self, item_id, kind
+    ):
+        assert perfil_cubre(kind, item_id) is False
+
+    @pytest.mark.parametrize(
+        "item_id",
+        ["perfil:descripcion", "perfil:sector:obras", "perfil:anios-experiencia"],
+    )
+    @pytest.mark.parametrize("kind", ["disponibilidad", "otro"])
+    def test_el_perfil_generico_cubre_lo_demas(self, item_id, kind):
+        assert perfil_cubre(kind, item_id) is True
+
+    def test_una_certificacion_cubre_solo_una_certificacion(self):
+        item_id = "perfil:certificacion:iso-9001"
+        assert perfil_cubre("certificacion", item_id) is True
+        assert perfil_cubre("experiencia", item_id) is False
+        assert perfil_cubre("disponibilidad", item_id) is False
+        assert perfil_cubre("otro", item_id) is False
+
+    def test_una_region_cubre_solo_la_disponibilidad(self):
+        item_id = "perfil:region:valparaiso"
+        assert perfil_cubre("disponibilidad", item_id) is True
+        assert perfil_cubre("certificacion", item_id) is False
+        assert perfil_cubre("experiencia", item_id) is False
+        assert perfil_cubre("otro", item_id) is False
+
+    @pytest.mark.parametrize(
+        "item_id", [f"capacidad:{uuid4()}", f"evidencia:{uuid4()}"]
+    )
+    @pytest.mark.parametrize(
+        "kind", ["certificacion", "experiencia", "disponibilidad", "otro"]
+    )
+    def test_respuestas_y_proyectos_cubren_como_antes(self, item_id, kind):
+        assert perfil_cubre(kind, item_id) is True
+
+
+class TestConQueSeAnalizo:
+    def test_un_borrador_anterior_no_sabe_con_que_se_analizo(self):
+        borrador = _borrador()
+
+        assert borrador.analysis_documents is None
+        assert borrador.mentions_attachments is None

@@ -40,6 +40,10 @@ class FeasibilityRequirementDTO(BaseModel):
     - `catalog_item_id`: un elemento del catálogo la cubre, a favor o en contra;
     - `question_key`: una pregunta del banco que la empresa aún no respondió;
     - `new_question`: ninguna pregunta del banco sirve, y se propone una.
+
+    `fallback_question` es aparte: la pregunta a usar si el caso de uso descarta
+    la cobertura de `catalog_item_id` porque el perfil genérico no prueba esa
+    exigencia (`perfil_cubre`, plan 292, §2.1).
     """
 
     text: str
@@ -49,6 +53,7 @@ class FeasibilityRequirementDTO(BaseModel):
     catalog_item_id: str | None = None
     question_key: str | None = None
     new_question: NewQuestionDTO | None = None
+    fallback_question: NewQuestionDTO | None = None
 
 
 class FeasibilityResultDTO(BaseModel):
@@ -58,6 +63,8 @@ class FeasibilityResultDTO(BaseModel):
     offer_questions: list[FeasibilityRequirementDTO] = Field(default_factory=list)
     requires_technical_document: bool = False
     technical_document_reason: str | None = None
+    # La ficha menciona bases, TDR o anexos: con eso se recomienda subirlos.
+    mentions_attachments: bool = False
 
 
 class DraftParagraphDTO(BaseModel):
