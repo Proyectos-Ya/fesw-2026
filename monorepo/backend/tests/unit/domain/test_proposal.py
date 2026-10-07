@@ -484,6 +484,19 @@ class TestPlantillaDelDocumentoTecnico:
         )
         assert documento.sections[0].title == "Metodología"
 
+    def test_cada_seccion_trae_una_sugerencia_fija(self):
+        for plantilla in TECHNICAL_SECTIONS:
+            assert plantilla.guidance.strip()
+            assert "\u2014" not in plantilla.guidance
+
+    def test_una_seccion_guardada_antes_no_tiene_sugerencias(self):
+        seccion = TechnicalSection.model_validate(
+            {"key": "metodologia", "title": "Metodología", "paragraphs": []}
+        )
+
+        assert seccion.guidance is None
+        assert seccion.hint is None
+
 
 class TestPreguntasSugeridas:
     """Preguntas para fortalecer la oferta: no vienen de una exigencia de las bases."""
@@ -525,6 +538,30 @@ class TestDocumentoTecnicoAPedido:
 
         assert borrador.requires_technical_document is True
         assert "no se detectó" in (borrador.technical_document_reason or "")
+
+    def test_si_era_ambiguo_deja_de_serlo_y_conserva_la_cita(self):
+        cita = 'Las bases dicen "Se debe entregar informe técnico" sin aclarar.'
+        borrador = _borrador(
+            technical_document_ambiguous=True, technical_document_reason=cita
+        )
+
+        borrador.request_technical_document()
+
+        assert borrador.requires_technical_document is True
+        assert borrador.technical_document_ambiguous is False
+        assert borrador.technical_document_reason == f"Lo pidió la empresa. {cita}"
+
+    def test_pedirlo_otra_vez_no_cambia_el_motivo(self):
+        borrador = _borrador(
+            requires_technical_document=True,
+            technical_document_reason="Las bases piden una memoria técnica.",
+        )
+
+        borrador.request_technical_document()
+
+        assert borrador.technical_document_reason == (
+            "Las bases piden una memoria técnica."
+        )
 
 
 def _listo() -> ProposalDraft:
@@ -761,6 +798,7 @@ class TestConQueSeAnalizo:
 
         assert borrador.analysis_documents is None
         assert borrador.mentions_attachments is None
+        assert borrador.technical_document_ambiguous is None
 
 
 class TestDeclaracionDeHabilidad:

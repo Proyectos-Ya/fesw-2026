@@ -17,6 +17,7 @@ from app.application.services.proposal_ai_service import (
     FeasibilityResultDTO,
     ProposalAIServiceError,
     TechnicalDocumentDTO,
+    TechnicalSectionDTO,
 )
 from app.application.use_cases.capabilities.answer_capability_question import (
     AnswerCapabilityQuestionUseCase,
@@ -515,7 +516,7 @@ async def test_un_viewer_descarga_el_documento_tecnico(
     headers_a, _, headers_c, _ = empresas
     ia["servicio"].resultado.requires_technical_document = True
     ia["servicio"].borrador.technical_document = TechnicalDocumentDTO(
-        metodologia=DraftSectionDTO(
+        metodologia=TechnicalSectionDTO(
             paragraphs=[DraftParagraphDTO(text="Clases presenciales.")]
         )
     )
@@ -736,9 +737,55 @@ async def test_un_borrador_anterior_expone_los_campos_en_null(
     assert borrador is not None
     borrador.analysis_documents = None
     borrador.mentions_attachments = None
+    borrador.technical_document_ambiguous = None
     await drafts.save(borrador)
 
     resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
 
     assert resp.json()["analysis_documents"] is None
     assert resp.json()["mentions_attachments"] is None
+    assert resp.json()["technical_document_ambiguous"] is None
+
+
+@pytest.mark.asyncio
+async def test_la_vista_dice_si_el_documento_tecnico_es_ambiguo(
+    api: AsyncClient, entorno, empresas
+):
+    """Contrato con el frontend (plan 292, §2.8): `technical_document_ambiguous`
+    es un booleano o null, y cada sección del documento técnico trae `guidance`
+    y `hint` (texto o null)."""
+    tender_id, *_, ia = entorno
+    headers_a, *_ = empresas
+    cita = 'Las bases dicen "Se debe entregar informe técnico" sin aclarar cuándo.'
+    ia["servicio"].resultado = ia["servicio"].resultado.model_copy(
+        update={
+            "technical_document_ambiguous": True,
+            "technical_document_reason": cita,
+        }
+    )
+    await _iniciar(api, tender_id, headers_a)
+
+    resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["technical_document_ambiguous"] is True
+    assert resp.json()["technical_document_reason"] == cita
+
+    ia["servicio"].borrador.technical_document = TechnicalDocumentDTO(
+        equipo=TechnicalSectionDTO(paragraphs=[], hint="Menciona las certificaciones.")
+    )
+    await _redactado(api, tender_id, headers_a)
+    resp = await api.post(
+        f"/tenders/{tender_id}/proposal/technical-document", headers=headers_a
+    )
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["technical_document_ambiguous"] is False
+    assert cuerpo["technical_document_reason"] == f"Lo pidió la empresa. {cita}"
+    secciones = {
+        s["key"]: s for s in cuerpo["content"]["technical_document"]["sections"]
+    }
+    assert secciones["equipo"]["hint"] == "Menciona las certificaciones."
+    assert secciones["equipo"]["guidance"]
+    assert secciones["antecedentes"]["hint"] is None

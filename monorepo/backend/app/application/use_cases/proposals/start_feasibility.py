@@ -216,6 +216,9 @@ class StartFeasibilityUseCase:
             supplier_id=supplier.id,
             tender_id=tender.id,
             requires_technical_document=resultado.requires_technical_document,
+            # Si la IA lo marca exigido y ambiguo a la vez, manda exigido.
+            technical_document_ambiguous=resultado.technical_document_ambiguous
+            and not resultado.requires_technical_document,
             technical_document_reason=resultado.technical_document_reason,
             analysis_fingerprint=huella,
             analysis_documents=[

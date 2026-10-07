@@ -919,3 +919,47 @@ class TestConQueSeAnalizo:
 
         assert borrador.analysis_documents == []
         assert borrador.mentions_attachments is False
+
+
+class TestDocumentoTecnicoAmbiguo:
+    """Las bases mencionan un informe técnico sin decir si va con la oferta (§2.8)."""
+
+    _CITA = (
+        'Las bases dicen "Se debe entregar informe técnico y certificado '
+        'individual por cada equipo" sin aclarar si va con la oferta.'
+    )
+
+    async def test_guarda_que_es_ambiguo_y_el_motivo_con_la_cita(self):
+        e = await Escenario(
+            requires_technical_document=False,
+            technical_document_ambiguous=True,
+            technical_document_reason=self._CITA,
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.requires_technical_document is False
+        assert borrador.technical_document_ambiguous is True
+        assert borrador.technical_document_reason == self._CITA
+        assert await e.drafts.get(e.empresa.id, e.tender_id) == borrador
+
+    async def test_si_la_ia_marca_exigido_y_ambiguo_manda_exigido(self):
+        e = await Escenario(
+            requires_technical_document=True,
+            technical_document_ambiguous=True,
+            technical_document_reason="Las bases piden una memoria técnica.",
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.requires_technical_document is True
+        assert borrador.technical_document_ambiguous is False
+
+    async def test_sin_mencion_queda_en_falso(self):
+        e = await Escenario(
+            technical_document_reason="Las bases no piden documento técnico."
+        ).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_ambiguous is False

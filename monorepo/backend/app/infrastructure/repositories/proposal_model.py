@@ -26,6 +26,9 @@ class ProposalDraftModel(SQLModel, table=True):
     requirements: list[dict[str, Any]] = Field(sa_column=Column(JSONB, nullable=False))
     paused_requirement_id: str | None = None
     requires_technical_document: bool = Field(default=False)
+    # Las bases mencionan un documento técnico sin aclarar cuándo se entrega.
+    # Nula en los borradores anteriores (plan 292, §2.8).
+    technical_document_ambiguous: bool | None = None
     technical_document_reason: str | None = None
     warnings: list[dict[str, Any]] = Field(sa_column=Column(JSONB, nullable=False))
     discrepancy_decisions: list[dict[str, Any]] = Field(

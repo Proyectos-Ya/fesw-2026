@@ -71,6 +71,11 @@ Para cada exigencia indica:
     Son la lista de documentos necesarios, no una capacidad de la empresa.
     NO incluyas la Declaración Jurada de Habilidad: la plataforma la pide
     en una ventana al enviar la cotización y no se adjunta.
+  Un informe, certificado o registro que el proveedor entrega al ejecutar o
+  terminar el servicio (por ejemplo "al término de cada visita, el
+  proveedor entregará un informe con los trabajos realizados") es una
+  condicion: es un entregable del servicio, no un documento que se adjunte
+  a la oferta. Solo es documento si las bases piden adjuntarlo al ofertar.
   Una condicion o un documento NO llevan cobertura: deja catalog_item_id,
   question_key y new_question vacíos.
 - mandatory: true si es EXCLUYENTE (redacción como "deberá", "obligatorio",
@@ -111,18 +116,26 @@ en un plazo de 5 días hábiles?"), nunca abiertas ("¿Cuál es su plazo?"). Cad
 reglas que arriba), kind certificacion | experiencia | disponibilidad | otro y
 mandatory false. Si el catálogo ya dice lo importante, déjala vacía.
 
-Indica además si las bases exigen un DOCUMENTO TÉCNICO en
-requires_technical_document, y por qué en technical_document_reason. Un
+Indica además si las bases exigen un DOCUMENTO TÉCNICO con la oferta. Un
 documento técnico es una propuesta técnica redactada por el proveedor: memoria
 técnica, metodología, plan de trabajo, especificaciones de lo ofertado. NO son
 documento técnico los antecedentes administrativos que solo se adjuntan
 (cotización, formularios, declaraciones juradas, certificados, boletas): esos
-son documentos necesarios de la oferta, no una propuesta técnica. Marca true
-SOLO si el texto que tienes lo pide de forma expresa; no lo supongas. Si la
-ficha menciona un adjunto que no recibiste (por ejemplo "se adjunta TDR") y
-ahí podría estar la exigencia, marca false y dilo en technical_document_reason
-para que el usuario suba ese adjunto. En Compra Ágil lo habitual es que no se
-exija documento técnico.
+son documentos necesarios de la oferta, no una propuesta técnica. Tampoco lo es
+un informe que se entrega al ejecutar o terminar el servicio. Hay tres casos:
+1. requires_technical_document = true: el texto que tienes pide de forma
+   expresa una propuesta técnica junto con la oferta. No lo supongas.
+2. technical_document_ambiguous = true: las bases mencionan un informe,
+   memoria o documento técnico sin aclarar si va con la oferta o se entrega
+   al ejecutar el servicio. Deja requires_technical_document en false.
+3. Ninguno de los dos: las bases no piden nada técnico.
+Nunca marques los dos en true. technical_document_reason es obligatorio y
+siempre explica la decisión en una o dos frases. En el caso ambiguo, cita entre
+comillas la frase de las bases y di por qué no queda claro cuándo se entrega.
+Si la ficha menciona un adjunto que no recibiste (por ejemplo "se adjunta TDR")
+y ahí podría estar la exigencia, marca false y dilo en
+technical_document_reason para que el usuario suba ese adjunto. En Compra Ágil
+lo habitual es que no se exija documento técnico.
 
 Indica en mentions_attachments si la ficha menciona bases, términos de
 referencia (TDR), anexos u otros adjuntos, los hayas recibido o no.
@@ -182,12 +195,16 @@ _SCHEMA = {
             },
         },
         "requires_technical_document": {"type": "BOOLEAN"},
-        "technical_document_reason": {"type": "STRING", "nullable": True},
+        "technical_document_ambiguous": {"type": "BOOLEAN"},
+        # Obligatorio y no nulo: siempre explica la decisión (plan 292, §2.8).
+        "technical_document_reason": {"type": "STRING"},
         "mentions_attachments": {"type": "BOOLEAN"},
     },
     "required": [
         "requirements",
         "requires_technical_document",
+        "technical_document_ambiguous",
+        "technical_document_reason",
         "mentions_attachments",
     ],
 }
@@ -324,6 +341,14 @@ _SECCION = {
     },
     "required": ["paragraphs"],
 }
+# Una sección del documento técnico suma `hint`: qué debería agregar la empresa
+# para esta licitación (plan 292, §2.8).
+_SECCION_TECNICA = {
+    **_SECCION,
+    "nullable": True,
+    "properties": {**_SECCION["properties"], "hint": {"type": "STRING"}},
+    "required": ["paragraphs", "hint"],
+}
 _SCHEMA_REDACCION = {
     "type": "OBJECT",
     "properties": {
@@ -335,8 +360,7 @@ _SCHEMA_REDACCION = {
             "nullable": True,
             # Un campo por sección de la plantilla fija (`TECHNICAL_SECTIONS`).
             "properties": {
-                plantilla.key: {**_SECCION, "nullable": True}
-                for plantilla in TECHNICAL_SECTIONS
+                plantilla.key: _SECCION_TECNICA for plantilla in TECHNICAL_SECTIONS
             },
         },
     },
@@ -407,7 +431,14 @@ def _indicacion_tecnica(incluir: bool) -> str:
         "dice, usa [[INSERTAR: nombre y experiencia del equipo]].\n"
         "  - otros: solo si las bases piden algo que no calza en las anteriores; "
         "si no, déjala en null.\n"
-        "Usa [[INSERTAR: X]] donde falten datos; no inventes."
+        "Cada sección es breve: 2 o 3 frases como máximo. Lo que viene de las "
+        "bases (cantidades, sedes, plazos, alcance, entregables) se escribe "
+        "completo, porque copiarlo no es inventar. Lo de la empresa sale solo "
+        "del catálogo; si no está, usa [[INSERTAR: X]]. No inventes.\n"
+        "hint: en cada sección, una frase con lo que la empresa debería agregar "
+        "en esa sección para esta licitación, a partir de las bases. Por "
+        'ejemplo: "Las bases exigen personal certificado y EPP: menciona la '
+        'certificación de tus técnicos."'
     )
 
 

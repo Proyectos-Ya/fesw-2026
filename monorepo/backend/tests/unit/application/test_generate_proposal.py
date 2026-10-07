@@ -17,6 +17,7 @@ from app.application.services.proposal_ai_service import (
     FeasibilityResultDTO,
     ProposalAIServiceError,
     TechnicalDocumentDTO,
+    TechnicalSectionDTO,
 )
 from app.application.use_cases.capabilities.answer_capability_question import (
     AnswerCapabilityQuestionUseCase,
@@ -28,7 +29,11 @@ from app.application.use_cases.proposals.generate_proposal import (
     GenerateProposalUseCase,
 )
 from app.domain.entities.capability import CapabilityOption, CapabilityQuestion
-from app.domain.entities.proposal import ProposalDraft, Requirement
+from app.domain.entities.proposal import (
+    TECHNICAL_SECTIONS,
+    ProposalDraft,
+    Requirement,
+)
 from app.domain.entities.supplier import Supplier
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
@@ -403,7 +408,12 @@ class TestDocumentos:
 
 
 def _tecnico(**secciones: DraftSectionDTO) -> TechnicalDocumentDTO:
-    return TechnicalDocumentDTO(**secciones)
+    return TechnicalDocumentDTO(
+        **{
+            clave: TechnicalSectionDTO.model_validate(seccion.model_dump())
+            for clave, seccion in secciones.items()
+        }
+    )
 
 
 def _secciones(borrador) -> dict:
@@ -499,6 +509,43 @@ class TestDocumentoTecnico:
         borrador = await e.redactar()
 
         assert borrador.content.technical_document is None  # type: ignore[union-attr]
+
+
+class TestSugerenciasPorSeccion:
+    """Plan 292, §2.8: `guidance` fija de la plantilla y `hint` de la IA."""
+
+    _GUIA = {p.key: p.guidance for p in TECHNICAL_SECTIONS}
+
+    async def test_cada_seccion_lleva_la_sugerencia_de_la_plantilla(self):
+        e = await Escenario().preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        for clave, seccion in _secciones(borrador).items():
+            assert seccion.guidance == self._GUIA[clave]
+
+    async def test_la_sugerencia_de_la_ia_llega_a_su_seccion(self):
+        pista = "Las bases exigen personal certificado: menciona sus certificaciones."
+        e = await Escenario(
+            _redaccion(
+                technical_document=TechnicalDocumentDTO(
+                    metodologia=TechnicalSectionDTO(
+                        paragraphs=[_parrafo("Revisión de cada extintor.")],
+                        hint="Detalla los pasos de la mantención.",
+                    ),
+                    equipo=TechnicalSectionDTO(paragraphs=[], hint=pista),
+                )
+            )
+        ).preparar(requiere_tecnico=True)
+
+        borrador = await e.redactar()
+
+        secciones = _secciones(borrador)
+        assert secciones["metodologia"].hint == "Detalla los pasos de la mantención."
+        # También en una sección que quedó como vacío por completar.
+        assert secciones["equipo"].hint == pista
+        assert secciones["equipo"].paragraphs[0].placeholders
+        assert secciones["antecedentes"].hint is None
 
 
 class TestPausaDeLaRedaccion:

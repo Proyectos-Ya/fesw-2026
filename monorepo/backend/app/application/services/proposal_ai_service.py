@@ -62,6 +62,10 @@ class FeasibilityResultDTO(BaseModel):
     # oferta: no las piden las bases, pero dan datos de la empresa para redactar.
     offer_questions: list[FeasibilityRequirementDTO] = Field(default_factory=list)
     requires_technical_document: bool = False
+    # Las bases mencionan un informe o documento técnico sin aclarar si va con
+    # la oferta o se entrega al ejecutar el servicio (plan 292, §2.8).
+    technical_document_ambiguous: bool = False
+    # El esquema de Gemini lo exige; acepta `None` para leer respuestas viejas.
     technical_document_reason: str | None = None
     # La ficha menciona bases, TDR o anexos: con eso se recomienda subirlos.
     mentions_attachments: bool = False
@@ -87,6 +91,16 @@ class DraftSectionDTO(BaseModel):
     paragraphs: list[DraftParagraphDTO] = Field(default_factory=list)
 
 
+class TechnicalSectionDTO(DraftSectionDTO):
+    """Una sección del documento técnico, con lo que la empresa debería agregar.
+
+    `hint` es una frase específica de esta licitación, basada en las bases
+    (plan 292, §2.8). Llega aunque la sección venga sin párrafos.
+    """
+
+    hint: str | None = None
+
+
 class TechnicalDocumentDTO(BaseModel):
     """Documento técnico con las secciones de `TECHNICAL_SECTIONS`.
 
@@ -95,13 +109,13 @@ class TechnicalDocumentDTO(BaseModel):
     como vacío por completar.
     """
 
-    antecedentes: DraftSectionDTO | None = None
-    comprension: DraftSectionDTO | None = None
-    metodologia: DraftSectionDTO | None = None
-    plan_de_trabajo: DraftSectionDTO | None = None
-    equipo: DraftSectionDTO | None = None
+    antecedentes: TechnicalSectionDTO | None = None
+    comprension: TechnicalSectionDTO | None = None
+    metodologia: TechnicalSectionDTO | None = None
+    plan_de_trabajo: TechnicalSectionDTO | None = None
+    equipo: TechnicalSectionDTO | None = None
     # Solo si las bases piden algo que no calza en las anteriores.
-    otros: DraftSectionDTO | None = None
+    otros: TechnicalSectionDTO | None = None
 
 
 class DraftContentDTO(BaseModel):

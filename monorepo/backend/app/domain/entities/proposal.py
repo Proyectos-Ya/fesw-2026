@@ -216,6 +216,9 @@ class DraftSection(BaseModel):
 class TechnicalSectionTemplate:
     key: str
     title: str
+    # Qué poner en la sección, igual para toda licitación. La pantalla la
+    # muestra bajo el título y el Word junto a los vacíos (plan 292, §2.8).
+    guidance: str
     # Opcional: se incluye solo si hay contenido. Las demás siempre van, con un
     # vacío por completar si la IA no tuvo de dónde sacar el texto.
     optional: bool = False
@@ -226,12 +229,37 @@ class TechnicalSectionTemplate:
 # documentos se copian desde la pestaña del borrador al formulario de la
 # Compra Ágil.
 TECHNICAL_SECTIONS: tuple[TechnicalSectionTemplate, ...] = (
-    TechnicalSectionTemplate("antecedentes", "Antecedentes de la empresa"),
-    TechnicalSectionTemplate("comprension", "Comprensión del requerimiento"),
-    TechnicalSectionTemplate("metodologia", "Metodología"),
-    TechnicalSectionTemplate("plan_de_trabajo", "Plan de trabajo y plazos"),
-    TechnicalSectionTemplate("equipo", "Equipo de trabajo"),
-    TechnicalSectionTemplate("otros", "Otros requisitos de las bases", optional=True),
+    TechnicalSectionTemplate(
+        "antecedentes",
+        "Antecedentes de la empresa",
+        "Quién es la empresa y su experiencia relacionada con este servicio.",
+    ),
+    TechnicalSectionTemplate(
+        "comprension",
+        "Comprensión del requerimiento",
+        "Qué pide el comprador, con las cantidades, lugares y plazos de las bases.",
+    ),
+    TechnicalSectionTemplate(
+        "metodologia",
+        "Metodología",
+        "Cómo ejecutarás el servicio, paso a paso.",
+    ),
+    TechnicalSectionTemplate(
+        "plan_de_trabajo",
+        "Plan de trabajo y plazos",
+        "Etapas y plazos, dentro del plazo máximo de las bases.",
+    ),
+    TechnicalSectionTemplate(
+        "equipo",
+        "Equipo de trabajo",
+        "Cuántas personas participan, su cargo y sus certificaciones.",
+    ),
+    TechnicalSectionTemplate(
+        "otros",
+        "Otros requisitos de las bases",
+        "Otras exigencias de las bases que la oferta deba responder.",
+        optional=True,
+    ),
 )
 
 
@@ -239,6 +267,11 @@ class TechnicalSection(BaseModel):
     key: str
     title: str
     paragraphs: list[DraftParagraph] = Field(default_factory=list)
+    # `guidance` es la frase fija de la plantilla; `hint`, lo que la IA sugiere
+    # agregar para esta licitación. Son `None` en los borradores redactados
+    # antes de existir (viajan en el JSONB de `content`).
+    guidance: str | None = None
+    hint: str | None = None
 
 
 class TechnicalDocument(BaseModel):
@@ -273,6 +306,10 @@ class ProposalDraft(BaseModel):
     # La exigencia cuyo "No" tiene el borrador en pausa.
     paused_requirement_id: str | None = None
     requires_technical_document: bool = False
+    # Las bases mencionan un informe o documento técnico sin aclarar si va con
+    # la oferta o se entrega al ejecutar el servicio. Nunca a la vez que
+    # `requires_technical_document`. `None` en los borradores anteriores.
+    technical_document_ambiguous: bool | None = None
     technical_document_reason: str | None = None
     warnings: list[ProposalWarning] = Field(default_factory=list)
     discrepancy_decisions: list[DiscrepancyDecision] = Field(default_factory=list)
@@ -505,11 +542,21 @@ class ProposalDraft(BaseModel):
         self._tocar()
 
     def request_technical_document(self) -> None:
-        """La empresa pide el documento técnico aunque no se detectó en las bases."""
+        """La empresa pide el documento técnico aunque no se detectó en las bases.
+
+        Si las bases eran ambiguas, deja de serlo (lo decidió la empresa) y el
+        motivo conserva la frase citada de las bases. Si ya se exigía, no
+        cambia nada: pedirlo dos veces no debe borrar el motivo anterior.
+        """
+        if self.requires_technical_document:
+            return
+        if self.technical_document_ambiguous and self.technical_document_reason:
+            motivo = f"Lo pidió la empresa. {self.technical_document_reason}"
+        else:
+            motivo = "Lo pidió la empresa: no se detectó que las bases lo exijan."
         self.requires_technical_document = True
-        self.technical_document_reason = (
-            "Lo pidió la empresa: no se detectó que las bases lo exijan."
-        )
+        self.technical_document_ambiguous = False
+        self.technical_document_reason = motivo
         self._tocar()
 
     def mark_ready(self, content: DraftContent, instructions: str | None) -> None:

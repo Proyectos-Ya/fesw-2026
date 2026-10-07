@@ -148,7 +148,12 @@ def _documento_tecnico(
             ]
         secciones.append(
             TechnicalSection(
-                key=plantilla.key, title=plantilla.title, paragraphs=parrafos
+                key=plantilla.key,
+                title=plantilla.title,
+                paragraphs=parrafos,
+                guidance=plantilla.guidance,
+                # La IA puede sugerir qué agregar aunque no haya escrito texto.
+                hint=((redactada.hint or "").strip() or None) if redactada else None,
             )
         )
     return TechnicalDocument(sections=secciones)

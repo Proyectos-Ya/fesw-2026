@@ -740,3 +740,86 @@ async def test_un_error_de_red_que_no_es_timeout_no_se_reintenta():
             )
 
     assert post.call_count == 1
+
+
+# --- documento técnico ambiguo y sugerencias (plan 292, §2.8) -----------------
+
+
+def _instrucciones(post) -> str:
+    """Las instrucciones del sistema, sin los saltos de línea del prompt."""
+    texto = post.call_args.kwargs["json"]["contents"][0]["parts"][0]["text"]
+    return " ".join(texto.split())
+
+
+async def test_factibilidad_exige_el_motivo_y_si_el_documento_es_ambiguo():
+    ambiguo = {
+        **RESULTADO,
+        "requires_technical_document": False,
+        "technical_document_ambiguous": True,
+        "technical_document_reason": (
+            'Las bases dicen "Se debe entregar informe técnico y certificado '
+            'individual por cada equipo" sin aclarar si va con la oferta.'
+        ),
+    }
+
+    resultado, post = await _analizar(_respuesta(ambiguo))
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    propiedades = esquema["properties"]
+    assert propiedades["technical_document_reason"] == {"type": "STRING"}
+    assert propiedades["technical_document_ambiguous"] == {"type": "BOOLEAN"}
+    assert "technical_document_reason" in esquema["required"]
+    assert "technical_document_ambiguous" in esquema["required"]
+    assert resultado.technical_document_ambiguous is True
+    assert "informe técnico" in (resultado.technical_document_reason or "")
+
+
+async def test_factibilidad_sin_ambiguedad_queda_en_falso():
+    resultado, _ = await _analizar(_respuesta(RESULTADO))
+
+    assert resultado.technical_document_ambiguous is False
+
+
+async def test_factibilidad_trata_los_entregables_de_ejecucion_como_condicion():
+    _, post = await _analizar(_respuesta(RESULTADO))
+
+    instrucciones = _instrucciones(post)
+    assert "technical_document_ambiguous" in instrucciones
+    assert "al ejecutar o terminar el servicio" in instrucciones
+    assert "es una condicion" in instrucciones
+    assert "cita entre comillas" in instrucciones
+
+
+async def test_redaccion_pide_una_sugerencia_por_seccion_del_documento_tecnico():
+    con_tecnico = {
+        **REDACCION,
+        "technical_document": {
+            "equipo": {
+                "paragraphs": [],
+                "hint": "Las bases exigen personal certificado.",
+            },
+        },
+    }
+
+    resultado, post = await _redactar(
+        _respuesta(con_tecnico), include_technical_document=True
+    )
+
+    esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
+    seccion = esquema["properties"]["technical_document"]["properties"]["equipo"]
+    assert seccion["properties"]["hint"] == {"type": "STRING"}
+    assert seccion["required"] == ["paragraphs", "hint"]
+    # Las secciones del formulario no llevan sugerencia.
+    assert "hint" not in esquema["properties"]["offer_name"]["properties"]
+    tecnico = resultado.technical_document
+    assert tecnico is not None and tecnico.equipo is not None
+    assert tecnico.equipo.hint == "Las bases exigen personal certificado."
+
+
+async def test_redaccion_pide_secciones_breves_y_lo_de_las_bases_completo():
+    _, post = await _redactar(_respuesta(REDACCION), include_technical_document=True)
+
+    texto = _texto_del_prompt(post)
+    assert "2 o 3 frases como máximo" in texto
+    assert "se escribe completo" in texto
+    assert "hint:" in texto

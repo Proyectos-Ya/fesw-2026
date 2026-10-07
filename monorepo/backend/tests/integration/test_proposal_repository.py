@@ -15,6 +15,8 @@ from app.domain.entities.proposal import (
     DraftSource,
     ProposalDraft,
     Requirement,
+    TechnicalDocument,
+    TechnicalSection,
 )
 from app.infrastructure.repositories.proposal_model import ProposalDraftModel
 from app.infrastructure.repositories.sql_proposal_repository import (
@@ -227,6 +229,39 @@ async def test_guarda_y_lee_con_que_adjuntos_se_analizo(db_session):
     assert leido.mentions_attachments is True
 
 
+async def test_guarda_y_lee_si_el_documento_tecnico_es_ambiguo(db_session):
+    """`technical_document_ambiguous` y las sugerencias por sección (§2.8)."""
+    repo = SqlProposalDraftRepository(db_session)
+    supplier_id = await _empresa(db_session)
+    tender_id = await _licitacion(db_session)
+    borrador = _borrador(supplier_id, tender_id)
+    borrador.technical_document_ambiguous = True
+    borrador.technical_document_reason = 'Las bases dicen "informe técnico".'
+    borrador.content = DraftContent(
+        offer_name=DraftSection(),
+        offer_description=DraftSection(),
+        required_documents=DraftSection(),
+        technical_document=TechnicalDocument(
+            sections=[
+                TechnicalSection(
+                    key="equipo",
+                    title="Equipo de trabajo",
+                    guidance="Cuántas personas participan.",
+                    hint="Menciona la certificación de los técnicos.",
+                )
+            ]
+        ),
+    )
+
+    await repo.save(borrador)
+    db_session.expunge_all()
+    leido = await repo.get(supplier_id, tender_id)
+
+    assert leido is not None
+    assert leido.technical_document_ambiguous is True
+    assert leido.content == borrador.content
+
+
 async def test_un_borrador_anterior_guarda_null_de_sql(db_session):
     """Sin `none_as_null`, None quedaría como el JSON `null`."""
     from sqlalchemy import text
@@ -239,10 +274,11 @@ async def test_un_borrador_anterior_guarda_null_de_sql(db_session):
     fila = (
         await db_session.exec(
             text(
-                "SELECT analysis_documents IS NULL, mentions_attachments IS NULL "
+                "SELECT analysis_documents IS NULL, mentions_attachments IS NULL, "
+                "technical_document_ambiguous IS NULL "
                 "FROM proposal_drafts WHERE id = :id"
             ).bindparams(id=borrador.id)
         )
     ).one()
 
-    assert tuple(fila) == (True, True)
+    assert tuple(fila) == (True, True, True)
