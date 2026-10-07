@@ -15,7 +15,7 @@ export type MilestoneSource = "mercado_publico" | "ia_documento";
 /** `critico`: le quedan 5 días de calendario o menos y se destaca en rojo (criterio 9). */
 export type MilestoneUrgency = "vencido" | "critico" | "normal";
 
-export type CalendarProvider = "google";
+export type CalendarProvider = "google" | "outlook";
 
 export interface TenderMilestone {
   id: string;
@@ -64,10 +64,17 @@ export interface MilestoneList {
   extraction_status: MilestoneExtractionStatus;
 }
 
-export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google"];
+export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google", "outlook"];
 
 export const CALENDAR_PROVIDER_LABELS: Record<CalendarProvider, string> = {
   google: "Google Calendar",
+  outlook: "Outlook Calendar",
+};
+
+/** Quién pide la autorización y de qué cuenta: "te llevamos a Google", "tu cuenta de Microsoft". */
+export const CALENDAR_ACCOUNT_LABELS: Record<CalendarProvider, { vendor: string; account: string }> = {
+  google: { vendor: "Google", account: "tu cuenta de Google" },
+  outlook: { vendor: "Microsoft", account: "tu cuenta de Microsoft" },
 };
 
 export interface CalendarConnection {

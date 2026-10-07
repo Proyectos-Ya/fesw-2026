@@ -89,6 +89,17 @@ describe("MilestonesSection", () => {
     expect(screen.getByText("Sin hora exacta")).toBeInTheDocument();
   });
 
+  it("marca los hitos ya sincronizados en cada calendario", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ milestones: [buildMilestone({ synced_providers: ["google", "outlook"] })] }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByText("En Google Calendar")).toBeInTheDocument();
+    expect(screen.getByText("En Outlook Calendar")).toBeInTheDocument();
+  });
+
   it("marca los hitos ya sincronizados con Google Calendar", async () => {
     vi.mocked(service.getTenderMilestones).mockResolvedValue(
       buildMilestoneList({ milestones: [buildMilestone({ synced_providers: ["google"] })] }),
@@ -184,6 +195,53 @@ describe("MilestonesSection", () => {
     await user.click(within(alerta).getByRole("button", { name: "Reintentar" }));
 
     await waitFor(() => expect(filas()).toHaveLength(1));
+  });
+
+  describe("sincronización con Outlook Calendar", () => {
+    const AMBOS = [
+      ...CONECTADO,
+      { provider: "outlook" as const, connected: false, account_email: null, needs_reconnect: false },
+    ];
+
+    it("con los dos configurados ofrece sincronizar con cada uno", async () => {
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue(AMBOS);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      expect(await screen.findByRole("button", { name: /sincronizar con outlook calendar/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /sincronizar con google calendar/i })).toBeInTheDocument();
+    });
+
+    it("solo con Outlook configurado no ofrece Google", async () => {
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([AMBOS[1]]);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      expect(await screen.findByRole("button", { name: /sincronizar con outlook calendar/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /sincronizar con google calendar/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/te pediremos autorizar el acceso a tu Outlook Calendar/i)).toBeInTheDocument();
+    });
+
+    it("sincroniza los hitos elegidos con Outlook", async () => {
+      const user = userEvent.setup();
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([
+        { provider: "outlook" as const, connected: true, account_email: "u@outlook.com", needs_reconnect: false },
+      ]);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+      vi.mocked(calendarService.syncMilestones).mockResolvedValue({
+        results: [{ milestone_id: "m-1", synced: true }],
+        failed_count: 0,
+      });
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      await user.click(await screen.findByRole("checkbox", { name: /cierre de recepción de ofertas/i }));
+      await user.click(screen.getByRole("button", { name: /sincronizar con outlook calendar/i }));
+
+      expect(await screen.findByText("1 hito sincronizado con Outlook Calendar.")).toBeInTheDocument();
+      expect(calendarService.syncMilestones).toHaveBeenCalledWith("t-1", "outlook", ["m-1"], null);
+    });
   });
 
   describe("sincronización con Google Calendar", () => {

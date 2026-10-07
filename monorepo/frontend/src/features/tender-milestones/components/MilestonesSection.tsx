@@ -10,6 +10,7 @@ import { useCalendarSync } from "../hooks/useCalendarSync";
 import { useMilestoneReminders } from "../hooks/useMilestoneReminders";
 import { useTenderMilestones } from "../hooks/useTenderMilestones";
 import {
+  CALENDAR_PROVIDER_LABELS,
   MILESTONE_KIND_LABELS,
   MILESTONE_SOURCE_LABELS,
   REMINDER_DAYS_OPTIONS,
@@ -36,7 +37,12 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
     useTenderMilestones(tenderId, refreshKey);
   const milestones = state.status === "ready" ? state.data.milestones : NO_MILESTONES;
   const onSynced = useCallback(() => void refresh(), [refresh]);
-  const calendar = useCalendarSync({ tenderId, milestones, onSynced });
+  // Un hook por proveedor, en orden fijo: así el orden de los hooks no cambia
+  // entre renders. Cada uno se ofrece solo si su proveedor está configurado.
+  const google = useCalendarSync({ tenderId, milestones, onSynced, provider: "google" });
+  const outlook = useCalendarSync({ tenderId, milestones, onSynced, provider: "outlook" });
+  const calendars = [google, outlook].filter((c) => c.available);
+  const askingTime = calendars.find((c) => c.state.status === "needsTime");
   const reminders = useMilestoneReminders(tenderId);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -51,7 +57,8 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
   const allPendingSelected = pending.length > 0 && pending.every((m) => selected.has(m.id));
   const toggleAll = () =>
     setSelected(allPendingSelected ? new Set() : new Set(pending.map((m) => m.id)));
-  const selectable = calendar.available;
+  const selectable = calendars.length > 0;
+  const selectedIds = () => milestones.filter((m) => selected.has(m.id)).map((m) => m.id);
 
   if (state.status === "loading") {
     return (
@@ -121,13 +128,14 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
         </p>
       )}
 
-      {calendar.available && (
+      {calendars.map((calendar) => (
         <CalendarSyncBar
+          key={calendar.provider}
           calendar={calendar}
           selectedCount={selected.size}
-          onSync={() => void calendar.sync(milestones.filter((m) => selected.has(m.id)).map((m) => m.id))}
+          onSync={() => void calendar.sync(selectedIds())}
         />
-      )}
+      ))}
 
       {milestones.length === 0 ? (
         <p className="text-sm italic text-text-subtle">Esta licitación todavía no tiene hitos.</p>
@@ -173,12 +181,12 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
         </div>
       )}
 
-      {calendar.state.status === "needsTime" && (
+      {askingTime?.state.status === "needsTime" && (
         <DefaultTimeDialog
           open
-          count={calendar.state.missingCount}
-          onConfirm={(time) => void calendar.confirmTime(time)}
-          onCancel={calendar.cancelTime}
+          count={askingTime.state.missingCount}
+          onConfirm={(time) => void askingTime.confirmTime(time)}
+          onCancel={askingTime.cancelTime}
         />
       )}
     </div>
@@ -254,10 +262,14 @@ function MilestoneRow({
         </Badge>
       </td>
       <td className="py-3 pr-4">
-        {milestone.synced_providers.includes("google") ? (
-          <Badge tone="teal" iconLeft={<Icon name="calendar-check" size={12} />}>
-            En Google Calendar
-          </Badge>
+        {milestone.synced_providers.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {milestone.synced_providers.map((provider) => (
+              <Badge key={provider} tone="teal" iconLeft={<Icon name="calendar-check" size={12} />}>
+                En {CALENDAR_PROVIDER_LABELS[provider]}
+              </Badge>
+            ))}
+          </div>
         ) : (
           <span className="text-xs text-text-subtle">—</span>
         )}

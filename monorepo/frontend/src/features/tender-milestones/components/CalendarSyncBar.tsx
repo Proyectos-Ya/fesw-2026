@@ -4,6 +4,7 @@ import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 
 import type { useCalendarSync } from "../hooks/useCalendarSync";
+import { CALENDAR_ACCOUNT_LABELS, CALENDAR_PROVIDER_LABELS } from "../types";
 import { SyncErrorAlert } from "./SyncErrorAlert";
 
 interface CalendarSyncBarProps {
@@ -12,14 +13,14 @@ interface CalendarSyncBarProps {
   onSync: () => void;
 }
 
-function successMessage(count: number): string {
-  return count === 1
-    ? "1 hito sincronizado con Google Calendar."
-    : `${count} hitos sincronizados con Google Calendar.`;
+function successMessage(count: number, label: string): string {
+  return count === 1 ? `1 hito sincronizado con ${label}.` : `${count} hitos sincronizados con ${label}.`;
 }
 
 export function CalendarSyncBar({ calendar, selectedCount, onSync }: CalendarSyncBarProps) {
-  const { state, connection } = calendar;
+  const { state, connection, provider } = calendar;
+  const label = CALENDAR_PROVIDER_LABELS[provider];
+  const { vendor, account } = CALENDAR_ACCOUNT_LABELS[provider];
   const busy = state.status === "syncing" || state.status === "redirecting";
 
   return (
@@ -28,7 +29,7 @@ export function CalendarSyncBar({ calendar, selectedCount, onSync }: CalendarSyn
         <div className="text-xs text-text-muted">
           {connection?.connected ? (
             <span className="inline-flex flex-wrap items-center gap-1">
-              <span>Conectado como {connection.account_email ?? "tu cuenta de Google"}</span>
+              <span>Conectado como {connection.account_email ?? account}</span>
               <span aria-hidden="true">·</span>
               <button
                 type="button"
@@ -39,9 +40,9 @@ export function CalendarSyncBar({ calendar, selectedCount, onSync }: CalendarSyn
               </button>
             </span>
           ) : connection?.needs_reconnect ? (
-            "Tu acceso a Google Calendar expiró: al sincronizar te pediremos autorizarlo de nuevo."
+            `Tu acceso a ${label} expiró: al sincronizar te pediremos autorizarlo de nuevo.`
           ) : (
-            "Elige los hitos y te pediremos autorizar el acceso a tu Google Calendar."
+            `Elige los hitos y te pediremos autorizar el acceso a tu ${label}.`
           )}
         </div>
         <Button
@@ -51,29 +52,31 @@ export function CalendarSyncBar({ calendar, selectedCount, onSync }: CalendarSyn
           className="shrink-0"
         >
           <Icon name="calendar-plus" size={14} />
-          Sincronizar con Google Calendar{selectedCount > 0 ? ` (${selectedCount})` : ""}
+          Sincronizar con {label}
+          {selectedCount > 0 ? ` (${selectedCount})` : ""}
         </Button>
       </div>
 
       {state.status === "syncing" && (
         <p role="status" className="text-xs text-text-muted">
-          Sincronizando con Google Calendar…
+          Sincronizando con {label}…
         </p>
       )}
       {state.status === "redirecting" && (
         <p role="status" className="text-xs text-text-muted">
-          Te estamos llevando a Google para autorizar el acceso…
+          Te estamos llevando a {vendor} para autorizar el acceso…
         </p>
       )}
       {state.status === "success" && (
         <p role="status" className="text-xs font-semibold text-success">
-          {successMessage(state.count)}
+          {successMessage(state.count, label)}
         </p>
       )}
       {state.status === "error" && (
         <SyncErrorAlert
           message={state.message}
           reconnect={state.reconnect}
+          providerLabel={label}
           onRetry={() => void calendar.retry()}
         />
       )}
