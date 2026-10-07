@@ -244,6 +244,10 @@ class Settings(BaseSettings):
     run_milestone_refresh: bool = True
     milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
+    # Auto-archivado diario del tablero Kanban (HdU 10, CA4). Barrido que
+    # mueve a historial las tarjetas con más de 90 días en el tablero.
+    run_kanban_auto_archive: bool = True
+
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
     # sin la variable no arranque en silencio ingestando una fracción de los datos.

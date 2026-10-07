@@ -63,3 +63,24 @@ class KanbanCardResponse(BaseModel):
     position: int
     created_at: UtcDateTime
     updated_at: UtcDateTime
+    board_entered_at: UtcDateTime
+    archived_at: UtcDateTime | None = None
+    archived_reason: str | None = None
+
+
+class KanbanArchiveResponse(BaseModel):
+    """Fila del panel de historial (HdU 10, CA4).
+
+    Trae lo que el panel muestra: datos de la licitación, nombre de la
+    última columna, cuándo entró, cuándo salió y la razón.
+    """
+
+    id: UUID
+    tender_id: UUID
+    tender_title: str | None = None
+    tender_external_id: str | None = None
+    column_id: UUID
+    column_name: str | None = None
+    board_entered_at: UtcDateTime
+    archived_at: UtcDateTime
+    archived_reason: str

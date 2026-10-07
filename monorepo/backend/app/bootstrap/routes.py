@@ -33,12 +33,15 @@ from app.bootstrap.exports import (
 )
 from app.bootstrap.kanban import (
     get_add_tender_to_board_use_case,
+    get_archive_tender_from_board_use_case,
     get_create_kanban_column_use_case,
     get_delete_kanban_column_use_case,
+    get_list_archived_tenders_use_case,
     get_list_kanban_cards_use_case,
     get_list_kanban_columns_use_case,
     get_move_kanban_card_use_case,
     get_remove_tender_from_board_use_case,
+    get_restore_tender_use_case,
     get_update_kanban_column_use_case,
 )
 from app.bootstrap.matching import (
@@ -231,6 +234,9 @@ def register_routes(app: FastAPI) -> None:
             get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
             get_move_kanban_card_use_case=get_move_kanban_card_use_case,
             get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
+            get_archive_tender_from_board_use_case=get_archive_tender_from_board_use_case,
+            get_list_archived_tenders_use_case=get_list_archived_tenders_use_case,
+            get_restore_tender_use_case=get_restore_tender_use_case,
         )
     )
     app.include_router(

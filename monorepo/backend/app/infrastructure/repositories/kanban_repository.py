@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlmodel import select
@@ -83,8 +84,13 @@ class KanbanColumnRepository(IKanbanColumnRepository):
         return True
 
     async def count_cards(self, column_id: UUID) -> int:
+        # Las archivadas no aparecen en el tablero activo, así que tampoco
+        # cuentan para el contador de la columna (HdU 10, CA4).
         result = await self.session.exec(
-            select(KanbanCardModel).where(KanbanCardModel.column_id == column_id)
+            select(KanbanCardModel).where(
+                KanbanCardModel.column_id == column_id,
+                KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
+            )
         )
         return len(result.all())
 
@@ -102,6 +108,9 @@ class KanbanCardRepository(IKanbanCardRepository):
             position=model.position,
             created_at=model.created_at,
             updated_at=model.updated_at,
+            board_entered_at=model.board_entered_at,
+            archived_at=model.archived_at,
+            archived_reason=model.archived_reason,
         )
 
     def _to_model(self, entity: KanbanCard) -> KanbanCardModel:
@@ -113,19 +122,40 @@ class KanbanCardRepository(IKanbanCardRepository):
             position=entity.position,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
+            board_entered_at=entity.board_entered_at,
+            archived_at=entity.archived_at,
+            archived_reason=entity.archived_reason,
         )
 
     async def get_by_user_id(self, user_id: UUID) -> list[KanbanCard]:
+        # Oculta las archivadas: el tablero activo nunca las muestra (CA4).
         result = await self.session.exec(
-            select(KanbanCardModel).where(KanbanCardModel.user_id == user_id)
+            select(KanbanCardModel).where(
+                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
+            )
         )
         return [self._to_entity(m) for m in result.all()]
 
     async def get(self, user_id: UUID, tender_id: UUID) -> KanbanCard | None:
+        # Devuelve solo la tarjeta activa. Si la licitación está archivada,
+        # el flujo de "agregar al tablero" la trata como ausente y crea una
+        # nueva (el índice único parcial lo permite).
         result = await self.session.exec(
             select(KanbanCardModel).where(
                 KanbanCardModel.user_id == user_id,
                 KanbanCardModel.tender_id == tender_id,
+                KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
+            )
+        )
+        model = result.first()
+        return self._to_entity(model) if model else None
+
+    async def get_by_id(self, card_id: UUID, user_id: UUID) -> KanbanCard | None:
+        result = await self.session.exec(
+            select(KanbanCardModel).where(
+                KanbanCardModel.id == card_id,
+                KanbanCardModel.user_id == user_id,
             )
         )
         model = result.first()
@@ -145,15 +175,27 @@ class KanbanCardRepository(IKanbanCardRepository):
         model.column_id = card.column_id
         model.position = card.position
         model.updated_at = card.updated_at
+        # El soft-delete y la restauración viajan por `update`: lo que mueve
+        # entre tablero activo e historial es `archived_at`/`archived_reason`.
+        # `board_entered_at` también se actualiza: solo cambia al restaurar,
+        # para que el reloj de 90 días empiece de nuevo (regla de negocio
+        # discutida en el plan).
+        model.board_entered_at = card.board_entered_at
+        model.archived_at = card.archived_at
+        model.archived_reason = card.archived_reason
         self.session.add(model)
         await self.session.commit()
         return self._to_entity(model)
 
     async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
+        # Borra la fila activa (si existe). Con soft-delete, los flujos de
+        # usuario llegan a archive/restore; este método sigue acá para quitar
+        # la fila sin dejar historial, por si lo pide otro flujo.
         result = await self.session.exec(
             select(KanbanCardModel).where(
                 KanbanCardModel.user_id == user_id,
                 KanbanCardModel.tender_id == tender_id,
+                KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
             )
         )
         model = result.first()
@@ -162,3 +204,50 @@ class KanbanCardRepository(IKanbanCardRepository):
         await self.session.delete(model)
         await self.session.commit()
         return True
+
+    async def list_archived(self, user_id: UUID) -> list[KanbanCard]:
+        result = await self.session.exec(
+            select(KanbanCardModel)
+            .where(
+                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.archived_at.is_not(None),  # type: ignore[union-attr]
+            )
+            .order_by(KanbanCardModel.archived_at.desc())  # type: ignore[union-attr]
+        )
+        return [self._to_entity(m) for m in result.all()]
+
+    async def list_archived_with_context(
+        self, user_id: UUID
+    ) -> list[tuple[KanbanCard, str, str, str]]:
+        # Importes locales para no forzar cargas cruzadas entre repositorios.
+        from app.infrastructure.repositories.tender_model import TenderModel
+
+        result = await self.session.exec(
+            select(KanbanCardModel, KanbanColumnModel, TenderModel)
+            .join(
+                KanbanColumnModel,
+                KanbanColumnModel.id == KanbanCardModel.column_id,
+            )
+            .join(TenderModel, TenderModel.id == KanbanCardModel.tender_id)
+            .where(
+                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.archived_at.is_not(None),  # type: ignore[union-attr]
+            )
+            .order_by(KanbanCardModel.archived_at.desc())  # type: ignore[union-attr]
+        )
+        rows = result.all()
+        return [
+            (self._to_entity(card), column.name, tender.code, tender.name)
+            for (card, column, tender) in rows
+        ]
+
+    async def list_candidates_for_auto_archive(
+        self, cutoff: datetime
+    ) -> list[KanbanCard]:
+        result = await self.session.exec(
+            select(KanbanCardModel).where(
+                KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
+                KanbanCardModel.board_entered_at < cutoff,
+            )
+        )
+        return [self._to_entity(m) for m in result.all()]
