@@ -1,8 +1,8 @@
 # HU-16 — Extraer calendario de hitos y sincronizar con agenda personal
 
 Rama `feat/HU-16-extraccion-hitos-calendario`, sobre `develop` (`776007c`). Alcance de esta
-entrega: **Google Calendar**. Outlook queda pendiente (ver [Limitaciones](#limitaciones)); el
-diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
+entrega: **Google Calendar** y **Outlook Calendar** (este último en la rama
+`feat/hu-16-outlook-calendar`, como un proveedor más y sin migraciones nuevas).
 
 > Como representante de empresa, necesito que el sistema extraiga automáticamente el
 > calendario de hitos de las bases guardadas y me permita sincronizarlo con mi calendario
@@ -20,11 +20,13 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
 3. Los plazos a **5 días de calendario o menos** (criterio 9) se destacan en rojo y con la
    etiqueta entre exclamaciones (*¡Vence en 5 días!*, *¡Vence mañana!*, *¡Vence hoy!*); el
    resto va en gris (*Vence en 8 días*).
-4. Elegir los hitos y pulsar **Sincronizar con Google Calendar**:
+4. Elegir los hitos y pulsar **Sincronizar con Google Calendar** o **Sincronizar con Outlook
+   Calendar** (aparece una barra por cada calendario configurado):
    - si algún hito no tiene hora exacta, se pide confirmar una (propone 09:00);
-   - la primera vez, lleva a Google a autorizar el acceso y, al volver, termina la
-     sincronización pedida;
-   - los hitos sincronizados quedan marcados **En Google Calendar**.
+   - la primera vez, lleva a Google o a Microsoft a autorizar el acceso y, al volver, termina
+     la sincronización pedida;
+   - los hitos sincronizados quedan marcados **En Google Calendar** / **En Outlook
+     Calendar**; un hito puede estar en los dos.
 5. Si Mercado Público mueve la publicación o el cierre, el evento se actualiza solo y llega
    un aviso **Fecha modificada** en `/alertas` y por correo.
 6. En la columna **Recordatorio** de cada hito se elige la anticipación: *Sin recordatorio*,
@@ -65,6 +67,31 @@ disponibles y el botón de sincronizar no aparece. Para activarlo:
    El redirect tiene que coincidir **exactamente** con `APP_BASE_URL` +
    `/calendario/callback/google`, que es lo que manda el backend.
 
+### 1b. App de Outlook en Microsoft Entra ID
+
+Opcional, igual que Google: sin estas variables la barra de Outlook no aparece.
+
+1. En [entra.microsoft.com](https://entra.microsoft.com) (o portal.azure.com → *Microsoft
+   Entra ID*): *Applications* → *App registrations* → *New registration*.
+   - **Name:** `Chiripa (local)`.
+   - **Supported account types:** *Accounts in any organizational directory (Any Microsoft
+     Entra ID tenant - Multitenant) and personal Microsoft accounts*. Así sirve para
+     Outlook.com, Hotmail y cuentas de trabajo o universidad.
+   - **Redirect URI:** plataforma **Web**, `http://localhost:3000/calendario/callback/outlook`.
+2. En *Overview*, el **Application (client) ID** es `MICROSOFT_CALENDAR_CLIENT_ID`.
+3. *Certificates & secrets* → *New client secret* (180 días). Copiar la columna **Value**, no
+   la *Secret ID*; solo se muestra una vez. Es `MICROSOFT_CALENDAR_CLIENT_SECRET`. Anotar la
+   fecha de vencimiento: ese día hay que crear otro.
+4. *API permissions* → *Add a permission* → *Microsoft Graph* → *Delegated*:
+   `Calendars.ReadWrite`, `offline_access`, `openid` y `email` (`User.Read` ya viene). Con
+   cuentas personales no hace falta *Grant admin consent*.
+5. Para producción: en *Authentication*, **agregar** (sin quitar la local) la redirect
+   `https://<dominio-del-frontend>/calendario/callback/outlook`. Fuera de `localhost` Azure
+   exige `https`, y tiene que coincidir con `APP_BASE_URL` + `/calendario/callback/outlook`.
+
+Microsoft no tiene lista de usuarios de prueba: cualquier cuenta Microsoft puede autorizar y
+verá un aviso de "editor no verificado", que es normal en desarrollo.
+
 ### 2. Llave de cifrado de los tokens
 
 ```bash
@@ -76,6 +103,9 @@ docker run --rm python:3.12-slim sh -c "pip install -q cryptography && python -c
 ```bash
 GOOGLE_CALENDAR_CLIENT_ID=<id>.apps.googleusercontent.com
 GOOGLE_CALENDAR_CLIENT_SECRET=<secreto>
+MICROSOFT_CALENDAR_CLIENT_ID=<Application (client) ID>
+MICROSOFT_CALENDAR_CLIENT_SECRET=<Value del secreto>
+MICROSOFT_CALENDAR_TENANT=common
 TOKEN_ENCRYPTION_KEY=<llave generada>
 APP_BASE_URL=http://localhost:3000
 # Opcionales
@@ -83,7 +113,8 @@ RUN_MILESTONE_REFRESH=true
 MILESTONE_REFRESH_INTERVAL_SECONDS=21600
 ```
 
-Con el ID puesto y sin secreto o sin llave, la API **no arranca** y dice cuál falta; una
+Con el ID de cualquiera de los dos puesto y sin su secreto o sin llave, la API **no
+arranca** y dice cuál falta (la llave es una sola para ambos); una
 llave con formato inválido también corta el arranque. El secreto y la llave nunca se
 commitean. Para rotar la llave: `TOKEN_ENCRYPTION_KEY=nueva,anterior` (la primera cifra,
 todas descifran).
@@ -188,7 +219,7 @@ Migraciones, todas compatibles hacia atrás y en una sola cabeza:
 | # | Criterio | Evidencia automatizada | Prueba manual |
 |---|---|---|---|
 | 1 | La IA extrae hitos a una tabla | `test_extract_tender_milestones.py`, `test_gemini_milestone_extraction_service.py`, `test_milestone_extraction_background.py`, `test_upload_tender_chat_document_use_case.py`, `MilestonesSection.test.tsx`, `useTenderMilestones.test.ts` | Subir las bases en el asistente y esperar, sin pulsar nada |
-| 2 | "Sincronizar" redirige a la autenticación del proveedor | `test_calendar_authorization.py`, `useCalendarSync.test.ts`, `CalendarOAuthCallback.test.tsx` | Sincronizar sin conexión previa |
+| 2 | "Sincronizar" redirige a la autenticación del proveedor | `test_calendar_authorization.py`, `test_outlook_calendar_client.py`, `test_calendar_providers_builder.py`, `test_config_microsoft_calendar.py`, `useCalendarSync.test.ts`, `calendarReturn.test.ts`, `CalendarOAuthCallback.test.tsx`, `MilestonesSection.test.tsx` | Sincronizar sin conexión previa, con Google y con Outlook |
 | 3 | Evento con título, fecha exacta y enlace de retorno | `test_sync_milestones.py`, `test_google_calendar_client.py` (payload verificado) | Abrir el evento en Google Calendar |
 | 4 | Cambio en Mercado Público → evento actualizado + "Fecha modificada" | `test_refresh_synced_tender_dates.py`, `test_dispatch_pending_deliveries.py`, `NotificationPanel.test.tsx` | Ver abajo |
 | 5 | Fechas normalizadas a formato estándar | `test_milestone_date_normalizer.py` | — |
@@ -274,9 +305,15 @@ pnpm lint
 
 ## Limitaciones
 
-- **Outlook** no está incluido. Sumarlo es un adaptador de `ICalendarProviderClient` con
-  Microsoft Graph (tenant `common`), su entrada en `build_calendar_providers` y las variables
-  `MICROSOFT_CALENDAR_*`; las tablas ya tienen la columna `provider`.
+- **Outlook:**
+  - Graph no tiene un permiso más acotado que `Calendars.ReadWrite` para crear eventos.
+  - Admite un solo recordatorio por evento: se usa el más anticipado (1 día), en vez de los
+    dos que crea Google (1 día y 1 hora).
+  - **Desconectar** borra la conexión en Chiripa, pero Microsoft no permite revocar el token
+    desde la app. El permiso se quita en la cuenta Microsoft: account.live.com/consent para
+    cuentas personales, myapps.microsoft.com para las de trabajo.
+  - El secreto de la app vence (180 días o lo elegido): hay que renovarlo antes en Azure y
+    en las variables.
 - Mientras la app de Google esté en **Testing**, los refresh tokens vencen a los 7 días: la
   app lo detecta y pide reconectar. En producción hay que publicar (y verificar) la app.
 - Los documentos los sube el usuario al asistente: la API de Compra Ágil no entrega las
