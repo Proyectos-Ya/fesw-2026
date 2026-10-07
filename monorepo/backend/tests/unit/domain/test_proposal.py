@@ -6,6 +6,8 @@ PAUSED ──continuar con advertencia──▶ FEASIBILITY
 PAUSED ──corregir la respuesta a "Sí"──▶ FEASIBILITY
 PAUSED ──detener──▶ STOPPED ──reanudar──▶ FEASIBILITY
 FEASIBILITY ──sin pendientes + generar──▶ READY
+READY ──responder sin bloquear la redacción──▶ READY
+READY ──"No" a exigencia excluyente──▶ PAUSED
 ```
 """
 
@@ -23,6 +25,8 @@ from app.domain.entities.proposal import (
     Requirement,
     TechnicalDocument,
     TechnicalSection,
+    es_declaracion_de_habilidad,
+    perfil_cubre,
     render_placeholders,
 )
 from app.domain.errors.proposal_errors import InvalidProposalTransition
@@ -148,10 +152,9 @@ class TestResponder:
         assert borrador.status == "FEASIBILITY"
         assert len(borrador.pending_requirements()) == 2
 
-    @pytest.mark.parametrize("estado", ["STOPPED", "READY"])
-    def test_detenido_o_listo_no_se_responde(self, estado):
+    def test_detenido_no_se_responde(self):
         borrador = _borrador()
-        borrador.status = estado
+        borrador.status = "STOPPED"
 
         with pytest.raises(InvalidProposalTransition):
             borrador.record_answer(SEC_Q, "afirmativa")
@@ -321,6 +324,18 @@ class TestReanudar:
 
         assert not borrador.can_generate()
 
+    def test_responder_si_a_la_detenida_habilita_la_redaccion(self):
+        """Tras detener y reanudar, la excluyente detenida se puede responder de nuevo."""
+        borrador = self._detenido()
+        borrador.resume()
+        borrador.record_answer(VIALES_Q, "afirmativa")
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert _requisito(borrador, "req-sec").status == "cumple"
+        assert borrador.discrepancy_decisions == []
+        assert borrador.can_generate()
+
     def test_un_nuevo_no_vuelve_a_pausar(self):
         borrador = self._detenido()
         borrador.resume()
@@ -469,6 +484,19 @@ class TestPlantillaDelDocumentoTecnico:
         )
         assert documento.sections[0].title == "Metodología"
 
+    def test_cada_seccion_trae_una_sugerencia_fija(self):
+        for plantilla in TECHNICAL_SECTIONS:
+            assert plantilla.guidance.strip()
+            assert "\u2014" not in plantilla.guidance
+
+    def test_una_seccion_guardada_antes_no_tiene_sugerencias(self):
+        seccion = TechnicalSection.model_validate(
+            {"key": "metodologia", "title": "Metodología", "paragraphs": []}
+        )
+
+        assert seccion.guidance is None
+        assert seccion.hint is None
+
 
 class TestPreguntasSugeridas:
     """Preguntas para fortalecer la oferta: no vienen de una exigencia de las bases."""
@@ -511,6 +539,30 @@ class TestDocumentoTecnicoAPedido:
         assert borrador.requires_technical_document is True
         assert "no se detectó" in (borrador.technical_document_reason or "")
 
+    def test_si_era_ambiguo_deja_de_serlo_y_conserva_la_cita(self):
+        cita = 'Las bases dicen "Se debe entregar informe técnico" sin aclarar.'
+        borrador = _borrador(
+            technical_document_ambiguous=True, technical_document_reason=cita
+        )
+
+        borrador.request_technical_document()
+
+        assert borrador.requires_technical_document is True
+        assert borrador.technical_document_ambiguous is False
+        assert borrador.technical_document_reason == f"Lo pidió la empresa. {cita}"
+
+    def test_pedirlo_otra_vez_no_cambia_el_motivo(self):
+        borrador = _borrador(
+            requires_technical_document=True,
+            technical_document_reason="Las bases piden una memoria técnica.",
+        )
+
+        borrador.request_technical_document()
+
+        assert borrador.technical_document_reason == (
+            "Las bases piden una memoria técnica."
+        )
+
 
 def _listo() -> ProposalDraft:
     borrador = _borrador()
@@ -518,6 +570,66 @@ def _listo() -> ProposalDraft:
     borrador.record_answer(VIALES_Q, "afirmativa")
     borrador.mark_ready(_contenido(), instructions=None)
     return borrador
+
+
+class TestCambiarRespuestaConElBorradorListo:
+    """Plan 292, §2.7 B: la empresa corrige una respuesta ya usada al redactar."""
+
+    def test_sin_bloquear_la_redaccion_sigue_listo_y_no_toca_el_texto(self):
+        borrador = _listo()
+        contenido = borrador.content
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert _requisito(borrador, "req-viales").status == "no_cumple"
+        assert borrador.status == "READY"
+        assert borrador.content == contenido
+        assert borrador.can_generate()
+
+    def test_un_no_a_una_excluyente_pausa(self):
+        borrador = _listo()
+
+        borrador.record_answer(SEC_Q, "negativa")
+
+        assert borrador.status == "PAUSED"
+        assert borrador.paused_requirement_id == "req-sec"
+        # El texto anterior se conserva hasta que se vuelva a redactar.
+        assert borrador.content is not None
+
+    def test_con_preguntas_pendientes_vuelve_a_factibilidad(self):
+        borrador = _borrador()
+        borrador.record_answer(VIALES_Q, "afirmativa")
+        # Un borrador listo con una pendiente no sale de las transiciones; se
+        # fuerza para cubrir la rama.
+        borrador.status = "READY"
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.status == "FEASIBILITY"
+        assert not borrador.can_generate()
+
+    def test_cambiar_una_excluyente_aceptada_borra_la_advertencia(self):
+        borrador = _borrador()
+        borrador.record_answer(SEC_Q, "negativa")
+        borrador.decide("continue", uuid4())
+        borrador.record_answer(VIALES_Q, "afirmativa")
+        borrador.mark_ready(_contenido(), instructions=None)
+
+        borrador.record_answer(SEC_Q, "afirmativa")
+
+        assert borrador.status == "READY"
+        assert borrador.warnings == []
+
+    def test_la_respuesta_posterior_a_la_redaccion_se_informa(self):
+        borrador = _listo()
+        assert borrador.content is not None
+        despues = borrador.content.generated_at + timedelta(minutes=1)
+
+        borrador.record_answer(VIALES_Q, "negativa")
+
+        assert borrador.changed_answers(
+            {SEC_Q: ("afirmativa", None), VIALES_Q: ("negativa", despues)}
+        ) == ["req-viales"]
 
 
 class TestFechaDeRedaccion:
@@ -629,3 +741,82 @@ class TestRespuestasCambiadas:
 
         with pytest.raises(InvalidProposalTransition):
             borrador.sync_answers({SEC_Q: "afirmativa"})
+
+
+class TestCoberturaDelPerfil:
+    """Qué exigencias puede cubrir un dato del perfil (plan 292, §2.1).
+
+    El perfil genérico (descripción, rubro, años) no prueba una experiencia ni
+    una certificación concreta: esas se preguntan.
+    """
+
+    @pytest.mark.parametrize(
+        "item_id",
+        ["perfil:descripcion", "perfil:sector:obras", "perfil:anios-experiencia"],
+    )
+    @pytest.mark.parametrize("kind", ["experiencia", "certificacion"])
+    def test_el_perfil_generico_no_cubre_experiencia_ni_certificacion(
+        self, item_id, kind
+    ):
+        assert perfil_cubre(kind, item_id) is False
+
+    @pytest.mark.parametrize(
+        "item_id",
+        ["perfil:descripcion", "perfil:sector:obras", "perfil:anios-experiencia"],
+    )
+    @pytest.mark.parametrize("kind", ["disponibilidad", "otro"])
+    def test_el_perfil_generico_cubre_lo_demas(self, item_id, kind):
+        assert perfil_cubre(kind, item_id) is True
+
+    def test_una_certificacion_cubre_solo_una_certificacion(self):
+        item_id = "perfil:certificacion:iso-9001"
+        assert perfil_cubre("certificacion", item_id) is True
+        assert perfil_cubre("experiencia", item_id) is False
+        assert perfil_cubre("disponibilidad", item_id) is False
+        assert perfil_cubre("otro", item_id) is False
+
+    def test_una_region_cubre_solo_la_disponibilidad(self):
+        item_id = "perfil:region:valparaiso"
+        assert perfil_cubre("disponibilidad", item_id) is True
+        assert perfil_cubre("certificacion", item_id) is False
+        assert perfil_cubre("experiencia", item_id) is False
+        assert perfil_cubre("otro", item_id) is False
+
+    @pytest.mark.parametrize(
+        "item_id", [f"capacidad:{uuid4()}", f"evidencia:{uuid4()}"]
+    )
+    @pytest.mark.parametrize(
+        "kind", ["certificacion", "experiencia", "disponibilidad", "otro"]
+    )
+    def test_respuestas_y_proyectos_cubren_como_antes(self, item_id, kind):
+        assert perfil_cubre(kind, item_id) is True
+
+
+class TestConQueSeAnalizo:
+    def test_un_borrador_anterior_no_sabe_con_que_se_analizo(self):
+        borrador = _borrador()
+
+        assert borrador.analysis_documents is None
+        assert borrador.mentions_attachments is None
+        assert borrador.technical_document_ambiguous is None
+
+
+class TestDeclaracionDeHabilidad:
+    """La Declaración Jurada de Habilidad se acepta al enviar, no se adjunta."""
+
+    @pytest.mark.parametrize(
+        "texto",
+        [
+            "Declaración Jurada de Habilidad",
+            "declaracion jurada de habilidad para contratar con el Estado",
+            "Adjuntar DECLARACIÓN JURADA DE HABILIDAD firmada",
+        ],
+    )
+    def test_reconoce_la_declaracion(self, texto):
+        assert es_declaracion_de_habilidad(texto)
+
+    @pytest.mark.parametrize(
+        "texto", ["Declaración jurada simple", "Cotización formal", "Formulario"]
+    )
+    def test_no_confunde_otros_documentos(self, texto):
+        assert not es_declaracion_de_habilidad(texto)

@@ -7,7 +7,8 @@ que las advertencias, que se ven allí.
 
 Estructura: título "Documento técnico", una línea con la oferta y la licitación,
 y un H2 por cada sección de la plantilla fija. Los vacíos van resaltados y
-seguidos de un bloque "Revisar" sombreado que dice qué completar.
+seguidos de un bloque "Revisar" sombreado que dice qué completar y, si la
+sección la tiene, una sugerencia de qué poner (plan 292, §2.8).
 
 Las fuentes de cada párrafo **no** se exportan: sirven para revisar en Chiripa,
 pero el archivo es el que la empresa termina enviando al comprador.
@@ -61,12 +62,22 @@ def _texto_con_vacios(parrafo: Paragraph, texto: str) -> None:
 
 
 def _parrafo(
-    documento: DocumentoWord, parrafo: DraftParagraph, estilo: str | None = None
+    documento: DocumentoWord,
+    parrafo: DraftParagraph,
+    sugerencia: str | None = None,
 ) -> None:
-    salida = documento.add_paragraph(style=estilo)
+    """Un párrafo y, si tiene vacíos, su bloque "Revisar".
+
+    La sugerencia de la sección solo acompaña a un vacío: un párrafo completo
+    no la muestra, porque el Word termina en manos del comprador.
+    """
+    salida = documento.add_paragraph()
     _texto_con_vacios(salida, parrafo.text)
     if parrafo.placeholders:
-        _revisar(documento, f"completar {', '.join(parrafo.placeholders)}.")
+        texto = f"completar {', '.join(parrafo.placeholders)}."
+        if sugerencia:
+            texto = f"{texto} Sugerencia: {sugerencia}"
+        _revisar(documento, texto)
 
 
 class DocxProposalExporter(IProposalExporter):
@@ -89,8 +100,10 @@ class DocxProposalExporter(IProposalExporter):
 
         for seccion in contenido.technical_document.sections:
             documento.add_heading(seccion.title, level=2)
+            # La de la IA es específica de la licitación; la fija, el respaldo.
+            sugerencia = seccion.hint or seccion.guidance
             for parrafo in seccion.paragraphs:
-                _parrafo(documento, parrafo)
+                _parrafo(documento, parrafo, sugerencia)
 
         salida = BytesIO()
         documento.save(salida)

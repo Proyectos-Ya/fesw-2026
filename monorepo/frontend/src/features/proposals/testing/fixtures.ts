@@ -54,6 +54,27 @@ export const SEC_NEGATIVA: ExperienceItem = {
   answered_at: "2026-09-12T15:00:00Z",
 };
 
+/** La respuesta vigente de la empresa a una pregunta, como la trae el catálogo. */
+export function respuesta(
+  pregunta: CapabilityQuestion,
+  detail: string,
+  overrides: Partial<ExperienceItem> = {},
+): ExperienceItem {
+  const opcion = pregunta.options.find((o) => o.label === detail);
+  return {
+    id: `capacidad:${pregunta.id}`,
+    origin: "capacidad",
+    kind: pregunta.kind,
+    title: pregunta.question,
+    detail,
+    polarity: opcion?.polarity ?? null,
+    answered_by_user_id: "u-1",
+    tender_id: "t-1",
+    answered_at: "2026-10-01T12:00:00Z",
+    ...overrides,
+  };
+}
+
 export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
   return {
     id: "p-1",
@@ -80,6 +101,7 @@ export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
     paused_requirement_id: null,
     requires_technical_document: false,
     technical_document_reason: null,
+    technical_document_ambiguous: null,
     warnings: [],
     discrepancy_decisions: [],
     content: null,
@@ -91,6 +113,9 @@ export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
     questions: [SEC, VIALES],
     catalog_items: [],
     changed_requirement_ids: [],
+    // Borrador anterior a guardar con qué se analizó: no recomienda nada.
+    analysis_documents: null,
+    mentions_attachments: null,
     ...overrides,
   };
 }

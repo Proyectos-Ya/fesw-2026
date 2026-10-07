@@ -40,6 +40,7 @@ from app.application.use_cases.milestones.set_milestone_reminder import (
 from app.bootstrap.repositories import (
     CalendarEventLinkRepoDep,
     CalendarOAuthStateRepoDep,
+    MilestoneDocumentRepoDep,
     SessionDep,
     TenderChatRepoDep,
     TenderMilestoneRepoDep,
@@ -151,6 +152,7 @@ def get_tender_milestones_use_case(
     milestones: TenderMilestoneRepoDep,
     event_links: CalendarEventLinkRepoDep,
     chat: TenderChatRepoDep,
+    processed: MilestoneDocumentRepoDep,
     extraction: MilestoneExtractionBackgroundDep,
 ) -> GetTenderMilestonesUseCase:
     return GetTenderMilestonesUseCase(
@@ -158,6 +160,7 @@ def get_tender_milestones_use_case(
         milestones=milestones,
         event_links=event_links,
         chat=chat,
+        processed=processed,
         extraction=extraction,
     )
 
@@ -173,6 +176,7 @@ def get_extract_tender_milestones_use_case(
     milestones: TenderMilestoneRepoDep,
     event_links: CalendarEventLinkRepoDep,
     chat: TenderChatRepoDep,
+    processed: MilestoneDocumentRepoDep,
     ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
 ) -> ExtractTenderMilestonesUseCase:
     return ExtractTenderMilestonesUseCase(
@@ -181,4 +185,5 @@ def get_extract_tender_milestones_use_case(
         event_links=event_links,
         chat=chat,
         ai=ai,
+        processed=processed,
     )

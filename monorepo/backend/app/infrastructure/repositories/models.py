@@ -59,6 +59,9 @@ from app.infrastructure.repositories.tender_chat_model import (
 from app.infrastructure.repositories.tender_milestone_model import (
     TenderMilestoneModel,
 )
+from app.infrastructure.repositories.tender_milestone_document_model import (
+    TenderMilestoneDocumentModel,
+)
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -82,6 +85,7 @@ __all__ = [
     "CalendarEventLinkModel",
     "CalendarOAuthStateModel",
     "TenderMilestoneModel",
+    "TenderMilestoneDocumentModel",
     "QuotationModel",
     "QuotationMaterialModel",
     "BuyerInstitutionModel",

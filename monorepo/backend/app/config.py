@@ -228,11 +228,19 @@ class Settings(BaseSettings):
     # exactamente con la registrada en Google Cloud.
     google_calendar_client_id: str | None = None
     google_calendar_client_secret: str | None = None
+    # --- Sincronización con Outlook Calendar (HU-16, criterio 2) ---
+    # Igual que Google: opcional, y la redirección (APP_BASE_URL +
+    # /calendario/callback/outlook) debe estar registrada tal cual en la app de
+    # Microsoft Entra ID. `common` acepta cuentas personales y de trabajo;
+    # `consumers` solo personales.
+    microsoft_calendar_client_id: str | None = None
+    microsoft_calendar_client_secret: str | None = None
+    microsoft_calendar_tenant: str = "common"
     # Llave Fernet para cifrar los tokens en la base. Admite varias separadas
     # por coma para rotarla: la primera cifra y todas descifran.
     token_encryption_key: str | None = None
     # Revisa en Mercado Público si cambiaron las fechas de las licitaciones que
-    # alguien tiene en su calendario. Solo corre con Google Calendar configurado.
+    # alguien tiene en su calendario. Solo corre con algún calendario configurado.
     run_milestone_refresh: bool = True
     milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
@@ -338,27 +346,43 @@ class Settings(BaseSettings):
     def google_calendar_redirect_uri(self) -> str:
         return f"{self.app_base_url.rstrip('/')}/calendario/callback/google"
 
+    @property
+    def microsoft_calendar_enabled(self) -> bool:
+        return self.microsoft_calendar_client_id is not None
+
+    @property
+    def microsoft_calendar_redirect_uri(self) -> str:
+        return f"{self.app_base_url.rstrip('/')}/calendario/callback/outlook"
+
     @model_validator(mode="after")
     def _exigir_configuracion_de_calendario(self) -> "Settings":
-        """Con el cliente de Google puesto, el secreto y la llave son obligatorios.
+        """Con el cliente de un calendario puesto, su secreto y la llave son obligatorios.
 
         Sin la llave, los tokens de los usuarios no se podrían guardar cifrados;
-        mejor que no arranque a que falle al conectar el primer calendario.
+        mejor que no arranque a que falle al conectar el primer calendario. La
+        llave es una sola para Google y Outlook.
         """
-        if not self.google_calendar_client_id:
-            return self
-        faltantes = [
-            nombre
-            for nombre, valor in (
-                ("GOOGLE_CALENDAR_CLIENT_SECRET", self.google_calendar_client_secret),
-                ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
-            )
-            if not valor
-        ]
-        if faltantes:
-            raise ValueError(
-                "Falta configurar para Google Calendar: " + ", ".join(faltantes)
-            )
+        for nombre, prefijo, cliente, secreto in (
+            ("Google Calendar", "GOOGLE", self.google_calendar_client_id, self.google_calendar_client_secret),
+            (
+                "Outlook Calendar",
+                "MICROSOFT",
+                self.microsoft_calendar_client_id,
+                self.microsoft_calendar_client_secret,
+            ),
+        ):
+            if not cliente:
+                continue
+            faltantes = [
+                variable
+                for variable, valor in (
+                    (f"{prefijo}_CALENDAR_CLIENT_SECRET", secreto),
+                    ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
+                )
+                if not valor
+            ]
+            if faltantes:
+                raise ValueError(f"Falta configurar para {nombre}: " + ", ".join(faltantes))
         return self
 
     @field_validator(
@@ -368,6 +392,8 @@ class Settings(BaseSettings):
         "company_lookup_api_key",
         "google_calendar_client_id",
         "google_calendar_client_secret",
+        "microsoft_calendar_client_id",
+        "microsoft_calendar_client_secret",
         "token_encryption_key",
         mode="after",
     )

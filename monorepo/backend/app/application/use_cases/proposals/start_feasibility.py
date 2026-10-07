@@ -18,6 +18,7 @@ from app.application.services.document_validator_service import (
 )
 from app.application.services.proposal_ai_service import (
     FeasibilityRequirementDTO,
+    FeasibilityResultDTO,
     IProposalAIService,
     NewQuestionDTO,
 )
@@ -37,9 +38,11 @@ from app.domain.entities.capability import (
 )
 from app.domain.entities.proposal import (
     KINDS_SIN_PREGUNTA,
+    AnalysisDocument,
     ProposalDraft,
     Requirement,
     RequirementStatus,
+    perfil_cubre,
 )
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -60,12 +63,17 @@ _ESTADO_POR_POLARIDAD: dict[str | None, RequirementStatus] = {
     "negativa": "no_cumple",
     "neutra": "parcial",
     # Un dato del perfil (región, certificación declarada) no tiene polaridad:
-    # si la IA lo cita como cobertura, la exigencia se cumple.
+    # si la IA lo cita como cobertura y `perfil_cubre` lo acepta, se cumple.
     None: "cumple",
 }
 _PREFIJO_CAPACIDAD = "capacidad:"
 # Pocas y útiles: más preguntas cansan sin mejorar mucho la redacción.
 _MAX_SUGERIDAS = 3
+# Versión de la lógica de factibilidad (prompt, esquema y reglas). Entra en la
+# huella: al subirla, "Volver a analizar" rehace los borradores hechos con la
+# versión anterior aunque no cambien la ficha, el perfil ni los adjuntos. Se
+# sube cada vez que cambia lo que el análisis produce.
+VERSION_DEL_ANALISIS = "292-informe-tecnico-sin-momento"
 
 
 def huella_del_analisis(
@@ -76,9 +84,9 @@ def huella_del_analisis(
 ) -> str:
     """Resume lo que usa la factibilidad, para saber si volver a analizar cambia algo.
 
-    Cuenta la ficha (su última modificación), los datos del perfil que recibe la
-    IA (los ítems `perfil:` del catálogo y el rubro) y el contenido de cada
-    adjunto. No usa `supplier.updated_at`: el banner del home lo mueve al guardar
+    Cuenta la versión del análisis (`VERSION_DEL_ANALISIS`), la ficha (su
+    última modificación), los datos del perfil que recibe la IA (los ítems
+    `perfil:` del catálogo y el rubro) y el contenido de cada adjunto. No usa `supplier.updated_at`: el banner del home lo mueve al guardar
     `keywords`, que la factibilidad no lee, y descartaría el borrador sin motivo.
 
     **No** cuenta las respuestas al banco: las de la propia postulación las pidió
@@ -86,7 +94,11 @@ def huella_del_analisis(
     descartar el borrador. Tampoco la respuesta de la IA, que puede variar con
     las mismas entradas.
     """
-    partes = [f"ficha:{tender.last_change_at.isoformat()}", f"rubro:{categoria}"]
+    partes = [
+        f"version:{VERSION_DEL_ANALISIS}",
+        f"ficha:{tender.last_change_at.isoformat()}",
+        f"rubro:{categoria}",
+    ]
     perfil = sorted(
         (item.id, item.detail) for item in catalog.items if item.origin == "perfil"
     )
@@ -95,6 +107,25 @@ def huella_del_analisis(
         contenido = hashlib.sha256(doc.file_bytes).hexdigest()
         partes.append(f"adjunto:{doc.document_name}:{doc.is_corrupted}:{contenido}")
     return hashlib.sha256("\n".join(partes).encode()).hexdigest()
+
+
+def _mensaje_documento_tecnico(resultado: FeasibilityResultDTO) -> str:
+    """Lo que el usuario lee sobre el documento técnico. Lo arma el backend.
+
+    Solo dice si las bases lo solicitan, con su frase textual ya verificada.
+    Nada de cuándo se entrega ni de si va con la oferta: la IA lo deducía y
+    las bases no lo decían (plan 292, §2.8).
+    """
+    if not (
+        resultado.requires_technical_document or resultado.technical_document_ambiguous
+    ):
+        return "Las bases no solicitan un informe técnico."
+    if resultado.technical_document_quote:
+        return (
+            "Las bases solicitan un informe técnico: "
+            f'"{resultado.technical_document_quote}".'
+        )
+    return "Las bases solicitan un informe técnico."
 
 
 def categoria_de(supplier: Supplier) -> str:
@@ -126,6 +157,8 @@ class StartFeasibilityUseCase:
     cubre cada exigencia. Este caso de uso no le cree a ciegas:
 
     - solo acepta ids que existan en el catálogo (guardrail contra alucinaciones);
+    - no acepta el perfil genérico como prueba de experiencia o certificación
+      (`perfil_cubre`): ahí pregunta;
     - reutiliza las preguntas del banco antes de crear otras;
     - una pregunta que nombre a la empresa no entra al banco compartido;
     - una respuesta que la empresa ya dio no se vuelve a pedir.
@@ -212,8 +245,16 @@ class StartFeasibilityUseCase:
             supplier_id=supplier.id,
             tender_id=tender.id,
             requires_technical_document=resultado.requires_technical_document,
-            technical_document_reason=resultado.technical_document_reason,
+            # Si la IA lo marca exigido y ambiguo a la vez, manda exigido.
+            technical_document_ambiguous=resultado.technical_document_ambiguous
+            and not resultado.requires_technical_document,
+            technical_document_reason=_mensaje_documento_tecnico(resultado),
             analysis_fingerprint=huella,
+            analysis_documents=[
+                AnalysisDocument(name=doc.document_name, corrupted=doc.is_corrupted)
+                for doc in documentos
+            ],
+            mentions_attachments=resultado.mentions_attachments,
             created_by_user_id=user_id,
         )
         if existente is not None:
@@ -253,9 +294,12 @@ class StartFeasibilityUseCase:
         if dto.kind in KINDS_SIN_PREGUNTA:
             return base.model_copy(update={"status": "cumple"})
 
-        # 1. Cubierta por el catálogo: solo si el id existe de verdad.
+        # 1. Cubierta por el catálogo: solo si el id existe de verdad y ese
+        # elemento puede probar este tipo de exigencia. La descripción o el rubro
+        # no prueban una experiencia: en ese caso se pregunta.
         item = next((i for i in catalog.items if i.id == dto.catalog_item_id), None)
-        if item is not None:
+        cobertura_descartada = item is not None and not perfil_cubre(dto.kind, item.id)
+        if item is not None and not cobertura_descartada:
             return base.model_copy(
                 update={
                     "status": _ESTADO_POR_POLARIDAD[item.polarity],
@@ -266,7 +310,9 @@ class StartFeasibilityUseCase:
             )
 
         # 2. Una pregunta del banco, existente o nueva.
-        pregunta = await self._pregunta(dto, supplier, categoria)
+        pregunta = await self._pregunta(
+            dto, supplier, categoria, con_respaldo=cobertura_descartada
+        )
         if pregunta is None:
             # No hay cómo preguntarla: queda a la vista pero no bloquea la
             # redacción, que la marcará como dato por completar.
@@ -323,14 +369,27 @@ class StartFeasibilityUseCase:
         return sugeridas
 
     async def _pregunta(
-        self, dto: FeasibilityRequirementDTO, supplier: Supplier, categoria: str
+        self,
+        dto: FeasibilityRequirementDTO,
+        supplier: Supplier,
+        categoria: str,
+        con_respaldo: bool = False,
     ) -> CapabilityQuestion | None:
+        """La pregunta del banco para la exigencia, si hay cómo hacerla.
+
+        `con_respaldo`: se descartó la cobertura del perfil y, si la IA no dejó
+        `question_key` ni `new_question`, se usa su `fallback_question`.
+        """
         if dto.question_key:
             existente = await self.question_repo.get_by_key(categoria, dto.question_key)
             if existente is not None:
                 return existente
         if dto.new_question is not None:
-            return await self._registrar(dto.new_question, supplier, categoria)
+            nueva = await self._registrar(dto.new_question, supplier, categoria)
+            if nueva is not None:
+                return nueva
+        if con_respaldo and dto.fallback_question is not None:
+            return await self._registrar(dto.fallback_question, supplier, categoria)
         return None
 
     async def _registrar(

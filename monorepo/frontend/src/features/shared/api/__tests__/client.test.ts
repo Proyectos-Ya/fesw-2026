@@ -4,6 +4,7 @@ import {
   apiDownloadOrAccepted,
   apiFetch,
   ApiError,
+  TimeoutError,
   registrarProveedorDeToken,
 } from "../client";
 
@@ -267,5 +268,54 @@ describe("apiDownloadOrAccepted", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");
+  });
+});
+
+describe("apiFetch — tiempo límite", () => {
+  /** Un fetch que solo termina cuando lo abortan, como un backend que no responde. */
+  function fetchQueNoResponde() {
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("abortado", "AbortError")),
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("por defecto corta a los 60 s", async () => {
+    vi.useFakeTimers();
+    fetchQueNoResponde();
+
+    const promesa = apiFetch("/lento");
+    const resultado = expect(promesa).rejects.toBeInstanceOf(TimeoutError);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await resultado;
+  });
+
+  it("con timeoutMs espera lo que se le pide", async () => {
+    vi.useFakeTimers();
+    const fetchMock = fetchQueNoResponde();
+    let terminada = false;
+
+    const promesa = apiFetch("/lento", { method: "POST", timeoutMs: 130_000 }).finally(() => {
+      terminada = true;
+    });
+    const resultado = expect(promesa).rejects.toBeInstanceOf(TimeoutError);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(terminada).toBe(false);
+    await vi.advanceTimersByTimeAsync(70_000);
+
+    await resultado;
+    // timeoutMs es del cliente: no viaja a fetch.
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("timeoutMs");
   });
 });

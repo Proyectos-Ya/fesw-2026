@@ -61,6 +61,9 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_document_repository import (
+    TenderMilestoneDocumentRepository,
+)
 from app.infrastructure.repositories.tender_milestone_repository import (
     TenderMilestoneRepository,
 )
@@ -109,6 +112,7 @@ def build_milestone_extraction_background(app: FastAPI) -> AsyncioMilestoneExtra
                 event_links=CalendarEventLinkRepository(session),
                 chat=SQLTenderChatRepository(session),
                 ai=app.state.milestone_extraction_service,
+                processed=TenderMilestoneDocumentRepository(session),
             )
 
     return AsyncioMilestoneExtractionBackground(open_extraction)

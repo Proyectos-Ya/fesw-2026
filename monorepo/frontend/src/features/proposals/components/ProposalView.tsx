@@ -8,14 +8,17 @@ import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Dialog } from "@/features/shared/components/Dialog";
 import { Icon } from "@/features/shared/components/Icon";
+import { Toast } from "@/features/shared/components/Toast";
+import { useTenderDocuments } from "@/features/tender-assistant/hooks/useTenderDocuments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
 import { useProposal } from "../hooks/useProposal";
-import { pendingRequirements } from "../utils/proposal";
+import { basesNotice, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
 import { FeasibilityStep } from "./FeasibilityStep";
 import { ProposalAttachments } from "./ProposalAttachments";
 import { ProposalDraftViewer } from "./ProposalDraftViewer";
+import { ProposalStatusBanner } from "./ProposalStatusBanner";
 import { StageNotice } from "./StageNotice";
 
 interface ProposalViewProps {
@@ -49,6 +52,7 @@ function Seccion({
  */
 export function ProposalView({ tenderId }: ProposalViewProps) {
   const proposal = useProposal(tenderId);
+  const documentos = useTenderDocuments(tenderId);
   const canWrite = useCanWriteProposal();
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
@@ -68,10 +72,24 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
     };
   }, [tenderId]);
 
-  const { state, stage, busy, actionError, notice } = proposal;
+  const { state, stage, busy, actionError, notice, answering, toast } = proposal;
   const view = state.kind === "ready" ? state.view : null;
   const cerrada = view?.is_expired ?? tender?.isClosed ?? false;
   const puedeAvanzar = canWrite && !cerrada;
+  const estado = view ? proposalStatus(view) : null;
+  const avisoBases = view
+    ? basesNotice(
+        view,
+        documentos.documents.map((d) => d.file_name),
+      )
+    : null;
+  const sinBases = !documentos.isLoading && documentos.documents.length === 0;
+  // Proyectos de experiencia: se ofrecen en el análisis, plegado o no.
+  const evidencia = {
+    onAddEvidence: proposal.addEvidence,
+    suggestedEvidence: proposal.suggestedEvidence,
+    onDismissEvidence: proposal.dismissEvidence,
+  };
 
   const volverAAnalizar = () => {
     // Con texto redactado se pide confirmación: si hubo cambios, se descarta.
@@ -102,39 +120,62 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         </div>
       )}
 
-      {actionError && (
-        <div
-          role="alert"
-          className="mb-6 flex items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft/40 p-4 text-sm text-red-700"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            className="text-xs font-semibold underline"
-            onClick={proposal.clearActionError}
+      {/*
+        Avisos flotantes: el error, el aviso y la etapa en curso se ven desde
+        cualquier parte de la página (por ejemplo, al regenerar desde el
+        borrador). Van fijos y no con sticky porque el <main> del layout tiene
+        overflow-auto sin altura fija: no se desplaza él, se desplaza la
+        página, y un sticky dentro de él nunca se pega.
+      */}
+      <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex flex-col items-center gap-2 px-4">
+        {actionError && (
+          <div
+            role="alert"
+            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-red-700 shadow-lg"
           >
-            Cerrar
-          </button>
-        </div>
+            <span>{actionError}</span>
+            <button
+              type="button"
+              className="text-xs font-semibold underline"
+              onClick={proposal.clearActionError}
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
+
+        {notice && (
+          <div
+            role="status"
+            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-primary/20 bg-teal-50 p-4 text-sm text-teal-700 shadow-lg"
+          >
+            <span>{notice}</span>
+            <button
+              type="button"
+              className="text-xs font-semibold underline"
+              onClick={proposal.clearNotice}
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
+
+        <StageNotice stage={stage} />
+      </div>
+
+      {toast && (
+        <Toast key={toast.id} message={toast.message} onClose={proposal.clearToast} />
       )}
 
-      {notice && (
-        <div
-          role="status"
-          className="mb-6 flex items-start justify-between gap-3 rounded-lg border border-primary/20 bg-teal-50/60 p-4 text-sm text-teal-700"
-        >
-          <span>{notice}</span>
-          <button
-            type="button"
-            className="text-xs font-semibold underline"
-            onClick={proposal.clearNotice}
-          >
-            Cerrar
-          </button>
-        </div>
+      {view && estado && (
+        <ProposalStatusBanner
+          status={estado}
+          canAct={puedeAvanzar}
+          busy={busy}
+          onResume={() => void proposal.resume()}
+          onReview={() => setAvisoAbierto(true)}
+        />
       )}
-
-      <StageNotice stage={stage} />
 
       {view && (
         <ChangedAnswersNotice
@@ -187,6 +228,14 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                       Iniciar análisis
                     </Button>
                   ))}
+                {puedeAvanzar && !view && sinBases && (
+                  // Informativo y sin diálogo: iniciar sin bases es válido.
+                  <p className="flex basis-full items-start gap-2 text-xs text-teal-700">
+                    <Icon name="info" size={14} className="mt-px shrink-0" />
+                    No has subido bases. Puedes iniciar igual, pero si la Compra Ágil las
+                    tiene, súbelas antes: el análisis sale más preciso.
+                  </p>
+                )}
                 {!canWrite && !view && (
                   <p className="text-sm text-text-muted">
                     Solo quienes pueden generar postulaciones en esta empresa pueden
@@ -194,27 +243,6 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                   </p>
                 )}
               </div>
-
-              {view && view.status === "STOPPED" && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-strong bg-warm-100/60 p-4 text-sm">
-                  <span>
-                    <strong>Postulación detenida.</strong> Al reanudar puedes corregir la
-                    respuesta que la detuvo.
-                  </span>
-                  {puedeAvanzar && (
-                    <Button onClick={() => void proposal.resume()} disabled={busy}>
-                      Reanudar
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {view && view.status === "PAUSED" && !avisoAbierto && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft/30 p-4 text-sm">
-                  <span>Hay una exigencia excluyente que la empresa declaró no cumplir.</span>
-                  <Button onClick={() => setAvisoAbierto(true)}>Revisar</Button>
-                </div>
-              )}
 
               {view &&
                 (view.status === "READY" ? (
@@ -227,8 +255,10 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                         view={view}
                         canWrite={canWrite}
                         busy={busy}
+                        answering={answering}
                         onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
                         onGenerate={() => void proposal.generate()}
+                        {...evidencia}
                       />
                     </div>
                   </details>
@@ -237,33 +267,40 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                     view={view}
                     canWrite={canWrite}
                     busy={busy}
+                    answering={answering}
                     onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
                     onGenerate={() => void proposal.generate()}
+                    {...evidencia}
                   />
                 ))}
             </div>
-            <ProposalAttachments tenderId={tenderId} />
+            <ProposalAttachments documentos={documentos} />
           </div>
         </Seccion>
       )}
 
       {view && (
         <Seccion id="borrador" titulo="Borrador de la oferta">
+          {avisoBases && (
+            <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-teal-50/60 p-4 text-sm text-teal-700">
+              <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+              <span>{avisoBases}</span>
+            </p>
+          )}
           {view.content ? (
             <ProposalDraftViewer
               view={view}
               tenderCode={tender?.data.code ?? null}
               canWrite={canWrite}
               busy={busy}
+              stage={stage}
               onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
               onDownload={() => void proposal.download()}
               onRequestTechnical={() => void proposal.requestTechnical()}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-border-default bg-white p-6 text-sm text-text-muted">
-              {pendingRequirements(view).length > 0
-                ? "Responde las preguntas del análisis y luego redacta el borrador."
-                : "Cuando quieras, usa “Redactar borrador” en el análisis."}
+              {estado?.detail ?? 'Cuando quieras, usa "Redactar borrador" en el análisis.'}
             </p>
           )}
         </Seccion>

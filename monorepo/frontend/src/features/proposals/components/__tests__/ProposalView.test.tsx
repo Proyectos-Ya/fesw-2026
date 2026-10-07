@@ -5,6 +5,7 @@ import { ApiError } from "@/features/shared/api/client";
 import * as service from "../../services/proposalService";
 import { ProposalView } from "../ProposalView";
 import { requisito, vista } from "../../testing/fixtures";
+import type { DraftContent } from "../../types";
 
 vi.mock("../../services/proposalService", () => ({
   getProposal: vi.fn(),
@@ -28,6 +29,19 @@ vi.mock("@/features/matches/services/tenderService", () => ({
 }));
 
 vi.mock("../ProposalAttachments", () => ({ ProposalAttachments: () => null }));
+
+/** Adjuntos subidos ahora a la licitación (los del asistente). */
+const adjuntos = { lista: [] as { id: string; file_name: string }[] };
+vi.mock("@/features/tender-assistant/hooks/useTenderDocuments", () => ({
+  useTenderDocuments: () => ({
+    documents: adjuntos.lista,
+    isLoading: false,
+    isUploading: false,
+    error: null,
+    uploadDocument: vi.fn(),
+    removeDocument: vi.fn(),
+  }),
+}));
 vi.mock("@/features/quotations/QuotationEditor", () => ({
   QuotationEditor: ({ tenderCode }: { tenderCode: string }) => (
     <div data-testid="cotizador">{tenderCode}</div>
@@ -50,7 +64,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   permiso.activo = { id: "w" };
   permiso.puede = true;
+  adjuntos.lista = [];
 });
+
+const CONTENIDO: DraftContent = {
+  offer_name: { paragraphs: [{ text: "Capacitación PAC", sources: [], placeholders: [] }] },
+  offer_description: { paragraphs: [] },
+  required_documents: { paragraphs: [] },
+  technical_document: null,
+};
 
 describe("ProposalView", () => {
   it("sin postulación ofrece iniciarla y muestra la etapa mientras analiza (CA6)", async () => {
@@ -191,5 +213,120 @@ describe("ProposalView", () => {
     expect(
       screen.queryByRole("button", { name: /Iniciar análisis/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("un banner dice el estado y el borrador vacío repite qué hacer", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    const banner = await screen.findByRole("region", { name: "Estado de la postulación" });
+    expect(banner).toHaveTextContent("Faltan 2 respuestas");
+    expect(screen.getByRole("region", { name: "Borrador de la oferta" })).toHaveTextContent(
+      "Responde las preguntas del análisis y luego redacta el borrador.",
+    );
+  });
+
+  it("en pausa el banner deja volver a abrir el aviso", async () => {
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "PAUSED",
+        paused_requirement_id: "req-1",
+        requirements: [requisito({ status: "no_cumple" })],
+      }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+    await screen.findByRole("dialog");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    const banner = screen.getByRole("region", { name: "Estado de la postulación" });
+    expect(banner).toHaveTextContent("Postulación en pausa");
+    await userEvent.click(within(banner).getByRole("button", { name: "Revisar" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Recomendamos no postular");
+  });
+
+  it("sin bases al iniciar lo recomienda sin bloquear", async () => {
+    svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(await screen.findByText(/No has subido bases/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar análisis/ })).toBeEnabled();
+  });
+
+  it("con bases subidas no recomienda subirlas al iniciar", async () => {
+    adjuntos.lista = [{ id: "d-1", file_name: "bases.pdf" }];
+    svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
+    render(<ProposalView tenderId="t-1" />);
+
+    await screen.findByRole("button", { name: /Iniciar análisis/ });
+    expect(screen.queryByText(/No has subido bases/)).not.toBeInTheDocument();
+  });
+
+  it("un borrador hecho solo con la ficha recomienda subir las bases", async () => {
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "READY",
+        content: CONTENIDO,
+        requirements: [requisito({ status: "cumple" })],
+        analysis_documents: [],
+        mentions_attachments: true,
+      }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+
+    const borrador = await screen.findByRole("region", { name: "Borrador de la oferta" });
+    expect(borrador).toHaveTextContent("Este borrador se hizo solo con la ficha");
+    expect(borrador).toHaveTextContent("la ficha menciona bases o anexos que no se subieron");
+  });
+
+  it("avisa los archivos subidos después del análisis", async () => {
+    adjuntos.lista = [
+      { id: "d-1", file_name: "bases.pdf" },
+      { id: "d-2", file_name: "anexo.pdf" },
+    ];
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "READY",
+        content: CONTENIDO,
+        requirements: [requisito({ status: "cumple" })],
+        analysis_documents: [{ name: "bases.pdf", corrupted: false }],
+        mentions_attachments: false,
+      }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(
+      await screen.findByText(
+        "Subiste archivos después del análisis. Vuelve a analizar para usarlos.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("un borrador anterior a este dato no muestra la recomendación de bases", async () => {
+    svc.getProposal.mockResolvedValue(
+      vista({ status: "READY", content: CONTENIDO, requirements: [requisito({ status: "cumple" })] }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+
+    await screen.findByRole("region", { name: "Borrador de la oferta" });
+    expect(screen.queryByText(/se hizo solo con la ficha/)).not.toBeInTheDocument();
+  });
+
+  it("regenerar confirma al terminar con un aviso que se va solo", async () => {
+    svc.getProposal.mockResolvedValue(
+      vista({ status: "READY", content: CONTENIDO, requirements: [requisito({ status: "cumple" })] }),
+    );
+    svc.regenerateProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Regenerar/ }));
+    const dialogo = screen.getByRole("dialog");
+    await userEvent.type(within(dialogo).getByRole("textbox"), "Más formal");
+    await userEvent.click(within(dialogo).getByRole("button", { name: "Regenerar" }));
+
+    expect(
+      await screen.findByText("Borrador regenerado con tus instrucciones."),
+    ).toBeInTheDocument();
   });
 });

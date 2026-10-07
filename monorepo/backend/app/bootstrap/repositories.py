@@ -22,6 +22,9 @@ from app.application.repositories.kanban_repository import (
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
+from app.application.repositories.milestone_document_repository import (
+    IMilestoneDocumentRepository,
+)
 from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
     INotificationPreferenceRepository,
@@ -88,6 +91,9 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_document_repository import (
+    TenderMilestoneDocumentRepository,
+)
 from app.infrastructure.repositories.tender_milestone_repository import (
     TenderMilestoneRepository,
 )
@@ -188,6 +194,10 @@ def get_tender_milestone_repo(session: SessionDep) -> ITenderMilestoneRepository
     return TenderMilestoneRepository(session)
 
 
+def get_milestone_document_repo(session: SessionDep) -> IMilestoneDocumentRepository:
+    return TenderMilestoneDocumentRepository(session)
+
+
 def get_calendar_oauth_state_repo(session: SessionDep) -> ICalendarOAuthStateRepository:
     return CalendarOAuthStateRepository(session)
 
@@ -268,6 +278,9 @@ TenderChatRepoDep = Annotated[ITenderChatRepository, Depends(get_tender_chat_rep
 
 TenderMilestoneRepoDep = Annotated[
     ITenderMilestoneRepository, Depends(get_tender_milestone_repo)
+]
+MilestoneDocumentRepoDep = Annotated[
+    IMilestoneDocumentRepository, Depends(get_milestone_document_repo)
 ]
 
 
