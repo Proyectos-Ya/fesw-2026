@@ -155,22 +155,20 @@ describe("ProposalDraftViewer", () => {
     expect(onRegenerate).toHaveBeenCalledWith("Tono más formal");
   });
 
-  it("sin documento técnico lo ofrece como opcional y no deja exportar (CA3)", () => {
-    renderViewer(
-      listo({ technical_document_reason: "La ficha solo pide una cotización." }),
-    );
+  it("si las bases no lo solicitan, lo dice y lo ofrece como opcional (CA3)", () => {
+    renderViewer(listo({ technical_document_reason: "Las bases no solicitan un informe técnico." }));
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
     expect(bloque).toHaveTextContent("Documento técnico (opcional)");
+    expect(bloque).toHaveTextContent("Las bases no solicitan un informe técnico.");
     expect(bloque).toHaveTextContent(
       "Un documento técnico breve que describa tu servicio puede reforzar la oferta.",
     );
-    expect(bloque).toHaveTextContent("La ficha solo pide una cotización.");
     expect(screen.queryByRole("button", { name: /Exportar a .docx/ })).not.toBeInTheDocument();
   });
 
   it("no da un veredicto ni usa tono de advertencia", () => {
-    renderViewer(listo({ technical_document_reason: "La ficha solo pide una cotización." }));
+    renderViewer(listo({ technical_document_reason: "Las bases no solicitan un informe técnico." }));
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
     expect(bloque).not.toHaveTextContent("No se detectó");
@@ -178,11 +176,10 @@ describe("ProposalDraftViewer", () => {
     expect(bloque.className).not.toMatch(/warning/);
   });
 
-  it("se puede generar aunque las bases no lo pidan", async () => {
+  it("se puede generar aunque las bases no lo soliciten", async () => {
     const { onRequestTechnical } = renderViewer();
 
     const boton = screen.getByRole("button", { name: /Generar documento técnico/ });
-    // Secundario: es opcional y las bases no lo mencionan.
     expect(boton).not.toHaveClass("bg-primary");
     await userEvent.click(boton);
 
@@ -198,20 +195,17 @@ describe("ProposalDraftViewer", () => {
   });
 
   const CITA =
-    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo", pero no indican si va con la cotización.';
+    'Las bases solicitan un informe técnico: "Se debe entregar informe técnico y certificado individual por cada equipo" (sección 3).';
 
-  it("si las bases lo mencionan sin aclarar, muestra la cita y lo ofrece con el botón principal", async () => {
+  it("si las bases lo solicitan, cita la frase y ofrece generarlo con el botón principal", async () => {
     const { onRequestTechnical } = renderViewer(
       listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
     );
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
-    expect(bloque).toHaveTextContent("Documento técnico (opcional)");
     expect(bloque).toHaveTextContent(CITA);
-    expect(bloque).toHaveTextContent(
-      "Puedes adjuntar un documento técnico breve para reforzar tu cotización.",
-    );
-    expect(bloque).not.toHaveTextContent("No se detectó");
+    expect(bloque).toHaveTextContent("Puedes generar un borrador breve a partir de las bases.");
+    expect(bloque).not.toHaveTextContent("(opcional)");
 
     const boton = within(bloque).getByRole("button", { name: /Generar documento técnico/ });
     expect(boton).toHaveClass("bg-primary");
@@ -219,7 +213,14 @@ describe("ProposalDraftViewer", () => {
     expect(onRequestTechnical).toHaveBeenCalled();
   });
 
-  it("en el caso ambiguo no ofrece generarlo sin permiso", () => {
+  it("no habla de cuándo se entrega ni de si va con la cotización", () => {
+    renderViewer(listo({ technical_document_ambiguous: true, technical_document_reason: CITA }));
+
+    const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).not.toHaveTextContent(/cuándo se entrega|va con la cotización|al ejecutar|al finalizar/);
+  });
+
+  it("si lo solicitan no ofrece generarlo sin permiso", () => {
     renderViewer(
       listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
       false,
@@ -229,7 +230,7 @@ describe("ProposalDraftViewer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("en el caso ambiguo no ofrece generarlo si la licitación venció", () => {
+  it("si lo solicitan no ofrece generarlo con la licitación vencida", () => {
     renderViewer(
       listo({
         technical_document_ambiguous: true,

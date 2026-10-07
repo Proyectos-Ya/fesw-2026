@@ -396,18 +396,18 @@ export function FeasibilityStep({
       <Lista titulo="Condiciones del servicio" items={condiciones} />
       <Lista titulo="Documentos a adjuntar" items={documentos} />
 
-      {view.technical_document_reason && (
+      {(view.technical_document_reason ||
+        view.requires_technical_document ||
+        view.technical_document_ambiguous) && (
+        // Solo si las bases lo solicitan, con sus palabras: nada sobre cuándo se
+        // entrega, que las bases rara vez aclaran (plan 292, §2.8).
         <p className="mb-5 flex items-start gap-2 rounded-md border border-border-subtle bg-warm-100/50 px-3 py-2 text-sm text-text-body">
           <Icon name="file-text" size={16} className="mt-0.5 shrink-0" />
           <span>
-            <strong>
-              {view.requires_technical_document
-                ? "Las bases piden un documento técnico. "
-                : view.technical_document_ambiguous
-                  ? "Las bases mencionan un documento técnico, pero no indican si va con la cotización. "
-                  : "Documento técnico: opcional. "}
-            </strong>
-            {view.technical_document_reason}
+            {view.technical_document_reason ||
+              (view.requires_technical_document || view.technical_document_ambiguous
+                ? "Las bases solicitan un informe técnico."
+                : "Las bases no solicitan un informe técnico.")}
           </span>
         </p>
       )}

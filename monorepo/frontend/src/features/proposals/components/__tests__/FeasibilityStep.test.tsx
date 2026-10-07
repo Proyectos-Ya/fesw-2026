@@ -141,41 +141,35 @@ describe("FeasibilityStep", () => {
     expect(no).not.toHaveAttribute("aria-busy", "true");
   });
 
-  it("si las bases no lo mencionan, lo presenta como opcional con el motivo", () => {
+  it("si las bases no lo solicitan, muestra el motivo tal cual", () => {
     renderStep({
       requires_technical_document: false,
-      technical_document_reason: "La ficha menciona un TDR que no se recibió.",
+      technical_document_reason: "Las bases no solicitan un informe técnico.",
     });
 
-    expect(screen.getByText(/Documento técnico: opcional\./)).toBeInTheDocument();
-    expect(screen.getByText(/TDR que no se recibió/)).toBeInTheDocument();
+    expect(screen.getByText("Las bases no solicitan un informe técnico.")).toBeInTheDocument();
     expect(screen.queryByText(/No se exige/)).not.toBeInTheDocument();
   });
 
-  it("dice cuando las bases piden documento técnico", () => {
-    renderStep({
-      requires_technical_document: true,
-      technical_document_reason: "El punto 4 pide una propuesta técnica.",
-    });
-
-    expect(screen.getByText(/Las bases piden un documento técnico\./)).toBeInTheDocument();
-    expect(screen.getByText(/El punto 4 pide una propuesta técnica/)).toBeInTheDocument();
-  });
-
-  it("dice cuando las bases lo mencionan sin indicar si va con la cotización", () => {
+  it("si las bases lo solicitan, muestra la cita sin hablar de cuándo se entrega", () => {
     renderStep({
       requires_technical_document: false,
       technical_document_ambiguous: true,
-      technical_document_reason: 'Las bases dicen "Se debe entregar informe técnico".',
+      technical_document_reason:
+        'Las bases solicitan un informe técnico: "Se debe entregar informe técnico".',
     });
 
-    expect(
-      screen.getByText(
-        /Las bases mencionan un documento técnico, pero no indican si va con la cotización\./,
-      ),
-    ).toBeInTheDocument();
     expect(screen.getByText(/Se debe entregar informe técnico/)).toBeInTheDocument();
-    expect(screen.queryByText(/No se exige/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/va con la cotización|cuándo se entrega/)).not.toBeInTheDocument();
+  });
+
+  it("un borrador antiguo sin motivo dice si lo solicitan", () => {
+    renderStep({
+      requires_technical_document: true,
+      technical_document_reason: "",
+    });
+
+    expect(screen.getByText(/Las bases solicitan un informe técnico\./)).toBeInTheDocument();
   });
 });
 

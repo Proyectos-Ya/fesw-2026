@@ -906,3 +906,13 @@ def test_el_motivo_cita_las_bases_y_no_las_interpreta():
         "No afirmes en technical_document_reason nada que las bases no digan"
         in _plano(_INSTRUCCIONES)
     )
+
+
+def test_el_motivo_solo_dice_si_las_bases_lo_solicitan():
+    """El usuario solo necesita saber si las bases lo piden y con qué palabras:
+    nada sobre cuándo se entrega ni si va con la oferta (plan 292, §2.8)."""
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "technical_document_reason dice solo si las bases solicitan" in plano
+    assert "Nunca menciones cuándo se entrega ni si va con la oferta" in plano

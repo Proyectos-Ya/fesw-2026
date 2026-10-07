@@ -323,12 +323,12 @@ test("con el borrador listo, cambiar una respuesta y agregar un proyecto", async
   await expect(evaluadas.getByRole("button", { name: "Agregar proyecto" })).toBeVisible();
 });
 
-test("las bases mencionan un informe técnico sin aclarar si va con la cotización", async ({
+test("las bases solicitan un informe técnico: se cita y se ofrece generarlo", async ({
   page,
 }) => {
   // Caso de la Compra Ágil 1377068-65-COT26 (§2.8 del plan).
   const motivo =
-    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo" en las condiciones de ejecución, sin aclarar si va con la oferta.';
+    'Las bases solicitan un informe técnico: "Se debe entregar informe técnico y certificado individual por cada equipo" (sección 3).';
   let actual: ProposalView = borrador({
     status: "READY",
     content: CONTENIDO,
@@ -381,7 +381,8 @@ test("las bases mencionan un informe técnico sin aclarar si va con la cotizaci�
   await page.goto("/");
 
   const bloque = page.getByRole("region", { name: "Documento técnico" });
-  await expect(bloque).toContainText("Documento técnico (opcional)");
+  await expect(bloque).not.toContainText("(opcional)");
+  await expect(bloque).not.toContainText("va con la cotización");
   await expect(bloque).toContainText("Se debe entregar informe técnico y certificado individual");
   await expect(bloque).not.toContainText("No se detectó");
   await expect(bloque).not.toContainText("No se exige");

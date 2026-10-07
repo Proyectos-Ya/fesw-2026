@@ -72,7 +72,7 @@ _MAX_SUGERIDAS = 3
 # huella: al subirla, "Volver a analizar" rehace los borradores hechos con la
 # versión anterior aunque no cambien la ficha, el perfil ni los adjuntos. Se
 # sube cada vez que cambia lo que el análisis produce.
-VERSION_DEL_ANALISIS = "292-documento-tecnico-sin-deducir"
+VERSION_DEL_ANALISIS = "292-documento-tecnico-solo-si-se-solicita"
 
 
 def huella_del_analisis(

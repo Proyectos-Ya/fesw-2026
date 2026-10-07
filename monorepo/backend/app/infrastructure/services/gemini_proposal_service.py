@@ -136,11 +136,14 @@ un informe que se entrega al ejecutar o terminar el servicio. Hay tres casos:
    ejecución NO basta para decidir: si lo deduces, es ambiguo. Deja
    requires_technical_document en false.
 3. Ninguno de los dos: las bases no mencionan nada técnico.
-Nunca marques los dos en true. technical_document_reason es obligatorio, de una
-o dos frases. Si las bases mencionan un documento técnico, cita entre comillas
-la frase exacta de las bases y di solo qué aclaran y qué no. No afirmes en
-technical_document_reason nada que las bases no digan: ni cuándo se entrega,
-ni para qué sirve, ni si es obligatorio.
+Nunca marques los dos en true. technical_document_reason es obligatorio, y el
+usuario lo lee tal cual. technical_document_reason dice solo si las bases
+solicitan un informe o documento técnico. Si lo solicitan, empieza con "Las
+bases solicitan un informe técnico:" y cita entre comillas la frase exacta de
+las bases, con su sección si la tiene. Si no, escribe "Las bases no solicitan
+un informe técnico." Nunca menciones cuándo se entrega ni si va con la oferta,
+ni des tu interpretación. No afirmes en technical_document_reason nada que las
+bases no digan.
 Si la ficha menciona un adjunto que no recibiste (por ejemplo "se adjunta TDR")
 y ahí podría estar la exigencia, marca false y dilo en
 technical_document_reason para que el usuario suba ese adjunto. En Compra Ágil

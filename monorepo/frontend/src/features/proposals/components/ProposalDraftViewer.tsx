@@ -198,6 +198,10 @@ export function ProposalDraftViewer({
   // nadie lo copie, y se ve que algo está pasando aunque el aviso de etapa
   // quede lejos.
   const actualizando = stage === "drafting" || stage === "regenerating";
+  // Las bases solicitan un informe técnico, se haya redactado o no.
+  const solicitado = Boolean(
+    view.requires_technical_document || view.technical_document_ambiguous,
+  );
 
   return (
     <div>
@@ -297,29 +301,32 @@ export function ProposalDraftViewer({
           </section>
 
           {!contenido.technical_document && (
-            // Sin veredicto: se muestra lo que dicen las bases y se ofrece como
-            // opcional. En Compra Ágil el adjunto es optativo y puede reforzar la
-            // cotización (guía del proveedor, paso 2).
+            // Sin veredicto ni interpretación: si las bases lo solicitan, con sus
+            // palabras; si no, se ofrece como opcional. Nada sobre cuándo se
+            // entrega (plan 292, §2.8).
             <section
               aria-label="Documento técnico"
               className="rounded-lg border border-border-subtle bg-white p-4 text-sm"
             >
               <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-text-strong">
                 <Icon name="file-text" size={16} />
-                Documento técnico (opcional)
+                {solicitado ? "Documento técnico" : "Documento técnico (opcional)"}
               </h3>
-              {view.technical_document_reason && (
-                <p className="text-text-body">{view.technical_document_reason}</p>
-              )}
+              <p className="text-text-body">
+                {view.technical_document_reason ||
+                  (solicitado
+                    ? "Las bases solicitan un informe técnico."
+                    : "Las bases no solicitan un informe técnico.")}
+              </p>
               <p className="mt-1 text-text-muted">
-                {view.technical_document_ambiguous
-                  ? "Puedes adjuntar un documento técnico breve para reforzar tu cotización."
+                {solicitado
+                  ? "Puedes generar un borrador breve a partir de las bases."
                   : "Un documento técnico breve que describa tu servicio puede reforzar la oferta."}
               </p>
               {canWrite && !view.is_expired && (
                 <Button
-                  variant={view.technical_document_ambiguous ? "primary" : "ghost"}
-                  className={`mt-3 ${view.technical_document_ambiguous ? "" : "border border-border-strong"}`}
+                  variant={solicitado ? "primary" : "ghost"}
+                  className={`mt-3 ${solicitado ? "" : "border border-border-strong"}`}
                   disabled={busy}
                   onClick={onRequestTechnical}
                 >
