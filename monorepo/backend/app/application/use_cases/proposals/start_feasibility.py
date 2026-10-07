@@ -68,6 +68,11 @@ _ESTADO_POR_POLARIDAD: dict[str | None, RequirementStatus] = {
 _PREFIJO_CAPACIDAD = "capacidad:"
 # Pocas y útiles: más preguntas cansan sin mejorar mucho la redacción.
 _MAX_SUGERIDAS = 3
+# Versión de la lógica de factibilidad (prompt, esquema y reglas). Entra en la
+# huella: al subirla, "Volver a analizar" rehace los borradores hechos con la
+# versión anterior aunque no cambien la ficha, el perfil ni los adjuntos. Se
+# sube cada vez que cambia lo que el análisis produce.
+VERSION_DEL_ANALISIS = "292-documento-tecnico-ambiguo"
 
 
 def huella_del_analisis(
@@ -78,9 +83,9 @@ def huella_del_analisis(
 ) -> str:
     """Resume lo que usa la factibilidad, para saber si volver a analizar cambia algo.
 
-    Cuenta la ficha (su última modificación), los datos del perfil que recibe la
-    IA (los ítems `perfil:` del catálogo y el rubro) y el contenido de cada
-    adjunto. No usa `supplier.updated_at`: el banner del home lo mueve al guardar
+    Cuenta la versión del análisis (`VERSION_DEL_ANALISIS`), la ficha (su
+    última modificación), los datos del perfil que recibe la IA (los ítems
+    `perfil:` del catálogo y el rubro) y el contenido de cada adjunto. No usa `supplier.updated_at`: el banner del home lo mueve al guardar
     `keywords`, que la factibilidad no lee, y descartaría el borrador sin motivo.
 
     **No** cuenta las respuestas al banco: las de la propia postulación las pidió
@@ -88,7 +93,11 @@ def huella_del_analisis(
     descartar el borrador. Tampoco la respuesta de la IA, que puede variar con
     las mismas entradas.
     """
-    partes = [f"ficha:{tender.last_change_at.isoformat()}", f"rubro:{categoria}"]
+    partes = [
+        f"version:{VERSION_DEL_ANALISIS}",
+        f"ficha:{tender.last_change_at.isoformat()}",
+        f"rubro:{categoria}",
+    ]
     perfil = sorted(
         (item.id, item.detail) for item in catalog.items if item.origin == "perfil"
     )

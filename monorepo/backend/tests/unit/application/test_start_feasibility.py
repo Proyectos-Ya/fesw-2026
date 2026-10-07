@@ -25,6 +25,7 @@ from app.application.use_cases.capabilities.answer_capability_question import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
+from app.application.use_cases.proposals import start_feasibility
 from app.application.use_cases.proposals.start_feasibility import (
     StartFeasibilityUseCase,
 )
@@ -543,6 +544,20 @@ class TestVolverAAnalizar:
         assert mismo.status == "READY"
         assert mismo.content is not None
         assert len(e.ai.llamadas) == 1
+
+    async def test_una_version_nueva_del_analisis_cuenta_como_cambio(self, monkeypatch):
+        """Cambiar el prompt o la lógica de la factibilidad no toca la ficha, el
+        perfil ni los adjuntos. Sin la versión en la huella, "Volver a analizar"
+        mantendría para siempre los borradores hechos con la lógica anterior."""
+        e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
+        await e.ejecutar()
+        monkeypatch.setattr(
+            start_feasibility, "VERSION_DEL_ANALISIS", "una-version-posterior"
+        )
+
+        await self._rehacer(e)
+
+        assert len(e.ai.llamadas) == 2
 
     async def test_subir_bases_nuevas_cuenta_como_cambio(self):
         e = await Escenario(_exigencia(question_key="registro_mop")).preparar()
