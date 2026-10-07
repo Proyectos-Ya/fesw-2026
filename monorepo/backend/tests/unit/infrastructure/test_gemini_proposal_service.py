@@ -209,7 +209,10 @@ async def test_una_exigencia_con_forma_invalida_es_un_error_del_servicio():
 
 async def test_un_error_de_conexion_es_un_error_del_servicio():
     servicio = GeminiProposalService(api_key="clave", model_name="modelo")
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         post.side_effect = httpx.ConnectTimeout("lento")
         with pytest.raises(ProposalAIServiceError):
             await servicio.analyze_feasibility(
@@ -686,3 +689,54 @@ def test_factibilidad_no_cuenta_la_declaracion_de_habilidad_como_documento():
     from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
 
     assert "NO incluyas la Declaración Jurada de Habilidad" in _INSTRUCCIONES
+
+
+# --- reintento ante timeout ---------------------------------------------------
+# Si Gemini no responde a tiempo, se reintenta igual que ante un 503: una vez y
+# solo con lo que queda del presupuesto.
+
+
+async def test_reintenta_si_gemini_no_responde_a_tiempo():
+    # El primer intento corta a los 60 s; tras 2 s de espera quedan 38.
+    post = await _analizar_con_reloj(
+        _RelojFalso(0.0, 60.0, 62.0),
+        [httpx.ReadTimeout(""), _respuesta(RESULTADO)],
+    )
+
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["timeout"] == pytest.approx(38.0)
+
+
+async def test_tras_un_timeout_no_reintenta_si_queda_poco_presupuesto():
+    post = await _analizar_con_reloj(_RelojFalso(0.0, 85.0), [httpx.ReadTimeout("")])
+
+    assert post.call_count == 1
+
+
+async def test_si_el_reintento_tambien_se_demora_es_un_error_del_servicio():
+    servicio = GeminiProposalService(
+        api_key="clave", model_name="modelo", reloj=_RelojFalso(0.0, 60.0, 62.0)
+    )
+    with (
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        post.side_effect = [httpx.ReadTimeout(""), httpx.ReadTimeout("")]
+        with pytest.raises(ProposalAIServiceError, match="no respondió a tiempo"):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 2
+
+
+async def test_un_error_de_red_que_no_es_timeout_no_se_reintenta():
+    servicio = GeminiProposalService(api_key="clave", model_name="modelo")
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post:
+        post.side_effect = httpx.ConnectError("sin red")
+        with pytest.raises(ProposalAIServiceError):
+            await servicio.analyze_feasibility(
+                tender=_licitacion(), catalog=CATALOGO, bank_questions=[], documents=[]
+            )
+
+    assert post.call_count == 1

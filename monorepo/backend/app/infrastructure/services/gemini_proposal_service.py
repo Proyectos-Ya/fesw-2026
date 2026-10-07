@@ -519,18 +519,24 @@ class GeminiProposalService(IProposalAIService):
         inicio = self.reloj()
         response = await self._post(url, payload, _TIMEOUT_SEGUNDOS)
         restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
+        pasajero = response is None or response.status_code in _ESTADOS_PASAJEROS
         if (
-            response.status_code in _ESTADOS_PASAJEROS
+            pasajero
             and restante - _ESPERA_REINTENTO_SEGUNDOS
             >= _MINIMO_PARA_REINTENTAR_SEGUNDOS
         ):
-            # Sobrecarga o cuota momentánea: un reintento suele bastar y evita
-            # devolverle un 502 al usuario por algo que se arregla solo. Usa
-            # solo lo que queda del presupuesto.
+            # Sobrecarga, cuota momentánea o una respuesta que no llegó a tiempo:
+            # un reintento suele bastar y evita devolverle un 502 al usuario por
+            # algo que se arregla solo. Usa solo lo que queda del presupuesto.
             await asyncio.sleep(_ESPERA_REINTENTO_SEGUNDOS)
             restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
             response = await self._post(url, payload, min(_TIMEOUT_SEGUNDOS, restante))
 
+        if response is None:
+            raise ProposalAIServiceError(
+                "La API de Gemini no respondió a tiempo "
+                f"({_PRESUPUESTO_SEGUNDOS:.0f} s de presupuesto)."
+            )
         if response.status_code != 200:
             raise ProposalAIServiceError(
                 f"Error en la API de Gemini (HTTP {response.status_code}): "
@@ -544,10 +550,17 @@ class GeminiProposalService(IProposalAIService):
             ) from error
 
     @staticmethod
-    async def _post(url: str, payload: dict, timeout: float) -> httpx.Response:
+    async def _post(url: str, payload: dict, timeout: float) -> httpx.Response | None:
+        """Un intento. `None` si Gemini no respondió a tiempo, que se reintenta.
+
+        Otros errores de red (sin conexión, DNS) no se reintentan: es poco
+        probable que se arreglen en dos segundos.
+        """
         try:
             async with httpx.AsyncClient() as client:
                 return await client.post(url, json=payload, timeout=timeout)
+        except httpx.TimeoutException:
+            return None
         except httpx.HTTPError as error:
             raise ProposalAIServiceError(
                 f"Error de conexión con la API de Gemini: {error!r}"
