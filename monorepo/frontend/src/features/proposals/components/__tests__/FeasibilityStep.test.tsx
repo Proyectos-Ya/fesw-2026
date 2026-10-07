@@ -141,27 +141,28 @@ describe("FeasibilityStep", () => {
     expect(no).not.toHaveAttribute("aria-busy", "true");
   });
 
-  it("explica por qué se exige (o no) documento técnico", () => {
+  it("si las bases no lo mencionan, lo presenta como opcional con el motivo", () => {
     renderStep({
       requires_technical_document: false,
       technical_document_reason: "La ficha menciona un TDR que no se recibió.",
     });
 
-    expect(screen.getByText(/No se exige documento técnico/)).toBeInTheDocument();
+    expect(screen.getByText(/Documento técnico: opcional\./)).toBeInTheDocument();
     expect(screen.getByText(/TDR que no se recibió/)).toBeInTheDocument();
+    expect(screen.queryByText(/No se exige/)).not.toBeInTheDocument();
   });
 
-  it("dice cuando las bases exigen documento técnico", () => {
+  it("dice cuando las bases piden documento técnico", () => {
     renderStep({
       requires_technical_document: true,
       technical_document_reason: "El punto 4 pide una propuesta técnica.",
     });
 
-    expect(screen.getByText(/Las bases exigen documento técnico\./)).toBeInTheDocument();
+    expect(screen.getByText(/Las bases piden un documento técnico\./)).toBeInTheDocument();
     expect(screen.getByText(/El punto 4 pide una propuesta técnica/)).toBeInTheDocument();
   });
 
-  it("dice cuando las bases mencionan un informe técnico sin aclarar si va con la cotización", () => {
+  it("dice cuando las bases lo mencionan sin indicar si va con la cotización", () => {
     renderStep({
       requires_technical_document: false,
       technical_document_ambiguous: true,
@@ -170,11 +171,11 @@ describe("FeasibilityStep", () => {
 
     expect(
       screen.getByText(
-        /Las bases mencionan un informe técnico, pero no queda claro si va con la cotización\./,
+        /Las bases mencionan un documento técnico, pero no indican si va con la cotización\./,
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/Se debe entregar informe técnico/)).toBeInTheDocument();
-    expect(screen.queryByText(/No se exige documento técnico/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No se exige/)).not.toBeInTheDocument();
   });
 });
 

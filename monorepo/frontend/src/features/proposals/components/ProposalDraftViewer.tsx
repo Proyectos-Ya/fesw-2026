@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
@@ -66,60 +66,85 @@ function ContadorDetalle({ texto }: { texto: string }) {
   );
 }
 
-interface ParrafoProps {
-  parrafo: DraftParagraph;
-  seleccionado: boolean;
-  onSelect: () => void;
-}
-
-function Parrafo({ parrafo, seleccionado, onSelect }: ParrafoProps) {
+function ContenidoFuentes({ parrafo }: { parrafo: DraftParagraph }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={seleccionado}
-      className={`w-full rounded-md px-3 py-2 text-left text-sm leading-relaxed text-text-body transition-colors ${
-        seleccionado ? "bg-teal-50 ring-1 ring-primary/30" : "hover:bg-warm-100/60"
-      }`}
-    >
-      <HighlightedText text={parrafo.text} />
-    </button>
-  );
-}
-
-function SourcePanel({ parrafo }: { parrafo: DraftParagraph | null }) {
-  return (
-    <aside
-      aria-label="Fuentes del párrafo"
-      className="rounded-lg border border-border-subtle bg-surface-card p-4 lg:sticky lg:top-6"
-    >
-      <h3 className="mb-2 text-sm font-bold text-text-strong">Fuentes</h3>
-      {parrafo === null ? (
-        <p className="text-xs text-text-muted">
-          Selecciona un párrafo para ver en qué parte del perfil de tu empresa se basa.
-        </p>
-      ) : parrafo.sources.length === 0 ? (
-        <p className="text-xs text-text-muted">
-          Este párrafo no cita datos de la empresa: sale de las bases de la licitación.
-        </p>
+    <>
+      {parrafo.sources.length === 0 ? (
+        <p>Este párrafo no cita datos de la empresa: sale de las bases de la licitación.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {parrafo.sources.map((fuente) => (
-            <li
-              key={fuente.id}
-              className="rounded-md bg-warm-100/60 px-3 py-2 text-xs text-text-body"
-            >
-              {fuente.label}
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mb-1.5 font-semibold text-text-strong">Se basa en:</p>
+          <ul className="flex flex-col gap-1.5">
+            {parrafo.sources.map((fuente) => (
+              <li key={fuente.id} className="rounded-md bg-warm-100/60 px-2 py-1.5">
+                {fuente.label}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      {parrafo !== null && parrafo.placeholders.length > 0 && (
-        <p className="mt-3 text-xs font-semibold text-amber-700">
+      {parrafo.placeholders.length > 0 && (
+        <p className="mt-2 font-semibold text-amber-700">
           Falta completar: {parrafo.placeholders.join(", ")}.
         </p>
       )}
-    </aside>
+    </>
+  );
+}
+
+/**
+ * Las fuentes de un párrafo (CA5), en un globo junto a él. Se abre al pasar el
+ * cursor, con el foco del teclado o al tocar en el celular, y se cierra con
+ * Escape o al salir. Reemplaza al panel lateral, que quedaba arriba de la
+ * página mientras se revisaba el borrador más abajo.
+ */
+function FuentesDelParrafo({ parrafo }: { parrafo: DraftParagraph }) {
+  const [abierto, setAbierto] = useState(false);
+  const idGlobo = useId();
+  const resumen = parrafo.text.length > 60 ? `${parrafo.text.slice(0, 60)}…` : parrafo.text;
+  return (
+    <span
+      className="relative shrink-0"
+      onMouseEnter={() => setAbierto(true)}
+      onMouseLeave={() => setAbierto(false)}
+    >
+      <button
+        type="button"
+        aria-label={`Fuentes del párrafo: ${resumen}`}
+        aria-expanded={abierto}
+        aria-describedby={abierto ? idGlobo : undefined}
+        onClick={() => setAbierto(true)}
+        onFocus={() => setAbierto(true)}
+        onBlur={() => setAbierto(false)}
+        onKeyDown={(evento) => {
+          if (evento.key === "Escape") setAbierto(false);
+        }}
+        className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-white px-2 py-0.5 text-xs text-text-muted transition-colors hover:border-primary/40 hover:text-teal-700"
+      >
+        <Icon name="book-open" size={12} aria-hidden="true" />
+        Fuentes ({parrafo.sources.length})
+      </button>
+      {abierto && (
+        <span
+          id={idGlobo}
+          role="tooltip"
+          className="absolute right-0 top-full z-20 mt-1 block w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-white p-3 text-left text-xs text-text-body shadow-lg"
+        >
+          <ContenidoFuentes parrafo={parrafo} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function Parrafo({ parrafo }: { parrafo: DraftParagraph }) {
+  return (
+    <div className="flex items-start gap-3 rounded-md px-3 py-2 text-sm leading-relaxed text-text-body hover:bg-warm-100/40">
+      <p className="flex-1">
+        <HighlightedText text={parrafo.text} />
+      </p>
+      <FuentesDelParrafo parrafo={parrafo} />
+    </div>
   );
 }
 
@@ -160,7 +185,6 @@ export function ProposalDraftViewer({
   onDownload,
   onRequestTechnical,
 }: ProposalDraftViewerProps) {
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [regenerando, setRegenerando] = useState(false);
   const contenido = view.content;
   if (!contenido) return null;
@@ -170,14 +194,6 @@ export function ProposalDraftViewer({
     // Así se llama el campo en el formulario de Mercado Público.
     { key: "descripcion", titulo: "Detalle de la cotización", seccion: contenido.offer_description },
   ];
-  const todos: Record<string, DraftParagraph> = {};
-  secciones.forEach(({ key, seccion }) =>
-    seccion.paragraphs.forEach((p, i) => (todos[`${key}-${i}`] = p)),
-  );
-  contenido.technical_document?.sections.forEach((s) =>
-    s.paragraphs.forEach((p, i) => (todos[`tecnico-${s.key}-${i}`] = p)),
-  );
-  const parrafoSeleccionado = seleccionado ? (todos[seleccionado] ?? null) : null;
   // Mientras la IA reescribe, el texto de abajo ya no vale: se cubre para que
   // nadie lo copie, y se ve que algo está pasando aunque el aviso de etapa
   // quede lejos.
@@ -187,10 +203,17 @@ export function ProposalDraftViewer({
     <div>
       <NextSteps view={view} tenderCode={tenderCode} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-text-muted">
-          Copia cada sección al formulario de la Compra Ágil. Revisa lo resaltado antes de
-          enviar.
-        </p>
+        <div className="flex flex-col gap-1 text-sm text-text-muted">
+          <p>
+            Copia cada sección al formulario de la Compra Ágil. Revisa lo resaltado antes de
+            enviar.
+          </p>
+          <p className="flex items-center gap-1.5 text-xs">
+            <Icon name="book-open" size={13} aria-hidden="true" />
+            Para ver en qué dato de tu empresa se basa el texto, pasa el cursor o toca
+            &quot;Fuentes&quot; en cada párrafo.
+          </p>
+        </div>
         {canWrite && !view.is_expired && (
           <Button
             variant="ghost"
@@ -222,7 +245,7 @@ export function ProposalDraftViewer({
       <div
         data-testid="contenido-borrador"
         aria-busy={actualizando || undefined}
-        className="relative grid gap-6 lg:grid-cols-[1fr_16rem]"
+        className="relative"
       >
         {actualizando && (
           // El aviso de etapa ya lo anuncia a los lectores de pantalla.
@@ -249,12 +272,7 @@ export function ProposalDraftViewer({
                 <BotonCopiar texto={textoDe(seccion)} etiqueta={titulo.toLowerCase()} />
               </div>
               {seccion.paragraphs.map((p, i) => (
-                <Parrafo
-                  key={i}
-                  parrafo={p}
-                  seleccionado={seleccionado === `${key}-${i}`}
-                  onSelect={() => setSeleccionado(`${key}-${i}`)}
-                />
+                <Parrafo key={i} parrafo={p} />
               ))}
               {key === "descripcion" && <ContadorDetalle texto={textoDe(seccion)} />}
             </section>
@@ -278,55 +296,35 @@ export function ProposalDraftViewer({
             )}
           </section>
 
-          {!contenido.technical_document && view.technical_document_ambiguous && (
-            // Las bases lo mencionan sin decir cuándo se entrega: se informa y se
-            // ofrece generarlo, sin tono de alerta.
+          {!contenido.technical_document && (
+            // Sin veredicto: se muestra lo que dicen las bases y se ofrece como
+            // opcional. En Compra Ágil el adjunto es optativo y puede reforzar la
+            // cotización (guía del proveedor, paso 2).
             <section
               aria-label="Documento técnico"
-              className="rounded-lg border border-primary/20 bg-teal-50/40 p-4 text-sm"
+              className="rounded-lg border border-border-subtle bg-white p-4 text-sm"
             >
-              <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-teal-700">
-                <Icon name="info" size={16} />
-                Las bases mencionan un informe técnico
+              <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-text-strong">
+                <Icon name="file-text" size={16} />
+                Documento técnico (opcional)
               </h3>
               {view.technical_document_reason && (
                 <p className="text-text-body">{view.technical_document_reason}</p>
               )}
-              <p className="mt-1 text-text-body">
-                No queda claro si va con la cotización o se entrega al ejecutar el servicio. Si
-                quieres adjuntarlo a tu cotización, genera un borrador breve.
-              </p>
-              {canWrite && !view.is_expired && (
-                <Button className="mt-3" disabled={busy} onClick={onRequestTechnical}>
-                  <Icon name="file-plus" size={16} />
-                  Generar documento técnico
-                </Button>
-              )}
-            </section>
-          )}
-
-          {!contenido.technical_document && !view.technical_document_ambiguous && (
-            <section
-              aria-label="Documento técnico"
-              className="rounded-lg border border-warning/30 bg-warning-soft/30 p-4 text-sm"
-            >
-              <h3 className="mb-1 text-sm font-bold text-text-strong">Documento técnico</h3>
-              <p className="text-text-body">
-                No se detectó que esta licitación pida un documento técnico.
-                {view.technical_document_reason ? ` ${view.technical_document_reason}` : ""}
-              </p>
-              <p className="mt-1 text-xs text-text-muted">
-                Si las bases sí lo piden, sube las bases y vuelve a analizar, o genéralo igual.
+              <p className="mt-1 text-text-muted">
+                {view.technical_document_ambiguous
+                  ? "Puedes adjuntar un documento técnico breve para reforzar tu cotización."
+                  : "Un documento técnico breve que describa tu servicio puede reforzar la oferta."}
               </p>
               {canWrite && !view.is_expired && (
                 <Button
-                  variant="ghost"
-                  className="mt-3 border border-border-strong bg-white"
+                  variant={view.technical_document_ambiguous ? "primary" : "ghost"}
+                  className={`mt-3 ${view.technical_document_ambiguous ? "" : "border border-border-strong"}`}
                   disabled={busy}
                   onClick={onRequestTechnical}
                 >
                   <Icon name="file-plus" size={16} />
-                  Generar de todas formas
+                  Generar documento técnico
                 </Button>
               )}
             </section>
@@ -351,12 +349,7 @@ export function ProposalDraftViewer({
                   </h4>
                   <SugerenciaSeccion guidance={s.guidance ?? null} hint={s.hint ?? null} />
                   {s.paragraphs.map((p, i) => (
-                    <Parrafo
-                      key={i}
-                      parrafo={p}
-                      seleccionado={seleccionado === `tecnico-${s.key}-${i}`}
-                      onSelect={() => setSeleccionado(`tecnico-${s.key}-${i}`)}
-                    />
+                    <Parrafo key={i} parrafo={p} />
                   ))}
                 </div>
               ))}
@@ -364,7 +357,6 @@ export function ProposalDraftViewer({
           )}
         </div>
 
-        <SourcePanel parrafo={parrafoSeleccionado} />
       </div>
 
       <RegenerateDialog

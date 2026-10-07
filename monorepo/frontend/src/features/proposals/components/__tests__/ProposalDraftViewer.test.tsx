@@ -74,24 +74,64 @@ describe("ProposalDraftViewer", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Capacitación PAC");
   });
 
-  it("al elegir un párrafo muestra sus fuentes (CA5)", async () => {
+  it("explica cómo ver las fuentes de cada párrafo", () => {
     renderViewer();
 
-    await userEvent.click(screen.getByRole("button", { name: /Operamos en Aysén/ }));
+    expect(screen.getByText(/pasa el cursor o toca .Fuentes. en cada párrafo/i)).toBeInTheDocument();
+  });
 
-    expect(screen.getByRole("complementary", { name: "Fuentes del párrafo" })).toHaveTextContent(
-      "Región de operación: Aysén",
-    );
+  it("al pasar el cursor por las fuentes de un párrafo las muestra a su lado (CA5)", async () => {
+    renderViewer();
+
+    await userEvent.hover(screen.getByRole("button", { name: /Fuentes del párrafo: Operamos en Aysén/ }));
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Región de operación: Aysén");
+  });
+
+  it("al dejar de pasar el cursor las oculta", async () => {
+    renderViewer();
+    const boton = screen.getByRole("button", { name: /Fuentes del párrafo: Operamos en Aysén/ });
+
+    await userEvent.hover(boton);
+    await userEvent.unhover(boton);
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("en el celular se abre al tocar y se cierra con Escape", async () => {
+    renderViewer();
+    const boton = screen.getByRole("button", { name: /Fuentes del párrafo: Operamos en Aysén/ });
+
+    await userEvent.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Región de operación: Aysén");
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("indica cuántas fuentes tiene cada párrafo", () => {
+    renderViewer();
+
+    expect(
+      screen.getByRole("button", { name: /Fuentes del párrafo: Operamos en Aysén/ }),
+    ).toHaveTextContent("1");
   });
 
   it("un párrafo con vacíos dice qué completar (CA2)", async () => {
     renderViewer();
 
-    await userEvent.click(screen.getByRole("button", { name: /Relator:/ }));
+    await userEvent.hover(screen.getByRole("button", { name: /Fuentes del párrafo: Relator:/ }));
 
-    const panel = screen.getByRole("complementary", { name: "Fuentes del párrafo" });
-    expect(panel).toHaveTextContent("no cita datos de la empresa");
-    expect(panel).toHaveTextContent("Falta completar: nombre del relator.");
+    const globo = screen.getByRole("tooltip");
+    expect(globo).toHaveTextContent("no cita datos de la empresa");
+    expect(globo).toHaveTextContent("Falta completar: nombre del relator.");
+  });
+
+  it("ya no hay un panel de fuentes aparte", () => {
+    renderViewer();
+
+    expect(screen.queryByRole("complementary", { name: "Fuentes del párrafo" })).not.toBeInTheDocument();
   });
 
   it("muestra las advertencias aceptadas", () => {
@@ -115,23 +155,36 @@ describe("ProposalDraftViewer", () => {
     expect(onRegenerate).toHaveBeenCalledWith("Tono más formal");
   });
 
-  it("sin documento técnico avisa que no se detectó y no deja exportar (CA3)", () => {
+  it("sin documento técnico lo ofrece como opcional y no deja exportar (CA3)", () => {
     renderViewer(
       listo({ technical_document_reason: "La ficha solo pide una cotización." }),
     );
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).toHaveTextContent("Documento técnico (opcional)");
     expect(bloque).toHaveTextContent(
-      "No se detectó que esta licitación pida un documento técnico",
+      "Un documento técnico breve que describa tu servicio puede reforzar la oferta.",
     );
     expect(bloque).toHaveTextContent("La ficha solo pide una cotización.");
     expect(screen.queryByRole("button", { name: /Exportar a .docx/ })).not.toBeInTheDocument();
   });
 
-  it("se puede generar el documento técnico de todas formas", async () => {
+  it("no da un veredicto ni usa tono de advertencia", () => {
+    renderViewer(listo({ technical_document_reason: "La ficha solo pide una cotización." }));
+
+    const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).not.toHaveTextContent("No se detectó");
+    expect(bloque).not.toHaveTextContent("No se exige");
+    expect(bloque.className).not.toMatch(/warning/);
+  });
+
+  it("se puede generar aunque las bases no lo pidan", async () => {
     const { onRequestTechnical } = renderViewer();
 
-    await userEvent.click(screen.getByRole("button", { name: /Generar de todas formas/ }));
+    const boton = screen.getByRole("button", { name: /Generar documento técnico/ });
+    // Secundario: es opcional y las bases no lo mencionan.
+    expect(boton).not.toHaveClass("bg-primary");
+    await userEvent.click(boton);
 
     expect(onRequestTechnical).toHaveBeenCalled();
   });
@@ -140,37 +193,33 @@ describe("ProposalDraftViewer", () => {
     renderViewer(listo(), false);
 
     expect(
-      screen.queryByRole("button", { name: /Generar de todas formas/ }),
+      screen.queryByRole("button", { name: /Generar documento técnico/ }),
     ).not.toBeInTheDocument();
   });
 
   const CITA =
-    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo", pero no aclaran si va con la oferta.';
+    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo", pero no indican si va con la cotización.';
 
-  it("en el caso ambiguo cita las bases y ofrece generarlo con el botón principal", async () => {
+  it("si las bases lo mencionan sin aclarar, muestra la cita y lo ofrece con el botón principal", async () => {
     const { onRequestTechnical } = renderViewer(
       listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
     );
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
-    expect(bloque).toHaveTextContent("Las bases mencionan un informe técnico");
+    expect(bloque).toHaveTextContent("Documento técnico (opcional)");
     expect(bloque).toHaveTextContent(CITA);
     expect(bloque).toHaveTextContent(
-      "No queda claro si va con la cotización o se entrega al ejecutar el servicio.",
+      "Puedes adjuntar un documento técnico breve para reforzar tu cotización.",
     );
     expect(bloque).not.toHaveTextContent("No se detectó");
-    expect(
-      screen.queryByRole("button", { name: /Generar de todas formas/ }),
-    ).not.toBeInTheDocument();
 
     const boton = within(bloque).getByRole("button", { name: /Generar documento técnico/ });
-    // Variante principal de Button, no la secundaria del aviso "No se detectó".
     expect(boton).toHaveClass("bg-primary");
     await userEvent.click(boton);
     expect(onRequestTechnical).toHaveBeenCalled();
   });
 
-  it("en el caso ambiguo no ofrece generarlo sin permiso ni con la licitación vencida", () => {
+  it("en el caso ambiguo no ofrece generarlo sin permiso", () => {
     renderViewer(
       listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
       false,
@@ -193,14 +242,12 @@ describe("ProposalDraftViewer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("un borrador antiguo sin motivo mantiene el aviso de siempre", () => {
+  it("un borrador antiguo sin motivo también lo ofrece como opcional", () => {
     renderViewer(listo({ technical_document_ambiguous: null, technical_document_reason: null }));
 
     const bloque = screen.getByRole("region", { name: "Documento técnico" });
-    expect(bloque).toHaveTextContent(
-      "No se detectó que esta licitación pida un documento técnico.",
-    );
-    expect(screen.getByRole("button", { name: /Generar de todas formas/ })).toBeInTheDocument();
+    expect(bloque).toHaveTextContent("Documento técnico (opcional)");
+    expect(screen.getByRole("button", { name: /Generar documento técnico/ })).toBeInTheDocument();
   });
 
   it("bajo cada sección muestra qué poner y la sugerencia para esta licitación", () => {

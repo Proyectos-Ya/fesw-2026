@@ -381,9 +381,10 @@ test("las bases mencionan un informe técnico sin aclarar si va con la cotizaci�
   await page.goto("/");
 
   const bloque = page.getByRole("region", { name: "Documento técnico" });
-  await expect(bloque).toContainText("Las bases mencionan un informe técnico");
+  await expect(bloque).toContainText("Documento técnico (opcional)");
   await expect(bloque).toContainText("Se debe entregar informe técnico y certificado individual");
   await expect(bloque).not.toContainText("No se detectó");
+  await expect(bloque).not.toContainText("No se exige");
   await bloque.getByRole("button", { name: "Generar documento técnico" }).click();
 
   await expect(bloque).toContainText("Revisión y recarga de cada equipo.");
@@ -392,4 +393,9 @@ test("las bases mencionan un informe técnico sin aclarar si va con la cotizaci�
     "Para esta licitación: Indica cómo emitirás el certificado de cada extintor.",
   );
   expect(pidioDocumento).toBe(true);
+
+  // Las fuentes de un párrafo se ven junto a él, sin subir hasta un panel.
+  const fuentes = bloque.getByRole("button", { name: /^Fuentes del párrafo:/ }).first();
+  await fuentes.hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
 });
