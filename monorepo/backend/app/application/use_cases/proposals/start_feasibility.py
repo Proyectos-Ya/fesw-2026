@@ -18,6 +18,7 @@ from app.application.services.document_validator_service import (
 )
 from app.application.services.proposal_ai_service import (
     FeasibilityRequirementDTO,
+    FeasibilityResultDTO,
     IProposalAIService,
     NewQuestionDTO,
 )
@@ -72,7 +73,7 @@ _MAX_SUGERIDAS = 3
 # huella: al subirla, "Volver a analizar" rehace los borradores hechos con la
 # versión anterior aunque no cambien la ficha, el perfil ni los adjuntos. Se
 # sube cada vez que cambia lo que el análisis produce.
-VERSION_DEL_ANALISIS = "292-documento-tecnico-solo-si-se-solicita"
+VERSION_DEL_ANALISIS = "292-informe-tecnico-sin-momento"
 
 
 def huella_del_analisis(
@@ -106,6 +107,25 @@ def huella_del_analisis(
         contenido = hashlib.sha256(doc.file_bytes).hexdigest()
         partes.append(f"adjunto:{doc.document_name}:{doc.is_corrupted}:{contenido}")
     return hashlib.sha256("\n".join(partes).encode()).hexdigest()
+
+
+def _mensaje_documento_tecnico(resultado: FeasibilityResultDTO) -> str:
+    """Lo que el usuario lee sobre el documento técnico. Lo arma el backend.
+
+    Solo dice si las bases lo solicitan, con su frase textual ya verificada.
+    Nada de cuándo se entrega ni de si va con la oferta: la IA lo deducía y
+    las bases no lo decían (plan 292, §2.8).
+    """
+    if not (
+        resultado.requires_technical_document or resultado.technical_document_ambiguous
+    ):
+        return "Las bases no solicitan un informe técnico."
+    if resultado.technical_document_quote:
+        return (
+            "Las bases solicitan un informe técnico: "
+            f'"{resultado.technical_document_quote}".'
+        )
+    return "Las bases solicitan un informe técnico."
 
 
 def categoria_de(supplier: Supplier) -> str:
@@ -228,7 +248,7 @@ class StartFeasibilityUseCase:
             # Si la IA lo marca exigido y ambiguo a la vez, manda exigido.
             technical_document_ambiguous=resultado.technical_document_ambiguous
             and not resultado.requires_technical_document,
-            technical_document_reason=resultado.technical_document_reason,
+            technical_document_reason=_mensaje_documento_tecnico(resultado),
             analysis_fingerprint=huella,
             analysis_documents=[
                 AnalysisDocument(name=doc.document_name, corrupted=doc.is_corrupted)

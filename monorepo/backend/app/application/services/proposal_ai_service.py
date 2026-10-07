@@ -65,8 +65,10 @@ class FeasibilityResultDTO(BaseModel):
     # Las bases mencionan un informe o documento técnico sin aclarar si va con
     # la oferta o se entrega al ejecutar el servicio (plan 292, §2.8).
     technical_document_ambiguous: bool = False
-    # El esquema de Gemini lo exige; acepta `None` para leer respuestas viejas.
-    technical_document_reason: str | None = None
+    # La frase textual de las bases que solicita el informe técnico, ya
+    # verificada contra lo que se envió a la IA (`None` si no hay o no estaba).
+    # La IA no escribe el mensaje: lo arma el caso de uso (plan 292, §2.8).
+    technical_document_quote: str | None = None
     # La ficha menciona bases, TDR o anexos: con eso se recomienda subirlos.
     mentions_attachments: bool = False
 

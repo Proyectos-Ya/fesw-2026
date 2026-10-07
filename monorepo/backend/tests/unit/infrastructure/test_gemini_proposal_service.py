@@ -117,7 +117,7 @@ RESULTADO = {
         },
     ],
     "requires_technical_document": True,
-    "technical_document_reason": "Las bases piden una memoria técnica.",
+    "technical_document_quote": None,
 }
 
 
@@ -751,27 +751,94 @@ def _instrucciones(post) -> str:
     return " ".join(texto.split())
 
 
-async def test_factibilidad_exige_el_motivo_y_si_el_documento_es_ambiguo():
-    ambiguo = {
-        **RESULTADO,
-        "requires_technical_document": False,
-        "technical_document_ambiguous": True,
-        "technical_document_reason": (
-            'Las bases dicen "Se debe entregar informe técnico y certificado '
-            'individual por cada equipo" sin aclarar si va con la oferta.'
-        ),
-    }
-
-    resultado, post = await _analizar(_respuesta(ambiguo))
+async def test_factibilidad_pide_la_cita_y_no_un_motivo_libre():
+    """La IA ya no escribe el motivo: solo devuelve la frase de las bases (§2.8)."""
+    _, post = await _analizar(_respuesta(RESULTADO))
 
     esquema = post.call_args.kwargs["json"]["generationConfig"]["responseSchema"]
     propiedades = esquema["properties"]
-    assert propiedades["technical_document_reason"] == {"type": "STRING"}
+    assert "technical_document_reason" not in propiedades
+    assert propiedades["technical_document_quote"] == {
+        "type": "STRING",
+        "nullable": True,
+    }
     assert propiedades["technical_document_ambiguous"] == {"type": "BOOLEAN"}
-    assert "technical_document_reason" in esquema["required"]
     assert "technical_document_ambiguous" in esquema["required"]
-    assert resultado.technical_document_ambiguous is True
-    assert "informe técnico" in (resultado.technical_document_reason or "")
+
+
+# La descripción de `_licitacion()` dice: "Instalación eléctrica en liceo.
+# Deberá contar con SEC."
+
+
+async def test_una_cita_que_esta_en_la_ficha_se_conserva():
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "Deberá contar con SEC.",
+            }
+        )
+    )
+
+    # Sin el punto final: el mensaje la cierra con comillas y su propio punto.
+    assert resultado.technical_document_quote == "Deberá contar con SEC"
+
+
+async def test_la_cita_se_compara_sin_importar_mayusculas_ni_espacios():
+    resultado, _ = await _analizar(
+        _respuesta(
+            {**RESULTADO, "technical_document_quote": "deberá   contar\ncon SEC"}
+        )
+    )
+
+    assert resultado.technical_document_quote == "deberá contar con SEC"
+
+
+async def test_una_cita_que_no_esta_en_las_bases_se_descarta():
+    """El guardrail contra alucinaciones: lo que no está escrito no llega al usuario."""
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "El informe se entrega al finalizar el servicio.",
+            }
+        )
+    )
+
+    assert resultado.technical_document_quote is None
+
+
+async def test_una_cita_de_un_pdf_con_texto_se_conserva(monkeypatch):
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: (
+            "3. CONDICIONES. Se debe entregar informe técnico y certificado "
+            "individual por cada equipo. " * 5
+        ),
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    resultado, _ = await _analizar(
+        _respuesta(
+            {
+                **RESULTADO,
+                "technical_document_ambiguous": True,
+                "technical_document_quote": "Se debe entregar informe técnico y "
+                "certificado individual por cada equipo",
+            }
+        ),
+        documentos,
+    )
+
+    assert resultado.technical_document_quote == (
+        "Se debe entregar informe técnico y certificado individual por cada equipo"
+    )
 
 
 async def test_factibilidad_sin_ambiguedad_queda_en_falso():
@@ -785,9 +852,7 @@ async def test_factibilidad_trata_los_entregables_de_ejecucion_como_condicion():
 
     instrucciones = _instrucciones(post)
     assert "technical_document_ambiguous" in instrucciones
-    assert "al ejecutar o terminar el servicio" in instrucciones
-    assert "es una condicion" in instrucciones
-    assert "cita entre comillas" in instrucciones
+    assert "copiada exacta" in instrucciones
 
 
 async def test_redaccion_pide_una_sugerencia_por_seccion_del_documento_tecnico():
@@ -889,30 +954,38 @@ def _plano(texto: str) -> str:
     return " ".join(texto.split())
 
 
-def test_factibilidad_no_deduce_cuando_se_entrega_un_documento():
-    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
-
-    assert "Solo afirma cuándo se entrega un documento si las bases lo dicen" in _plano(
-        _INSTRUCCIONES
-    )
-    assert "si lo deduces, es ambiguo" in _plano(_INSTRUCCIONES)
-
-
-def test_el_motivo_cita_las_bases_y_no_las_interpreta():
-    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
-
-    assert "cita entre comillas la frase exacta de las bases" in _plano(_INSTRUCCIONES)
-    assert (
-        "No afirmes en technical_document_reason nada que las bases no digan"
-        in _plano(_INSTRUCCIONES)
-    )
-
-
-def test_el_motivo_solo_dice_si_las_bases_lo_solicitan():
-    """El usuario solo necesita saber si las bases lo piden y con qué palabras:
-    nada sobre cuándo se entrega ni si va con la oferta (plan 292, §2.8)."""
+def test_factibilidad_no_razona_sobre_cuando_se_entrega_un_documento():
+    """Con 1377068-65-COT26, Gemini agregó "al finalizar el servicio" a la
+    exigencia y decidió por eso que las bases no pedían el informe. El prompt
+    ya no le pide razonar sobre el momento de entrega (plan 292, §2.8)."""
     from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
 
     plano = _plano(_INSTRUCCIONES)
-    assert "technical_document_reason dice solo si las bases solicitan" in plano
-    assert "Nunca menciones cuándo se entrega ni si va con la oferta" in plano
+    assert "al ejecutar o terminar el servicio" not in plano
+    assert "No decidas cuándo se entrega ni si va con la oferta" in plano
+    assert "basta con que las bases lo soliciten" in plano
+
+
+def test_un_informe_tecnico_solicitado_no_va_en_las_exigencias():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "Un informe o documento técnico solicitado NO va en requirements" in (
+        _plano(_INSTRUCCIONES)
+    )
+
+
+def test_las_exigencias_usan_las_palabras_de_las_bases():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "con las palabras de las bases" in plano
+    assert "no agregues momentos, plazos, lugares ni cantidades" in plano
+
+
+def test_el_prompt_pide_la_frase_textual_y_nada_mas():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    plano = _plano(_INSTRUCCIONES)
+    assert "technical_document_quote" in plano
+    assert "copiada exacta" in plano
+    assert "technical_document_reason" not in plano

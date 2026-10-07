@@ -340,7 +340,6 @@ class TestBorrador:
         e = await Escenario(
             _exigencia(question_key="registro_mop"),
             requires_technical_document=True,
-            technical_document_reason="Las bases piden una memoria técnica.",
         ).preparar()
 
         borrador = await e.ejecutar()
@@ -349,8 +348,8 @@ class TestBorrador:
         assert guardado == borrador
         assert borrador.created_by_user_id == e.user_id
         assert borrador.requires_technical_document is True
-        assert (
-            borrador.technical_document_reason == "Las bases piden una memoria técnica."
+        assert borrador.technical_document_reason == (
+            "Las bases solicitan un informe técnico."
         )
         assert [r.id for r in borrador.requirements] == ["req-1"]
 
@@ -937,44 +936,65 @@ class TestConQueSeAnalizo:
 
 
 class TestDocumentoTecnicoAmbiguo:
-    """Las bases mencionan un informe técnico sin decir si va con la oferta (§2.8)."""
+    """El mensaje del documento técnico lo escribe el backend, no la IA (§2.8).
 
-    _CITA = (
-        'Las bases dicen "Se debe entregar informe técnico y certificado '
-        'individual por cada equipo" sin aclarar si va con la oferta.'
-    )
+    La IA solo devuelve la frase de las bases (ya verificada por el servicio).
+    Así no puede llegar al usuario una interpretación como "se entrega al
+    finalizar el servicio", que las bases no decían.
+    """
 
-    async def test_guarda_que_es_ambiguo_y_el_motivo_con_la_cita(self):
+    _FRASE = "Se debe entregar informe técnico y certificado individual por cada equipo"
+
+    async def test_si_lo_solicitan_con_cita_la_muestra_tal_cual(self):
         e = await Escenario(
             requires_technical_document=False,
             technical_document_ambiguous=True,
-            technical_document_reason=self._CITA,
+            technical_document_quote=self._FRASE,
         ).preparar()
 
         borrador = await e.ejecutar()
 
-        assert borrador.requires_technical_document is False
         assert borrador.technical_document_ambiguous is True
-        assert borrador.technical_document_reason == self._CITA
+        assert borrador.technical_document_reason == (
+            f'Las bases solicitan un informe técnico: "{self._FRASE}".'
+        )
         assert await e.drafts.get(e.empresa.id, e.tender_id) == borrador
+
+    async def test_si_lo_solicitan_sin_cita_verificada_no_inventa_una(self):
+        e = await Escenario(requires_technical_document=True).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_reason == (
+            "Las bases solicitan un informe técnico."
+        )
+
+    async def test_si_no_lo_solicitan_lo_dice(self):
+        e = await Escenario().preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_ambiguous is False
+        assert borrador.technical_document_reason == (
+            "Las bases no solicitan un informe técnico."
+        )
+
+    async def test_una_cita_sin_que_lo_soliciten_no_se_muestra(self):
+        e = await Escenario(technical_document_quote=self._FRASE).preparar()
+
+        borrador = await e.ejecutar()
+
+        assert borrador.technical_document_reason == (
+            "Las bases no solicitan un informe técnico."
+        )
 
     async def test_si_la_ia_marca_exigido_y_ambiguo_manda_exigido(self):
         e = await Escenario(
             requires_technical_document=True,
             technical_document_ambiguous=True,
-            technical_document_reason="Las bases piden una memoria técnica.",
         ).preparar()
 
         borrador = await e.ejecutar()
 
         assert borrador.requires_technical_document is True
-        assert borrador.technical_document_ambiguous is False
-
-    async def test_sin_mencion_queda_en_falso(self):
-        e = await Escenario(
-            technical_document_reason="Las bases no piden documento técnico."
-        ).preparar()
-
-        borrador = await e.ejecutar()
-
         assert borrador.technical_document_ambiguous is False

@@ -756,13 +756,13 @@ async def test_la_vista_dice_si_el_documento_tecnico_es_ambiguo(
     y `hint` (texto o null)."""
     tender_id, *_, ia = entorno
     headers_a, *_ = empresas
-    cita = 'Las bases dicen "Se debe entregar informe técnico" sin aclarar cuándo.'
     ia["servicio"].resultado = ia["servicio"].resultado.model_copy(
         update={
             "technical_document_ambiguous": True,
-            "technical_document_reason": cita,
+            "technical_document_quote": "Se debe entregar informe técnico",
         }
     )
+    cita = 'Las bases solicitan un informe técnico: "Se debe entregar informe técnico".'
     await _iniciar(api, tender_id, headers_a)
 
     resp = await api.get(f"/tenders/{tender_id}/proposal", headers=headers_a)

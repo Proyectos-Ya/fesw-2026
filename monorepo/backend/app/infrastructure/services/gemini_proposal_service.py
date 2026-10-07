@@ -58,7 +58,9 @@ mandan: si contradicen a la ficha, vale lo que dice el adjunto. La ficha solo
 completa lo que los adjuntos no dicen.
 
 Para cada exigencia indica:
-- text: la exigencia, en una frase, fiel a las bases.
+- text: la exigencia en una frase, con las palabras de las bases. Puedes
+  acortarla, pero no agregues momentos, plazos, lugares ni cantidades que
+  esa frase de las bases no diga.
 - kind:
   - certificacion, experiencia, disponibilidad u otro: EXIGENCIAS AL
     PROVEEDOR, que dependen de quién es la empresa (certificaciones, registros,
@@ -73,14 +75,6 @@ Para cada exigencia indica:
     Son la lista de documentos necesarios, no una capacidad de la empresa.
     NO incluyas la Declaración Jurada de Habilidad: la plataforma la pide
     en una ventana al enviar la cotización y no se adjunta.
-  Un informe, certificado o registro que el proveedor entrega al ejecutar o
-  terminar el servicio (por ejemplo "al término de cada visita, el
-  proveedor entregará un informe con los trabajos realizados") es una
-  condicion: es un entregable del servicio, no un documento que se adjunte
-  a la oferta. Solo es documento si las bases piden adjuntarlo al ofertar.
-  Solo afirma cuándo se entrega un documento si las bases lo dicen con
-  palabras ("al término", "junto con la oferta", "adjuntar"); si lo deduces,
-  es ambiguo.
   Una condicion o un documento NO llevan cobertura: deja catalog_item_id,
   question_key y new_question vacíos.
 - mandatory: true si es EXCLUYENTE (redacción como "deberá", "obligatorio",
@@ -121,33 +115,20 @@ en un plazo de 5 días hábiles?"), nunca abiertas ("¿Cuál es su plazo?"). Cad
 reglas que arriba), kind certificacion | experiencia | disponibilidad | otro y
 mandatory false. Si el catálogo ya dice lo importante, déjala vacía.
 
-Indica además si las bases exigen un DOCUMENTO TÉCNICO con la oferta. Un
-documento técnico es una propuesta técnica redactada por el proveedor: memoria
-técnica, metodología, plan de trabajo, especificaciones de lo ofertado. NO son
-documento técnico los antecedentes administrativos que solo se adjuntan
-(cotización, formularios, declaraciones juradas, certificados, boletas): esos
-son documentos necesarios de la oferta, no una propuesta técnica. Tampoco lo es
-un informe que se entrega al ejecutar o terminar el servicio. Hay tres casos:
-1. requires_technical_document = true: el texto que tienes pide de forma
-   expresa una propuesta técnica junto con la oferta. No lo supongas.
-2. technical_document_ambiguous = true: las bases mencionan un informe,
-   memoria o documento técnico sin decir expresamente si va con la oferta o
-   se entrega al ejecutar el servicio. Que aparezca en las condiciones de
-   ejecución NO basta para decidir: si lo deduces, es ambiguo. Deja
-   requires_technical_document en false.
-3. Ninguno de los dos: las bases no mencionan nada técnico.
-Nunca marques los dos en true. technical_document_reason es obligatorio, y el
-usuario lo lee tal cual. technical_document_reason dice solo si las bases
-solicitan un informe o documento técnico. Si lo solicitan, empieza con "Las
-bases solicitan un informe técnico:" y cita entre comillas la frase exacta de
-las bases, con su sección si la tiene. Si no, escribe "Las bases no solicitan
-un informe técnico." Nunca menciones cuándo se entrega ni si va con la oferta,
-ni des tu interpretación. No afirmes en technical_document_reason nada que las
-bases no digan.
-Si la ficha menciona un adjunto que no recibiste (por ejemplo "se adjunta TDR")
-y ahí podría estar la exigencia, marca false y dilo en
-technical_document_reason para que el usuario suba ese adjunto. En Compra Ágil
-lo habitual es que no se exija documento técnico.
+Indica además si las bases solicitan un INFORME o DOCUMENTO TÉCNICO: informe
+técnico, memoria técnica, metodología, plan de trabajo o especificaciones
+técnicas. No decidas cuándo se entrega ni si va con la oferta: basta con que
+las bases lo soliciten. NO cuentan los antecedentes administrativos que solo se
+adjuntan (cotización, formularios, declaraciones juradas, boletas).
+- Si las bases piden con esas palabras adjuntarlo a la cotización u oferta:
+  requires_technical_document = true.
+- Si lo solicitan sin decir eso: technical_document_ambiguous = true.
+- Si no lo mencionan: los dos en false.
+Nunca marques los dos en true. En technical_document_quote copia la frase de las
+bases que lo solicita, copiada exacta, letra por letra, sin agregar ni resumir
+nada; null si no lo mencionan. No escribas ninguna explicación: el mensaje al
+usuario lo arma el sistema. Un informe o documento técnico solicitado NO va en
+requirements: queda solo en technical_document_quote.
 
 Indica en mentions_attachments si la ficha menciona bases, términos de
 referencia (TDR), anexos u otros adjuntos, los hayas recibido o no.
@@ -208,15 +189,14 @@ _SCHEMA = {
         },
         "requires_technical_document": {"type": "BOOLEAN"},
         "technical_document_ambiguous": {"type": "BOOLEAN"},
-        # Obligatorio y no nulo: siempre explica la decisión (plan 292, §2.8).
-        "technical_document_reason": {"type": "STRING"},
+        # Solo la frase de las bases; el mensaje lo arma el backend (§2.8).
+        "technical_document_quote": {"type": "STRING", "nullable": True},
         "mentions_attachments": {"type": "BOOLEAN"},
     },
     "required": [
         "requirements",
         "requires_technical_document",
         "technical_document_ambiguous",
-        "technical_document_reason",
         "mentions_attachments",
     ],
 }
@@ -274,6 +254,29 @@ def _texto_del_pdf(file_bytes: bytes) -> str | None:
         return "\n".join(pagina.extract_text() or "" for pagina in lector.pages)
     except Exception:  # noqa: BLE001 - pypdf lanza muchos tipos ante un PDF raro
         return None
+
+
+def _normalizada(texto: str) -> str:
+    return " ".join(texto.split()).casefold()
+
+
+def _cita_verificada(cita: str | None, textos: list[str]) -> str | None:
+    """La cita, sin comillas ni espacios de sobra, si aparece tal cual en `textos`.
+
+    Compara sin distinguir mayúsculas ni saltos de línea, porque el texto de un
+    PDF viene partido en líneas. Si no aparece, la IA la inventó o la resumió, y
+    se descarta: lo que el usuario lee como "lo que dicen las bases" tiene que
+    estar escrito en las bases (plan 292, §2.8).
+    """
+    if not cita:
+        return None
+    limpia = " ".join(cita.split()).strip(" \"'“”«».")
+    if not limpia:
+        return None
+    buscada = _normalizada(limpia)
+    if any(buscada in _normalizada(texto) for texto in textos):
+        return limpia
+    return None
 
 
 def _adjuntos(documents: list[DocumentContextDTO]) -> list[dict]:
@@ -535,11 +538,21 @@ class GeminiProposalService(IProposalAIService):
         }
         texto = await self._generar(payload)
         try:
-            return FeasibilityResultDTO.model_validate(json.loads(texto))
+            resultado = FeasibilityResultDTO.model_validate(json.loads(texto))
         except (json.JSONDecodeError, ValidationError) as error:
             raise ProposalAIServiceError(
                 f"Gemini devolvió una factibilidad que no se pudo interpretar: {error}"
             ) from error
+        # Guardrail contra alucinaciones: la cita solo pasa si está escrita en lo
+        # que se le mandó (la ficha y el texto de los adjuntos).
+        textos = [p["text"] for p in partes[1:] if "text" in p]
+        return resultado.model_copy(
+            update={
+                "technical_document_quote": _cita_verificada(
+                    resultado.technical_document_quote, textos
+                )
+            }
+        )
 
     async def generate_draft(
         self,
