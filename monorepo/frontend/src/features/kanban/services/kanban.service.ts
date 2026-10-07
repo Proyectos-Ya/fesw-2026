@@ -23,6 +23,13 @@ export function deleteColumn(id: string): Promise<void> {
   return apiFetch<void>(`/kanban/columns/${id}`, { method: "DELETE" });
 }
 
+export function reorderColumns(columnIds: string[]): Promise<KanbanColumn[]> {
+  return apiFetch<KanbanColumn[]>("/kanban/columns/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ column_ids: columnIds }),
+  });
+}
+
 export function fetchCards(): Promise<KanbanCard[]> {
   return apiFetch<KanbanCard[]>("/kanban/cards");
 }

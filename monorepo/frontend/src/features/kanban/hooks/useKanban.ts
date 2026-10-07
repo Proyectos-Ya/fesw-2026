@@ -158,6 +158,38 @@ export function useKanban() {
     [columns],
   );
 
+  const reorderColumns = useCallback(
+    async (orderedIds: string[]) => {
+      // Optimistic: reasigna position = índice y reordena en memoria.
+      const prevSnapshot = columns;
+      const indexById = new Map(orderedIds.map((id, i) => [id, i]));
+      setColumns((cols) =>
+        [...cols]
+          .map((c) =>
+            indexById.has(c.id)
+              ? { ...c, position: indexById.get(c.id) as number }
+              : c,
+          )
+          .sort((a, b) => a.position - b.position),
+      );
+      try {
+        const fresh = await kanbanService.reorderColumns(orderedIds);
+        setColumns(
+          [...fresh].sort((a, b) => a.position - b.position).map((c) => ({
+            ...c,
+            // El backend no persiste card_count: lo preservamos del snapshot.
+            card_count:
+              prevSnapshot.find((p) => p.id === c.id)?.card_count ??
+              c.card_count,
+          })),
+        );
+      } catch {
+        setColumns(prevSnapshot);
+      }
+    },
+    [columns],
+  );
+
   const deleteColumn = useCallback(
     async (id: string) => {
       const backupColumns = columns;
@@ -320,6 +352,7 @@ export function useKanban() {
     renameColumn,
     recolorColumn,
     reorderColumn,
+    reorderColumns,
     deleteColumn,
     addCard,
     moveCard,
