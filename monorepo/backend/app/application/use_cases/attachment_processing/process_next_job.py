@@ -156,7 +156,7 @@ class ProcessNextAttachmentJobUseCase:
                         reason=reason,
                         now=ahora,
                     )
-            elif outcome.kind in ("saved", "reused"):
+            elif outcome.kind in ("saved", "reused", "already_done"):
                 if outcome.file is not None:
                     async with self._units() as u:
                         schedule = ScheduleTenderDigestsUseCase(

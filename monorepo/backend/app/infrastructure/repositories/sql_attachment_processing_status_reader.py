@@ -3,8 +3,8 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
-from sqlmodel import col
+from sqlalchemy import and_, func, or_
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.attachment_processing_status_reader import (

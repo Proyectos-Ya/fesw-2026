@@ -31,15 +31,15 @@ AHORA = datetime(2026, 10, 3, 15, 0)
 
 
 def test_esperas_proximo_intento():
-    assert proximo_intento(ProcessingJobKind.EXTRACT, 1, AHORA) == AHORA + timedelta(minutes=5)
-    assert proximo_intento(ProcessingJobKind.EXTRACT, 2, AHORA) == AHORA + timedelta(minutes=30)
-    assert proximo_intento(ProcessingJobKind.EXTRACT, 3, AHORA) == AHORA + timedelta(minutes=30)
+    assert proximo_intento(ProcessingJobKind.EXTRACT, 1, AHORA) == AHORA + timedelta(seconds=10)
+    assert proximo_intento(ProcessingJobKind.EXTRACT, 2, AHORA) == AHORA + timedelta(minutes=1)
+    assert proximo_intento(ProcessingJobKind.EXTRACT, 3, AHORA) == AHORA + timedelta(minutes=5)
 
-    assert proximo_intento(ProcessingJobKind.DIGEST, 1, AHORA) == AHORA + timedelta(minutes=1)
-    assert proximo_intento(ProcessingJobKind.DIGEST, 2, AHORA) == AHORA + timedelta(minutes=5)
-    assert proximo_intento(ProcessingJobKind.DIGEST, 3, AHORA) == AHORA + timedelta(minutes=15)
-    assert proximo_intento(ProcessingJobKind.DIGEST, 4, AHORA) == AHORA + timedelta(hours=1)
-    assert proximo_intento(ProcessingJobKind.DIGEST, 9, AHORA) == AHORA + timedelta(hours=1)
+    assert proximo_intento(ProcessingJobKind.DIGEST, 1, AHORA) == AHORA + timedelta(seconds=5)
+    assert proximo_intento(ProcessingJobKind.DIGEST, 2, AHORA) == AHORA + timedelta(seconds=30)
+    assert proximo_intento(ProcessingJobKind.DIGEST, 3, AHORA) == AHORA + timedelta(minutes=2)
+    assert proximo_intento(ProcessingJobKind.DIGEST, 4, AHORA) == AHORA + timedelta(minutes=10)
+    assert proximo_intento(ProcessingJobKind.DIGEST, 9, AHORA) == AHORA + timedelta(minutes=10)
 
 
 def test_agoto_intentos():

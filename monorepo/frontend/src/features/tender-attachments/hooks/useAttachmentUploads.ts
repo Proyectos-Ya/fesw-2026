@@ -9,7 +9,6 @@ import {
   requestUploadUrl,
 } from "../services/tenderAttachmentsService";
 import type { OfficialAttachment } from "../types";
-import { normalizeAttachmentName } from "../utils/attachmentNames";
 import { matchDroppedFiles, type RejectedFile } from "../utils/matchFiles";
 import { InsecureContextError, sha256Hex } from "../utils/sha256";
 
@@ -59,16 +58,13 @@ function uploadErrorMessage(error: unknown): string {
 
 /** Validaciones que no necesitan red; devuelve el motivo o `null` si el archivo sirve. */
 function localProblem(
-  attachment: OfficialAttachment,
+  _attachment: OfficialAttachment,
   file: File,
   maxSizeBytes: number,
 ): string | null {
   if (file.size === 0) return "El archivo está vacío.";
   if (file.size > maxSizeBytes) {
     return `El archivo supera el máximo de ${Math.round(maxSizeBytes / 1048576)} MB.`;
-  }
-  if (normalizeAttachmentName(file.name) !== attachment.name_normalized) {
-    return `«${file.name}» no corresponde a este anexo. Se esperaba «${attachment.name}».`;
   }
   return null;
 }

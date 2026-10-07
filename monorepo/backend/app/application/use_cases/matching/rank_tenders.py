@@ -3,6 +3,9 @@ from datetime import timedelta
 from typing import Protocol
 from uuid import UUID
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -23,6 +26,8 @@ from app.application.repositories.tender_vector_repository import (
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.lexical_tokenizer import LexicalTokenizer
+from app.application.services.reciprocal_rank_fusion import reciprocal_rank_fusion
 from app.application.services.text_builder import TextBuilder
 from app.application.use_cases.supplier.create_supplier import _build_supplier_text
 from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
@@ -77,6 +82,10 @@ class RankTendersUseCase:
         embedding_service: IEmbeddingService | None = None,
         item_vector_repo: ITenderItemVectorRepository | None = None,
         item_search_limit: int = 30,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
+        lexical_tokenizer: LexicalTokenizer | None = None,
+        lexical_search_limit: int = 30,
+        lexical_channel_enabled: bool = False,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -92,6 +101,10 @@ class RankTendersUseCase:
         # canal y el ranking parte solo del vector del perfil, como antes.
         self.item_vector_repo = item_vector_repo
         self.item_search_limit = item_search_limit
+        self.lexical_tender_repo = lexical_tender_repo
+        self.lexical_tokenizer = lexical_tokenizer or LexicalTokenizer()
+        self.lexical_search_limit = lexical_search_limit
+        self.lexical_channel_enabled = lexical_channel_enabled
         self.text_builder = TextBuilder()
 
     async def execute(
@@ -238,14 +251,26 @@ class RankTendersUseCase:
         )
         # 3.2.2 Canal por partidas: cada keyword contra los vectores de partidas.
         keyword_results = await self._search_by_keywords(supplier, criteria)
+        # 3.2.3 Canal léxico (sparse BM25): keywords y sectores contra partidas y descripciones.
+        lexical_results = await self._search_by_lexical(supplier, criteria)
 
-        # Unión sin duplicados. Si una licitación la trajeron los dos canales
-        # conserva la similitud de perfil; la que solo vino por keywords no tiene
-        # ninguna (ver 3.6).
+        # Unión y fusión de canales
         similarity_scores: dict[UUID, float] = dict(profile_results)
         keyword_ids = list(dict.fromkeys(uid for uid, _ in keyword_results))
-        candidate_ids = list(similarity_scores)
-        candidate_ids += [uid for uid in keyword_ids if uid not in similarity_scores]
+        lexical_ids = list(dict.fromkeys(uid for uid, _ in lexical_results))
+
+        if self.lexical_channel_enabled and lexical_results:
+            rank_dense = [uid for uid, _ in profile_results]
+            rank_items = keyword_ids
+            rank_lex = lexical_ids
+            fused = reciprocal_rank_fusion([rank_dense, rank_items, rank_lex], k=60)
+            candidate_ids = [item.item_id for item in fused]
+        else:
+            candidate_ids = list(similarity_scores)
+            candidate_ids += [uid for uid in keyword_ids if uid not in similarity_scores]
+            if lexical_ids:
+                candidate_ids += [uid for uid in lexical_ids if uid not in candidate_ids]
+
         if not candidate_ids:
             # Si no hay matches, limpiamos cache anterior y retornamos vacío
             await self.matching_result_repo.delete_ranking_by_supplier_id(supplier.id)
@@ -270,6 +295,10 @@ class RankTendersUseCase:
             for uid in keyword_ids:
                 if uid not in tender_dict:
                     await self.item_vector_repo.delete(uid)
+        if self.lexical_tender_repo is not None:
+            for uid in lexical_ids:
+                if uid not in tender_dict:
+                    await self.lexical_tender_repo.delete(uid)
 
         # 3.4 Filtrar closed tenders secundariamente (por fecha de cierre en SQL y región estricta)
         active_tenders = []
@@ -375,4 +404,34 @@ class RankTendersUseCase:
             return []
         return await self.item_vector_repo.search_by_keywords(
             keyword_vectors, limit=self.item_search_limit, criteria=criteria
+        )
+
+    async def _search_by_lexical(
+        self, supplier: Supplier, criteria: TenderFilterCriteria
+    ) -> list[tuple[UUID, float]]:
+        """Tercer canal de candidatas: keywords y sectores contra el índice léxico sparse BM25.
+
+        Devuelve `(tender_id, score)` de mayor a menor, o lista vacía si el canal está
+        apagado o no hay repositorio léxico configurado.
+        """
+        if (
+            not self.lexical_channel_enabled
+            or self.lexical_tender_repo is None
+            or self.lexical_tokenizer is None
+        ):
+            return []
+
+        partes = list(supplier.keywords or []) + list(supplier.sectors or [])
+        texto_lexico = " ".join(partes).strip()
+        if not texto_lexico:
+            return []
+
+        query_sparse = self.lexical_tokenizer.encode_sparse(texto_lexico)
+        if not query_sparse.indices:
+            return []
+
+        return await self.lexical_tender_repo.search_lexical(
+            query_vector=query_sparse,
+            limit=self.lexical_search_limit,
+            criteria=criteria,
         )

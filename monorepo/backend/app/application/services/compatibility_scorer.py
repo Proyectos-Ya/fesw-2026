@@ -52,7 +52,7 @@ from app.application.services.compatibility_formula import (
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
 from app.application.services.text_builder import TextBuilder
-from app.domain.entities.matching_result import MatchingResult
+from app.domain.entities.matching_result import MatchingResult, MatchingSource
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.matching_errors import ScoreCalculationError
@@ -65,6 +65,16 @@ class ScoredTender:
     tender_id: UUID
     final_score: float
     reranker_score: float | None
+
+
+@dataclass(frozen=True)
+class CompatibilitySignals:
+    """Señales R, B, C y puntaje final (plan 233, decisión 9)."""
+
+    reranker_score: float
+    best_match: float
+    coverage: float
+    final_score: float
 
 
 class CompatibilityScorer:
@@ -142,6 +152,67 @@ class CompatibilityScorer:
         scored.sort(key=lambda s: s.final_score, reverse=True)
         return scored[:limit]
 
+    async def signals(
+        self,
+        supplier: Supplier,
+        tender: Tender,
+        digest: object | None = None,
+        variant: str = "att-text-v1",
+    ) -> CompatibilitySignals | None:
+        """Calcula las señales R, B, C y el puntaje final (plan 233, decisión 9).
+
+        - Sin digest: idéntico a `score_many`.
+        - Con digest en 'att-text-v1': enriquece la descripción con anexos (tope 512 tokens).
+        - Con digest en 'att-items-v1': cruza contra pseudo-partidas de anexos en lugar de tender.items.
+        """
+        # 1. Candidato de texto para el reranker
+        if digest is not None:
+            candidate_text = self.text_builder.build_from_tender_with_digest(
+                tender=tender, items=tender.items, digest=digest, max_tokens=512
+            )
+        else:
+            candidate_text = self.text_builder.build_from_tender(
+                tender=tender, items=tender.items
+            )
+
+        query_text = self.text_builder.build_reranker_query(supplier)
+        reranked = await self.reranker_service.rerank(
+            query_text=query_text,
+            candidates=[(tender.id, candidate_text)],
+            limit=1,
+        )
+        if not reranked:
+            return None
+
+        reranker_score = reranked[0][1]
+        keyword_vectors = await self._keyword_vectors(supplier)
+
+        # 2. Vectores de partidas
+        if variant == "att-items-v1" and digest is not None:
+            data = getattr(digest, "data", None)
+            digest_items = getattr(data, "items", []) if data else []
+            if digest_items:
+                item_texts = [
+                    f"{item.descripcion}: {item.unidad or ''}".strip()
+                    for item in digest_items
+                    if getattr(item, "descripcion", None)
+                ]
+                item_vectors = await self.embedding_service.embed(item_texts)
+            else:
+                item_vectors = (await self._item_vectors([tender]))[tender.id]
+        else:
+            item_vectors = (await self._item_vectors([tender]))[tender.id]
+
+        best_match, coverage = item_match_signals(keyword_vectors, item_vectors)
+        final_score = self.formula.score(reranker_score, best_match, coverage)
+
+        return CompatibilitySignals(
+            reranker_score=reranker_score,
+            best_match=best_match,
+            coverage=coverage,
+            final_score=final_score,
+        )
+
     async def _keyword_vectors(self, supplier: Supplier) -> list[list[float]]:
         """Un vector por keyword del proveedor, en una sola llamada al modelo.
 
@@ -195,19 +266,29 @@ class CompatibilityScorer:
         ]
 
     async def score_and_persist(
-        self, supplier: Supplier, tender: Tender
+        self,
+        supplier: Supplier,
+        tender: Tender,
+        digest: object | None = None,
+        source: MatchingSource = "on_demand",
     ) -> MatchingResult:
-        """Calcula el puntaje de una licitación suelta y lo guarda como `on_demand`.
+        """Calcula el puntaje de una licitación suelta y lo guarda como `on_demand` (o preserva `source`).
 
         Se persiste, y no solo se devuelve, porque el usuario que lo pidió
         espera encontrarlo después: al volver a la ficha, en sus guardadas o en
         el análisis, sin pagar otra inferencia ni ver un número distinto.
         """
-        fila, _ = await self._calcular_y_guardar(supplier, tender)
+        fila, _ = await self._calcular_y_guardar(
+            supplier, tender, digest=digest, source=source
+        )
         return fila
 
     async def score_pct_and_persist(
-        self, supplier: Supplier, tender: Tender
+        self,
+        supplier: Supplier,
+        tender: Tender,
+        digest: object | None = None,
+        source: MatchingSource = "on_demand",
     ) -> float:
         """Lo mismo, pero devuelve el porcentaje (0-100) que el análisis justifica.
 
@@ -215,12 +296,36 @@ class CompatibilityScorer:
         de una fila donde el puntaje es opcional: acá se acaba de calcular, así
         que es un float y nada más.
         """
-        _, porcentaje = await self._calcular_y_guardar(supplier, tender)
+        _, porcentaje = await self._calcular_y_guardar(
+            supplier, tender, digest=digest, source=source
+        )
         return porcentaje
 
     async def _calcular_y_guardar(
-        self, supplier: Supplier, tender: Tender
+        self,
+        supplier: Supplier,
+        tender: Tender,
+        digest: object | None = None,
+        source: MatchingSource = "on_demand",
     ) -> tuple[MatchingResult, float]:
+        if digest is not None:
+            sig = await self.signals(supplier, tender, digest=digest)
+            if sig is None:
+                raise ScoreCalculationError(str(supplier.id), str(tender.id))
+
+            fila = await self.matching_result_repo.save_on_demand(
+                MatchingResult(
+                    supplier_id=supplier.id,
+                    tender_id=tender.id,
+                    similarity_score=None,
+                    reranker_score=sig.reranker_score,
+                    final_score=sig.final_score,
+                    model_version=self.model_version,
+                    source=source,
+                )
+            )
+            return fila, sig.final_score * 100.0
+
         scored = await self.score_many(supplier, [tender], limit=1)
         if not scored:
             raise ScoreCalculationError(str(supplier.id), str(tender.id))
@@ -234,7 +339,7 @@ class CompatibilityScorer:
                 reranker_score=resultado.reranker_score,
                 final_score=resultado.final_score,
                 model_version=self.model_version,
-                source="on_demand",
+                source=source,
             )
         )
         return fila, resultado.final_score * 100.0

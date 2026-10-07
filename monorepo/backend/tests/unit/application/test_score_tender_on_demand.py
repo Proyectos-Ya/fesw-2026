@@ -18,7 +18,11 @@ from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForScoring, TenderNotFound
+from app.domain.entities.tender_digest import ResumenDeAnexo, TenderDigest, TenderDigestData
 from app.shared.constants import TENDER_STATUSES
+from tests.unit.application.attachment_processing_fakes import (
+    InMemoryTenderDigestRepository,
+)
 from tests.unit.application.fakes import (
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
@@ -50,7 +54,10 @@ def crear_licitacion(
     )
 
 
-async def armar_caso() -> tuple[
+async def armar_caso(
+    digest_repo=None,
+    extraction_repo=None,
+) -> tuple[
     ScoreTenderOnDemandUseCase,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
@@ -68,6 +75,8 @@ async def armar_caso() -> tuple[
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
         scorer=armar_scorer(matching_result_repo=matching_result_repo),
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
     )
     return use_case, supplier_repo, tender_repo, matching_result_repo, supplier
 
@@ -197,3 +206,99 @@ async def test_usa_la_empresa_activa_y_no_la_propia() -> None:
     assert not await matching_result_repo.get_by_proveedor_and_licitacion(
         propia.id, tender_id
     )
+
+
+@pytest.mark.asyncio
+async def test_recalcula_con_digest_incluso_si_es_de_ranking() -> None:
+    digest_repo = InMemoryTenderDigestRepository()
+    use_case, _, tender_repo, matching_result_repo, supplier = await armar_caso(
+        digest_repo=digest_repo
+    )
+    tender_id = uuid4()
+    tender_repo.tenders[tender_id] = crear_licitacion(tender_id)
+
+    # Licitación proveniente del ranking con puntaje inicial 0.50
+    await matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=supplier.id,
+                tender_id=tender_id,
+                similarity_score=0.5,
+                final_score=0.50,
+                model_version="bge-m3-v1",
+                source="ranking",
+            )
+        ]
+    )
+
+    # Se agrega digest con anexos procesados
+    digest_data = TenderDigestData.vacio()
+    digest_data.resumenes = [
+        ResumenDeAnexo(
+            anexo_id=uuid4(),
+            documento="Bases.pdf",
+            texto="Resumen detallado de anexos",
+            citas=[],
+        )
+    ]
+    digest = TenderDigest(
+        id=uuid4(),
+        tender_id=tender_id,
+        workspace_id=supplier.id,
+        version=1,
+        extraction_set_hash="hash123",
+        is_current=True,
+        source_count=1,
+        data=digest_data,
+        api_snapshot={},
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    await digest_repo.replace_current(digest, previous_id=None)
+
+    # Al ejecutar, debe recalcular con el digest y preservar source='ranking'
+    resultado = await use_case.execute(
+        user_id=supplier.user_id, tender_id=tender_id
+    )
+
+    assert resultado.source == "ranking"
+    # El puntaje se recalculó (en este mock, el scorer calculará su valor en base a señales)
+    assert resultado.final_score is not None
+    guardado = await matching_result_repo.get_by_proveedor_and_licitacion(
+        supplier.id, tender_id
+    )
+    assert guardado is not None
+    assert guardado.source == "ranking"
+    assert guardado.final_score == resultado.final_score
+
+
+@pytest.mark.asyncio
+async def test_recalcula_con_force_incluso_si_es_de_ranking() -> None:
+    use_case, _, tender_repo, matching_result_repo, supplier = await armar_caso()
+    tender_id = uuid4()
+    tender_repo.tenders[tender_id] = crear_licitacion(tender_id)
+
+    await matching_result_repo.save_bulk(
+        [
+            MatchingResult(
+                supplier_id=supplier.id,
+                tender_id=tender_id,
+                similarity_score=0.5,
+                final_score=0.50,
+                model_version="bge-m3-v1",
+                source="ranking",
+            )
+        ]
+    )
+
+    resultado = await use_case.execute(
+        user_id=supplier.user_id, tender_id=tender_id, force=True
+    )
+
+    assert resultado.source == "ranking"
+    assert resultado.final_score is not None
+    guardado = await matching_result_repo.get_by_proveedor_and_licitacion(
+        supplier.id, tender_id
+    )
+    assert guardado is not None
+    assert guardado.source == "ranking"
+

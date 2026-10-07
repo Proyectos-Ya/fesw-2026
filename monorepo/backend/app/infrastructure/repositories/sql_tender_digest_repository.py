@@ -2,8 +2,9 @@
 
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.tender_digest_repository import (
@@ -76,7 +77,11 @@ class SqlTenderDigestRepository(ITenderDigestRepository):
             is_current=True,
             source_count=digest.source_count,
             data=digest.data.model_dump(mode="json"),
-            api_snapshot=digest.api_snapshot.model_dump(mode="json"),
+            api_snapshot=(
+                digest.api_snapshot
+                if isinstance(digest.api_snapshot, dict)
+                else digest.api_snapshot.model_dump(mode="json")
+            ),
             created_at=digest.created_at,
         )
         self.session.add(modelo)

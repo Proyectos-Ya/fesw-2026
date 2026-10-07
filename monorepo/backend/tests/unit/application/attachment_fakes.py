@@ -110,3 +110,22 @@ class InMemoryTenderAttachmentRepository(ITenderAttachmentRepository):
         return OfficialAttachmentList(
             attachments=vigentes, synced_at=self.sincronizadas.get(tender_id)
         )
+
+    async def create_attachment(
+        self, tender_id: UUID, attachment_id: UUID, name: str
+    ) -> OfficialAttachment:
+        mp_doc_id = abs(hash(str(attachment_id))) % (10**9)
+        ahora = datetime.utcnow()
+        fila = OfficialAttachment(
+            id=attachment_id,
+            tender_id=tender_id,
+            mp_document_id=mp_doc_id,
+            name=name,
+            name_normalized=normalizar_nombre_anexo(name),
+            ext=extension_de(name),
+            first_seen_at=ahora,
+            last_seen_at=ahora,
+        )
+        self.filas[(tender_id, mp_doc_id)] = fila
+        return fila
+

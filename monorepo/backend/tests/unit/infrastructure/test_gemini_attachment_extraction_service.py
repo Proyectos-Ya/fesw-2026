@@ -31,7 +31,7 @@ from tests.unit.application.attachment_processing_fakes import (
     USO,
 )
 
-HUELLA_ANEXOS_V1 = "a3999cd8d67940e5"
+HUELLA_ANEXOS_V1 = "cc1ca496b64e2098"
 GEN = "https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent"
 
 

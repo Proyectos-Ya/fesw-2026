@@ -1,5 +1,5 @@
 from collections.abc import Collection, Iterator, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -75,6 +75,20 @@ class SqlRankingTelemetryRepository(IRankingTelemetryRepository):
             position=model.position,
             source=model.source,  # type: ignore[arg-type]
             created_at=model.created_at,
+        )
+
+    @staticmethod
+    def _metric_to_entity(model: RankingMetricDailyModel) -> RankingMetricDaily:
+        return RankingMetricDaily(
+            id=model.id,
+            day=model.day,
+            model_version=model.model_version,
+            ndcg_at_10=model.ndcg_at_10,
+            ci_low=model.ci_low,
+            ci_high=model.ci_high,
+            rankings_evaluated=model.rankings_evaluated,
+            rankings_served=model.rankings_served,
+            computed_at=model.computed_at,
         )
 
     async def save_impressions(self, impressions: list[RankingImpression]) -> None:
@@ -163,6 +177,21 @@ class SqlRankingTelemetryRepository(IRankingTelemetryRepository):
         )
         await self.session.exec(stmt)  # type: ignore[call-overload]
         await self.session.commit()
+
+    async def list_daily_metrics(
+        self, model_version: str | None = None, since_day: date | None = None
+    ) -> list[RankingMetricDaily]:
+        query = select(RankingMetricDailyModel)
+        if model_version:
+            query = query.where(RankingMetricDailyModel.model_version == model_version)
+        if since_day:
+            query = query.where(RankingMetricDailyModel.day >= since_day)
+        query = query.order_by(
+            col(RankingMetricDailyModel.day).desc(),
+            col(RankingMetricDailyModel.model_version),
+        )
+        result = await self.session.exec(query)
+        return [self._metric_to_entity(m) for m in result.all()]
 
     async def count_top_impressions_by_tender(
         self, since: datetime, max_position: int

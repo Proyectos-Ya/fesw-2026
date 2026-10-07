@@ -79,7 +79,7 @@ _CITA = {
     "required": ["documento", "cita"],
     "propertyOrdering": ["documento", "pagina_u_hoja", "cita"],
 }
-_CITAS = {"type": "ARRAY", "items": _CITA, "minItems": 1, "maxItems": 5}
+_CITAS = {"type": "ARRAY", "items": _CITA, "minItems": 1}
 _DESCRIPCION = {"type": "STRING", "maxLength": 500}
 _FECHA = {
     "type": "OBJECT",
@@ -109,8 +109,8 @@ def _punto(
     }
 
 
-def _lista(item: dict[str, object], maximo: int) -> dict[str, object]:
-    return {"type": "ARRAY", "items": item, "maxItems": maximo}
+def _lista(item: dict[str, object], maximo: int | None = None) -> dict[str, object]:
+    return {"type": "ARRAY", "items": item}
 
 
 ESQUEMA_DE_EXTRACCION: dict[str, object] = {

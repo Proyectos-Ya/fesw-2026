@@ -238,20 +238,14 @@ async def test_supera_50_mb(mundo: Mundo) -> None:
     )
 
 
-async def test_extension_distinta_no_gasta_cupo(mundo: Mundo) -> None:
-    with pytest.raises(AttachmentExtensionMismatch):
-        await mundo.caso().execute(mundo.pedido(nombre="Anexo 3 Composición personalidad juridica.pdf"))
-
-    assert mundo.archivos.cupo == {}
-    assert mundo.archivos.filas == {}
+async def test_extension_distinta_se_acepta(mundo: Mundo) -> None:
+    resultado = await mundo.caso().execute(mundo.pedido(nombre="Anexo 3 Composición personalidad juridica.pdf"))
+    assert isinstance(resultado, UploadTicket)
 
 
-async def test_nombre_distinto_informa_el_esperado(mundo: Mundo) -> None:
-    with pytest.raises(AttachmentNameMismatch) as info:
-        await mundo.caso().execute(mundo.pedido(nombre="Otro.xlsx"))
-
-    assert info.value.extra["expected_name"] == NOMBRE_XLSX
-    assert mundo.archivos.cupo == {}
+async def test_nombre_distinto_se_acepta(mundo: Mundo) -> None:
+    resultado = await mundo.caso().execute(mundo.pedido(nombre="Otro.xlsx"))
+    assert isinstance(resultado, UploadTicket)
 
 
 async def test_mismo_sha_ya_guardado_por_la_empresa_deduplica(mundo: Mundo) -> None:

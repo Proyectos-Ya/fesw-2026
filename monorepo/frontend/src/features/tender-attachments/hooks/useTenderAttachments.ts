@@ -12,6 +12,12 @@ export type TenderAttachmentsState =
 
 const FALLBACK_MESSAGE = "No se pudieron cargar los anexos de la licitación.";
 
+const attachmentsCache = new Map<string, TenderAttachments>();
+
+export function clearTenderAttachmentsCache() {
+  attachmentsCache.clear();
+}
+
 function messageFrom(error: unknown): string {
   return error instanceof ApiError || error instanceof TimeoutError
     ? error.message
@@ -19,7 +25,10 @@ function messageFrom(error: unknown): string {
 }
 
 export function useTenderAttachments(tenderId: string) {
-  const [state, setState] = useState<TenderAttachmentsState>({ status: "loading" });
+  const [state, setState] = useState<TenderAttachmentsState>(() => {
+    const cached = attachmentsCache.get(tenderId);
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
+  });
   const [reloadNonce, setReloadNonce] = useState(0);
   const mounted = useRef(true);
 
@@ -35,6 +44,7 @@ export function useTenderAttachments(tenderId: string) {
     let cancelled = false;
     getTenderAttachments(tenderId)
       .then((data) => {
+        attachmentsCache.set(tenderId, data);
         if (!cancelled) setState({ status: "ready", data });
       })
       .catch((error: unknown) => {
@@ -46,9 +56,10 @@ export function useTenderAttachments(tenderId: string) {
   }, [tenderId, reloadNonce]);
 
   const reload = useCallback(() => {
+    attachmentsCache.delete(tenderId);
     setState({ status: "loading" });
     setReloadNonce((n) => n + 1);
-  }, []);
+  }, [tenderId]);
 
   /**
    * Vuelve a pedir la lista **sin** pasar por `loading`: tras subir o borrar un
@@ -58,6 +69,7 @@ export function useTenderAttachments(tenderId: string) {
   const refresh = useCallback(async (): Promise<void> => {
     try {
       const data = await getTenderAttachments(tenderId);
+      attachmentsCache.set(tenderId, data);
       if (mounted.current) setState({ status: "ready", data });
     } catch {
       // Se conserva la lista que ya había.

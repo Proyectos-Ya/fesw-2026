@@ -58,8 +58,14 @@ from app.application.repositories.extension_repository import (
     IExtensionFetchJobRepository,
     IExtensionInstallationRepository,
 )
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
+)
+from app.application.repositories.matching_shadow_repository import (
+    IMatchingShadowRepository,
 )
 from app.application.repositories.notification_repository import (
     INotificationDeliveryRepository,
@@ -180,6 +186,10 @@ from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
+from app.application.use_cases.matching_shadow import (
+    ComputeShadowScoreUseCase,
+    ReplayShadowRankingUseCase,
+)
 from app.application.use_cases.milestones.extract_tender_milestones import (
     ExtractTenderMilestonesUseCase,
 )
@@ -273,10 +283,16 @@ from app.infrastructure.repositories.calendar_repository import (
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
+from app.infrastructure.repositories.sql_matching_shadow_repository import (
+    SqlMatchingShadowRepository,
+)
 from app.infrastructure.repositories.notification_repository import (
     NotificationDeliveryRepository,
     NotificationPreferenceRepository,
     NotificationRepository,
+)
+from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+    QdrantLexicalTenderRepository,
 )
 from app.infrastructure.repositories.qdrant_supplier_repository import (
     QdrantSupplierRepository,
@@ -482,6 +498,12 @@ def get_tender_item_vector_repo(request: Request) -> ITenderItemVectorRepository
     )
 
 
+def get_lexical_tender_repo(request: Request) -> ILexicalTenderRepository:
+    return QdrantLexicalTenderRepository(
+        client=request.app.state.qdrant_async_client,
+    )
+
+
 def get_compatibility_formula(request: Request) -> CompatibilityFormula:
     return request.app.state.compatibility_formula
 
@@ -547,6 +569,25 @@ def get_compatibility_scorer(
     )
 
 
+def get_matching_shadow_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IMatchingShadowRepository:
+    return SqlMatchingShadowRepository(session)
+
+
+def get_compute_shadow_score_use_case(
+    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
+    shadow_repo: Annotated[
+        IMatchingShadowRepository, Depends(get_matching_shadow_repo)
+    ],
+) -> ComputeShadowScoreUseCase:
+    return ComputeShadowScoreUseCase(
+        scorer=scorer,
+        shadow_repo=shadow_repo,
+        settings=settings,
+    )
+
+
 def get_rank_tenders_use_case(
     session: Annotated[AsyncSession, Depends(get_session)],
     supplier_vector_repo: Annotated[
@@ -560,6 +601,9 @@ def get_rank_tenders_use_case(
     item_vector_repo: Annotated[
         ITenderItemVectorRepository, Depends(get_tender_item_vector_repo)
     ],
+    lexical_tender_repo: Annotated[
+        ILexicalTenderRepository | None, Depends(get_lexical_tender_repo)
+    ] = None,
 ) -> RankTendersUseCase:
     return RankTendersUseCase(
         supplier_repo=SupplierRepository(session),
@@ -572,6 +616,10 @@ def get_rank_tenders_use_case(
         embedding_service=embedding_service,
         # Segundo canal de candidatas: las keywords contra las partidas.
         item_vector_repo=item_vector_repo,
+        # Tercer canal: BM25 léxico sparse (plan 256).
+        lexical_tender_repo=lexical_tender_repo,
+        lexical_channel_enabled=settings.matching_lexical_channel_enabled,
+        lexical_search_limit=settings.matching_lexical_search_limit,
     )
 
 
@@ -584,6 +632,8 @@ def get_score_tender_on_demand_use_case(
         tender_repo=TenderRepository(session),
         matching_result_repo=MatchingResultRepository(session),
         scorer=scorer,
+        digest_repo=SqlTenderDigestRepository(session),
+        extraction_repo=SqlAttachmentExtractionRepository(session),
     )
 
 
@@ -594,18 +644,6 @@ def get_quotation_use_case(
         QuotationRepository(session),
         SupplierRepository(session),
         TenderRepository(session),
-    )
-
-
-def get_score_tender_on_demand_use_case(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    scorer: Annotated[CompatibilityScorer, Depends(get_compatibility_scorer)],
-) -> ScoreTenderOnDemandUseCase:
-    return ScoreTenderOnDemandUseCase(
-        supplier_repo=SupplierRepository(session),
-        tender_repo=TenderRepository(session),
-        matching_result_repo=MatchingResultRepository(session),
-        scorer=scorer,
     )
 
 
@@ -975,18 +1013,22 @@ def get_attachment_file_repo(
     return SqlAttachmentFileRepository(session)
 
 
-def get_tender_digest_repo(request: Request) -> ITenderDigestRepository | None:
-    return getattr(request.app.state, "tender_digest_repo", None)
+def get_tender_digest_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ITenderDigestRepository:
+    return SqlTenderDigestRepository(session)
 
 
 def get_attachment_extraction_repo(
-    request: Request,
-) -> IAttachmentExtractionRepository | None:
-    return getattr(request.app.state, "attachment_extraction_repo", None)
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IAttachmentExtractionRepository:
+    return SqlAttachmentExtractionRepository(session)
 
 
-def get_gemini_usage_repo(request: Request) -> IGeminiUsageRepository | None:
-    return getattr(request.app.state, "gemini_usage_repo", None)
+def get_gemini_usage_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IGeminiUsageRepository:
+    return SqlGeminiUsageRepository(session)
 
 
 
@@ -1276,6 +1318,9 @@ def get_ask_tender_assistant_use_case(
     usage_repo: Annotated[
         IGeminiUsageRepository | None, Depends(get_gemini_usage_repo)
     ] = None,
+    tender_attachment_repo: Annotated[
+        ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
+    ] = None,
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
@@ -1288,6 +1333,7 @@ def get_ask_tender_assistant_use_case(
         attachment_file_repo=attachment_file_repo,
         attachment_storage=attachment_storage,
         usage_repo=usage_repo,
+        tender_attachment_repo=tender_attachment_repo,
     )
 
 
@@ -1642,6 +1688,9 @@ def build_notification_runners(
             client=app.state.qdrant_async_client,
             vector_size=settings.embedding_vector_size,
         )
+        lexical_tender_repo = QdrantLexicalTenderRepository(
+            client=app.state.qdrant_async_client,
+        )
         return RankTendersUseCase(
             supplier_repo=SupplierRepository(session),
             supplier_vector_repo=QdrantSupplierRepository(app.state.qdrant_async_client),
@@ -1665,6 +1714,10 @@ def build_notification_runners(
             # segundo canal (keywords contra partidas), que necesita ambas.
             embedding_service=app.state.embedding_service,
             item_vector_repo=item_vector_repo,
+            # Tercer canal: BM25 léxico sparse (plan 256).
+            lexical_tender_repo=lexical_tender_repo,
+            lexical_channel_enabled=settings.matching_lexical_channel_enabled,
+            lexical_search_limit=settings.matching_lexical_search_limit,
         )
 
     async def scan_all() -> int:

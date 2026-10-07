@@ -5,16 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
 import { formatDateTime } from "@/features/matches/utils/format";
 import * as storage from "../../services/storageUpload";
-import { getTenderDigest } from "../../services/tenderDigestService";
 import * as service from "../../services/tenderAttachmentsService";
 import {
   buildAttachmentFile,
   buildOfficialAttachment,
   buildTenderAttachments,
-  buildTenderDigest,
   buildUploadTicket,
 } from "../../test-utils";
 import { SHARING_NOTICES } from "../../utils/sharing";
+import { clearTenderAttachmentsCache } from "../../hooks/useTenderAttachments";
 import { TenderAttachmentsPanel } from "../TenderAttachmentsPanel";
 
 vi.mock("../../services/tenderAttachmentsService", () => ({
@@ -22,10 +21,6 @@ vi.mock("../../services/tenderAttachmentsService", () => ({
   requestUploadUrl: vi.fn(),
   completeUpload: vi.fn(),
   deleteAttachmentFile: vi.fn(),
-}));
-
-vi.mock("../../services/tenderDigestService", () => ({
-  getTenderDigest: vi.fn(),
 }));
 
 // Se conserva `StorageUploadError` real: el hook decide el mensaje según su clase.
@@ -52,9 +47,9 @@ function archivoDescargado() {
 
 describe("TenderAttachmentsPanel", () => {
   beforeEach(() => {
+    clearTenderAttachmentsCache();
+    window.localStorage.clear();
     vi.mocked(service.getTenderAttachments).mockReset();
-    vi.mocked(getTenderDigest).mockReset();
-    vi.mocked(getTenderDigest).mockResolvedValue(buildTenderDigest());
   });
 
   it("mientras carga avisa y deja a mano la ficha oficial", () => {
@@ -67,16 +62,21 @@ describe("TenderAttachmentsPanel", () => {
     expect(fichaLink()).toHaveAttribute("target", "_blank");
   });
 
-  it("lista cada anexo con su extensión y su estado", async () => {
+  it("lista cada documento subido con su extensión y su estado", async () => {
     vi.mocked(service.getTenderAttachments).mockResolvedValue(
       buildTenderAttachments({
         official: [
-          buildOfficialAttachment(),
+          buildOfficialAttachment({
+            status: "stored",
+            file: buildAttachmentFile(),
+          }),
           buildOfficialAttachment({
             id: "a-2",
             mp_document_id: 1931003,
             name: "anexos (1,1-A, 2).docx",
             ext: "docx",
+            status: "stored",
+            file: buildAttachmentFile({ id: "f-2" }),
           }),
         ],
       }),
@@ -88,21 +88,24 @@ describe("TenderAttachmentsPanel", () => {
     expect(items).toHaveLength(2);
     expect(within(items[0]).getByText("Anexo 3 Composición personalidad juridica.xlsx")).toBeVisible();
     expect(within(items[0]).getByText("XLSX")).toBeVisible();
-    expect(within(items[0]).getByText("Falta")).toBeVisible();
+    expect(within(items[0]).getByText("Subido")).toBeVisible();
     expect(within(items[1]).getByText("anexos (1,1-A, 2).docx")).toBeVisible();
     expect(within(items[1]).getByText("DOCX")).toBeVisible();
+    expect(within(items[1]).getByText("Subido")).toBeVisible();
     expect(service.getTenderAttachments).toHaveBeenCalledWith("t-1");
-    expect(
-      screen.getByText(
-        `Lista sincronizada con Mercado Público el ${formatDateTime("2026-09-28T16:28:00Z")}.`,
-      ),
-    ).toBeVisible();
   });
 
   it("no muestra la insignia de extensión cuando el nombre no la trae", async () => {
     vi.mocked(service.getTenderAttachments).mockResolvedValue(
       buildTenderAttachments({
-        official: [buildOfficialAttachment({ name: "Bases", ext: "" })],
+        official: [
+          buildOfficialAttachment({
+            name: "Bases",
+            ext: "",
+            status: "stored",
+            file: buildAttachmentFile(),
+          }),
+        ],
       }),
     );
 
@@ -110,39 +113,31 @@ describe("TenderAttachmentsPanel", () => {
 
     const [item] = await screen.findAllByRole("listitem");
     expect(within(item).getByText("Bases")).toBeVisible();
-    expect(within(item).getByText("Falta")).toBeVisible();
+    expect(within(item).getByText("Subido")).toBeVisible();
     expect(within(item).queryByText("XLSX")).not.toBeInTheDocument();
   });
 
-  it("sin lista y sin sincronizar dice que todavía no la tiene", async () => {
+  it("sin archivos subidos no renderiza la lista y deja disponible la zona de subida", async () => {
     vi.mocked(service.getTenderAttachments).mockResolvedValue(
-      buildTenderAttachments({ official: [], list_synced_at: null }),
+      buildTenderAttachments({ official: [], can_upload: true }),
     );
 
     renderPanel();
 
-    expect(await screen.findByText(/Todavía no tenemos la lista de anexos/)).toBeVisible();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("attachments-drop-zone")).toBeVisible();
     expect(fichaLink()).toHaveAttribute("href", FICHA);
-  });
-
-  it("sin anexos y sincronizada dice que Mercado Público no informa ninguno", async () => {
-    vi.mocked(service.getTenderAttachments).mockResolvedValue(
-      buildTenderAttachments({ official: [] }),
-    );
-
-    renderPanel();
-
-    expect(
-      await screen.findByText("Mercado Público no informa anexos para esta licitación."),
-    ).toBeVisible();
-    expect(screen.queryByText(/Todavía no tenemos/)).not.toBeInTheDocument();
   });
 
   it("ante un error muestra el mensaje, conserva el enlace y permite reintentar", async () => {
     const user = userEvent.setup();
     vi.mocked(service.getTenderAttachments)
       .mockRejectedValueOnce(new ApiError(500, "Falló el servidor"))
-      .mockResolvedValueOnce(buildTenderAttachments());
+      .mockResolvedValueOnce(
+        buildTenderAttachments({
+          official: [buildOfficialAttachment({ file: buildAttachmentFile() })],
+        }),
+      );
 
     renderPanel();
 
@@ -159,9 +154,16 @@ describe("TenderAttachmentsPanel", () => {
 
 describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () => {
   beforeEach(() => {
+    clearTenderAttachmentsCache();
+    window.localStorage.clear();
     vi.mocked(service.getTenderAttachments)
       .mockReset()
-      .mockResolvedValue(buildTenderAttachments({ can_upload: true }));
+      .mockResolvedValue(
+        buildTenderAttachments({
+          can_upload: true,
+          official: [buildOfficialAttachment({ file: buildAttachmentFile() })],
+        }),
+      );
     vi.mocked(service.requestUploadUrl).mockReset().mockResolvedValue(buildUploadTicket());
     vi.mocked(service.completeUpload).mockReset().mockResolvedValue(buildAttachmentFile());
     vi.mocked(service.deleteAttachmentFile).mockReset().mockResolvedValue(undefined);
@@ -169,7 +171,7 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
   });
 
   function filas() {
-    return within(screen.getByRole("list", { name: "Anexos oficiales" }));
+    return within(screen.getByRole("list", { name: "Documentos subidos" }));
   }
 
   it("muestra la zona para arrastrar solo si la empresa puede subir", async () => {
@@ -201,6 +203,12 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
   });
 
   it("al soltar un archivo lo asigna a su anexo y lo sube", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
     const file = archivoDescargado();
     renderPanel();
     const zona = await screen.findByTestId("attachments-drop-zone");
@@ -224,31 +232,71 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
     await waitFor(() => expect(service.getTenderAttachments).toHaveBeenCalledTimes(2));
   });
 
-  it("rechaza un archivo que no calza y lista los nombres esperados", async () => {
+  it("acepta un archivo con nombre distinto al soltarlo y lo sube sin exigir nombre oficial", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
     renderPanel();
     const zona = await screen.findByTestId("attachments-drop-zone");
 
-    fireEvent.drop(zona, { dataTransfer: { files: [new File(["x"], "otro.pdf")] } });
+    fireEvent.drop(zona, {
+      dataTransfer: { files: [new File(["x"], "COTIZACION OFICINA LOGISTICA DEAOPERPOL.xlsx")] },
+    });
 
-    const alerta = await screen.findByRole("alert");
-    expect(alerta).toHaveTextContent("otro.pdf");
-    expect(
-      within(within(alerta).getByRole("list", { name: "Nombres esperados" })).getByText(
-        NOMBRE_OFICIAL,
-      ),
-    ).toBeVisible();
-    expect(service.requestUploadUrl).not.toHaveBeenCalled();
-
-    await userEvent.click(within(alerta).getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(service.completeUpload).toHaveBeenCalledWith("t-1", "u-1"));
+    expect(service.requestUploadUrl).toHaveBeenCalledWith("t-1", "a-1", expect.anything());
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("cada fila tiene su botón Subir", async () => {
-    renderPanel();
-    await screen.findByText(NOMBRE_OFICIAL);
-    expect(filas().getByRole("button", { name: "Subir" })).toBeVisible();
+  it("bloquea la ui con un loader mientras se procesan y suben los archivos", async () => {
+    let resolveStorage: (() => void) | undefined;
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
+    vi.mocked(storage.putToStorage).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStorage = resolve;
+        }),
+    );
 
-    fireEvent.change(screen.getByTestId("attachment-input-a-1"), {
+    renderPanel();
+    const zona = await screen.findByTestId("attachments-drop-zone");
+
+    fireEvent.drop(zona, {
+      dataTransfer: { files: [archivoDescargado()] },
+    });
+
+    // Mientras sube: el loader bloquea la UI y la zona de arrastre se deshabilita
+    expect(await screen.findByTestId("attachments-processing-loader")).toBeVisible();
+    expect(screen.getByText("Procesando archivos…")).toBeVisible();
+    expect(zona).toHaveClass("pointer-events-none");
+
+    // Al terminar de subir: el loader desaparece
+    await waitFor(() => expect(resolveStorage).toBeDefined());
+    resolveStorage?.();
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachments-processing-loader")).not.toBeInTheDocument();
+    });
+  });
+
+  it("permite elegir un archivo desde el selector de la zona de subida", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
+    renderPanel();
+    const input = await screen.findByLabelText("Elegir anexos para subir");
+
+    fireEvent.change(input, {
       target: { files: [archivoDescargado()] },
     });
 
@@ -256,20 +304,21 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
     expect(service.requestUploadUrl).toHaveBeenCalledWith("t-1", "a-1", expect.anything());
   });
 
-  it("Subir en una fila rechaza el archivo de otro anexo sin llamar a la API", async () => {
+  it("acepta un archivo con nombre distinto sin validar el nombre oficial", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
     renderPanel();
-    await screen.findByText(NOMBRE_OFICIAL);
+    const input = await screen.findByLabelText("Elegir anexos para subir");
 
-    fireEvent.change(screen.getByTestId("attachment-input-a-1"), {
-      target: { files: [new File(["hola"], "Bases.pdf")] },
+    fireEvent.change(input, {
+      target: { files: [new File(["hola"], "documento_descargado_1058043.xlsx")] },
     });
 
-    expect(
-      await screen.findByText(
-        `«Bases.pdf» no corresponde a este anexo. Se esperaba «${NOMBRE_OFICIAL}».`,
-      ),
-    ).toBeVisible();
-    expect(service.requestUploadUrl).not.toHaveBeenCalled();
+    await waitFor(() => expect(service.requestUploadUrl).toHaveBeenCalledWith("t-1", "a-1", expect.anything()));
   });
 
   it("muestra el archivo subido y deja borrarlo si es propio", async () => {
@@ -426,8 +475,8 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
     );
     renderPanel();
 
-    await screen.findByText(NOMBRE_OFICIAL);
-    expect(filas().queryByRole("note")).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
   });
 
   it("muestra el cupo y avisa cuando se alcanzó el tope", async () => {
@@ -451,20 +500,24 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
       await screen.findByText("Subidas de anexos de tu empresa este mes: 100 de 100."),
     ).toBeVisible();
     expect(screen.getByText("Alcanzaste el tope de subidas de este mes.")).toBeVisible();
-    // No se deshabilita nada: un duplicado o un reintento no gastan cupo.
-    expect(screen.getByRole("button", { name: "Subir" })).toBeEnabled();
   });
 
   it("el error de cupo se muestra en la fila y se puede reintentar", async () => {
     const user = userEvent.setup();
     const detalle = "Tu empresa alcanzó el tope de 100 subidas de anexos de este mes.";
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
     vi.mocked(service.requestUploadUrl).mockRejectedValueOnce(
       new ApiError(403, detalle, "quota_exceeded", { used: 100, limit: 100 }),
     );
     renderPanel();
-    await screen.findByText(NOMBRE_OFICIAL);
 
-    fireEvent.change(screen.getByTestId("attachment-input-a-1"), {
+    const input = await screen.findByLabelText("Elegir anexos para subir");
+    fireEvent.change(input, {
       target: { files: [archivoDescargado()] },
     });
 
@@ -476,14 +529,20 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
   });
 
   it("muestra el progreso de la subida", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({
+        can_upload: true,
+        official: [buildOfficialAttachment({ file: null })],
+      }),
+    );
     vi.mocked(storage.putToStorage).mockImplementation(({ onProgress }) => {
       onProgress?.(0.5);
       return new Promise(() => {});
     });
     renderPanel();
-    await screen.findByText(NOMBRE_OFICIAL);
 
-    fireEvent.change(screen.getByTestId("attachment-input-a-1"), {
+    const input = await screen.findByLabelText("Elegir anexos para subir");
+    fireEvent.change(input, {
       target: { files: [archivoDescargado()] },
     });
 
@@ -493,7 +552,8 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
   });
 
   describe("integración con Digest", () => {
-    it("con una fila ready: aparece Resumen de los anexos y se llamó getTenderDigest", async () => {
+    it("con una fila ready: notifica onReadyKeyChange con el id del archivo", async () => {
+      const onReadyKeyChange = vi.fn();
       vi.mocked(service.getTenderAttachments).mockResolvedValue(
         buildTenderAttachments({
           official: [
@@ -507,17 +567,25 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
         })
       );
 
-      const { unmount } = renderPanel();
+      const { unmount } = render(
+        <TenderAttachmentsPanel
+          tenderId="t-1"
+          tenderCode="5052-431-COT26"
+          onReadyKeyChange={onReadyKeyChange}
+        />
+      );
 
-      expect(await screen.findByText("Resumen de los anexos")).toBeInTheDocument();
-      expect(getTenderDigest).toHaveBeenCalledWith("t-1");
+      await waitFor(() => {
+        expect(onReadyKeyChange).toHaveBeenCalledWith("f-1");
+      });
       unmount();
     });
 
-    it("sin filas ready: getTenderDigest no se llama", async () => {
-      vi.mocked(getTenderDigest).mockClear();
+    it("sin filas ready: onReadyKeyChange se llama con string vacío", async () => {
+      const onReadyKeyChange = vi.fn();
       vi.mocked(service.getTenderAttachments).mockResolvedValue(
         buildTenderAttachments({
+          can_upload: true,
           official: [
             buildOfficialAttachment({
               id: "a-1",
@@ -528,11 +596,16 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
         })
       );
 
-      renderPanel();
-      await screen.findByText(NOMBRE_OFICIAL);
+      render(
+        <TenderAttachmentsPanel
+          tenderId="t-1"
+          tenderCode="5052-431-COT26"
+          onReadyKeyChange={onReadyKeyChange}
+        />
+      );
+      await screen.findByTestId("attachments-drop-zone");
 
-      expect(getTenderDigest).not.toHaveBeenCalled();
-      expect(screen.queryByText("Resumen de los anexos")).toBeNull();
+      expect(onReadyKeyChange).toHaveBeenCalledWith("");
     });
 
     it("con processing_enabled: false y una fila processing muestra aviso de desactivado", async () => {

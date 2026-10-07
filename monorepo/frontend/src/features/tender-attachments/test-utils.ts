@@ -5,6 +5,7 @@ import type {
   OfficialAttachment,
   TenderAttachments,
   TenderDigest,
+  TenderDigestData,
   UploadTicket,
 } from "./types";
 
@@ -95,7 +96,9 @@ export function buildDigestDiscrepancy(
   };
 }
 
-export function buildTenderDigest(overrides: Partial<TenderDigest> = {}): TenderDigest {
+export function buildTenderDigest(
+  overrides: Partial<TenderDigest> = {},
+): TenderDigest & { data: TenderDigestData } {
   const citaBase = buildDigestCitation();
   return {
     id: "d-1",

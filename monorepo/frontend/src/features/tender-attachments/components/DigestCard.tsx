@@ -10,17 +10,18 @@ import { DigestCitations } from "./DigestCitations";
 
 interface DigestCardProps {
   tenderId: string;
-  refreshKey: string;
+  refreshKey?: string;
+  className?: string;
 }
 
-export function DigestCard({ tenderId, refreshKey }: DigestCardProps) {
+export function DigestCard({ tenderId, refreshKey = "", className = "" }: DigestCardProps) {
   const { state, reload } = useTenderDigest(tenderId, refreshKey);
 
   if (state.status === "loading") {
     return (
       <div
         role="status"
-        className="flex items-center gap-2 rounded-lg border border-warm-200 bg-white p-4 text-xs text-text-muted shadow-xs"
+        className={`flex items-center gap-2 rounded-lg border border-warm-200 bg-white p-4 text-xs text-text-muted shadow-xs ${className}`}
       >
         <RefreshCw className="h-4 w-4 animate-spin text-primary" />
         <span>Cargando el resumen de los anexos…</span>
@@ -32,7 +33,7 @@ export function DigestCard({ tenderId, refreshKey }: DigestCardProps) {
     return (
       <div
         role="alert"
-        className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-900"
+        className={`flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-900 ${className}`}
       >
         <div className="flex items-center gap-2">
           <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
@@ -54,7 +55,7 @@ export function DigestCard({ tenderId, refreshKey }: DigestCardProps) {
     return (
       <section
         aria-labelledby="digest-heading"
-        className="rounded-lg border border-warm-200 bg-white p-4 text-xs text-text-muted shadow-xs"
+        className={`rounded-lg border border-warm-200 bg-white p-4 text-xs text-text-muted shadow-xs ${className}`}
       >
         <h3 id="digest-heading" className="font-semibold text-slate-800">
           Resumen de los anexos
@@ -64,13 +65,28 @@ export function DigestCard({ tenderId, refreshKey }: DigestCardProps) {
     );
   }
 
-  const { data } = digest;
-  const { campos, discrepancias, requisitos, items, entregables, puntos_a_tener_en_cuenta, resumenes, fuentes } = data;
+  const digestData = digest.data ?? digest;
+  const campos = digestData.campos ?? {
+    presupuesto: null,
+    fecha_publicacion: null,
+    fecha_cierre_primer_llamado: null,
+    fecha_cierre_segundo_llamado: null,
+    visita_tecnica: null,
+  };
+  const {
+    discrepancias = [],
+    requisitos = [],
+    items = [],
+    entregables = [],
+    puntos_a_tener_en_cuenta = [],
+    resumenes = [],
+    fuentes = [],
+  } = digestData;
 
   return (
     <section
       aria-labelledby="digest-heading"
-      className="flex flex-col gap-4 rounded-xl border border-warm-200 bg-white p-5 text-xs text-slate-800 shadow-xs"
+      className={`flex flex-col gap-4 rounded-xl border border-warm-200 bg-white p-5 text-xs text-slate-800 shadow-xs ${className}`}
     >
       {/* 1. Encabezado y aviso de IA */}
       <div className="flex flex-col gap-1.5 border-b border-warm-200/80 pb-3">

@@ -4,6 +4,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.tender_item_vector_repository import (
     ITenderItemVectorRepository,
 )
@@ -14,6 +17,7 @@ from app.application.repositories.tender_repository import (
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.services.lexical_tokenizer import LexicalTokenizer, SparseTermVector
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
@@ -34,6 +38,7 @@ from tests.unit.application.fakes import (
     FORMULA_DE_PRUEBA,
     FakeEmbeddingPorTexto,
     FakeEmbeddingService,
+    FakeLexicalTenderRepository,
     FakeRerankerService,
     FakeSupplierVectorRepository,
     InMemoryMatchingResultRepository,
@@ -1368,4 +1373,137 @@ async def test_el_cambio_de_perfil_invalida_aunque_no_haya_corrida_nueva() -> No
     await use_case.execute(user_id=user_id)
 
     assert len(reranker.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_canal_lexico_apagado_no_ejecuta_busqueda_lexica() -> None:
+    user_id = uuid4()
+    supplier_id = uuid4()
+    supplier = Supplier(
+        id=supplier_id,
+        user_id=user_id,
+        rut="76086428-5",
+        legal_name="Proveedor Prueba",
+        keywords=["cloro", "desinfectante"],
+        sectors=["Aseo"],
+        regions=["Región Metropolitana de Santiago"],
+    )
+
+    tender_id = uuid4()
+    tender = create_dummy_tender(tender_id)
+    tender.region = "Región Metropolitana de Santiago"
+
+    supplier_repo = InMemorySupplierRepository()
+    await supplier_repo.save(supplier)
+
+    supplier_vector_repo = FakeSupplierVectorRepository()
+    supplier_vector_repo.vectors[supplier_id] = [0.1] * 4
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(tender_id, 0.85)]
+
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[tender_id] = tender
+
+    fake_lexical_repo = FakeLexicalTenderRepository()
+    fake_lexical_repo.search_results = [(tender_id, 2.5)]
+
+    reranker = FakeRerankerService()
+    scorer = crear_scorer(reranker=reranker)
+    matching_result_repo = InMemoryMatchingResultRepository()
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=scorer,
+        matching_result_repo=matching_result_repo,
+        lexical_tender_repo=fake_lexical_repo,
+        lexical_channel_enabled=False,
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert len(results) == 1
+    # Con el canal apagado, el repositorio léxico no recibe búsquedas
+    assert len(fake_lexical_repo.searches) == 0
+
+
+@pytest.mark.asyncio
+async def test_canal_lexico_encendido_recupera_candidatos_y_limpia_huerfanos() -> None:
+    user_id = uuid4()
+    supplier_id = uuid4()
+    supplier = Supplier(
+        id=supplier_id,
+        user_id=user_id,
+        rut="76086428-5",
+        legal_name="Proveedor Prueba",
+        keywords=["amonio cuaternario", "desinfectante"],
+        sectors=["Limpieza"],
+        regions=["Región Metropolitana de Santiago"],
+    )
+
+    # Licitación 1: recuperada por perfil denso
+    tender_dense_id = uuid4()
+    tender_dense = create_dummy_tender(tender_dense_id)
+    tender_dense.region = "Región Metropolitana de Santiago"
+
+    # Licitación 2: recuperada exclusivamente por canal léxico
+    tender_lex_id = uuid4()
+    tender_lex = create_dummy_tender(tender_lex_id)
+    tender_lex.region = "Región Metropolitana de Santiago"
+
+    # Licitación huérfana: id en Qdrant léxico que no existe en SQL
+    huerfano_lex_id = uuid4()
+
+    supplier_repo = InMemorySupplierRepository()
+    await supplier_repo.save(supplier)
+
+    supplier_vector_repo = FakeSupplierVectorRepository()
+    supplier_vector_repo.vectors[supplier_id] = [0.1] * 4
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(tender_dense_id, 0.85)]
+
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[tender_dense_id] = tender_dense
+    tender_repo.tenders[tender_lex_id] = tender_lex
+
+    fake_lexical_repo = FakeLexicalTenderRepository()
+    fake_lexical_repo.search_results = [
+        (tender_lex_id, 4.2),
+        (huerfano_lex_id, 3.8),
+    ]
+
+    reranker = FakeRerankerService()
+    scorer = crear_scorer(reranker=reranker)
+    matching_result_repo = InMemoryMatchingResultRepository()
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=supplier_vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=scorer,
+        matching_result_repo=matching_result_repo,
+        lexical_tender_repo=fake_lexical_repo,
+        lexical_channel_enabled=True,
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    # Se ejecutó la búsqueda léxica
+    assert len(fake_lexical_repo.searches) == 1
+    search_call = fake_lexical_repo.searches[0]
+    assert len(search_call["vector"].indices) > 0
+
+    # Ambas licitaciones válidas entraron y fueron puntuadas
+    returned_ids = {r.tender_id for r in results}
+    assert tender_dense_id in returned_ids
+    assert tender_lex_id in returned_ids
+
+    # El huérfano fue detectado y limpiado del repo léxico
+    assert huerfano_lex_id in fake_lexical_repo.deleted
+
 

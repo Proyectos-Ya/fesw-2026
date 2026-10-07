@@ -41,9 +41,35 @@ def construir_contexto_anexos(
     if nombres_docs:
         lineas.append(f"Documentos oficiales considerados: {', '.join(nombres_docs)}")
 
-    if not digest_data and not legacy_docs:
+    if not digest_data and not legacy_docs and not sources:
         lineas.append("(No hay documentos o bases oficiales procesadas para esta licitación)")
         return "\n".join(lineas)
+
+    if not digest_data and sources:
+        lineas.append("\n--- RESÚMENES DE DOCUMENTOS OFICIALES DISPONIBLES ---")
+        for f in sources:
+            lineas.append(f"\n* Documento '{f.documento}':")
+            if f.data.resumen_general and f.data.resumen_general.texto:
+                lineas.append(f"  Resumen: {f.data.resumen_general.texto}")
+            if f.data.requisitos:
+                lineas.append("  Requisitos extraídos:")
+                for r in f.data.requisitos:
+                    ob = "[Obligatorio]" if r.obligatorio else "[Deseable]"
+                    lineas.append(f"  * {ob} ({r.tipo}): {r.descripcion}")
+            if f.data.entregables:
+                lineas.append("  Entregables:")
+                for ent in f.data.entregables:
+                    plazo_str = f" [Plazo: {ent.plazo}]" if ent.plazo else ""
+                    lineas.append(f"  * {ent.descripcion}{plazo_str}")
+            if f.data.items:
+                lineas.append("  Ítems solicitados:")
+                for it in f.data.items[:15]:
+                    cant = f"{it.cantidad} {it.unidad or ''}".strip()
+                    lineas.append(f"  * {it.descripcion} ({cant})")
+            if f.data.puntos_a_tener_en_cuenta:
+                lineas.append("  Puntos clave:")
+                for pto in f.data.puntos_a_tener_en_cuenta[:10]:
+                    lineas.append(f"  * {pto.descripcion}")
 
     if digest_data:
         # 1. Parámetros Clave

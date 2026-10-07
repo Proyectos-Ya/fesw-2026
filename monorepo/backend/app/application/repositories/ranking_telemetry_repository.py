@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from app.domain.entities.ranking_telemetry import (
@@ -55,6 +55,12 @@ class IRankingTelemetryRepository(ABC):
     @abstractmethod
     async def upsert_daily_metric(self, metric: RankingMetricDaily) -> None:
         """Inserta la métrica del día y versión, o reemplaza la que ya había."""
+
+    @abstractmethod
+    async def list_daily_metrics(
+        self, model_version: str | None = None, since_day: date | None = None
+    ) -> list[RankingMetricDaily]:
+        """Las métricas diarias registradas, ordenadas por (day DESC, model_version)."""
 
     @abstractmethod
     async def count_top_impressions_by_tender(

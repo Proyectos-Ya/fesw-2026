@@ -59,7 +59,7 @@ def upgrade() -> None:
         sa.Column("result_summary", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["tender_id"], ["tenders.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tender_id"], ["tender.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["leased_to_installation_id"], ["extension_installation.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )

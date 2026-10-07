@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, type DragEvent } from "react";
 
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Button } from "@/features/shared/components/Button";
@@ -28,10 +28,13 @@ const STATUS_TONE: Record<AttachmentStatus, BadgeTone> = {
 
 interface AttachmentRowProps {
   attachment: OfficialAttachment;
+  displayName?: string;
   /** Lo que pasa localmente con la fila (subiendo, borrando, error); `undefined` = nada. */
   upload?: RowUpload;
   canUpload: boolean;
+  disabled?: boolean;
   onPick: (file: File) => void;
+  onPickMultiple?: (files: File[]) => void;
   onRetry: () => void;
   onDelete: () => void;
 }
@@ -47,9 +50,12 @@ const BUSY_LABEL: Partial<Record<RowUpload["phase"], string>> = {
 /** Un anexo oficial con su estado, el archivo que la empresa subió y las acciones de la fila. */
 export function AttachmentRow({
   attachment,
+  displayName,
   upload,
   canUpload,
+  disabled = false,
   onPick,
+  onPickMultiple,
   onRetry,
   onDelete,
 }: AttachmentRowProps) {
@@ -60,27 +66,80 @@ export function AttachmentRow({
   const percent = Math.round((upload?.progress ?? 0) * 100);
   const notice = sharingNotice(attachment.file);
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
   const canPick =
     canUpload &&
     !busy &&
+    !disabled &&
     (failed ||
       attachment.status === "missing" ||
       attachment.status === "uploading" ||
       attachment.status === "rejected");
   const canDelete =
-    canUpload && !busy && file !== null && file.is_mine && file.visibility === "private";
+    canUpload && !busy && !disabled && file !== null && file.is_mine && file.visibility === "private";
+
+  function handleDragOver(event: DragEvent<HTMLLIElement>) {
+    if (!canPick || disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLLIElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragOver(false);
+  }
+
+  function handleDrop(event: DragEvent<HTMLLIElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragOver(false);
+    if (!canPick || disabled) return;
+    const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+    if (droppedFiles.length === 1) {
+      onPick(droppedFiles[0]);
+    } else if (droppedFiles.length > 1) {
+      if (onPickMultiple) {
+        onPickMultiple(droppedFiles);
+      } else {
+        onPick(droppedFiles[0]);
+      }
+    }
+  }
 
   return (
-    <li className="flex flex-col gap-2 p-3">
+    <li
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`flex flex-col gap-2 p-3 transition-colors ${
+        isDragOver ? "rounded-md bg-primary/10 ring-2 ring-primary ring-inset" : ""
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-3">
         <Icon name="file-text" size={16} color="var(--text-subtle)" />
-        <span
-          title={attachment.name}
-          className="min-w-0 flex-1 truncate text-sm font-semibold text-text-strong"
-        >
-          {attachment.name}
-        </span>
-        {attachment.ext !== "" && <Badge tone="neutral">{attachment.ext.toUpperCase()}</Badge>}
+        {(() => {
+          const nombreVisible = displayName ?? attachment.name;
+          const extensionVisible = nombreVisible.includes(".")
+            ? nombreVisible.split(".").pop()?.trim() || ""
+            : attachment.ext;
+          return (
+            <>
+              <span
+                title={nombreVisible}
+                className="min-w-0 flex-1 truncate text-sm font-semibold text-text-strong"
+              >
+                {nombreVisible}
+              </span>
+              {extensionVisible !== "" && (
+                <Badge tone="neutral">{extensionVisible.toUpperCase()}</Badge>
+              )}
+            </>
+          );
+        })()}
 
         {upload === undefined && (
           <>
@@ -120,13 +179,18 @@ export function AttachmentRow({
         )}
 
         {canPick && (
-          <Button variant="ghost" type="button" onClick={() => inputRef.current?.click()}>
+          <Button
+            variant="ghost"
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => !disabled && !busy && inputRef.current?.click()}
+          >
             <Icon name="upload" size={14} />
             Subir
           </Button>
         )}
         {failed && upload.file !== null && (
-          <Button variant="ghost" type="button" onClick={onRetry}>
+          <Button variant="ghost" type="button" disabled={disabled} onClick={onRetry}>
             <Icon name="rotate-cw" size={14} />
             Reintentar
           </Button>
@@ -135,6 +199,7 @@ export function AttachmentRow({
           <Button
             variant="ghost"
             type="button"
+            disabled={disabled}
             onClick={onDelete}
             aria-label={`Borrar el archivo de ${attachment.name}`}
           >
@@ -176,13 +241,23 @@ export function AttachmentRow({
         <input
           ref={inputRef}
           type="file"
+          multiple
+          disabled={disabled || busy}
           className="hidden"
           aria-label={`Elegir el archivo de ${attachment.name}`}
           data-testid={`attachment-input-${attachment.id}`}
           onChange={(event) => {
-            const picked = event.target.files?.[0];
+            const files = Array.from(event.target.files ?? []);
             event.target.value = "";
-            if (picked) onPick(picked);
+            if (files.length === 1) {
+              onPick(files[0]);
+            } else if (files.length > 1) {
+              if (onPickMultiple) {
+                onPickMultiple(files);
+              } else {
+                onPick(files[0]);
+              }
+            }
           }}
         />
       )}

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
 import { getTenderDigest } from "../../services/tenderDigestService";
 import { buildDigestCitation, buildTenderDigest } from "../../test-utils";
-import { AI_NOTICE } from "../../types";
+import { AI_NOTICE, type TenderDigest } from "../../types";
 import { DigestCard } from "../DigestCard";
 
 vi.mock("../../services/tenderDigestService", () => ({
@@ -167,5 +167,25 @@ describe("DigestCard", () => {
 
     expect(await screen.findByText("Resumen de los anexos")).toBeInTheDocument();
     expect(getTenderDigest).toHaveBeenCalledTimes(2);
+  });
+
+  it("renderiza correctamente cuando la respuesta viene aplanada en la raíz sin propiedad data", async () => {
+    // Simula exactamente la respuesta del backend TenderDigestResponse (campos en la raíz, data = undefined)
+    const flattenedDigest = {
+      tender_id: "t-1",
+      scope: "shared" as const,
+      status: "ready" as const,
+      version: 1,
+      pending_sources: 0,
+      ...baseDigest.data,
+      data: undefined,
+    };
+    vi.mocked(getTenderDigest).mockResolvedValue(flattenedDigest as unknown as TenderDigest);
+
+    render(<DigestCard tenderId="t-1" refreshKey="k-1" />);
+
+    expect(await screen.findByText("Resumen de los anexos")).toBeInTheDocument();
+    expect(screen.getByText("$5.000.000 (IVA incluido)")).toBeInTheDocument();
+    expect(screen.getByText("Certificación ISO 9001 vigente")).toBeInTheDocument();
   });
 });

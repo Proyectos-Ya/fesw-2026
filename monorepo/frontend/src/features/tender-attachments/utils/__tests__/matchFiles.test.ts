@@ -41,11 +41,23 @@ describe("matchDroppedFiles", () => {
     },
   );
 
-  it("un archivo sin pareja queda como no_match", () => {
-    const { matched, rejected } = matchDroppedFiles([file("otro.pdf")], [TECNICAS, BASES]);
+  it("sin anexos oficiales en la licitación genera un slot dinámico", () => {
+    const f = file("otro.pdf");
+    const { matched, rejected } = matchDroppedFiles([f], []);
 
-    expect(matched).toEqual([]);
-    expect(rejected).toEqual([{ fileName: "otro.pdf", reason: "no_match" }]);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].file).toBe(f);
+    expect(matched[0].attachment.name).toBe("otro.pdf");
+    expect(rejected).toEqual([]);
+  });
+
+  it("un archivo con nombre y extensión distinta se asigna al anexo disponible", () => {
+    const f = file("COTIZACION OFICINA LOGISTICA DEAOPERPOL.xlsx");
+
+    const { matched, rejected } = matchDroppedFiles([f], [TECNICAS, BASES]);
+
+    expect(matched).toEqual([{ file: f, attachment: TECNICAS }]);
+    expect(rejected).toEqual([]);
   });
 
   it("dos filas oficiales que normalizan igual dejan el archivo como ambiguous", () => {

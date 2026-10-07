@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
 import * as service from "../../services/tenderAttachmentsService";
 import { buildTenderAttachments } from "../../test-utils";
-import { useTenderAttachments } from "../useTenderAttachments";
+import { clearTenderAttachmentsCache, useTenderAttachments } from "../useTenderAttachments";
 
 vi.mock("../../services/tenderAttachmentsService", () => ({
   getTenderAttachments: vi.fn(),
@@ -12,6 +12,7 @@ vi.mock("../../services/tenderAttachmentsService", () => ({
 
 describe("useTenderAttachments", () => {
   beforeEach(() => {
+    clearTenderAttachmentsCache();
     vi.mocked(service.getTenderAttachments).mockReset();
   });
 

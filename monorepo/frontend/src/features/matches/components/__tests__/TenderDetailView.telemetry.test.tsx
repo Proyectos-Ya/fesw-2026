@@ -40,7 +40,13 @@ vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
 }));
 
 vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () => ({
-  TenderAttachmentsPanel: () => null,
+  TenderAttachmentsPanel: ({ onUploadSuccess }: { onUploadSuccess?: () => void }) => (
+    <button onClick={() => onUploadSuccess?.()}>Simular subida de anexo</button>
+  ),
+}));
+
+vi.mock("@/features/tender-attachments/components/DigestCard", () => ({
+  DigestCard: () => null,
 }));
 
 vi.mock("@/features/quotations/QuotationEditor", () => ({
@@ -104,6 +110,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
   vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+  vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({ score_pct: 85 } as never);
   vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
 });
 
@@ -246,6 +253,20 @@ describe("TenderDetailView: telemetría del ranking", () => {
     expect(reportTenderInteraction).toHaveBeenCalledWith(
       "tender-50",
       "cotizacion",
+      "detalle",
+      CTX,
+    );
+  });
+
+  it("subir un anexo informa 'anexo'", async () => {
+    const user = userEvent.setup();
+    render(<TenderDetailView tenderId="tender-50" rankingContext={CTX} />);
+
+    await user.click(await screen.findByRole("button", { name: "Simular subida de anexo" }));
+
+    expect(reportTenderInteraction).toHaveBeenCalledWith(
+      "tender-50",
+      "anexo",
       "detalle",
       CTX,
     );

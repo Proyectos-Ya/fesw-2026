@@ -75,7 +75,10 @@ async def reintentar_fallidos_en_db() -> int:
             update(AttachmentProcessingJobModel)
             .where(
                 AttachmentProcessingJobModel.kind == ProcessingJobKind.EXTRACT,
-                AttachmentProcessingJobModel.status == ProcessingJobStatus.FAILED,
+                AttachmentProcessingJobModel.status.in_([
+                    ProcessingJobStatus.FAILED,
+                    ProcessingJobStatus.PENDING,
+                ]),
             )
             .values(
                 status=ProcessingJobStatus.PENDING,
@@ -129,7 +132,7 @@ async def main_async(args: argparse.Namespace) -> int:
     # Barrido
     res_sweep = await sweep()
     print(
-        f"Barrido: encolados {res_sweep.enqueued_extracts} extract, {res_sweep.enqueued_digests} digest."
+        f"Barrido: encolados {res_sweep.enqueued} trabajos, recuperados {res_sweep.recovered}, purgados {res_sweep.purged}."
     )
 
     if args.solo_barrido:

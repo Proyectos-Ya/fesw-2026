@@ -48,3 +48,39 @@ class TestCorrer:
 
         assert await correr(_args(), ciclo) == 1
         assert "ndcg: x" in capsys.readouterr().out
+
+
+class TestMostrarMetricas:
+    async def test_sin_metricas_muestra_mensaje(self, capsys):
+        from tests.unit.application.fakes import InMemoryRankingTelemetryRepository
+        from scripts.ranking_telemetry import mostrar_metricas
+
+        repo = InMemoryRankingTelemetryRepository()
+        assert await mostrar_metricas(repo, dias=30) == 0
+        assert "No hay métricas registradas" in capsys.readouterr().out
+
+    async def test_con_metricas_imprime_resumen_y_serie(self, capsys):
+        from datetime import date
+        from app.domain.entities.ranking_telemetry import RankingMetricDaily
+        from tests.unit.application.fakes import InMemoryRankingTelemetryRepository
+        from scripts.ranking_telemetry import mostrar_metricas
+
+        repo = InMemoryRankingTelemetryRepository()
+        await repo.upsert_daily_metric(
+            RankingMetricDaily(
+                day=date.today(),
+                model_version="v1.0",
+                ndcg_at_10=0.145,
+                ci_low=0.12,
+                ci_high=0.17,
+                rankings_evaluated=20,
+                rankings_served=100,
+            )
+        )
+
+        assert await mostrar_metricas(repo, dias=30) == 0
+        salida = capsys.readouterr().out
+        assert "v1.0" in salida
+        assert "0.1450" in salida
+        assert "RESUMEN DE TELEMETRÍA" in salida
+        assert "SERIE TEMPORAL DETALLADA" in salida

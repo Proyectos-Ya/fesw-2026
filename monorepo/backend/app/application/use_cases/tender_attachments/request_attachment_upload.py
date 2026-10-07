@@ -105,7 +105,17 @@ class RequestAttachmentUploadUseCase:
 
         anexo = await self.attachments.get_official_attachment(req.tender_id, req.attachment_id)
         if anexo is None:
-            raise AttachmentNotFound()
+            existente = await self.attachments.get_attachment(req.attachment_id)
+            if existente is not None:
+                raise AttachmentNotFound()
+            lista = await self.attachments.get_official_list(req.tender_id)
+            if lista is None:
+                raise AttachmentNotFound()
+            anexo = await self.attachments.create_attachment(
+                tender_id=req.tender_id,
+                attachment_id=req.attachment_id,
+                name=req.file_name,
+            )
 
         if req.size_bytes > MAX_ATTACHMENT_SIZE_BYTES:
             raise AttachmentTooLarge(MAX_ATTACHMENT_SIZE_BYTES)

@@ -14,7 +14,12 @@ from app.application.repositories.gemini_usage_repository import (
     IGeminiUsageRepository,
 )
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
+from app.application.repositories.tender_chat_repository import (
+    ITenderChatRepository,
+)
 from app.application.repositories.tender_digest_repository import (
     ITenderDigestRepository,
 )
@@ -34,6 +39,8 @@ from app.application.services.tender_assistant_ai_service import (
 )
 from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.attachment_extraction import EXTRACTION_PROMPT_VERSION, FuenteDeExtraccion
+from app.domain.entities.attachment_file import AttachmentFile, AttachmentFileStatus
+from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatMessage
 from app.domain.entities.tender_digest import TenderDigestData
 from app.domain.errors.tender_chat_errors import (
@@ -42,6 +49,7 @@ from app.domain.errors.tender_chat_errors import (
     TenderAssistantUnavailableError,
     TenderChatQueryTooLongError,
 )
+from app.domain.services.digest_consolidation import consolidar
 from app.infrastructure.services.document_text import xlsx_to_text
 from app.shared.datetime_utils import chile_date, utc_now_naive
 
@@ -123,6 +131,7 @@ class AskTenderAssistantUseCase:
         attachment_file_repo: Optional[IAttachmentFileRepository] = None,
         attachment_storage: Optional[IAttachmentStorage] = None,
         usage_repo: Optional[IGeminiUsageRepository] = None,
+        tender_attachment_repo: Optional[ITenderAttachmentRepository] = None,
         daily_budget: int = 100,
         now_fn: Callable[[], datetime] = utc_now_naive,
     ):
@@ -136,6 +145,7 @@ class AskTenderAssistantUseCase:
         self.attachment_file_repo = attachment_file_repo
         self.attachment_storage = attachment_storage
         self.usage_repo = usage_repo
+        self.tender_attachment_repo = tender_attachment_repo
         self.daily_budget = daily_budget
         self.now_fn = now_fn
 
@@ -214,6 +224,7 @@ class AskTenderAssistantUseCase:
 
         # 8. Obtener información general y metadatos de la licitación si existe
         tender_context_str: Optional[str] = None
+        tender: Optional[Tender] = None
         if self.tender_repo:
             try:
                 tenders = await self.tender_repo.get_tenders(
@@ -271,7 +282,11 @@ class AskTenderAssistantUseCase:
         digest_data: Optional[TenderDigestData] = None
         panel_sources: list[FuenteDeExtraccion] = []
         if self.digest_repo:
-            digest_entity = await self.digest_repo.get_current(tender_id, workspace_id)
+            digest_entity = None
+            if workspace_id is not None:
+                digest_entity = await self.digest_repo.get_current(tender_id, workspace_id)
+            if not digest_entity:
+                digest_entity = await self.digest_repo.get_current(tender_id, None)
             if digest_entity:
                 digest_data = digest_entity.data
 
@@ -281,6 +296,46 @@ class AskTenderAssistantUseCase:
                 workspace_id=workspace_id,
                 prompt_version=EXTRACTION_PROMPT_VERSION,
             )
+            if not panel_sources and workspace_id is not None:
+                panel_sources = await self.extraction_repo.list_sources(
+                    tender_id=tender_id,
+                    workspace_id=None,
+                    prompt_version=EXTRACTION_PROMPT_VERSION,
+                )
+
+        # Consolidar en vivo si hay fuentes pero no digest persistido
+        if digest_data is None and panel_sources and tender:
+            try:
+                digest_data = consolidar(panel_sources, tender)
+            except Exception as e:
+                logger.warning("No se pudo consolidar el resumen en vivo: %s", e)
+
+        # 9.b Obtener archivos visibles del panel que aún no tengan extracción
+        unextracted_visible_files: list[tuple[AttachmentFile, str]] = []
+        if self.attachment_file_repo:
+            try:
+                visible_files = await self.attachment_file_repo.list_visible_for_tender(
+                    tender_id=tender_id,
+                    workspace_id=workspace_id,
+                )
+                att_names: dict[UUID, str] = {}
+                if self.tender_attachment_repo:
+                    try:
+                        tender_atts = await self.tender_attachment_repo.list_for_tender(tender_id)
+                        att_names = {a.id: a.name for a in tender_atts}
+                    except Exception:
+                        pass
+
+                extracted_file_ids = {s.attachment_file_id for s in panel_sources}
+                extracted_shas = {s.sha256.lower() for s in panel_sources}
+
+                for vf in visible_files:
+                    if vf.status == AttachmentFileStatus.STORED:
+                        if vf.id not in extracted_file_ids and vf.sha256.lower() not in extracted_shas:
+                            fname = att_names.get(vf.tender_attachment_id) or "Anexo_Oficial"
+                            unextracted_visible_files.append((vf, fname))
+            except Exception as e:
+                logger.warning("Error consultando archivos visibles del panel: %s", e)
 
         # 10. Obtener y fusionar documentos legacy de chat (D5-6)
         chat_docs = await self.chat_repo.get_documents_by_chat(user_id=user_id, tender_id=tender_id)
@@ -301,7 +356,7 @@ class AskTenderAssistantUseCase:
         unprocessed_warnings: List[str] = []
 
         document_contexts_p1: List[DocumentContextDTO] = []
-        if digest_data or panel_sources:
+        if digest_data or panel_sources or unextracted_visible_files:
             document_contexts_p1.append(
                 DocumentContextDTO(
                     document_name="Resumen de Anexos y Bases Oficiales",
@@ -311,6 +366,27 @@ class AskTenderAssistantUseCase:
                     source="panel",
                 )
             )
+
+        for vf, fname in unextracted_visible_files:
+            txt = ""
+            ext = fname.split(".")[-1].lower() if "." in fname else ""
+            if ext in ("xlsx", "txt", "csv", "json") and self.attachment_storage and vf.size_bytes and vf.size_bytes <= 2 * 1024 * 1024:
+                try:
+                    raw_b = await self.attachment_storage.get_bytes(vf.storage_key)
+                    txt = _extraer_texto_legacy(raw_b, fname)
+                except Exception:
+                    pass
+            if txt:
+                document_contexts_p1.append(
+                    DocumentContextDTO(
+                        document_name=fname,
+                        file_type=ext or "txt",
+                        file_bytes=b"",
+                        text=txt,
+                        source="panel",
+                        file_ref=vf.storage_key,
+                    )
+                )
 
         for d, txt in legacy_con_texto:
             is_corrupted = False
@@ -403,6 +479,23 @@ class AskTenderAssistantUseCase:
                                 )
                         except Exception as e:
                             logger.warning("No se pudieron obtener bytes para %s: %s", fuente.documento, e)
+
+                for vf, fname in unextracted_visible_files:
+                    if vf.storage_key:
+                        try:
+                            raw_bytes = await self.attachment_storage.get_bytes(vf.storage_key)
+                            if len(raw_bytes) <= INLINE_MAX_BYTES:
+                                document_contexts_p2.append(
+                                    DocumentContextDTO(
+                                        document_name=fname,
+                                        file_type=fname.split(".")[-1].lower() if "." in fname else "pdf",
+                                        file_bytes=raw_bytes,
+                                        file_ref=vf.storage_key,
+                                        source="panel",
+                                    )
+                                )
+                        except Exception as e:
+                            logger.warning("No se pudieron obtener bytes para %s: %s", fname, e)
 
                 for d in docs_legacy_unicos:
                     raw_b = chat_bytes_by_id.get(d.id, b"")

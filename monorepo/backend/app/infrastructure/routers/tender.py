@@ -468,6 +468,7 @@ def create_tender_router(
                 user_id=current_user.id,
                 tender_id=tender_id,
                 supplier_id=_empresa_activa(workspace_context),
+                force=True,
             )
         except (SupplierNotFoundForUser, TenderNotFound) as e:
             raise HTTPException(

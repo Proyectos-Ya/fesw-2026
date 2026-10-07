@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     company_lookup_base_url: str | None = None
 
     # --- Matching ---
+    # Canal léxico sparse BM25 (plan 256): complementa el matching denso con
+    # recuperación exacta de términos y acrónimos sobre tender_lexical.
+    matching_lexical_channel_enabled: bool = False
+    matching_lexical_search_limit: int = Field(default=30, gt=0)
+
     # Coeficientes de regresión logística calibrados sobre 1.146 pares juzgados
     # (spikes/dataset_compra_agil/calibrar_multivector.py, AUC 0,75 vs 0,58).
     # Modelos de P(relevancia >= 1) y P(relevancia == 2), validación cruzada por proveedor.
@@ -270,9 +275,8 @@ class Settings(BaseSettings):
     attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
 
     # --- Anexos: extracción con Gemini y resumen (plan 233, decisión 4) ---
-    # Apagado por defecto: cada anexo es una llamada pagada a Gemini. Apagado, lo
-    # subido igual queda en cola y se procesa al encenderlo.
-    run_attachment_processing: bool = False
+    # Por defecto activo en local para procesar trabajos de la cola de anexos.
+    run_attachment_processing: bool = True
     # Llamadas a `generateContent` por día de Chile. Al agotarse, la cola espera al
     # día siguiente sin llamar. 0 pausa la extracción sin apagar el bucle.
     attachment_gemini_daily_budget: int = Field(default=100, ge=0)
@@ -287,6 +291,9 @@ class Settings(BaseSettings):
     extension_latest_version: str = "0.1.0"
     extension_max_daily_fetches: int = Field(default=50, ge=0)
     extension_polling_interval_seconds: int = Field(default=300, gt=0)
+
+    # --- Matching en sombra con anexos (plan 233, decisión 9) ---
+    matching_shadow_enabled: bool = False
 
     @property
     def attachment_extraction_model(self) -> str:

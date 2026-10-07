@@ -31,6 +31,7 @@ class TenderDigestResponse(BaseModel):
     generated_at: UtcDateTime | None = None
     pending_sources: int = 0
     ai_generated: Literal[True] = True
+    data: TenderDigestData | None = None
     campos: CamposConsolidados
     requisitos: list[RequisitoConsolidado] = Field(default_factory=list)
     items: list[ItemConsolidado] = Field(default_factory=list)
@@ -53,6 +54,7 @@ class TenderDigestResponse(BaseModel):
                 generated_at=None,
                 pending_sources=vista.pending_sources,
                 ai_generated=True,
+                data=vacio,
                 campos=vacio.campos,
                 requisitos=vacio.requisitos,
                 items=vacio.items,
@@ -72,6 +74,7 @@ class TenderDigestResponse(BaseModel):
             generated_at=vista.digest.created_at,
             pending_sources=vista.pending_sources,
             ai_generated=True,
+            data=data,
             campos=data.campos,
             requisitos=data.requisitos,
             items=data.items,

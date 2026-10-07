@@ -17,6 +17,9 @@ from app.application.repositories.ranking_telemetry_repository import (
     IRankingTelemetryRepository,
 )
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -24,6 +27,7 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.repositories.tender_item_vector_repository import (
     ITenderItemVectorRepository,
 )
+from app.application.services.lexical_tokenizer import SparseTermVector
 from app.application.repositories.tender_repository import (
     ClosingOrder,
     ITenderRepository,
@@ -496,6 +500,54 @@ class InMemoryTenderItemVectorRepository(ITenderItemVectorRepository):
             if hasta is not None and actual > hasta:
                 return False
         return True
+
+
+class InMemoryLexicalTenderRepository(ILexicalTenderRepository):
+    """Repositorio en memoria para el canal léxico sparse BM25."""
+
+    def __init__(self) -> None:
+        self.vectors: dict[UUID, SparseTermVector] = {}
+        self.payloads: dict[UUID, dict] = {}
+        self.search_results: list[tuple[UUID, float]] = []
+        self.searches: list[dict] = []
+        self.deleted: list[UUID] = []
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        sparse_vector: SparseTermVector,
+        payload: dict | None = None,
+    ) -> None:
+        if not sparse_vector.indices:
+            self.vectors.pop(tender_id, None)
+            self.payloads.pop(tender_id, None)
+            return
+        self.vectors[tender_id] = sparse_vector
+        self.payloads[tender_id] = dict(payload or {})
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        if tender_id not in self.vectors:
+            return
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.vectors.pop(tender_id, None)
+        self.payloads.pop(tender_id, None)
+        self.deleted.append(tender_id)
+
+    async def search_lexical(
+        self,
+        query_vector: SparseTermVector,
+        limit: int,
+        criteria: TenderFilterCriteria | None = None,
+    ) -> list[tuple[UUID, float]]:
+        self.searches.append(
+            {"vector": query_vector, "limit": limit, "criteria": criteria}
+        )
+        return self.search_results
+
+
+FakeLexicalTenderRepository = InMemoryLexicalTenderRepository
 
 
 class FakeEmbeddingService(IEmbeddingService):
@@ -1151,6 +1203,16 @@ class InMemoryRankingTelemetryRepository(IRankingTelemetryRepository):
 
     async def upsert_daily_metric(self, metric: RankingMetricDaily) -> None:
         self.metrics[(metric.day, metric.model_version)] = metric
+
+    async def list_daily_metrics(
+        self, model_version: str | None = None, since_day: date | None = None
+    ) -> list[RankingMetricDaily]:
+        resultado = list(self.metrics.values())
+        if model_version:
+            resultado = [m for m in resultado if m.model_version == model_version]
+        if since_day:
+            resultado = [m for m in resultado if m.day >= since_day]
+        return sorted(resultado, key=lambda m: (m.day, m.model_version), reverse=True)
 
     async def count_top_impressions_by_tender(
         self, since: datetime, max_position: int

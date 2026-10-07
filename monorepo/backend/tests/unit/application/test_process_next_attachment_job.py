@@ -101,16 +101,16 @@ async def test_respuesta_sin_citas_se_rechaza_y_reintenta():
     assert job.status == ProcessingJobStatus.PENDING
     assert job.attempts == 1
     assert "sin citas" in (job.last_error or "")
-    assert job.not_before == AHORA + timedelta(minutes=5)
+    assert job.not_before == AHORA + timedelta(seconds=10)
     assert len(m.extractions.filas) == 0
 
-    # 2. Con el reloj en AHORA + 4 min, no procesa
-    reloj.avanzar(timedelta(minutes=4))
+    # 2. Con el reloj en AHORA + 5 s, no procesa
+    reloj.avanzar(timedelta(seconds=5))
     res = await caso.execute()
     assert res is False
 
-    # 3. Con el reloj en AHORA + 5 min, procesa y completa
-    reloj.avanzar(timedelta(minutes=1))
+    # 3. Con el reloj en AHORA + 10 s, procesa y completa
+    reloj.avanzar(timedelta(seconds=5))
     res = await caso.execute()
     assert res is True
     job = m.jobs.filas[job_id]
@@ -155,14 +155,14 @@ async def test_tres_fallos_dejan_el_trabajo_fallido():
     assert job.attempts == 1
 
     # Intento 2
-    reloj.avanzar(timedelta(minutes=6))
+    reloj.avanzar(timedelta(seconds=15))
     await caso.execute()
     job = m.jobs.filas[job_id]
     assert job.status == ProcessingJobStatus.PENDING
     assert job.attempts == 2
 
     # Intento 3: se agotan intentos (MAX_INTENTOS=3) -> FAILED
-    reloj.avanzar(timedelta(minutes=31))
+    reloj.avanzar(timedelta(minutes=2))
     await caso.execute()
     job = m.jobs.filas[job_id]
     assert job.status == ProcessingJobStatus.FAILED

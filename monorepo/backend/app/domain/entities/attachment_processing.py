@@ -37,14 +37,22 @@ MAX_INTENTOS = {
     ProcessingJobKind.SHADOW_SCORE: 3,
 }
 ESPERAS = {
-    ProcessingJobKind.EXTRACT: (timedelta(minutes=5), timedelta(minutes=30)),
-    ProcessingJobKind.DIGEST: (
+    ProcessingJobKind.EXTRACT: (
+        timedelta(seconds=10),
         timedelta(minutes=1),
         timedelta(minutes=5),
-        timedelta(minutes=15),
-        timedelta(hours=1),
     ),
-    ProcessingJobKind.SHADOW_SCORE: (timedelta(minutes=5), timedelta(minutes=30)),
+    ProcessingJobKind.DIGEST: (
+        timedelta(seconds=5),
+        timedelta(seconds=30),
+        timedelta(minutes=2),
+        timedelta(minutes=10),
+    ),
+    ProcessingJobKind.SHADOW_SCORE: (
+        timedelta(seconds=10),
+        timedelta(minutes=1),
+        timedelta(minutes=5),
+    ),
 }
 PLAZO_DE_TRABAJO_COLGADO = timedelta(minutes=30)  # > 180 s de Gemini + 120 s de subida + parseo
 RETENCION_DE_TRABAJOS = timedelta(days=30)  # `done` se purga; `failed` se conserva

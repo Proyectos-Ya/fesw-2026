@@ -42,7 +42,7 @@ class AttachmentProcessingScheduler:
         signal: AsyncioProcessingSignal,
         poll_interval_seconds: float,
         sweep_interval_seconds: float,
-        initial_delay_seconds: float = 30.0,
+        initial_delay_seconds: float = 2.0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.process_next = process_next

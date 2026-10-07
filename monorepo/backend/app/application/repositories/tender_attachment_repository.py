@@ -56,3 +56,10 @@ class ITenderAttachmentRepository(ABC):
     async def get_attachment(self, attachment_id: UUID) -> OfficialAttachment | None:
         """Una fila oficial por ID, incluso si fue retirada (`removed_at is not None`)."""
         ...
+
+    @abstractmethod
+    async def create_attachment(
+        self, tender_id: UUID, attachment_id: UUID, name: str
+    ) -> OfficialAttachment:
+        """Crea una fila oficial de anexo cuando se sube un documento nuevo."""
+        ...

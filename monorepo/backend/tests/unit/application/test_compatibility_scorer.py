@@ -562,3 +562,37 @@ async def test_score_and_persist_falla_si_el_reranker_no_responde() -> None:
         await scorer.score_and_persist(proveedor, licitacion)
 
     assert await repo.get_by_supplier_id(proveedor.id) == []
+
+
+@pytest.mark.asyncio
+async def test_score_and_persist_con_digest_enriquece_y_preserva_source() -> None:
+    scorer, repo = crear_scorer()
+    proveedor = crear_proveedor()
+    licitacion = crear_licitacion(uuid4())
+
+    digest = type(
+        "Digest",
+        (),
+        {
+            "data": type(
+                "Data",
+                (),
+                {
+                    "resumenes": [type("R", (), {"texto": "Resumen con anexos"})()],
+                    "requisitos": [],
+                    "items": [],
+                },
+            )()
+        },
+    )()
+
+    resultado = await scorer.score_and_persist(
+        proveedor, licitacion, digest=digest, source="ranking"
+    )
+
+    assert resultado.source == "ranking"
+    assert resultado.final_score is not None
+    guardado = await repo.get_by_proveedor_and_licitacion(proveedor.id, licitacion.id)
+    assert guardado is not None
+    assert guardado.source == "ranking"
+    assert guardado.final_score == resultado.final_score

@@ -37,10 +37,14 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.ranking_telemetry_repository import (
+    IRankingTelemetryRepository,
+)
 from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle import (
     RankingTelemetryCycleResult,
 )
 from app.config import settings
+from app.domain.entities.ranking_telemetry import RankingMetricDaily
 from app.infrastructure.db import crear_engine
 from app.infrastructure.services.ranking_telemetry_jobs import (
     build_ranking_telemetry_cycle,
@@ -84,12 +88,84 @@ async def correr(
     return 1 if resultado.failures else 0
 
 
+async def mostrar_metricas(
+    repo: IRankingTelemetryRepository,
+    model_version: str | None = None,
+    dias: int = 30,
+) -> int:
+    """Lee y presenta la serie histórica de NDCG@10 por versión del modelo."""
+    from datetime import date, timedelta
+
+    desde = date.today() - timedelta(days=dias)
+    metricas = await repo.list_daily_metrics(
+        model_version=model_version, since_day=desde
+    )
+    if not metricas:
+        filtro = f" para versión '{model_version}'" if model_version else ""
+        print(f"No hay métricas registradas en los últimos {dias} días{filtro}.")
+        return 0
+
+    versiones: dict[str, list[RankingMetricDaily]] = {}
+    for m in metricas:
+        versiones.setdefault(m.model_version, []).append(m)
+
+    print("\n" + "=" * 92)
+    print("RESUMEN DE TELEMETRÍA DE RANKING POR VERSIÓN DE MODELO")
+    print("=" * 92)
+    print(
+        f"{'Versión':<22} | {'Días':<6} | {'Servidos':<10} | {'Evaluados':<10} | "
+        f"{'NDCG@10 Prom':<14} | {'IC 95% Prom':<18}"
+    )
+    print("-" * 92)
+    for v, ms in sorted(versiones.items()):
+        total_servidos = sum(m.rankings_served for m in ms)
+        total_eval = sum(m.rankings_evaluated for m in ms)
+        ndcg_prom = (
+            sum(m.ndcg_at_10 * m.rankings_evaluated for m in ms) / max(total_eval, 1)
+        )
+        ci_l = (
+            sum(m.ci_low * m.rankings_evaluated for m in ms) / max(total_eval, 1)
+        )
+        ci_h = (
+            sum(m.ci_high * m.rankings_evaluated for m in ms) / max(total_eval, 1)
+        )
+        print(
+            f"{v:<22} | {len(ms):<6} | {total_servidos:<10} | {total_eval:<10} | "
+            f"{ndcg_prom:<14.4f} | [{ci_l:+.4f}, {ci_h:+.4f}]"
+        )
+    print("=" * 92)
+
+    print("\nSERIE TEMPORAL DETALLADA:")
+    print(
+        f"{'Fecha':<12} | {'Versión':<22} | {'Servidos':<9} | {'Evaluados':<10} | "
+        f"{'NDCG@10':<9} | {'IC 95%':<18}"
+    )
+    print("-" * 92)
+    for m in sorted(metricas, key=lambda x: (x.day, x.model_version), reverse=True):
+        print(
+            f"{str(m.day):<12} | {m.model_version:<22} | {m.rankings_served:<9} | "
+            f"{m.rankings_evaluated:<10} | {m.ndcg_at_10:<9.4f} | "
+            f"[{m.ci_low:+.4f}, {m.ci_high:+.4f}]"
+        )
+    print("=" * 92 + "\n")
+    return 0
+
+
 async def _correr(args: argparse.Namespace) -> int:
     engine = crear_engine()
     maker = async_sessionmaker(
         bind=engine, class_=AsyncSession, expire_on_commit=False
     )
     try:
+        if args.mostrar:
+            from app.infrastructure.repositories.ranking_telemetry_repository import (
+                SqlRankingTelemetryRepository,
+            )
+            async with maker() as session:
+                repo = SqlRankingTelemetryRepository(session)
+                return await mostrar_metricas(
+                    repo, model_version=args.version, dias=args.dias
+                )
         return await correr(
             args,
             build_ranking_telemetry_cycle(
@@ -106,12 +182,23 @@ def construir_parser() -> argparse.ArgumentParser:
         "--dias",
         type=int,
         default=7,
-        help=f"días completos de Chile a recalcular (7; máx. {MAX_DIAS})",
+        help=f"días completos de Chile a recalcular o consultar (7; máx. {MAX_DIAS})",
     )
     p.add_argument(
         "--incluir-hoy",
         action="store_true",
         help="calcula también el día en curso (útil para probar a mano)",
+    )
+    p.add_argument(
+        "--mostrar",
+        action="store_true",
+        help="muestra la serie histórica de NDCG@10 por versión del modelo sin recalcular",
+    )
+    p.add_argument(
+        "--version",
+        type=str,
+        default=None,
+        help="filtra las métricas por model_version al usar --mostrar",
     )
     p.add_argument(
         "--confirmar-produccion",

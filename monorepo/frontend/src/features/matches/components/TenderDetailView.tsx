@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
@@ -32,6 +32,7 @@ import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
 import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import {
@@ -42,7 +43,6 @@ import {
   normalizeScore,
   type ClosingTone,
 } from "../utils/format";
-
 
 interface TenderDetailViewProps {
   tenderId: string;
@@ -96,7 +96,10 @@ function scoreLabel(score: number): string {
   return "Baja compatibilidad";
 }
 
-export function TenderDetailView({ tenderId, rankingContext = null }: TenderDetailViewProps) {
+export function TenderDetailView({
+  tenderId,
+  rankingContext = null,
+}: TenderDetailViewProps) {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
@@ -108,8 +111,14 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
   const [retryNonce, setRetryNonce] = useState(0);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [digestRefreshKey, setDigestRefreshKey] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
-  const reportInteraction = useTenderInteractionReporter(tenderId, rankingContext);
+  const reportInteraction = useTenderInteractionReporter(
+    tenderId,
+    rankingContext,
+  );
+
+  const userId = user?.id;
 
   useEffect(() => {
     if (authLoading) return;
@@ -117,7 +126,7 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       router.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState({ kind: "loading" });
@@ -130,7 +139,7 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
           // Esta llamada solo busca la licitación entre las recomendadas: no es una
           // lista que se le haya mostrado a nadie. Sin `track: false` cada apertura
           // de una ficha crearía un ranking fantasma con todas sus posiciones.
-          getRecommendedTenders(user.id, { track: false }),
+          getRecommendedTenders(userId, { track: false }),
           fetchSavedTenders().catch(() => []),
         ]);
 
@@ -140,14 +149,17 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
         // puede estar guardada, así que esto no depende de las recomendaciones.
         setIsSaved(
           savedList.some(
-            (item) => (item.tender?.id ?? item.tender_id ?? item.id) === tenderId
-          )
+            (item) =>
+              (item.tender?.id ?? item.tender_id ?? item.id) === tenderId,
+          ),
         );
 
         const found = matches.find((m) => m.tender?.id === tenderId);
         if (found) {
           setScore(
-            found.final_score !== null ? normalizeScore(found.final_score) : null
+            found.final_score !== null
+              ? normalizeScore(found.final_score)
+              : null,
           );
           setState({
             kind: "ready",
@@ -212,14 +224,51 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, user, router, tenderId, retryNonce]);
+  }, [authLoading, isAuthenticated, userId, router, tenderId, retryNonce]);
 
   // El `detalle` lo informa la ficha al cargar y no la tarjeta: así se registra uno
   // solo, y también se cubren las entradas desde búsqueda o notificación.
-  const loadedTenderId = state.kind === "ready" ? (state.match.tender?.id ?? null) : null;
+  const loadedTenderId =
+    state.kind === "ready" ? (state.match.tender?.id ?? null) : null;
   useEffect(() => {
     if (loadedTenderId === tenderId) reportInteraction("detalle");
   }, [loadedTenderId, tenderId, reportInteraction]);
+
+  const prevReadyKeyRef = useRef<string | null>(null);
+
+  const triggerScoreRecalculation = useCallback(async () => {
+    setActionError(null);
+    setPendingAction("score");
+    try {
+      const resultado = await calculateTenderScore(tenderId);
+      setScore(resultado.score_pct);
+      if (
+        analysis &&
+        Math.round(analysis.compatibility_score) !== resultado.score_pct
+      ) {
+        setAnalysis((prev) => (prev ? { ...prev, is_outdated: true } : null));
+      }
+    } catch (err) {
+      console.error("Error al recalcular la compatibilidad:", err);
+    } finally {
+      setPendingAction(null);
+    }
+  }, [tenderId, analysis]);
+
+  const handleReadyKeyChange = useCallback(
+    (newKey: string) => {
+      setDigestRefreshKey(newKey);
+      if (
+        prevReadyKeyRef.current !== null &&
+        prevReadyKeyRef.current !== newKey &&
+        newKey !== ""
+      ) {
+        void triggerScoreRecalculation();
+      }
+      prevReadyKeyRef.current = newKey;
+    },
+    [triggerScoreRecalculation],
+  );
 
   const handleCalculateScore = async () => {
     setActionError(null);
@@ -230,7 +279,10 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       // Si el número se movió, la justificación guardada quedó explicando otro
       // puntaje. Se marca desactualizada en vez de dejar dos cifras distintas
       // en la misma pantalla.
-      if (analysis && Math.round(analysis.compatibility_score) !== resultado.score_pct) {
+      if (
+        analysis &&
+        Math.round(analysis.compatibility_score) !== resultado.score_pct
+      ) {
         setAnalysis({ ...analysis, is_outdated: true });
       }
     } catch (err) {
@@ -238,7 +290,7 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       setActionError(
         err instanceof ApiError
           ? err.message
-          : "No pudimos calcular la compatibilidad. Inténtalo de nuevo."
+          : "No pudimos calcular la compatibilidad. Inténtalo de nuevo.",
       );
     } finally {
       setPendingAction(null);
@@ -258,7 +310,7 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       setActionError(
         err instanceof ApiError
           ? err.message
-          : "No pudimos actualizar el análisis. Inténtalo de nuevo."
+          : "No pudimos actualizar el análisis. Inténtalo de nuevo.",
       );
     } finally {
       setPendingAction(null);
@@ -305,8 +357,8 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
             No encontramos esta licitación
           </h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-            Es posible que ya no esté entre tus matches recomendados o que el enlace
-            esté desactualizado.
+            Es posible que ya no esté entre tus matches recomendados o que el
+            enlace esté desactualizado.
           </p>
         </div>
       </section>
@@ -359,8 +411,9 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
             </p>
             <p className="mt-1 text-sm text-text-body">
               El plazo de postulación venció el{" "}
-              {formatClosingDate(tender.closing_at)}. Es posible que ya haya sido
-              adjudicada; puedes revisar su estado oficial en Mercado Público.
+              {formatClosingDate(tender.closing_at)}. Es posible que ya haya
+              sido adjudicada; puedes revisar su estado oficial en Mercado
+              Público.
             </p>
           </div>
         </div>
@@ -419,7 +472,11 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
             >
               {pendingAction === "score" ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon name="loader-circle" className="animate-spin" size={13} />
+                  <Icon
+                    name="loader-circle"
+                    className="animate-spin"
+                    size={13}
+                  />
                   Calculando…
                 </span>
               ) : score !== null ? (
@@ -434,18 +491,29 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge tone="teal">Compra Ágil</Badge>
-            <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
+            <Badge
+              tone={closingBadgeTone(closing.tone)}
+              dot={closing.tone === "danger"}
+            >
               {closing.label}
             </Badge>
-            {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
-            <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
+            {isSecondCall(tender) && (
+              <Badge tone="info">{SECOND_CALL_LABEL}</Badge>
+            )}
+            <span className="font-mono text-xs text-text-subtle">
+              ID {tender.code}
+            </span>
 
             <div className="flex-1" />
 
             <button
               type="button"
               onClick={handleToggleSave}
-              aria-label={isSaved ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
+              aria-label={
+                isSaved
+                  ? "Quitar de licitaciones guardadas"
+                  : "Guardar licitación"
+              }
               title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
               className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
                 isSaved
@@ -489,9 +557,84 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
         </div>
       </header>
 
-      {/* Anexos oficiales (plan 233, decisión 1): reemplaza a "Documentos
-          asociados", que solo enlazaba a la ficha de Mercado Público. */}
-      <TenderAttachmentsPanel tenderId={tenderId} tenderCode={tender.code} />
+      {/* Anexos oficiales (plan 233, decisión 1): bajo el header, antes de la tarjeta de análisis IA */}
+      <TenderAttachmentsPanel
+        tenderId={tenderId}
+        tenderCode={tender.code}
+        onReadyKeyChange={handleReadyKeyChange}
+        onUploadSuccess={() => {
+          reportInteraction("anexo");
+          void triggerScoreRecalculation();
+        }}
+      />
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-5">
+        <KeyValueCard
+          icon="wallet"
+          eyebrow="Monto estimado"
+          value={formatCLP(tender.available_amount_clp)}
+        />
+        <KeyValueCard
+          icon="calendar"
+          eyebrow="Cierre"
+          value={formatClosingDate(tender.closing_at)}
+          hint={closing.label}
+        />
+        <KeyValueCard
+          icon="clock"
+          eyebrow="Publicación"
+          value={formatClosingDate(tender.published_at)}
+        />
+      </div>
+
+      <Section title="Requisitos y descripción" icon="file-text">
+        {tender.description ? (
+          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
+            {tender.description}
+          </p>
+        ) : (
+          <p className="text-sm italic text-text-subtle">
+            El organismo no incluyó una descripción detallada.
+          </p>
+        )}
+
+        {tender.items.length > 0 && (
+          <div className="mt-5">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              Ítems solicitados
+            </div>
+            <ul className="flex flex-col divide-y divide-border-subtle rounded-md border border-border-subtle">
+              {tender.items.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-col gap-1 p-3 sm:flex-row sm:items-start sm:gap-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-text-strong">
+                      {item.name}
+                    </div>
+                    {item.description && (
+                      <div className="mt-0.5 text-xs text-text-muted">
+                        {item.description}
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-mono text-xs text-text-subtle">
+                    {item.quantity} {item.unit_of_measure}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="mt-5">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            Resumen de requisitos y documentos
+          </div>
+
+          <DigestCard tenderId={tenderId} refreshKey={digestRefreshKey} />
+        </div>
+      </Section>
 
       {/* AI Compatibility Analysis CTA Card */}
       <QuotationEditor
@@ -531,7 +674,6 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
               Consultar asistente virtual
             </span>
           </Button>
-
 
           {/* Una licitación cerrada no genera nada: si no hay análisis
               guardado, no hay a dónde ir. */}
@@ -596,26 +738,6 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
         </div>
       )}
 
-
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <KeyValueCard
-          icon="wallet"
-          eyebrow="Monto estimado"
-          value={formatCLP(tender.available_amount_clp)}
-        />
-        <KeyValueCard
-          icon="calendar"
-          eyebrow="Cierre"
-          value={formatClosingDate(tender.closing_at)}
-          hint={closing.label}
-        />
-        <KeyValueCard
-          icon="clock"
-          eyebrow="Publicación"
-          value={formatClosingDate(tender.published_at)}
-        />
-      </div>
-
       <CallClosingDates tender={tender} />
 
       {/* Análisis de compatibilidad IA si ya existe */}
@@ -657,14 +779,16 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
 
               <div className="sm:col-span-3 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-text-muted">Recomendación:</span>
+                  <span className="text-sm font-semibold text-text-muted">
+                    Recomendación:
+                  </span>
                   <Badge
                     tone={
                       analysis.recommendation === "Postular"
                         ? "success"
                         : analysis.recommendation === "Evaluar con cautela"
-                        ? "warning"
-                        : "danger"
+                          ? "warning"
+                          : "danger"
                     }
                     iconLeft={
                       <Icon
@@ -672,8 +796,8 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
                           analysis.recommendation === "Postular"
                             ? "circle-check"
                             : analysis.recommendation === "Evaluar con cautela"
-                            ? "alert-triangle"
-                            : "alert-circle"
+                              ? "alert-triangle"
+                              : "alert-circle"
                         }
                         size={12}
                       />
@@ -697,43 +821,9 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       <Section title="Hitos y fechas importantes" icon="calendar">
         <MilestonesSection tenderId={tenderId} />
         <p className="mt-4 text-xs text-text-subtle">
-          Última modificación en Mercado Público: {formatDateTime(tender.last_change_at)}
+          Última modificación en Mercado Público:{" "}
+          {formatDateTime(tender.last_change_at)}
         </p>
-      </Section>
-
-      <Section title="Requisitos y descripción" icon="file-text">
-        {tender.description ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
-            {tender.description}
-          </p>
-        ) : (
-          <p className="text-sm italic text-text-subtle">
-            El organismo no incluyó una descripción detallada.
-          </p>
-        )}
-
-        {tender.items.length > 0 && (
-          <div className="mt-5">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
-              Ítems solicitados
-            </div>
-            <ul className="flex flex-col divide-y divide-border-subtle rounded-md border border-border-subtle">
-              {tender.items.map((item) => (
-                <li key={item.id} className="flex flex-col gap-1 p-3 sm:flex-row sm:items-start sm:gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-text-strong">{item.name}</div>
-                    {item.description && (
-                      <div className="mt-0.5 text-xs text-text-muted">{item.description}</div>
-                    )}
-                  </div>
-                  <div className="font-mono text-xs text-text-subtle">
-                    {item.quantity} {item.unit_of_measure}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </Section>
 
       <Section title="Enlaces relacionados" icon="link">
@@ -751,10 +841,14 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
             </a>
           </li>
           <li className="text-text-muted">
-            Código de licitación: <span className="font-mono text-text-strong">{tender.code}</span>
+            Código de licitación:{" "}
+            <span className="font-mono text-text-strong">{tender.code}</span>
           </li>
           <li className="text-text-muted">
-            RUT comprador: <span className="font-mono text-text-strong">{tender.buyer_rut}</span>
+            RUT comprador:{" "}
+            <span className="font-mono text-text-strong">
+              {tender.buyer_rut}
+            </span>
           </li>
         </ul>
       </Section>
@@ -767,7 +861,6 @@ export function TenderDetailView({ tenderId, rankingContext = null }: TenderDeta
       />
     </section>
   );
-
 }
 
 function Section({
@@ -807,7 +900,9 @@ function KeyValueCard({
         <Icon name={icon} size={12} color="var(--text-subtle)" />
         {eyebrow}
       </div>
-      <div className="font-mono text-lg font-semibold text-text-strong">{value}</div>
+      <div className="font-mono text-lg font-semibold text-text-strong">
+        {value}
+      </div>
       {hint && <div className="mt-0.5 text-xs text-text-muted">{hint}</div>}
     </div>
   );

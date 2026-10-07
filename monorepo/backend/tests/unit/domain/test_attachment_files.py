@@ -170,32 +170,19 @@ def test_valida_un_archivo_descargado_del_navegador() -> None:
     validar_archivo_para_anexo(XLSX, "anexo 3 composicion personalidad juridica (1).XLSX")
 
 
-def test_extension_distinta_lanza_con_lo_esperado() -> None:
-    with pytest.raises(AttachmentExtensionMismatch) as info:
-        validar_archivo_para_anexo(XLSX, "Anexo 3 Composición personalidad juridica.pdf")
-
-    assert info.value.code == "attachment_extension_mismatch"
-    assert info.value.extra == {
-        "expected_ext": "xlsx",
-        "received_ext": "pdf",
-        "expected_name": XLSX.name,
-    }
+def test_extension_distinta_se_acepta() -> None:
+    validar_archivo_para_anexo(XLSX, "Anexo 3 Composición personalidad juridica.pdf")
 
 
-def test_nombre_distinto_lanza_con_el_nombre_esperado() -> None:
-    with pytest.raises(AttachmentNameMismatch) as info:
-        validar_archivo_para_anexo(XLSX, "Otro.xlsx")
-
-    assert info.value.code == "attachment_name_mismatch"
-    assert info.value.extra["expected_name"] == XLSX.name
+def test_nombre_distinto_se_acepta() -> None:
+    validar_archivo_para_anexo(XLSX, "Otro.xlsx")
 
 
 def test_anexo_sin_extension() -> None:
     bases = _anexo("Bases", "bases", "")
 
     validar_archivo_para_anexo(bases, "bases (1)")
-    with pytest.raises(AttachmentExtensionMismatch):
-        validar_archivo_para_anexo(bases, "bases.pdf")
+    validar_archivo_para_anexo(bases, "bases.pdf")
 
 
 # --- Qué archivo ve cada empresa ---

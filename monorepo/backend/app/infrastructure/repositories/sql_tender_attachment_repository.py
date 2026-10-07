@@ -189,3 +189,31 @@ class SqlTenderAttachmentRepository(ITenderAttachmentRepository):
         return OfficialAttachmentList(
             attachments=[_a_entidad(m) for m in modelos], synced_at=fila[1]
         )
+
+    async def create_attachment(
+        self, tender_id: UUID, attachment_id: UUID, name: str
+    ) -> OfficialAttachment:
+        ahora = datetime.utcnow()
+        max_doc_id = (
+            await self.session.exec(
+                select(TenderAttachmentModel.mp_document_id)
+                .where(col(TenderAttachmentModel.tender_id) == tender_id)
+                .order_by(col(TenderAttachmentModel.mp_document_id).desc())
+            )
+        ).first()
+        mp_doc_id = (max_doc_id + 1) if max_doc_id is not None and max_doc_id > 0 else (abs(hash(str(attachment_id))) % (10**8) + 1)
+        modelo = TenderAttachmentModel(
+            id=attachment_id,
+            tender_id=tender_id,
+            mp_document_id=mp_doc_id,
+            name=name,
+            name_normalized=normalizar_nombre_anexo(name),
+            ext=extension_de(name),
+            first_seen_at=ahora,
+            last_seen_at=ahora,
+            removed_at=None,
+        )
+        self.session.add(modelo)
+        await self.session.commit()
+        await self.session.refresh(modelo)
+        return _a_entidad(modelo)

@@ -49,8 +49,38 @@ vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
 
 // Sin este mock, el panel real llamaría a `apiFetch` en jsdom.
 vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () => ({
-  TenderAttachmentsPanel: ({ tenderId, tenderCode }: { tenderId: string; tenderCode: string }) => (
-    <div data-testid="tender-attachments-panel">{`${tenderId}|${tenderCode}`}</div>
+  TenderAttachmentsPanel: ({
+    tenderId,
+    tenderCode,
+    onReadyKeyChange,
+    onUploadSuccess,
+  }: {
+    tenderId: string;
+    tenderCode: string;
+    onReadyKeyChange?: (k: string) => void;
+    onUploadSuccess?: () => void;
+  }) => (
+    <div data-testid="tender-attachments-panel">
+      <span>{`${tenderId}|${tenderCode}`}</span>
+      <button
+        type="button"
+        data-testid="mock-simulate-attachment-upload"
+        onClick={() => {
+          onReadyKeyChange?.("anexo-1-ready");
+          onUploadSuccess?.();
+        }}
+      >
+        Simular subida
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("@/features/tender-attachments/components/DigestCard", () => ({
+  DigestCard: ({ tenderId, refreshKey }: { tenderId: string; refreshKey?: string }) => (
+    <div data-testid="digest-card" data-refresh-key={refreshKey}>
+      {tenderId}
+    </div>
   ),
 }));
 
@@ -114,6 +144,15 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
 
     expect(await screen.findByText("Hitos y fechas importantes")).toBeInTheDocument();
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
+  });
+
+  it("muestra el resumen de anexos en la sección de requisitos y descripción", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Requisitos y descripción")).toBeInTheDocument();
+    expect(screen.getByTestId("digest-card")).toHaveTextContent("tender-50");
   });
 
   it("aplica rollback al estado previo y muestra alerta ante fallo al guardar licitación", async () => {
@@ -509,5 +548,26 @@ describe("TenderDetailView: segundo llamado", () => {
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("recalcula automáticamente el puntaje de compatibilidad cuando se suben anexos", async () => {
+    conTender({});
+    vi.mocked(tenderService.calculateTenderScore).mockResolvedValueOnce({
+      score_pct: 88,
+      calculated_at: new Date().toISOString(),
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByTestId("tender-attachments-panel");
+
+    const btnSimular = screen.getByTestId("mock-simulate-attachment-upload");
+    await userEvent.setup().click(btnSimular);
+
+    await waitFor(() => {
+      expect(tenderService.calculateTenderScore).toHaveBeenCalledWith("tender-50");
+    });
+    expect(
+      await screen.findByRole("img", { name: "Compatibilidad 88%" }),
+    ).toBeInTheDocument();
   });
 });

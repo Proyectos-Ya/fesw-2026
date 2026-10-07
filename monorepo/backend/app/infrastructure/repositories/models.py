@@ -33,6 +33,10 @@ from app.infrastructure.repositories.extension_model import (
 from app.infrastructure.repositories.matching_result_model import (
     MatchingResultModel,
 )
+from app.infrastructure.repositories.matching_shadow_model import (
+    MatchingShadowScoreModel,
+    TenderAttachmentItemModel,
+)
 from app.infrastructure.repositories.notification_model import (
     NotificationDeliveryModel,
     NotificationModel,
@@ -97,6 +101,7 @@ __all__ = [
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "MatchingResultModel",
+    "MatchingShadowScoreModel",
     "NotificationDeliveryModel",
     "NotificationModel",
     "NotificationPreferenceModel",
@@ -109,6 +114,7 @@ __all__ = [
     "SupplierMemberModel",
     "SupplierInvitationModel",
     "TenderAIAnalysisModel",
+    "TenderAttachmentItemModel",
     "TenderAttachmentModel",
     "TenderItemModel",
     "TenderMetadataModel",

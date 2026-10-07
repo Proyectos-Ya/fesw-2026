@@ -2,6 +2,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.tender_attachment_repository import (
     ITenderAttachmentRepository,
 )
@@ -13,6 +16,7 @@ from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.lexical_tokenizer import LexicalTokenizer
 from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
@@ -52,6 +56,8 @@ class TenderIngestionUseCase:
         enable_comuna_generic_heuristic: bool = False,
         tender_item_vector_repo: ITenderItemVectorRepository | None = None,
         attachment_repo: ITenderAttachmentRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
+        lexical_tokenizer: LexicalTokenizer | None = None,
     ):
         self.repo = repository
         self.embedding_service = embedding_service
@@ -64,6 +70,9 @@ class TenderIngestionUseCase:
         # trae el detalle (plan 233, decisión 1). Sin él la ingesta funciona
         # igual; la lista la refrescan los crons con lo que ya listan.
         self.attachment_repo = attachment_repo
+        # Opcional: guarda el vector disperso (sparse BM25) para el canal léxico (plan 256).
+        self.lexical_tender_repo = lexical_tender_repo
+        self.lexical_tokenizer = lexical_tokenizer or LexicalTokenizer()
         self.text_builder = TextBuilder()
         # Ver settings.enable_comuna_generic_heuristic: apagado por defecto
         # hasta decidir si el riesgo de falso positivo de la heurística
@@ -154,6 +163,7 @@ class TenderIngestionUseCase:
                 # que el ranking limpia solo. Llevan el mismo payload que el punto
                 # de la licitación para pre-filtrar dentro de su propia colección.
                 await self._guardar_vectores_de_partidas(tender_id, tender_items, payload)
+                await self._guardar_vector_lexico(tender_id, text, payload)
 
             # Recién acá se abre la transacción SQL. Ambos get_or_create
             # hacen flush, así que dejarlos antes del embedding mantendría
@@ -278,6 +288,8 @@ class TenderIngestionUseCase:
             await self.tender_vector_repo.delete(existente.id)
             if self.tender_item_vector_repo is not None:
                 await self.tender_item_vector_repo.delete(existente.id)
+            if self.lexical_tender_repo is not None:
+                await self.lexical_tender_repo.delete(existente.id)
         elif cambio_semantico or not estaba_activa:
             # `upsert` reemplaza el payload entero, así que lleva también la
             # ubicación: sin ella, el punto dejaba de calzar con los filtros de
@@ -292,6 +304,7 @@ class TenderIngestionUseCase:
             # Cambió el texto (o vuelve a estar activa y no tenía puntos): los
             # vectores por partida se rehacen con el mismo payload.
             await self._guardar_vectores_de_partidas(existente.id, items_nuevos, payload)
+            await self._guardar_vector_lexico(existente.id, texto_nuevo, payload)
         else:
             metadatos = {
                 "status_code": dto.status_semantic_code,
@@ -306,6 +319,8 @@ class TenderIngestionUseCase:
             # los plazos de la última vez que cambió el texto, no los de hoy.
             if self.tender_item_vector_repo is not None:
                 await self.tender_item_vector_repo.set_payload(existente.id, metadatos)
+            if self.lexical_tender_repo is not None:
+                await self.lexical_tender_repo.set_payload(existente.id, metadatos)
 
         if cambio_semantico:
             await self.repo.replace_tender_items(existente.id, items_nuevos)
@@ -378,6 +393,21 @@ class TenderIngestionUseCase:
         textos = self.text_builder.build_item_texts(items)
         vectores = await self.embedding_service.embed(textos) if textos else []
         await self.tender_item_vector_repo.upsert(tender_id, vectores, payload)
+
+    async def _guardar_vector_lexico(
+        self, tender_id: uuid.UUID, text: str, payload: dict
+    ) -> None:
+        """Guarda el vector disperso (sparse BM25) de la licitación, si hay repositorio.
+
+        El texto codificado es el mismo texto completo de la licitación que TextBuilder
+        arma para el embedding denso (título, descripción, partidas). El payload es
+        el mismo que va al punto denso para permitir los mismos pre-filtros.
+        """
+        if self.lexical_tender_repo is None:
+            return
+
+        sparse_vector = self.lexical_tokenizer.encode_sparse(text)
+        await self.lexical_tender_repo.upsert(tender_id, sparse_vector, payload)
 
     def _construir_items(
         self, tender_id: uuid.UUID, dto: TenderIngestaDTO

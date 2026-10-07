@@ -36,6 +36,72 @@ class TextBuilder:
             parts.append("Items: " + ". ".join(item_texts))
         return ". ".join(parts)
 
+    def build_from_tender_with_digest(
+        self,
+        tender: _TenderLike,
+        items: Sequence[_ItemLike],
+        digest: object | None,
+        max_tokens: int = 512,
+    ) -> str:
+        """Construye texto enriquecido con anexos para el reranker (plan 233, decisión 9).
+
+        Presupuesto estricto: la entrada al reranker nunca supera `max_tokens` (512 tokens,
+        ~2048 caracteres). Lo que se recorta es el texto de los anexos, preservando el
+        texto base de la licitación.
+        """
+        base_text = self.build_from_tender(tender, items)
+        max_chars = max_tokens * 4
+
+        if not digest or not hasattr(digest, "data") or not digest.data:
+            return base_text[:max_chars]
+
+        data = digest.data
+        digest_parts: list[str] = []
+
+        resumenes = getattr(data, "resumenes", []) or []
+        if resumenes:
+            resumen_text = " ".join(
+                r.texto.strip() for r in resumenes if getattr(r, "texto", None) and r.texto.strip()
+            )
+            if resumen_text:
+                digest_parts.append(f"Resumen: {resumen_text}")
+
+        requisitos = getattr(data, "requisitos", []) or []
+        if requisitos:
+            req_text = "; ".join(
+                r.descripcion.strip()
+                for r in requisitos
+                if getattr(r, "descripcion", None) and r.descripcion.strip()
+            )
+            if req_text:
+                digest_parts.append(f"Requisitos: {req_text}")
+
+        digest_items = getattr(data, "items", []) or []
+        if digest_items:
+            items_text = "; ".join(
+                i.descripcion.strip()
+                for i in digest_items
+                if getattr(i, "descripcion", None) and i.descripcion.strip()
+            )
+            if items_text:
+                digest_parts.append(f"Partidas anexos: {items_text}")
+
+        if not digest_parts:
+            return base_text[:max_chars]
+
+        digest_str = ". ".join(digest_parts)
+
+        if len(base_text) >= max_chars:
+            return base_text[:max_chars]
+
+        prefix = ". Anexos: "
+        remaining_budget = max_chars - len(base_text) - len(prefix)
+        if remaining_budget <= 0:
+            return base_text
+
+        truncated_digest = digest_str[:remaining_budget]
+        return f"{base_text}{prefix}{truncated_digest}"
+
     def build_from_supplier(self, supplier: Supplier) -> str:
         sections: list[str] = []
 

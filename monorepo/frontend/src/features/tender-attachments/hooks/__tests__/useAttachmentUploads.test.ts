@@ -131,17 +131,29 @@ describe("useAttachmentUploads", () => {
     expect(result.current.rows["a-1"].message).toBe("El archivo supera el máximo de 50 MB.");
   });
 
-  it("rechaza sin llamar a la API un archivo con el nombre de otro anexo", async () => {
+  it("acepta un archivo con cualquier extensión sin validar nombre ni extensión", async () => {
     const { result } = setup();
 
+    let ok = false;
     await act(async () => {
-      await result.current.uploadFile(XLSX, new File(["hola"], "Bases.pdf"));
+      ok = await result.current.uploadFile(XLSX, new File(["hola"], "Bases.pdf"));
     });
 
-    expect(service.requestUploadUrl).not.toHaveBeenCalled();
-    expect(result.current.rows["a-1"].message).toBe(
-      "«Bases.pdf» no corresponde a este anexo. Se esperaba «Anexo 3 Composición personalidad juridica.xlsx».",
-    );
+    expect(ok).toBe(true);
+    expect(service.requestUploadUrl).toHaveBeenCalled();
+  });
+
+  it("acepta un archivo con nombre distinto pero extensión compatible", async () => {
+    const { result } = setup();
+    const file = new File(["hola"], "documento_descargado_1058043.xlsx");
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.uploadFile(XLSX, file);
+    });
+
+    expect(ok).toBe(true);
+    expect(service.requestUploadUrl).toHaveBeenCalled();
   });
 
   it("si el PUT falla deja la fila en error con el archivo, y reintentar vuelve a pedir la URL", async () => {
@@ -217,15 +229,22 @@ describe("useAttachmentUploads", () => {
     expect(vi.mocked(service.requestUploadUrl).mock.calls[1][1]).toBe("a-2");
   });
 
-  it("al soltar un archivo sin pareja lo informa en rejections", async () => {
+  it("al soltar un archivo duplicado lo informa en rejections", async () => {
     const { result } = setup();
 
     await act(async () => {
-      await result.current.uploadDropped([new File(["x"], "otro.pdf")], [XLSX, BASES]);
+      await result.current.uploadDropped(
+        [
+          new File(["x"], "Anexo 3 Composición personalidad juridica.xlsx"),
+          new File(["y"], "anexo 3 composicion personalidad juridica (1).xlsx"),
+        ],
+        [XLSX],
+      );
     });
 
-    expect(result.current.rejections).toEqual([{ fileName: "otro.pdf", reason: "no_match" }]);
-    expect(service.requestUploadUrl).not.toHaveBeenCalled();
+    expect(result.current.rejections).toEqual([
+      { fileName: "anexo 3 composicion personalidad juridica (1).xlsx", reason: "duplicate" },
+    ]);
 
     act(() => result.current.dismissRejections());
 

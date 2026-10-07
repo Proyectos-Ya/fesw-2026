@@ -191,9 +191,9 @@ lo que de verdad se pide (requisitos, ítems, entregables, visita técnica) est�
 - [ ] Playwright con la extensión sin empaquetar contra una ficha falsa local, checklist manual en Edge y fichas de las tiendas.
 
 ### Fase 4 — Decisión 9 (matching en sombra)
-- [ ] Red: `signals()` idéntico a `score_many`, flag apagado sin escrituras, entrada de 512 tokens como máximo, pseudo-partidas fuera de `tender_items`, y replay sobre las listas registradas.
-- [ ] Green: refactor de `signals()`, `matching_shadow_score`, `tender_attachment_items` y jobs `shadow_score`.
-- [ ] Spike de evaluación, ADR de decisión y, si pasa el umbral, un PR de activación.
+- [x] Red: `signals()` idéntico a `score_many`, flag apagado sin escrituras, entrada de 512 tokens como máximo, pseudo-partidas fuera de `tender_items`, y replay sobre las listas registradas.
+- [x] Green: refactor de `signals()`, `matching_shadow_score`, `tender_attachment_items` y jobs `shadow_score`.
+- [x] Spike de evaluación, ADR de decisión (ADR-0005) y marco de activación para PR posterior.
 
 ---
 

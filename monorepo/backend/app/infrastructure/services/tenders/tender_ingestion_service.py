@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.tender_item_vector_repository import (
     ITenderItemVectorRepository,
 )
@@ -26,6 +29,9 @@ from app.domain.models.tender_ingestion_dto import (
     DocumentoOficialDTO,
     ItemLicitacionDTO,
     TenderIngestaDTO,
+)
+from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+    QdrantLexicalTenderRepository,
 )
 from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
     QdrantTenderItemVectorRepository,
@@ -176,6 +182,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         qdrant_client: AsyncQdrantClient | None = None,
         tender_vector_repo: ITenderVectorRepository | None = None,
         tender_item_vector_repo: ITenderItemVectorRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
     ):
         self.engine = engine
         self.client = client
@@ -183,6 +190,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         self.qdrant_client = qdrant_client
         self._tender_vector_repo = tender_vector_repo
         self._tender_item_vector_repo = tender_item_vector_repo
+        self._lexical_tender_repo = lexical_tender_repo
 
     # Obtiene listado de cambios recientes y guarda códigos en tender_metadata si no existen
     async def fetch_tenders_metadata(
@@ -681,6 +689,16 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         else:
             tender_item_vector_repo = None
 
+        lexical_tender_repo: ILexicalTenderRepository | None
+        if self._lexical_tender_repo is not None:
+            lexical_tender_repo = self._lexical_tender_repo
+        elif self.qdrant_client is not None:
+            lexical_tender_repo = QdrantLexicalTenderRepository(
+                client=self.qdrant_client,
+            )
+        else:
+            lexical_tender_repo = None
+
         return TenderIngestionUseCase(
             repository=TenderRepository(session),
             embedding_service=self.embedding_service,
@@ -690,6 +708,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             # La misma sesión que `TenderRepository`: el rollback del caso de
             # uso también cubre lo que se escribió en `tender_attachment`.
             attachment_repo=SqlTenderAttachmentRepository(session),
+            lexical_tender_repo=lexical_tender_repo,
         )
 
     async def _marcar_procesada(

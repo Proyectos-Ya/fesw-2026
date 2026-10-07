@@ -319,7 +319,7 @@ async def test_privacidad_empresa_b_no_ve_anexos_privados_de_empresa_a():
         workspace_id=empresa_b_id,
         prompt_version="anexos-v1",
     )
-    digest_repo.get_current.assert_called_once_with(
+    digest_repo.get_current.assert_any_call(
         tender_id, empresa_b_id
     )
 
@@ -328,3 +328,221 @@ async def test_privacidad_empresa_b_no_ve_anexos_privados_de_empresa_a():
     assert "Bases_Compartidas.pdf" in prompt_text
     assert "Empresa A" not in prompt_text
     assert "privado_empresa_a" not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_digest_fallback_a_compartido_cuando_no_hay_privado():
+    user_id = uuid4()
+    empresa_id = uuid4()
+    tender_id = uuid4()
+
+    supplier = Supplier(
+        id=empresa_id,
+        user_id=user_id,
+        legal_name="Mi Empresa SpA",
+        rut="76.192.083-9",
+    )
+    supplier_repo = MagicMock()
+    supplier_repo.get_by_user_id = AsyncMock(return_value=supplier)
+
+    chat_repo = InMemoryTenderChatRepository()
+    ai_service = MagicMock(spec=ITenderAssistantAIService)
+    ai_service.generate_response = AsyncMock(
+        return_value=AIResponseDTO(answer="OK con bases compartidas", has_sufficient_info=True)
+    )
+
+    # Digest compartido con requisitos
+    digest_compartido_data = TenderDigestData.vacio()
+    digest_compartido_data.requisitos = [
+        RequisitoConsolidado(
+            descripcion="Garantía de seriedad de 5%",
+            tipo="económico",
+            obligatorio=True,
+            citas=[],
+        )
+    ]
+    digest_compartido = TenderDigest(
+        id=uuid4(),
+        tender_id=tender_id,
+        workspace_id=None,
+        version=1,
+        extraction_set_hash="hash_shared",
+        is_current=True,
+        source_count=1,
+        data=digest_compartido_data,
+        api_snapshot={},
+        created_at=datetime(2026, 10, 5),
+    )
+
+    digest_repo = MagicMock(spec=ITenderDigestRepository)
+    # get_current para empresa_id devuelve None, pero para None devuelve el compartido
+    digest_repo.get_current = AsyncMock(
+        side_effect=lambda t_id, ws_id: digest_compartido if ws_id is None else None
+    )
+
+    fuente = _crear_fuente("Bases_Oficiales.pdf", uuid4(), "shared/bases.pdf", AttachmentVisibility.SHARED)
+    extraction_repo = MagicMock(spec=IAttachmentExtractionRepository)
+    extraction_repo.list_sources = AsyncMock(return_value=[fuente])
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
+    )
+
+    result = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Exige garantía?",
+    )
+
+    assert result.content == "OK con bases compartidas"
+    call_args = ai_service.generate_response.call_args[1]
+    prompt_text = call_args["documents"][0].text
+    assert "Garantía de seriedad de 5%" in prompt_text
+    assert "Bases_Oficiales.pdf" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_consolidacion_en_vivo_cuando_digest_no_ha_sido_persistido():
+    from app.domain.entities.tender import Tender
+    user_id = uuid4()
+    tender_id = uuid4()
+
+    chat_repo = InMemoryTenderChatRepository()
+    ai_service = MagicMock(spec=ITenderAssistantAIService)
+    ai_service.generate_response = AsyncMock(
+        return_value=AIResponseDTO(answer="OK consolidado en caliente", has_sufficient_info=True)
+    )
+
+    digest_repo = MagicMock(spec=ITenderDigestRepository)
+    digest_repo.get_current = AsyncMock(return_value=None)
+
+    fuente = _crear_fuente("Especificaciones.pdf", uuid4(), "shared/esp.pdf", AttachmentVisibility.SHARED)
+    extraction_repo = MagicMock(spec=IAttachmentExtractionRepository)
+    extraction_repo.list_sources = AsyncMock(return_value=[fuente])
+
+    tender_repo = InMemoryTenderRepository()
+    now = datetime(2026, 10, 1, 10, 0)
+    tender = Tender(
+        id=tender_id,
+        code="5555-22-L1",
+        name="Licitación con fuentes",
+        status_id=1,
+        status_code="publicada",
+        published_at=now,
+        closing_at=now,
+        last_change_at=now,
+        buyer_rut="60.504.000-9",
+        buyer_unit="Depto Adquisiciones",
+        items=[],
+    )
+    tender_repo.tenders[tender_id] = tender
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        tender_repo=tender_repo,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
+    )
+
+    result = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Qué especificaciones hay?",
+    )
+
+    assert result.content == "OK consolidado en caliente"
+    call_args = ai_service.generate_response.call_args[1]
+    prompt_text = call_args["documents"][0].text
+    assert "Especificaciones.pdf" in prompt_text
+    assert "Resumen de Especificaciones.pdf" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_archivos_visibles_sin_extraccion_se_descargan_en_pase_dos():
+    from app.application.repositories.tender_attachment_repository import ITenderAttachmentRepository
+    from app.domain.entities.tender_attachment import OfficialAttachment
+
+    user_id = uuid4()
+    tender_id = uuid4()
+    archivo_id = uuid4()
+    att_id = uuid4()
+
+    chat_repo = InMemoryTenderChatRepository()
+    ai_service = MagicMock(spec=ITenderAssistantAIService)
+    ai_service.generate_response = AsyncMock(
+        side_effect=[
+            AIResponseDTO(answer="Insuficiente", has_sufficient_info=False),
+            AIResponseDTO(answer="Respuesta con PDF no extraído", has_sufficient_info=True),
+        ]
+    )
+
+    # extraction_repo no tiene fuentes extraídas todavía
+    extraction_repo = MagicMock(spec=IAttachmentExtractionRepository)
+    extraction_repo.list_sources = AsyncMock(return_value=[])
+
+    digest_repo = MagicMock(spec=ITenderDigestRepository)
+    digest_repo.get_current = AsyncMock(return_value=None)
+
+    # Pero en attachment_file hay un archivo STORED
+    af = AttachmentFile(
+        id=archivo_id,
+        tender_attachment_id=att_id,
+        tender_id=tender_id,
+        sha256="sha_unextracted",
+        size_bytes=2048,
+        storage_key="attachments/plano.pdf",
+        source=AttachmentFileSource.MANUAL,
+        uploader_user_id=None,
+        workspace_id=None,
+        visibility=AttachmentVisibility.SHARED,
+        trust=AttachmentTrust.CORROBORATED,
+        status=AttachmentFileStatus.STORED,
+        created_at=datetime(2026, 10, 5),
+    )
+    file_repo = MagicMock(spec=IAttachmentFileRepository)
+    file_repo.list_visible_for_tender = AsyncMock(return_value=[af])
+
+    att_repo = MagicMock(spec=ITenderAttachmentRepository)
+    att = OfficialAttachment(
+        id=att_id,
+        tender_id=tender_id,
+        mp_document_id=505,
+        name="Plano_Arquitectura.pdf",
+        name_normalized="plano_arquitectura.pdf",
+        ext="pdf",
+        first_seen_at=datetime(2026, 10, 1),
+        last_seen_at=datetime(2026, 10, 1),
+    )
+    att_repo.list_for_tender = AsyncMock(return_value=[att])
+
+    raw_pdf = b"%PDF-1.4 plano arquitectonico"
+    storage = MagicMock(spec=IAttachmentStorage)
+    storage.get_bytes = AsyncMock(return_value=raw_pdf)
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=chat_repo,
+        ai_service=ai_service,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
+        attachment_file_repo=file_repo,
+        tender_attachment_repo=att_repo,
+        attachment_storage=storage,
+    )
+
+    result = await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        question="¿Qué medidas tiene el plano?",
+    )
+
+    assert result.content == "Respuesta con PDF no extraído"
+    assert storage.get_bytes.call_count == 1
+    # En pase 2 se enviaron los bytes del archivo
+    p2_call = ai_service.generate_response.call_args_list[1][1]
+    docs_p2 = p2_call["documents"]
+    assert any(d.document_name == "Plano_Arquitectura.pdf" and d.file_bytes == raw_pdf for d in docs_p2)

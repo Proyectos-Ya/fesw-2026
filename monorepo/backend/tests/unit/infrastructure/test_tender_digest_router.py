@@ -87,6 +87,7 @@ def test_200_con_digest_vigente(app_and_client, use_case_mock: AsyncMock):
         "generated_at",
         "pending_sources",
         "ai_generated",
+        "data",
         "campos",
         "requisitos",
         "items",

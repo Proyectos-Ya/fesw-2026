@@ -237,12 +237,22 @@ export interface TenderDigestData {
 }
 
 export interface TenderDigest {
-  id: string;
+  id?: string;
   tender_id: string;
   scope: "shared" | "workspace";
-  version: number;
+  version: number | null;
   status: "ready" | "empty";
   pending_sources: number;
-  data: TenderDigestData;
-  created_at: string;
+  data?: TenderDigestData;
+  created_at?: string;
+  generated_at?: string;
+  campos?: DigestFields;
+  requisitos?: DigestRequirement[];
+  items?: DigestItem[];
+  entregables?: DigestDeliverable[];
+  puntos_a_tener_en_cuenta?: DigestNote[];
+  resumenes?: DigestSummary[];
+  otras_citas?: DigestOtherQuote[];
+  discrepancias?: DigestDiscrepancy[];
+  fuentes?: DigestSource[];
 }

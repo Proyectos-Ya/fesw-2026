@@ -24,6 +24,7 @@ from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepo
 from tests.unit.application.fakes import (
     FakeEmbeddingPorTexto,
     FakeEmbeddingService,
+    FakeLexicalTenderRepository,
     FakeTenderVectorRepository,
     InMemoryTenderItemVectorRepository,
 )
@@ -1081,3 +1082,171 @@ async def test_sin_repositorio_de_anexos_funciona_igual() -> None:
     )
 
     assert resultado["status"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# Tests del canal léxico sparse BM25 (plan 256)
+# ---------------------------------------------------------------------------
+
+
+async def test_ingesta_nueva_guarda_vector_lexico() -> None:
+    """Una licitación nueva activa genera un upsert en el repositorio léxico con sparse vector."""
+    lexical_repo = FakeLexicalTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=FakeTenderRepository(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        lexical_tender_repo=lexical_repo,
+    )
+
+    dto = _make_dto(
+        code="LIC-LEX-01",
+        nombre="Adquisición de amonio cuaternario y mascarillas",
+    )
+    res = await use_case.execute(dto)
+
+    assert res["status"] == "success"
+    assert len(lexical_repo.vectors) == 1
+    tid, vec = next(iter(lexical_repo.vectors.items()))
+    assert len(vec.indices) > 0
+    assert len(vec.values) == len(vec.indices)
+    assert lexical_repo.payloads[tid]["status_code"] == "publicada"
+    assert lexical_repo.payloads[tid]["region_id"] == 13
+
+
+async def test_actualizar_con_cambio_semantico_actualiza_vector_lexico() -> None:
+    """Si cambia el texto de una licitación existente, se regenera el vector léxico."""
+    tender_id = _ID_EXISTENTE
+    existente = TenderModel(
+        id=tender_id,
+        code="LIC-001",
+        name="Texto original",
+        description="Descripcion vieja",
+        status_id=2,
+        published_at=datetime(2026, 1, 1),
+        closing_at=datetime(2026, 6, 30),
+        buyer_rut="12.345.678-9",
+        buyer_unit="Depto",
+        last_change_at=datetime(2026, 1, 1),
+        created_at=datetime(2026, 1, 1),
+        updated_at=datetime(2026, 1, 1),
+    )
+
+    class RepoConExistente(FakeTenderRepository):
+        async def get_by_code(self, code: str):
+            return existente
+
+    lexical_repo = FakeLexicalTenderRepository()
+    use_case = TenderIngestionUseCase(
+        repository=RepoConExistente(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        lexical_tender_repo=lexical_repo,
+    )
+
+    dto = _make_dto(code="LIC-001", nombre="Nuevo título modificado con palabras distintas")
+    res = await use_case.execute(dto)
+
+    assert res["status"] == "updated"
+    assert res["semantico"] is True
+    assert tender_id in lexical_repo.vectors
+    assert len(lexical_repo.vectors[tender_id].indices) > 0
+
+
+async def test_actualizar_que_se_cierra_elimina_vector_lexico() -> None:
+    """Una licitación que pasa a cerrada pierde su vector del canal léxico."""
+    tender_id = _ID_EXISTENTE
+    existente = TenderModel(
+        id=tender_id,
+        code="LIC-001",
+        name="Texto original",
+        description="Descripcion",
+        status_id=2,  # publicada
+        published_at=datetime(2026, 1, 1),
+        closing_at=datetime(2026, 6, 30),
+        buyer_rut="12.345.678-9",
+        buyer_unit="Depto",
+        last_change_at=datetime(2026, 1, 1),
+        created_at=datetime(2026, 1, 1),
+        updated_at=datetime(2026, 1, 1),
+    )
+
+    class RepoConExistente(FakeTenderRepository):
+        async def get_by_code(self, code: str):
+            return existente
+
+    lexical_repo = FakeLexicalTenderRepository()
+    # Fingimos que ya existía en el repo léxico con índices dummy
+    from app.application.services.lexical_tokenizer import SparseTermVector
+    lexical_repo.vectors[tender_id] = SparseTermVector(indices=[10], values=[1.0])
+
+    use_case = TenderIngestionUseCase(
+        repository=RepoConExistente(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        lexical_tender_repo=lexical_repo,
+    )
+
+    dto = _make_dto(code="LIC-001", status_code=5, estado_codigo="cerrada")
+    res = await use_case.execute(dto)
+
+    assert res["status"] == "updated"
+    assert tender_id in lexical_repo.deleted
+    assert tender_id not in lexical_repo.vectors
+
+
+async def test_actualizar_solo_metadatos_actualiza_payload_lexico() -> None:
+    """Un cambio solo de fecha o monto actualiza el payload léxico sin re-tokenizar."""
+    tender_id = _ID_EXISTENTE
+    existente = TenderModel(
+        id=tender_id,
+        code="LIC-001",
+        name="Construcción de sede comunal",
+        description="Se requiere construir edificio de 2 pisos",
+        status_id=2,
+        published_at=datetime(2026, 1, 1),
+        closing_at=datetime(2026, 6, 30, 23, 59),
+        buyer_rut="12.345.678-9",
+        buyer_unit="Depto. Obras",
+        available_amount_clp=50_000_000.0,
+        last_change_at=datetime(2026, 1, 1),
+        created_at=datetime(2026, 1, 1),
+        updated_at=datetime(2026, 1, 1),
+    )
+
+    class RepoConExistente(FakeTenderRepository):
+        async def get_by_code(self, code: str):
+            return existente
+
+        async def get_items_by_tender_id(self, tid):
+            return [
+                TenderItemModel(
+                    id=uuid4(),
+                    tender_id=tid,
+                    product_code="0",
+                    name="Mano de obra",
+                    description=None,
+                    quantity=10,
+                    unit_of_measure="hh",
+                )
+            ]
+
+    lexical_repo = FakeLexicalTenderRepository()
+    from app.application.services.lexical_tokenizer import LexicalTokenizer
+    tokenizer = LexicalTokenizer()
+    lexical_repo.vectors[tender_id] = tokenizer.encode_sparse("Construcción de sede comunal")
+
+    use_case = TenderIngestionUseCase(
+        repository=RepoConExistente(),
+        embedding_service=FakeEmbeddingService(),
+        tender_vector_repo=FakeTenderVectorRepository(),
+        lexical_tender_repo=lexical_repo,
+    )
+
+    # Solo cambia el monto estimado
+    dto = _make_dto(code="LIC-001", monto=80_000_000.0)
+    res = await use_case.execute(dto)
+
+    assert res["status"] == "updated"
+    assert res["semantico"] is False
+    assert lexical_repo.payloads[tender_id]["available_amount_clp"] == 80_000_000.0

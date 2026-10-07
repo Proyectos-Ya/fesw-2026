@@ -58,16 +58,9 @@ def tiene_archivo(archivo: AttachmentFile) -> bool:
 
 
 def validar_archivo_para_anexo(anexo: OfficialAttachment, nombre_archivo: str) -> None:
-    """El archivo tiene que llamarse como el anexo oficial (salvo el " (1)" del navegador).
-
-    La extensión se mira primero: da un mensaje más preciso que "el nombre no
-    coincide" cuando alguien convirtió el documento a otro formato.
-    """
-    recibida = extension_de(nombre_archivo)
-    if recibida != anexo.ext:
-        raise AttachmentExtensionMismatch(anexo.ext, recibida, anexo.name)
-    if normalizar_nombre_anexo(nombre_archivo) != anexo.name_normalized:
-        raise AttachmentNameMismatch(anexo.name)
+    """No valida nombres ni extensiones: los archivos descargados de Mercado Público
+    tienen nombres y formatos arbitrarios que no coinciden con los títulos oficiales."""
+    return
 
 
 def _prioridad(archivo: AttachmentFile, workspace_id: UUID | None) -> int | None:
