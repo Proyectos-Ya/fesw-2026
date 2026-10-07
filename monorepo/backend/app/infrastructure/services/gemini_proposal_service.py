@@ -78,6 +78,9 @@ Para cada exigencia indica:
   proveedor entregará un informe con los trabajos realizados") es una
   condicion: es un entregable del servicio, no un documento que se adjunte
   a la oferta. Solo es documento si las bases piden adjuntarlo al ofertar.
+  Solo afirma cuándo se entrega un documento si las bases lo dicen con
+  palabras ("al término", "junto con la oferta", "adjuntar"); si lo deduces,
+  es ambiguo.
   Una condicion o un documento NO llevan cobertura: deja catalog_item_id,
   question_key y new_question vacíos.
 - mandatory: true si es EXCLUYENTE (redacción como "deberá", "obligatorio",
@@ -128,12 +131,16 @@ un informe que se entrega al ejecutar o terminar el servicio. Hay tres casos:
 1. requires_technical_document = true: el texto que tienes pide de forma
    expresa una propuesta técnica junto con la oferta. No lo supongas.
 2. technical_document_ambiguous = true: las bases mencionan un informe,
-   memoria o documento técnico sin aclarar si va con la oferta o se entrega
-   al ejecutar el servicio. Deja requires_technical_document en false.
-3. Ninguno de los dos: las bases no piden nada técnico.
-Nunca marques los dos en true. technical_document_reason es obligatorio y
-siempre explica la decisión en una o dos frases. En el caso ambiguo, cita entre
-comillas la frase de las bases y di por qué no queda claro cuándo se entrega.
+   memoria o documento técnico sin decir expresamente si va con la oferta o
+   se entrega al ejecutar el servicio. Que aparezca en las condiciones de
+   ejecución NO basta para decidir: si lo deduces, es ambiguo. Deja
+   requires_technical_document en false.
+3. Ninguno de los dos: las bases no mencionan nada técnico.
+Nunca marques los dos en true. technical_document_reason es obligatorio, de una
+o dos frases. Si las bases mencionan un documento técnico, cita entre comillas
+la frase exacta de las bases y di solo qué aclaran y qué no. No afirmes en
+technical_document_reason nada que las bases no digan: ni cuándo se entrega,
+ni para qué sirve, ni si es obligatorio.
 Si la ficha menciona un adjunto que no recibiste (por ejemplo "se adjunta TDR")
 y ahí podría estar la exigencia, marca false y dilo en
 technical_document_reason para que el usuario suba ese adjunto. En Compra Ágil

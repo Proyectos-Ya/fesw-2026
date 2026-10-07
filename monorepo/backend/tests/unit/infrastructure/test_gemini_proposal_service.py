@@ -877,3 +877,32 @@ def test_un_pdf_ilegible_no_tiene_texto():
     from app.infrastructure.services.gemini_proposal_service import _texto_del_pdf
 
     assert _texto_del_pdf(b"no es un pdf") is None
+
+
+# --- documento técnico: no deducir (plan 292, §2.8) ----------------------------
+# Con 1377068-65-COT26, Gemini escribió que el informe técnico "se entrega al
+# finalizar el servicio", algo que las bases no dicen.
+
+
+def _plano(texto: str) -> str:
+    """El prompt sin saltos de línea, para buscar frases que cruzan líneas."""
+    return " ".join(texto.split())
+
+
+def test_factibilidad_no_deduce_cuando_se_entrega_un_documento():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "Solo afirma cuándo se entrega un documento si las bases lo dicen" in _plano(
+        _INSTRUCCIONES
+    )
+    assert "si lo deduces, es ambiguo" in _plano(_INSTRUCCIONES)
+
+
+def test_el_motivo_cita_las_bases_y_no_las_interpreta():
+    from app.infrastructure.services.gemini_proposal_service import _INSTRUCCIONES
+
+    assert "cita entre comillas la frase exacta de las bases" in _plano(_INSTRUCCIONES)
+    assert (
+        "No afirmes en technical_document_reason nada que las bases no digan"
+        in _plano(_INSTRUCCIONES)
+    )
