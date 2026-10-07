@@ -64,6 +64,10 @@ export interface TechnicalSection {
   key: string;
   title: string;
   paragraphs: DraftParagraph[];
+  /** Qué poner en esta sección; es fija. `null` en los borradores antiguos. */
+  guidance?: string | null;
+  /** Sugerencia de la IA para esta licitación. `null` en los borradores antiguos. */
+  hint?: string | null;
 }
 
 export interface TechnicalDocument {
@@ -128,6 +132,11 @@ export interface ProposalDraft {
   paused_requirement_id: string | null;
   requires_technical_document: boolean;
   technical_document_reason: string | null;
+  /**
+   * Las bases mencionan un informe o documento técnico sin aclarar si va con la
+   * cotización. `null` en los borradores anteriores a este dato.
+   */
+  technical_document_ambiguous: boolean | null;
   warnings: ProposalWarning[];
   discrepancy_decisions: DiscrepancyDecision[];
   content: DraftContent | null;

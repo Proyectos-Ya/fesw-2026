@@ -144,6 +144,129 @@ describe("ProposalDraftViewer", () => {
     ).not.toBeInTheDocument();
   });
 
+  const CITA =
+    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo", pero no aclaran si va con la oferta.';
+
+  it("en el caso ambiguo cita las bases y ofrece generarlo con el botón principal", async () => {
+    const { onRequestTechnical } = renderViewer(
+      listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
+    );
+
+    const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).toHaveTextContent("Las bases mencionan un informe técnico");
+    expect(bloque).toHaveTextContent(CITA);
+    expect(bloque).toHaveTextContent(
+      "No queda claro si va con la cotización o se entrega al ejecutar el servicio.",
+    );
+    expect(bloque).not.toHaveTextContent("No se detectó");
+    expect(
+      screen.queryByRole("button", { name: /Generar de todas formas/ }),
+    ).not.toBeInTheDocument();
+
+    const boton = within(bloque).getByRole("button", { name: /Generar documento técnico/ });
+    // Variante principal de Button, no la secundaria del aviso "No se detectó".
+    expect(boton).toHaveClass("bg-primary");
+    await userEvent.click(boton);
+    expect(onRequestTechnical).toHaveBeenCalled();
+  });
+
+  it("en el caso ambiguo no ofrece generarlo sin permiso ni con la licitación vencida", () => {
+    renderViewer(
+      listo({ technical_document_ambiguous: true, technical_document_reason: CITA }),
+      false,
+    );
+    expect(
+      screen.queryByRole("button", { name: /Generar documento técnico/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("en el caso ambiguo no ofrece generarlo si la licitación venció", () => {
+    renderViewer(
+      listo({
+        technical_document_ambiguous: true,
+        technical_document_reason: CITA,
+        is_expired: true,
+      }),
+    );
+    expect(
+      screen.queryByRole("button", { name: /Generar documento técnico/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("un borrador antiguo sin motivo mantiene el aviso de siempre", () => {
+    renderViewer(listo({ technical_document_ambiguous: null, technical_document_reason: null }));
+
+    const bloque = screen.getByRole("region", { name: "Documento técnico" });
+    expect(bloque).toHaveTextContent(
+      "No se detectó que esta licitación pida un documento técnico.",
+    );
+    expect(screen.getByRole("button", { name: /Generar de todas formas/ })).toBeInTheDocument();
+  });
+
+  it("bajo cada sección muestra qué poner y la sugerencia para esta licitación", () => {
+    renderViewer(
+      listo({
+        content: {
+          ...CONTENIDO,
+          technical_document: {
+            sections: [
+              {
+                key: "metodologia",
+                title: "Metodología",
+                guidance: "Cómo se hará el trabajo, paso a paso.",
+                hint: "Indica cómo revisarás los 40 extintores.",
+                paragraphs: [{ text: "Clases presenciales.", sources: [], placeholders: [] }],
+              },
+              {
+                key: "equipo",
+                title: "Equipo",
+                guidance: null,
+                hint: null,
+                paragraphs: [{ text: "Dos técnicos.", sources: [], placeholders: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const sugerencias = screen.getAllByTestId("sugerencia-seccion");
+    expect(sugerencias).toHaveLength(1);
+    expect(sugerencias[0]).toHaveTextContent("Qué poner: Cómo se hará el trabajo, paso a paso.");
+    expect(sugerencias[0]).toHaveTextContent(
+      "Para esta licitación: Indica cómo revisarás los 40 extintores.",
+    );
+    // No es un párrafo del borrador: no se puede seleccionar como tal.
+    expect(
+      screen.queryByRole("button", { name: /Cómo se hará el trabajo/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("una sección con solo sugerencia de la IA muestra solo esa línea", () => {
+    renderViewer(
+      listo({
+        content: {
+          ...CONTENIDO,
+          technical_document: {
+            sections: [
+              {
+                key: "metodologia",
+                title: "Metodología",
+                guidance: null,
+                hint: "Indica cómo revisarás los 40 extintores.",
+                paragraphs: [{ text: "Clases presenciales.", sources: [], placeholders: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const sugerencia = screen.getByTestId("sugerencia-seccion");
+    expect(sugerencia).not.toHaveTextContent("Qué poner");
+    expect(sugerencia).toHaveTextContent("Para esta licitación:");
+  });
+
   it("con documento técnico lo muestra y deja exportarlo (CA3)", async () => {
     const { onDownload } = renderViewer(
       listo({

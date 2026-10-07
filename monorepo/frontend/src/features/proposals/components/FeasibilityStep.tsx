@@ -403,7 +403,9 @@ export function FeasibilityStep({
             <strong>
               {view.requires_technical_document
                 ? "Las bases exigen documento técnico. "
-                : "No se exige documento técnico. "}
+                : view.technical_document_ambiguous
+                  ? "Las bases mencionan un informe técnico, pero no queda claro si va con la cotización. "
+                  : "No se exige documento técnico. "}
             </strong>
             {view.technical_document_reason}
           </span>

@@ -70,6 +70,7 @@ function borrador(overrides: Partial<ProposalView>): ProposalView {
     paused_requirement_id: null,
     requires_technical_document: false,
     technical_document_reason: null,
+    technical_document_ambiguous: null,
     warnings: [],
     discrepancy_decisions: [],
     content: null,
@@ -320,4 +321,75 @@ test("con el borrador listo, cambiar una respuesta y agregar un proyecto", async
   await expect(sugerencia).toHaveCount(0);
   // El "Sí" vigente también se puede respaldar desde la lista.
   await expect(evaluadas.getByRole("button", { name: "Agregar proyecto" })).toBeVisible();
+});
+
+test("las bases mencionan un informe técnico sin aclarar si va con la cotización", async ({
+  page,
+}) => {
+  // Caso de la Compra Ágil 1377068-65-COT26 (§2.8 del plan).
+  const motivo =
+    'Las bases dicen "Se debe entregar informe técnico y certificado individual por cada equipo" en las condiciones de ejecución, sin aclarar si va con la oferta.';
+  let actual: ProposalView = borrador({
+    status: "READY",
+    content: CONTENIDO,
+    requirements: [exigencia("cumple")],
+    technical_document_ambiguous: true,
+    technical_document_reason: motivo,
+  });
+  let pidioDocumento = false;
+
+  await page.route("**/api/tenders/t-1", (route) =>
+    route.fulfill({
+      json: {
+        tender: { id: "t-1", code: "1377068-65-COT26", name: "Mantención de extintores", items: [] },
+        score_pct: null,
+        is_closed: false,
+      },
+    }),
+  );
+  await page.route("**/api/tenders/t-1/assistant/documents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/tenders/t-1/quotation", (route) =>
+    route.fulfill({ status: 404, json: { detail: "No existe" } }),
+  );
+  await page.route("**/api/tenders/t-1/proposal**", async (route: Route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.url().endsWith("/technical-document")) {
+      pidioDocumento = true;
+      actual = {
+        ...actual,
+        content: {
+          ...CONTENIDO,
+          technical_document: {
+            sections: [
+              {
+                key: "metodologia",
+                title: "Metodología",
+                guidance: "Cómo se hará el trabajo, paso a paso.",
+                hint: "Indica cómo emitirás el certificado de cada extintor.",
+                paragraphs: [
+                  { text: "Revisión y recarga de cada equipo.", sources: [], placeholders: [] },
+                ],
+              },
+            ],
+          },
+        },
+      };
+    }
+    return route.fulfill({ json: actual });
+  });
+
+  await page.goto("/");
+
+  const bloque = page.getByRole("region", { name: "Documento técnico" });
+  await expect(bloque).toContainText("Las bases mencionan un informe técnico");
+  await expect(bloque).toContainText("Se debe entregar informe técnico y certificado individual");
+  await expect(bloque).not.toContainText("No se detectó");
+  await bloque.getByRole("button", { name: "Generar documento técnico" }).click();
+
+  await expect(bloque).toContainText("Revisión y recarga de cada equipo.");
+  await expect(bloque).toContainText("Qué poner: Cómo se hará el trabajo, paso a paso.");
+  await expect(bloque).toContainText(
+    "Para esta licitación: Indica cómo emitirás el certificado de cada extintor.",
+  );
+  expect(pidioDocumento).toBe(true);
 });

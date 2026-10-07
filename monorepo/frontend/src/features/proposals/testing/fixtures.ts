@@ -101,6 +101,7 @@ export function vista(overrides: Partial<ProposalView> = {}): ProposalView {
     paused_requirement_id: null,
     requires_technical_document: false,
     technical_document_reason: null,
+    technical_document_ambiguous: null,
     warnings: [],
     discrepancy_decisions: [],
     content: null,

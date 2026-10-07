@@ -124,6 +124,27 @@ function SourcePanel({ parrafo }: { parrafo: DraftParagraph | null }) {
 }
 
 /**
+ * Qué poner en una sección del documento técnico y la sugerencia de la IA para
+ * esta licitación. Es una ayuda para quien edita: no se copia ni se exporta, por
+ * eso va en cursiva y fuera de los párrafos seleccionables.
+ */
+function SugerenciaSeccion({ guidance, hint }: { guidance: string | null; hint: string | null }) {
+  if (!guidance && !hint) return null;
+  return (
+    <div
+      data-testid="sugerencia-seccion"
+      className="mx-3 mt-1 mb-1 flex items-start gap-1.5 text-xs italic text-text-muted"
+    >
+      <Icon name="lightbulb" size={13} className="mt-0.5" aria-hidden="true" />
+      <div>
+        {guidance && <p>Qué poner: {guidance}</p>}
+        {hint && <p>Para esta licitación: {hint}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * El borrador redactado (CA1). Nombre, descripción y documentos se copian desde
  * acá al formulario de la Compra Ágil; el documento técnico, si las bases lo
  * exigen, se descarga en Word (CA3). Cada párrafo muestra sus fuentes (CA5) y
@@ -257,7 +278,34 @@ export function ProposalDraftViewer({
             )}
           </section>
 
-          {!contenido.technical_document && (
+          {!contenido.technical_document && view.technical_document_ambiguous && (
+            // Las bases lo mencionan sin decir cuándo se entrega: se informa y se
+            // ofrece generarlo, sin tono de alerta.
+            <section
+              aria-label="Documento técnico"
+              className="rounded-lg border border-primary/20 bg-teal-50/40 p-4 text-sm"
+            >
+              <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-teal-700">
+                <Icon name="info" size={16} />
+                Las bases mencionan un informe técnico
+              </h3>
+              {view.technical_document_reason && (
+                <p className="text-text-body">{view.technical_document_reason}</p>
+              )}
+              <p className="mt-1 text-text-body">
+                No queda claro si va con la cotización o se entrega al ejecutar el servicio. Si
+                quieres adjuntarlo a tu cotización, genera un borrador breve.
+              </p>
+              {canWrite && !view.is_expired && (
+                <Button className="mt-3" disabled={busy} onClick={onRequestTechnical}>
+                  <Icon name="file-plus" size={16} />
+                  Generar documento técnico
+                </Button>
+              )}
+            </section>
+          )}
+
+          {!contenido.technical_document && !view.technical_document_ambiguous && (
             <section
               aria-label="Documento técnico"
               className="rounded-lg border border-warning/30 bg-warning-soft/30 p-4 text-sm"
@@ -301,6 +349,7 @@ export function ProposalDraftViewer({
                   <h4 className="px-3 text-xs font-bold uppercase tracking-wide text-text-muted">
                     {s.title}
                   </h4>
+                  <SugerenciaSeccion guidance={s.guidance ?? null} hint={s.hint ?? null} />
                   {s.paragraphs.map((p, i) => (
                     <Parrafo
                       key={i}

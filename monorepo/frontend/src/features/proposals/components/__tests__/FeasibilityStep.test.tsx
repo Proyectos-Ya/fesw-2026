@@ -150,6 +150,32 @@ describe("FeasibilityStep", () => {
     expect(screen.getByText(/No se exige documento técnico/)).toBeInTheDocument();
     expect(screen.getByText(/TDR que no se recibió/)).toBeInTheDocument();
   });
+
+  it("dice cuando las bases exigen documento técnico", () => {
+    renderStep({
+      requires_technical_document: true,
+      technical_document_reason: "El punto 4 pide una propuesta técnica.",
+    });
+
+    expect(screen.getByText(/Las bases exigen documento técnico\./)).toBeInTheDocument();
+    expect(screen.getByText(/El punto 4 pide una propuesta técnica/)).toBeInTheDocument();
+  });
+
+  it("dice cuando las bases mencionan un informe técnico sin aclarar si va con la cotización", () => {
+    renderStep({
+      requires_technical_document: false,
+      technical_document_ambiguous: true,
+      technical_document_reason: 'Las bases dicen "Se debe entregar informe técnico".',
+    });
+
+    expect(
+      screen.getByText(
+        /Las bases mencionan un informe técnico, pero no queda claro si va con la cotización\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Se debe entregar informe técnico/)).toBeInTheDocument();
+    expect(screen.queryByText(/No se exige documento técnico/)).not.toBeInTheDocument();
+  });
 });
 
 describe("FeasibilityStep: cambiar una respuesta ya dada", () => {
