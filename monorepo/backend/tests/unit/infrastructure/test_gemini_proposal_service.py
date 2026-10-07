@@ -823,3 +823,57 @@ async def test_redaccion_pide_secciones_breves_y_lo_de_las_bases_completo():
     assert "2 o 3 frases como máximo" in texto
     assert "se escribe completo" in texto
     assert "hint:" in texto
+
+
+# --- PDF como texto (plan 292) ------------------------------------------------
+# Medido el 2026-10-07 con 1377068-65-COT26: la redacción con el PDF en línea
+# tardó 60,2 s (Gemini lo procesa como imágenes) y con su texto extraído, 2,9 s.
+
+BASES_CON_TEXTO = "Requerimiento técnico. " * 20
+
+
+async def test_un_pdf_con_texto_se_manda_como_texto(monkeypatch):
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: BASES_CON_TEXTO,
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    _, post = await _analizar(_respuesta(RESULTADO), documentos)
+
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    assert not [p for p in partes if "inlineData" in p]
+    assert any(
+        "bases.pdf" in p.get("text", "") and BASES_CON_TEXTO.strip() in p["text"]
+        for p in partes
+    )
+
+
+async def test_un_pdf_casi_sin_texto_se_manda_en_linea(monkeypatch):
+    """Un escaneo no tiene texto que extraer: se manda el archivo para no perderlo."""
+    monkeypatch.setattr(
+        "app.infrastructure.services.gemini_proposal_service._texto_del_pdf",
+        lambda _: "Página 1",
+    )
+    documentos = [
+        DocumentContextDTO(
+            document_name="escaneo.pdf", file_type="pdf", file_bytes=b"%PDF"
+        )
+    ]
+
+    _, post = await _analizar(_respuesta(RESULTADO), documentos)
+
+    partes = post.call_args.kwargs["json"]["contents"][0]["parts"]
+    assert [p["inlineData"]["mimeType"] for p in partes if "inlineData" in p] == [
+        "application/pdf"
+    ]
+
+
+def test_un_pdf_ilegible_no_tiene_texto():
+    from app.infrastructure.services.gemini_proposal_service import _texto_del_pdf
+
+    assert _texto_del_pdf(b"no es un pdf") is None

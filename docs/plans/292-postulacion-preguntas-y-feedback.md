@@ -115,6 +115,7 @@ Decidida el 2026-10-07, a partir de la Compra Ágil 1377068-65-COT26 (mantenció
 - **Documento técnico breve.** Cada sección tiene 2 o 3 frases como máximo. Lo que viene de las bases (cantidades, sedes, plazos, alcance) se escribe completo. Lo de la empresa solo sale del catálogo; si no está, queda un vacío.
 - **Sugerencias por sección.** `TechnicalSection` suma `guidance` (fija, de `TECHNICAL_SECTIONS`) y `hint` (de la IA, específica de la licitación). Viajan en el JSONB de `content`, sin migración. La interfaz las muestra bajo el título de cada sección. El Word las incluye solo en el bloque "Revisar" de las secciones con vacíos.
 - **Interfaz.** En el caso ambiguo, el borrador muestra la frase citada y un botón principal "Generar documento técnico", en vez del aviso "No se detectó".
+- **PDF como texto.** Un PDF con al menos 200 caracteres de texto se manda a Gemini como texto extraído con `pypdf` (ya era dependencia); un escaneo se sigue mandando como archivo. Medido con 1377068-65-COT26: la redacción con el PDF en línea tardó 60,2 s y se cortaba por el timeout; con el texto, entre 3 y 19 s y el mismo detalle.
 - **Versión del análisis en la huella.** `VERSION_DEL_ANALISIS` (en `start_feasibility.py`) entra en `huella_del_analisis`. Sin ella, "Volver a analizar" mantenía los borradores hechos con el prompt anterior, porque la ficha, el perfil y los adjuntos no cambiaban. Se sube cada vez que cambia lo que produce el análisis.
 
 ---

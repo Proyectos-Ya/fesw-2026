@@ -7,11 +7,13 @@ y el índice de fragmentos quedaron fuera de esta HdU (plan 230, §5).
 
 import asyncio
 import base64
+import io
 import json
 import time
 from collections.abc import Callable
 
 import httpx
+import pypdf
 from pydantic import ValidationError
 
 from app.application.services.proposal_ai_service import (
@@ -247,6 +249,23 @@ def _banco(questions: list[CapabilityQuestion]) -> str:
     return "## PREGUNTAS DEL BANCO\n" + "\n".join(lineas)
 
 
+# Un PDF con al menos este texto se manda como texto y no como archivo. Medido el
+# 2026-10-07 con 1377068-65-COT26 (bases de 3 páginas): con el PDF en línea la
+# redacción tardó 60,2 s, porque Gemini lo procesa como imágenes; con su texto
+# extraído, 2,9 s y el mismo resultado. Bajo este mínimo (un escaneo) se manda
+# el archivo, para no perder su contenido.
+_MINIMO_TEXTO_PDF = 200
+
+
+def _texto_del_pdf(file_bytes: bytes) -> str | None:
+    """El texto de un PDF, o `None` si no se puede leer."""
+    try:
+        lector = pypdf.PdfReader(io.BytesIO(file_bytes), strict=False)
+        return "\n".join(pagina.extract_text() or "" for pagina in lector.pages)
+    except Exception:  # noqa: BLE001 - pypdf lanza muchos tipos ante un PDF raro
+        return None
+
+
 def _adjuntos(documents: list[DocumentContextDTO]) -> list[dict]:
     partes: list[dict] = []
     for doc in documents:
@@ -259,6 +278,16 @@ def _adjuntos(documents: list[DocumentContextDTO]) -> list[dict]:
                 }
             )
             continue
+        if mime == "application/pdf":
+            texto = _texto_del_pdf(doc.file_bytes)
+            if texto and len(texto.strip()) >= _MINIMO_TEXTO_PDF:
+                partes.append(
+                    {
+                        "text": f"Adjunto '{doc.document_name}' (texto extraído):\n"
+                        f"{texto.strip()}"
+                    }
+                )
+                continue
         partes.append(
             {
                 "inlineData": {
