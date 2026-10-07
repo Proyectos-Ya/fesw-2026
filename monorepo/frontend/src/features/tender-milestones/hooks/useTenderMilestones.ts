@@ -31,17 +31,40 @@ function unavailableNotice(count: number): string | null {
   return `${count} documentos que subiste ya no están disponibles. Vuelve a adjuntarlos en el asistente para extraer sus hitos.`;
 }
 
+function failedNotice(count: number): string | null {
+  if (count === 0) return null;
+  const leer = count === 1 ? "No se pudo leer" : "No se pudieron leer";
+  return `${leer} ${count} de las bases. Inténtalo de nuevo con el botón.`;
+}
+
+/** Tras la extracción automática: bases que quedaron sin leer. */
+function pendingNotice(data: MilestoneList): string | null {
+  const count = data.pending_documents_count;
+  // Si ya se explicó por qué (falla o archivo perdido), no se repite.
+  if (count === 0 || data.failed_documents_count > 0 || data.unavailable_documents_count > 0) {
+    return null;
+  }
+  return count === 1
+    ? "Queda 1 base sin leer. Inténtalo de nuevo con el botón."
+    : `Quedan ${count} bases sin leer. Inténtalo de nuevo con el botón.`;
+}
+
 /** Lo que conviene contarle al usuario después de extraer, o `null` si nada. */
 function extractionNotice(data: MilestoneList): string | null {
-  // Si la IA leyó bases y no salió ningún hito de ella, la tabla queda igual
-  // que antes de extraer; sin este aviso eso parece un error.
+  // Si la IA leyó todas las bases y no salió ningún hito, la tabla queda igual
+  // que antes de extraer; sin este aviso eso parece un error. Si alguna no se
+  // pudo leer, el aviso es ese y no este.
   const noneFound =
-    data.documents_count > 0 && !data.milestones.some((m) => m.source === "ia_documento")
+    data.documents_count > 0 &&
+    data.pending_documents_count === 0 &&
+    !data.milestones.some((m) => m.source === "ia_documento")
       ? "La IA no encontró plazos en las bases adjuntas."
       : null;
   const avisos = [
     discardedNotice(data.discarded_count),
     unavailableNotice(data.unavailable_documents_count),
+    failedNotice(data.failed_documents_count),
+    pendingNotice(data),
     noneFound,
   ].filter((aviso): aviso is string => aviso !== null);
   return avisos.length > 0 ? avisos.join(" ") : null;

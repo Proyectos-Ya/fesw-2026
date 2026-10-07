@@ -109,6 +109,29 @@ describe("MilestonesSection", () => {
     expect(screen.getByText(/sube las bases en el asistente/i)).toBeInTheDocument();
   });
 
+  it("con todas las bases ya leídas no deja volver a extraer y explica cómo releer una", async () => {
+    // Volver a leer las mismas bases duplicaba o borraba hitos.
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 2, pending_documents_count: 0 }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByRole("button", { name: /extraer hitos de las bases/i })).toBeDisabled();
+    expect(screen.getByText(/ya se extrajeron los hitos de todas las bases subidas/i)).toBeInTheDocument();
+  });
+
+  it("con una base pendiente permite extraer", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 2, pending_documents_count: 1 }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByRole("button", { name: /extraer hitos de las bases/i })).toBeEnabled();
+    expect(screen.queryByText(/ya se extrajeron los hitos/i)).not.toBeInTheDocument();
+  });
+
   it("mientras la IA lee las bases recién subidas lo dice y no deja extraer a mano", async () => {
     vi.mocked(service.getTenderMilestones).mockResolvedValue(
       buildMilestoneList({ documents_count: 1, extraction_status: "running" }),
@@ -122,7 +145,7 @@ describe("MilestonesSection", () => {
 
   it("si la extracción automática falló invita a reintentar con el botón", async () => {
     vi.mocked(service.getTenderMilestones).mockResolvedValue(
-      buildMilestoneList({ documents_count: 1, extraction_status: "failed" }),
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1, extraction_status: "failed" }),
     );
 
     render(<MilestonesSection tenderId="t-1" now={AHORA} />);
@@ -135,7 +158,9 @@ describe("MilestonesSection", () => {
 
   it("extrae los hitos de las bases y muestra el resultado", async () => {
     const user = userEvent.setup();
-    vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList({ documents_count: 1 }));
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1 }),
+    );
     vi.mocked(service.extractTenderMilestones).mockResolvedValue(
       buildMilestoneList({
         documents_count: 1,
@@ -157,7 +182,9 @@ describe("MilestonesSection", () => {
 
   it("si la extracción falla muestra el error y permite reintentar", async () => {
     const user = userEvent.setup();
-    vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList({ documents_count: 1 }));
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1 }),
+    );
     vi.mocked(service.extractTenderMilestones)
       .mockRejectedValueOnce(new ApiError(503, "No se pudieron extraer los hitos de las bases en este momento."))
       .mockResolvedValueOnce(buildMilestoneList({ documents_count: 1 }));

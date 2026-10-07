@@ -227,3 +227,16 @@ def test_la_extraccion_manual_pasa_por_el_candado_de_la_automatica(api):
 
     assert respuesta.status_code == 200
     fondo.run_now.assert_awaited_once_with(api.user_id, api.tender_id, api.extraer)
+
+
+def test_informa_bases_pendientes_y_fallidas(api):
+    # El botón se habilita solo con bases pendientes, y la ficha avisa cuáles
+    # no se pudieron leer.
+    api.extraer.execute.return_value = TenderMilestonesResult(
+        milestones=[], documents_count=2, pending_documents_count=1, failed_documents_count=1
+    )
+
+    cuerpo = api.client.post(f"{api.path}/extract").json()
+
+    assert cuerpo["pending_documents_count"] == 1
+    assert cuerpo["failed_documents_count"] == 1

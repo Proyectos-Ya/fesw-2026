@@ -58,6 +58,11 @@ class MilestoneListResponse(BaseModel):
     unavailable_documents_count: int = 0
     # "running" mientras la IA lee en segundo plano las bases recién subidas.
     extraction_status: MilestoneExtractionStatus = MilestoneExtractionStatus.IDLE
+    # Bases sin leer todavía (nuevas o que fallaron): solo con ellas tiene
+    # sentido el botón. Cada base se lee una sola vez.
+    pending_documents_count: int = 0
+    # Bases que la IA no pudo leer en esta extracción.
+    failed_documents_count: int = 0
 
 
 def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
@@ -82,6 +87,8 @@ def _respuesta(resultado: TenderMilestonesResult) -> MilestoneListResponse:
         discarded_count=resultado.discarded_count,
         unavailable_documents_count=resultado.unavailable_documents_count,
         extraction_status=resultado.extraction_status,
+        pending_documents_count=resultado.pending_documents_count,
+        failed_documents_count=resultado.failed_documents_count,
     )
 
 

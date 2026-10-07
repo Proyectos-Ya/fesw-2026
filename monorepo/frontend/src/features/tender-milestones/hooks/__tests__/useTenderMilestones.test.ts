@@ -101,6 +101,27 @@ describe("useTenderMilestones", () => {
     expect(aviso).toBe("La IA no encontró plazos en las bases adjuntas.");
   });
 
+  it("avisa cuántas bases no se pudieron leer", async () => {
+    const aviso = await extraerCon(
+      buildMilestoneList({
+        documents_count: 2,
+        pending_documents_count: 1,
+        failed_documents_count: 1,
+        milestones: [buildMilestone({ source: "ia_documento" })],
+      }),
+    );
+
+    expect(aviso).toBe("No se pudo leer 1 de las bases. Inténtalo de nuevo con el botón.");
+  });
+
+  it("si una base falló no dice que la IA no encontró plazos", async () => {
+    const aviso = await extraerCon(
+      buildMilestoneList({ documents_count: 2, pending_documents_count: 2, failed_documents_count: 2 }),
+    );
+
+    expect(aviso).toBe("No se pudieron leer 2 de las bases. Inténtalo de nuevo con el botón.");
+  });
+
   it("si la IA encontró plazos no muestra ese aviso", async () => {
     const aviso = await extraerCon(
       buildMilestoneList({
@@ -173,6 +194,29 @@ describe("useTenderMilestones", () => {
       });
 
       await waitFor(() => expect(result.current.notice).toBe("La IA no encontró plazos en las bases adjuntas."));
+    });
+
+    it("si al terminar quedó una base sin leer, invita a reintentar", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.mocked(service.getTenderMilestones)
+        .mockResolvedValueOnce(buildMilestoneList({ documents_count: 2, extraction_status: "running" }))
+        .mockResolvedValueOnce(
+          buildMilestoneList({
+            documents_count: 2,
+            pending_documents_count: 1,
+            milestones: [buildMilestone({ source: "ia_documento" })],
+          }),
+        );
+      const { result } = renderHook(() => useTenderMilestones("t-1"));
+      await waitFor(() => expect(result.current.state.status).toBe("ready"));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MILESTONES_POLL_MS);
+      });
+
+      await waitFor(() =>
+        expect(result.current.notice).toBe("Queda 1 base sin leer. Inténtalo de nuevo con el botón."),
+      );
     });
 
     it("si la extracción automática falla no dice que no encontró plazos", async () => {

@@ -40,6 +40,7 @@ from tests.unit.application.fakes import (
 from tests.unit.application.milestone_fakes import (
     FakeMilestoneExtractionAIService,
     InMemoryCalendarEventLinkRepository,
+    InMemoryMilestoneDocumentRepository,
     InMemoryTenderMilestoneRepository,
 )
 
@@ -51,6 +52,7 @@ class Dobles:
         self.chat = InMemoryTenderChatRepository()
         self.milestones = InMemoryTenderMilestoneRepository()
         self.links = InMemoryCalendarEventLinkRepository()
+        self.processed = InMemoryMilestoneDocumentRepository()
         self.ai = FakeMilestoneExtractionAIService(
             [
                 ExtractedMilestone(
@@ -94,6 +96,7 @@ async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
             milestones=dobles.milestones,
             event_links=dobles.links,
             chat=dobles.chat,
+            processed=dobles.processed,
         )
     )
     app.dependency_overrides[get_extract_tender_milestones_use_case] = lambda: (
@@ -103,6 +106,7 @@ async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
             event_links=dobles.links,
             chat=dobles.chat,
             ai=dobles.ai,
+            processed=dobles.processed,
         )
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

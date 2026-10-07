@@ -25,6 +25,7 @@ from tests.unit.application.fakes import (
 )
 from tests.unit.application.milestone_fakes import (
     InMemoryCalendarEventLinkRepository,
+    InMemoryMilestoneDocumentRepository,
     InMemoryTenderMilestoneRepository,
 )
 
@@ -50,7 +51,12 @@ def escenario():
     enlaces = InMemoryCalendarEventLinkRepository()
     chat = InMemoryTenderChatRepository()
     use_case = GetTenderMilestonesUseCase(
-        tenders=tenders, milestones=hitos, event_links=enlaces, chat=chat, now=lambda: AHORA
+        tenders=tenders,
+        milestones=hitos,
+        event_links=enlaces,
+        chat=chat,
+        processed=InMemoryMilestoneDocumentRepository(),
+        now=lambda: AHORA,
     )
     return tender, hitos, enlaces, chat, use_case
 
@@ -163,6 +169,7 @@ async def test_informa_si_la_ia_esta_leyendo_las_bases(escenario):
         milestones=hitos,
         event_links=enlaces,
         chat=chat,
+        processed=InMemoryMilestoneDocumentRepository(),
         extraction=extraccion,
         now=lambda: AHORA,
     )
@@ -171,3 +178,25 @@ async def test_informa_si_la_ia_esta_leyendo_las_bases(escenario):
 
     assert resultado.extraction_status is MilestoneExtractionStatus.RUNNING
     assert extraccion.consultas == [(USUARIO, tender.id)]
+
+
+async def test_informa_cuantas_bases_faltan_por_leer(escenario):
+    # Habilita el botón solo si hay algo que leer: volver a leer lo mismo
+    # duplicaba o borraba hitos.
+    tender, _, _, chat, use_case = escenario
+    documento = TenderChatDocument(
+        tender_id=tender.id,
+        user_id=USUARIO,
+        file_name="bases.pdf",
+        file_type="pdf",
+        file_size_bytes=10,
+        storage_path="/tmp/bases.pdf",
+    )
+    chat.documents[documento.id] = (documento, b"%PDF")
+
+    pendiente = await use_case.execute(USUARIO, tender.id)
+    await use_case.processed.mark_processed(USUARIO, tender.id, documento.id, 2, AHORA)
+    procesada = await use_case.execute(USUARIO, tender.id)
+
+    assert pendiente.pending_documents_count == 1
+    assert procesada.pending_documents_count == 0

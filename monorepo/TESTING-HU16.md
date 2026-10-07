@@ -15,8 +15,10 @@ diseño ya lo contempla como un proveedor más, sin migraciones nuevas.
 2. Adjuntar las bases (PDF, XLSX o PNG) en el **asistente** de la licitación. No hay que
    pulsar nada más: la IA las lee en segundo plano y la tabla muestra *"La IA está leyendo
    las bases que subiste…"* hasta que aparecen las visitas técnicas, consultas, entregas,
-   adjudicación, etc., cada uno con el párrafo de las bases de donde salió. El botón
-   **Extraer hitos de las bases** queda para reintentar si la extracción automática falló.
+   adjudicación, etc., cada uno con una cita de las bases de donde salió. Cada base se lee
+   **una sola vez**: el botón **Extraer hitos de las bases** solo se habilita si queda alguna
+   sin leer (nueva o que falló). Para volver a leer una, se elimina y se sube de nuevo; al
+   eliminarla, sus hitos se van de la tabla (salvo los que ya están en Google Calendar).
 3. Los plazos a **5 días de calendario o menos** (criterio 9) se destacan en rojo y con la
    etiqueta entre exclamaciones (*¡Vence en 5 días!*, *¡Vence mañana!*, *¡Vence hoy!*); el
    resto va en gris (*Vence en 8 días*).
@@ -107,13 +109,24 @@ simple no relee las variables).
 
 - **Hitos oficiales**: publicación y cierre se toman de la licitación y se guardan al
   consultar, para que tengan id y se puedan sincronizar.
-- **Extracción**: se envían a Gemini los documentos que el usuario subió al asistente, junto
-  con las fechas oficiales como referencia para resolver fechas relativas ("el día 20"). La
-  respuesta es JSON con esquema; cada fecha se valida (`YYYY-MM-DD` y `HH:MM` estrictos) y se
-  convierte de hora de Chile a UTC. Las inválidas se descartan y se informa cuántas. Al
-  volver a extraer, un hito equivalente (mismo tipo y título, sin importar tildes ni
-  mayúsculas) conserva su id, así el evento ya sincronizado se actualiza en vez de
-  duplicarse. Si Gemini falla, quedan igual los hitos oficiales.
+- **Extracción**: cada documento que el usuario subió al asistente se envía **por separado**
+  a Gemini, junto con las fechas oficiales como referencia para resolver fechas relativas
+  ("el día 20"). La respuesta es JSON con esquema; cada fecha se valida (`YYYY-MM-DD` y
+  `HH:MM` estrictos) y se convierte de hora de Chile a UTC. Las inválidas se descartan y se
+  informa cuántas. Si Gemini falla, quedan igual los hitos oficiales.
+  - **Reintentos**: hasta 3 intentos (esperas de 2 y 4 s) ante 429, 5xx, timeout o una
+    respuesta 200 sin contenido utilizable (`RECITATION`, `SAFETY`, JSON cortado). El
+    `finishReason` queda en el log. Un 400 (p. ej. llave inválida) no se reintenta.
+  - **Una sola lectura por base**: `tender_milestone_document` registra las bases ya leídas
+    (se borra en cascada con el documento). Releer las mismas bases daba títulos o fechas
+    algo distintos y la tabla terminaba con hitos duplicados o perdidos.
+  - **Sin mezclar orígenes**: publicación y cierre se fusionan solo contra las filas
+    oficiales, y la IA no agrega hitos de esos dos tipos. Antes un hito de la IA con el
+    título del cierre se quedaba con el id del oficial y la fila cambiaba de origen en cada
+    consulta. La consulta repara lo que eso dejó (filas oficiales repetidas, cierres de la
+    IA), sin tocar lo sincronizado.
+  - **Dentro de una base**, un mismo hito se reconoce por tipo y día (en Chile) y luego por
+    título, así los repetidos con otro nombre quedan en una sola fila.
 - **Extracción automática**: subir un documento al asistente agenda la extracción en una
   tarea de asyncio con sesión propia; la subida no espera a Gemini. Varias subidas seguidas
   se agrupan (como máximo una pasada más al terminar la que está en curso), y la
@@ -147,8 +160,8 @@ simple no relee las variables).
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `GET` | `/tenders/{id}/milestones` | Hitos con urgencia, calendarios donde están sincronizados y `extraction_status` |
-| `POST` | `/tenders/{id}/milestones/extract` | Reintenta a mano la extracción con IA desde los documentos del asistente |
+| `GET` | `/tenders/{id}/milestones` | Hitos con urgencia, calendarios donde están sincronizados, `extraction_status` y `pending_documents_count` |
+| `POST` | `/tenders/{id}/milestones/extract` | Lee con IA las bases pendientes del asistente; informa `failed_documents_count` |
 | `POST` | `/tenders/{id}/milestones/sync` | Sincroniza `{provider, milestone_ids, default_time?}`; devuelve el resultado por hito |
 | `PATCH` | `/tenders/{id}/milestones/{hito}/reminder` | Activa el recordatorio con `{days_before: 1\|3\|7}`, o lo apaga con `null` |
 | `GET` | `/calendar/connections` | Estado de la conexión (nunca devuelve tokens) |
@@ -170,6 +183,8 @@ Migraciones, todas compatibles hacia atrás y en una sola cabeza:
   `date_changed`, que no tienen score.
 - `d27a9c3f1b84`: `tender_milestone` gana `reminder_days_before` y `reminder_sent_at`, ambas
   nullable, más el índice parcial que usa el bucle de recordatorios.
+- `b16e7a2c9d40` (después de `b3c2d1e0f9a8`): tabla `tender_milestone_document`, las bases ya
+  leídas por la extracción (PK y FK a `tender_chat_documents` con borrado en cascada).
 
 ## Seguridad (criterio 8)
 
@@ -187,7 +202,7 @@ Migraciones, todas compatibles hacia atrás y en una sola cabeza:
 
 | # | Criterio | Evidencia automatizada | Prueba manual |
 |---|---|---|---|
-| 1 | La IA extrae hitos a una tabla | `test_extract_tender_milestones.py`, `test_gemini_milestone_extraction_service.py`, `test_milestone_extraction_background.py`, `test_upload_tender_chat_document_use_case.py`, `MilestonesSection.test.tsx`, `useTenderMilestones.test.ts` | Subir las bases en el asistente y esperar, sin pulsar nada |
+| 1 | La IA extrae hitos a una tabla | `test_extract_tender_milestones.py`, `test_gemini_milestone_extraction_service.py`, `test_milestone_extraction_background.py`, `test_upload_tender_chat_document_use_case.py`, `test_milestone_document_repository.py`, `MilestonesSection.test.tsx`, `useTenderMilestones.test.ts` | Subir las bases en el asistente y esperar, sin pulsar nada; el botón queda desactivado y la tabla no cambia al recargar; subir otra base agrega solo sus hitos; eliminarla los quita |
 | 2 | "Sincronizar" redirige a la autenticación del proveedor | `test_calendar_authorization.py`, `useCalendarSync.test.ts`, `CalendarOAuthCallback.test.tsx` | Sincronizar sin conexión previa |
 | 3 | Evento con título, fecha exacta y enlace de retorno | `test_sync_milestones.py`, `test_google_calendar_client.py` (payload verificado) | Abrir el evento en Google Calendar |
 | 4 | Cambio en Mercado Público → evento actualizado + "Fecha modificada" | `test_refresh_synced_tender_dates.py`, `test_dispatch_pending_deliveries.py`, `NotificationPanel.test.tsx` | Ver abajo |
