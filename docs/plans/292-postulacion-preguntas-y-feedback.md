@@ -66,7 +66,11 @@ Todo dentro de `src/features/proposals/`, salvo `Toast` y el `timeoutMs` de `api
 
 - No hay dependencias nuevas. `Toast` se hace a mano.
 - No hay variables de entorno nuevas.
-- `proposalService.ts` pasa `timeoutMs: 130_000` en las acciones que llaman a Gemini.
+- **Tiempos límite**, decididos al implementar. Vercel corta a los 120 s un rewrite a un origen externo, en todos los planes y sin poder subirlo ([límites de Vercel](https://vercel.com/docs/limits)).
+  - **Backend.** `GeminiProposalService` reparte un presupuesto de 100 s entre el intento y el reintento. El reintento solo usa lo que queda y no se hace si quedan menos de 20 s.
+  - **Cliente.** `proposalService.ts` pasa `timeoutMs: 115_000` en las acciones que llaman a Gemini.
+  - **Proxy local.** `next.config.ts` fija `experimental.proxyTimeout: 120_000`. El valor por defecto de Next son 30 s, y con 120 s el entorno local corta igual que Vercel.
+  - **Recuperación.** Si el navegador pierde la respuesta (timeout, falla de red o 504), `useProposal` relee el borrador. Si cambió, muestra el resultado; si no, avisa que se perdió la conexión.
 
 ### 2.6 Fuera de alcance: SSE
 

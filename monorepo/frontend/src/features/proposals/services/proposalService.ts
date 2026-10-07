@@ -4,11 +4,12 @@ import type { DecisionAction, ProposalDraft, ProposalView } from "../types";
 const base = (tenderId: string) => `/tenders/${tenderId}/proposal`;
 
 /**
- * Tiempo límite de las acciones que esperan a Gemini. El backend le da 60 s y
- * reintenta una vez, así que puede tardar unos 120 s: con los 60 s por defecto
- * del cliente el navegador cortaba antes de que el backend respondiera.
+ * Tiempo límite de las acciones que esperan a Gemini. El backend reparte 100 s
+ * entre el intento y el reintento, y Vercel corta el reenvío a los 120 s sin
+ * que se pueda subir. 115 s cubre al backend y deja que el navegador muestre su
+ * propio mensaje antes del corte de Vercel.
  */
-const IA_TIMEOUT_MS = 130_000;
+const IA_TIMEOUT_MS = 115_000;
 
 /** Borrador de la empresa activa, con preguntas y origen de la cobertura. 404 si no hay. */
 export function getProposal(tenderId: string): Promise<ProposalView> {

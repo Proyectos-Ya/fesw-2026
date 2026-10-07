@@ -44,6 +44,14 @@ function resolverBackendOrigin(fase: string): string {
 // con otro valor: seguía reenviando al destino del build anterior.
 
 const construirConfig = (fase: string): NextConfig => ({
+  experimental: {
+    // Cuánto espera el proxy de `/api` al backend en `next dev` y `next start`.
+    // Por defecto son 30 s y las acciones con IA de la postulación tardan más.
+    // Se iguala a los 120 s que Vercel aplica a un rewrite externo (fijo, no se
+    // configura), para que local corte igual que producción. En Vercel este
+    // valor no se usa: el reenvío lo hace la plataforma.
+    proxyTimeout: 120_000,
+  },
   /**
    * La API se sirve bajo `/api` del propio dominio del frontend y Next la
    * reenvía al backend por detrás.

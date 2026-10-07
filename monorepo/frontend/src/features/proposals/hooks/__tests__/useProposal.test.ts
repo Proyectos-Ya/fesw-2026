@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/features/shared/api/client";
+import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import * as service from "../../services/proposalService";
 import { useProposal } from "../useProposal";
 import { vista } from "../../testing/fixtures";
@@ -247,5 +247,54 @@ describe("useProposal", () => {
     expect(revocar).toHaveBeenCalledWith("blob:url");
     expect(result.current.toast?.message).toBe("Documento descargado.");
     vi.unstubAllGlobals();
+  });
+
+  describe("si se pierde la conexión durante una acción con IA", () => {
+    const despues = vista({ status: "READY", updated_at: "2026-10-01T12:05:00Z" });
+
+    it("tras un timeout relee el borrador y, si cambió, muestra el resultado", async () => {
+      svc.getProposal.mockResolvedValueOnce(vista()).mockResolvedValueOnce(despues);
+      svc.regenerateProposal.mockRejectedValue(new TimeoutError());
+      const { result } = await montado();
+
+      await act(() => result.current.regenerate("Más formal"));
+
+      expect(result.current.actionError).toBeNull();
+      expect(result.current.state).toEqual({ kind: "ready", view: despues });
+      expect(result.current.toast?.message).toBe("Borrador regenerado con tus instrucciones.");
+    });
+
+    it("tras un error de red también lo intenta", async () => {
+      svc.getProposal.mockResolvedValueOnce(vista()).mockResolvedValueOnce(despues);
+      svc.generateProposal.mockRejectedValue(new TypeError("Failed to fetch"));
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(result.current.actionError).toBeNull();
+      expect(result.current.state).toEqual({ kind: "ready", view: despues });
+    });
+
+    it("si el borrador no cambió avisa que se perdió la conexión", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.generateProposal.mockRejectedValue(new TimeoutError());
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(result.current.actionError).toMatch(/Se perdió la conexión/);
+      expect(result.current.toast).toBeNull();
+    });
+
+    it("un error del backend no relee: se muestra tal cual", async () => {
+      svc.getProposal.mockResolvedValue(vista());
+      svc.generateProposal.mockRejectedValue(new ApiError(502, "Falló Gemini"));
+      const { result } = await montado();
+
+      await act(() => result.current.generate());
+
+      expect(svc.getProposal).toHaveBeenCalledTimes(1);
+      expect(result.current.actionError).toBe("Falló Gemini");
+    });
   });
 });

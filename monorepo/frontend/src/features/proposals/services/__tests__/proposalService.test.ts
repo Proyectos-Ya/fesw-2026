@@ -40,7 +40,7 @@ describe("proposalService", () => {
     await startFeasibility("t-1");
     expect(llamada()).toEqual([
       "/tenders/t-1/proposal/feasibility",
-      { method: "POST", timeoutMs: 130_000 },
+      { method: "POST", timeoutMs: 115_000 },
     ]);
   });
 
@@ -48,7 +48,7 @@ describe("proposalService", () => {
     await reanalyzeProposal("t-1");
     expect(llamada()).toEqual([
       "/tenders/t-1/proposal/reanalyze",
-      { method: "POST", timeoutMs: 130_000 },
+      { method: "POST", timeoutMs: 115_000 },
     ]);
   });
 
@@ -89,17 +89,17 @@ describe("proposalService", () => {
     await requestTechnicalDocument("t-1");
     expect(llamada()).toEqual([
       "/tenders/t-1/proposal/technical-document",
-      { method: "POST", timeoutMs: 130_000 },
+      { method: "POST", timeoutMs: 115_000 },
     ]);
   });
 
-  it("las acciones con IA esperan más que el backend (Gemini + un reintento)", async () => {
+  it("las acciones con IA esperan más que el backend y menos que el corte de Vercel", async () => {
     await generateProposal("t-1");
     await regenerateProposal("t-1", "Más formal");
     await syncProposalAnswers("t-1");
 
     for (const [, init] of fetchMock.mock.calls) {
-      expect((init as { timeoutMs?: number }).timeoutMs).toBe(130_000);
+      expect((init as { timeoutMs?: number }).timeoutMs).toBe(115_000);
     }
   });
 

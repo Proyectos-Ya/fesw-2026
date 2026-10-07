@@ -39,6 +39,19 @@ function mensajeDe(error: unknown): string {
   return "Ocurrió un error inesperado. Intenta de nuevo.";
 }
 
+const CONEXION_PERDIDA =
+  "Se perdió la conexión con el servidor. Si la acción alcanzó a terminar, aparecerá al recargar la página.";
+
+/**
+ * ¿Pudo el backend terminar aunque el navegador no recibió la respuesta? Pasa
+ * con un timeout del cliente, una red que se cae (`fetch` lanza `TypeError`) o
+ * un 504 del proxy. Un error que responde el backend (409, 502...) es definitivo.
+ */
+function conexionPerdida(error: unknown): boolean {
+  if (error instanceof TimeoutError || error instanceof TypeError) return true;
+  return error instanceof ApiError && error.status === 504;
+}
+
 /**
  * Estado y acciones de la postulación de la empresa activa a una licitación.
  *
@@ -55,6 +68,9 @@ export function useProposal(tenderId: string) {
   const [answering, setAnswering] = useState<PendingAnswer | null>(null);
   const [toast, setToast] = useState<ProposalToast | null>(null);
   const toastId = useRef(0);
+  // La última versión leída, para saber si una acción que perdió la conexión
+  // alcanzó a guardar algo en el backend.
+  const ultimaVersion = useRef<string | null>(null);
 
   const confirmar = useCallback((message: string) => {
     toastId.current += 1;
@@ -65,6 +81,7 @@ export function useProposal(tenderId: string) {
   const reload = useCallback(async () => {
     try {
       const view = await getProposal(tenderId);
+      ultimaVersion.current = view.updated_at;
       setState({ kind: "ready", view });
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
@@ -95,18 +112,37 @@ export function useProposal(tenderId: string) {
       setNotice(null);
       setBusy(true);
       setStage(etapa);
+      const antes = ultimaVersion.current;
       try {
         await accion();
         await reload();
         if (confirmacion) confirmar(confirmacion);
       } catch (error) {
-        setActionError(mensajeDe(error));
+        if (!conexionPerdida(error)) {
+          setActionError(mensajeDe(error));
+          return;
+        }
+        // El backend sigue trabajando aunque el navegador cortó: si el borrador
+        // cambió, la acción terminó y se muestra como si nada. Así nadie
+        // regenera de nuevo (y gasta otra llamada a Gemini) por un falso error.
+        try {
+          const view = await getProposal(tenderId);
+          if (view.updated_at !== antes) {
+            ultimaVersion.current = view.updated_at;
+            setState({ kind: "ready", view });
+            confirmar(confirmacion ?? "Listo. Se perdió la conexión, pero el cambio se guardó.");
+            return;
+          }
+        } catch {
+          // Sin conexión todavía: queda el aviso de abajo.
+        }
+        setActionError(CONEXION_PERDIDA);
       } finally {
         setBusy(false);
         setStage(null);
       }
     },
-    [reload, confirmar],
+    [reload, confirmar, tenderId],
   );
 
   const start = useCallback(
