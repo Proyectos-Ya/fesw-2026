@@ -13,6 +13,7 @@ import {
 import { Icon } from "@/features/shared/components/Icon";
 import type { KanbanCard as KanbanCardType } from "../kanbanTypes";
 import { useKanban } from "../hooks/useKanban";
+import { HistoryPanel } from "./HistoryPanel";
 import { InsertColumnSlot } from "./InsertColumnSlot";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
@@ -33,12 +34,15 @@ export function KanbanBoard() {
     addCard,
     moveCard,
     removeCard,
+    archiveCard,
+    reload,
   } = useKanban();
 
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [addingColLoading, setAddingColLoading] = useState(false);
   const [activeCard, setActiveCard] = useState<KanbanCardType | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const newColInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -136,11 +140,22 @@ export function KanbanBoard() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-4 border-b border-border-subtle">
-        <h1 className="font-display text-2xl font-bold text-text-strong">Tablero</h1>
-        <p className="text-sm text-text-subtle mt-0.5">
-          Organiza tus licitaciones en etapas de trabajo
-        </p>
+      <div className="px-6 py-4 border-b border-border-subtle flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-text-strong">Tablero</h1>
+          <p className="text-sm text-text-subtle mt-0.5">
+            Organiza tus licitaciones en etapas de trabajo
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong border border-border-subtle hover:border-border-default rounded-md transition-colors"
+          aria-label="Ver historial de tarjetas archivadas"
+        >
+          <Icon name="clock" size={16} />
+          <span>Historial</span>
+        </button>
       </div>
 
       <div className="flex-1 overflow-x-auto px-6 py-5">
@@ -165,6 +180,7 @@ export function KanbanBoard() {
                   onAddCard={addCard}
                   onRemoveCard={(tender_id) => void removeCard(tender_id)}
                   boardTenderIds={boardTenderIds}
+                  onArchiveCard={(card_id) => void archiveCard(card_id)}
                 />
                 {i < columns.length - 1 && (
                   <InsertColumnSlot
@@ -239,6 +255,12 @@ export function KanbanBoard() {
           </DragOverlay>
         </DndContext>
       </div>
+
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={() => void reload()}
+      />
     </div>
   );
 }

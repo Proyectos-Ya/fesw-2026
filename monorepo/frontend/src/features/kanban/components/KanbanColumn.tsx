@@ -26,6 +26,7 @@ interface Props {
    *  usuario. Se usa en el modal "Agregar licitación" para ocultar guardadas
    *  duplicadas. El padre (KanbanBoard) lo construye desde `cards`. */
   boardTenderIds: string[];
+  onArchiveCard?: (card_id: string) => void;
 }
 
 export function KanbanColumn({
@@ -41,6 +42,7 @@ export function KanbanColumn({
   onAddCard,
   onRemoveCard,
   boardTenderIds,
+  onArchiveCard,
 }: Props) {
   const [showConfig, setShowConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -123,6 +125,7 @@ export function KanbanColumn({
               card={card}
               tender={tenders[card.tender_id]}
               onRemove={onRemoveCard}
+              onArchive={onArchiveCard}
             />
           ))}
         </SortableContext>

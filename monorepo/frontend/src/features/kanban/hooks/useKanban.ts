@@ -276,6 +276,39 @@ export function useKanban() {
     [cards],
   );
 
+  const archiveCard = useCallback(
+    async (card_id: string) => {
+      // Optimista: la tarjeta deja el tablero activo de inmediato. Si falla,
+      // revertimos para no mentirle al usuario. El historial (panel) carga
+      // bajo demanda, así que la coherencia con el panel se da sola.
+      const card = cards.find((c) => c.id === card_id);
+      if (!card) return;
+
+      setCards((prev) => prev.filter((c) => c.id !== card_id));
+      setColumns((prev) =>
+        prev.map((c) =>
+          c.id === card.column_id
+            ? { ...c, card_count: c.card_count - 1 }
+            : c,
+        ),
+      );
+
+      try {
+        await kanbanService.archiveCard(card_id);
+      } catch {
+        setCards((prev) => [...prev, card]);
+        setColumns((prev) =>
+          prev.map((c) =>
+            c.id === card.column_id
+              ? { ...c, card_count: c.card_count + 1 }
+              : c,
+          ),
+        );
+      }
+    },
+    [cards],
+  );
+
   return {
     columns,
     cards,
@@ -291,5 +324,7 @@ export function useKanban() {
     addCard,
     moveCard,
     removeCard,
+    archiveCard,
+    reload: load,
   };
 }
