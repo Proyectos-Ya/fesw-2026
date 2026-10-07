@@ -13,7 +13,7 @@ anteriores quedan con NULL. Ninguna consulta filtra por ellas, así que no lleva
 índice.
 
 Revision ID: c73c53020ffd
-Revises: b3c2d1e0f9a8
+Revises: b16e7a2c9d40
 Create Date: 2026-10-07 00:00:00.000000
 
 """
@@ -27,7 +27,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c73c53020ffd"
-down_revision: str | Sequence[str] | None = "b3c2d1e0f9a8"
+down_revision: str | Sequence[str] | None = "b16e7a2c9d40"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
