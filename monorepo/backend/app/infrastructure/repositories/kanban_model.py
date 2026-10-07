@@ -12,6 +12,11 @@ class KanbanColumnModel(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="users.id", index=True)
     name: str
     position: int
+    # El `server_default` tiene que estar declarado acá y no solo en la
+    # migración: si falta, `alembic check` falla en CI y `--autogenerate`
+    # propone quitarlo. Además, durante el despliegue la versión anterior
+    # inserta columnas sin `color`, y la columna es NOT NULL.
+    color: str = Field(default="#A99A7C", sa_column_kwargs={"server_default": "#A99A7C"})
     created_at: datetime
 
 

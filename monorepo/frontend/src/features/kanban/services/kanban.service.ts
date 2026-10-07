@@ -12,7 +12,7 @@ export function createColumn(name: string, position?: number): Promise<KanbanCol
   });
 }
 
-export function updateColumn(id: string, patch: { name?: string; position?: number }): Promise<KanbanColumn> {
+export function updateColumn(id: string, patch: { name?: string; position?: number; color?: string }): Promise<KanbanColumn> {
   return apiFetch<KanbanColumn>(`/kanban/columns/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),

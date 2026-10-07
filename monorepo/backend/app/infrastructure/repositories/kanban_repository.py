@@ -20,6 +20,7 @@ class KanbanColumnRepository(IKanbanColumnRepository):
             user_id=model.user_id,
             name=model.name,
             position=model.position,
+            color=model.color,
             created_at=model.created_at,
         )
 
@@ -29,6 +30,7 @@ class KanbanColumnRepository(IKanbanColumnRepository):
             user_id=entity.user_id,
             name=entity.name,
             position=entity.position,
+            color=entity.color,
             created_at=entity.created_at,
         )
 
@@ -61,6 +63,7 @@ class KanbanColumnRepository(IKanbanColumnRepository):
         model = result.one()
         model.name = column.name
         model.position = column.position
+        model.color = column.color
         self.session.add(model)
         await self.session.commit()
         return self._to_entity(model)

@@ -2,9 +2,7 @@ from uuid import UUID
 
 from app.application.repositories.kanban_repository import IKanbanColumnRepository
 from app.application.schemas.kanban_schema import KanbanColumnResponse
-from app.domain.entities.kanban import KanbanColumn
-
-DEFAULT_COLUMNS = ["Por revisar", "En revisión", "Postulando", "Descartada"]
+from app.domain.entities.kanban import DEFAULT_COLUMN_COLORS, DEFAULT_COLUMNS, KanbanColumn
 
 
 class ListKanbanColumnsUseCase:
@@ -16,9 +14,9 @@ class ListKanbanColumnsUseCase:
 
         if not columns:
             columns = []
-            for i, name in enumerate(DEFAULT_COLUMNS):
+            for i, (name, color) in enumerate(zip(DEFAULT_COLUMNS, DEFAULT_COLUMN_COLORS)):
                 col = await self.column_repo.create(
-                    KanbanColumn(user_id=user_id, name=name, position=i)
+                    KanbanColumn(user_id=user_id, name=name, position=i, color=color)
                 )
                 columns.append(col)
 
@@ -30,6 +28,7 @@ class ListKanbanColumnsUseCase:
                     id=col.id,
                     name=col.name,
                     position=col.position,
+                    color=col.color,
                     card_count=count,
                     created_at=col.created_at,
                 )
