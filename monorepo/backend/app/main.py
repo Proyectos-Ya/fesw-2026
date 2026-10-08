@@ -8,6 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.bootstrap import bootstrap
 from app.bootstrap.runners import (
+    build_kanban_archive_runner,
     build_milestone_refresh_runner,
     build_notification_runners,
     reconcile_export_jobs,
@@ -19,6 +20,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.kanban.archive_scheduler import (
+    KanbanArchiveScheduler,
+)
 from app.infrastructure.services.milestone_refresh_scheduler import (
     MilestoneRefreshScheduler,
 )
@@ -133,6 +137,18 @@ async def lifespan(app: FastAPI):
     # que ya no vive acá (ver arriba). No compite con el cron: no toca la cola
     # `tender_metadata`, solo pide el detalle de las licitaciones que alguien
     # tiene sincronizadas y siguen abiertas, que son unas pocas por vuelta.
+    # Auto-archivado del Kanban (HdU 10, CA4). Barrido diario que marca como
+    # `auto_3m` todo lo que lleve más de 90 días en el tablero sin tocarse.
+    kanban_archive_task = None
+    if getattr(settings, "run_kanban_auto_archive", True):
+        kanban_archive_scheduler = KanbanArchiveScheduler(
+            auto_archive=build_kanban_archive_runner(age_days=90),
+        )
+        print("[Main] Iniciando auto-archivado del tablero Kanban...")
+        kanban_archive_task = asyncio.create_task(
+            kanban_archive_scheduler.start_loop()
+        )
+
     milestone_refresh_task = None
     if settings.run_milestone_refresh and app.state.calendar_providers:
         refresher = MercadoPublicoTenderRefresher(
@@ -167,6 +183,7 @@ async def lifespan(app: FastAPI):
             digest_task,
             reminder_task,
             milestone_refresh_task,
+            kanban_archive_task,
         )
         if t
     ]

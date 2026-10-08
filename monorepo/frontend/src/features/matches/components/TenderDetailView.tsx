@@ -31,6 +31,7 @@ import { ExportActions } from "@/features/tender-export/components/ExportActions
 import { ShareDialog } from "@/features/tender-sharing/components/ShareDialog";
 import { ProposalEntryCard } from "@/features/proposals/components/ProposalEntryCard";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
+import { TenderBoardSelector } from "@/features/kanban/components/TenderBoardSelector";
 import {
   daysUntilClosing,
   formatCLP,
@@ -423,6 +424,8 @@ export function TenderDetailView({ tenderId }: TenderDetailViewProps) {
             <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
             <div className="flex-1" />
+
+            <TenderBoardSelector tenderId={tenderId} />
 
             <button
               type="button"
