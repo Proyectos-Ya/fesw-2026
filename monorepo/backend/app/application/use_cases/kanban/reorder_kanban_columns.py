@@ -24,14 +24,14 @@ class ReorderKanbanColumnsUseCase:
         existing = await self.column_repo.get_by_user_id(user_id)
         existing_ids = {c.id for c in existing}
 
+        for col_id in column_ids:
+            if col_id not in existing_ids:
+                raise KanbanColumnNotFound(col_id)
+
         if len(column_ids) != len(existing_ids):
             raise ValueError(
                 "La lista de columnas está incompleta: debe incluir todas las "
                 "columnas del usuario."
             )
-
-        for col_id in column_ids:
-            if col_id not in existing_ids:
-                raise KanbanColumnNotFound(col_id)
 
         return await self.column_repo.reorder(user_id=user_id, ordered_ids=column_ids)
