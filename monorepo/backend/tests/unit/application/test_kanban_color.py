@@ -49,6 +49,15 @@ class InMemoryKanbanColumnRepository(IKanbanColumnRepository):
     async def count_cards(self, column_id: UUID) -> int:
         return 0
 
+    async def reorder(
+        self, user_id: UUID, ordered_ids: list[UUID]
+    ) -> list[KanbanColumn]:
+        for idx, col_id in enumerate(ordered_ids):
+            for i, c in enumerate(self.columns):
+                if c.id == col_id and c.user_id == user_id:
+                    self.columns[i] = c.model_copy(update={"position": idx})
+        return [c for c in self.columns if c.user_id == user_id]
+
 
 # ---------------------------------------------------------------------------
 # Validación de hex en los schemas

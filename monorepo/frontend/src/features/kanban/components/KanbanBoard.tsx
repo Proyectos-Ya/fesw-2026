@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,7 +13,9 @@ import {
 import { Icon } from "@/features/shared/components/Icon";
 import type { KanbanCard as KanbanCardType } from "../kanbanTypes";
 import { useKanban } from "../hooks/useKanban";
+import { HistoryPanel } from "./HistoryPanel";
 import { InsertColumnSlot } from "./InsertColumnSlot";
+import { KanbanBoardEditor } from "./KanbanBoardEditor";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 
@@ -29,16 +31,21 @@ export function KanbanBoard() {
     renameColumn,
     recolorColumn,
     reorderColumn,
+    reorderColumns,
     deleteColumn,
     addCard,
     moveCard,
     removeCard,
+    archiveCard,
+    reload,
   } = useKanban();
 
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [addingColLoading, setAddingColLoading] = useState(false);
   const [activeCard, setActiveCard] = useState<KanbanCardType | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const newColInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -104,6 +111,15 @@ export function KanbanBoard() {
     }
   };
 
+  // IDs de licitaciones presentes en cualquier columna del tablero. Lo pasamos a
+  // cada KanbanColumn para que el modal "Agregar licitación" oculte las guardadas
+  // que ya están en el tablero, sin necesidad de refetch. Se calcula antes de
+  // cualquier return condicional para no romper el orden de hooks.
+  const boardTenderIds = useMemo(
+    () => cards.map((c) => c.tender_id),
+    [cards],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-text-subtle">
@@ -127,12 +143,42 @@ export function KanbanBoard() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-4 border-b border-border-subtle">
-        <h1 className="font-display text-2xl font-bold text-text-strong">Tablero</h1>
-        <p className="text-sm text-text-subtle mt-0.5">
-          Organiza tus licitaciones en etapas de trabajo
-        </p>
+      <div className="px-6 py-4 border-b border-border-subtle flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-text-strong">Tablero</h1>
+          <p className="text-sm text-text-subtle mt-0.5">
+            Organiza tus licitaciones en etapas de trabajo
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong border border-border-subtle hover:border-border-default rounded-md transition-colors"
+          aria-label="Ver historial de tarjetas archivadas"
+        >
+          <Icon name="clock" size={16} />
+          <span>Historial</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditorOpen(true)}
+          aria-label="Editar tablero"
+          className="flex-none rounded-md p-2 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors"
+        >
+          <Icon name="settings" size={18} />
+        </button>
       </div>
+
+      <KanbanBoardEditor
+        open={editorOpen}
+        columns={columns}
+        onClose={() => setEditorOpen(false)}
+        onRename={(id, name) => void renameColumn(id, name)}
+        onRecolor={(id, color) => void recolorColumn(id, color)}
+        onDelete={(id) => void deleteColumn(id)}
+        onAddColumn={(name) => void addColumn(name)}
+        onReorder={(ids) => void reorderColumns(ids)}
+      />
 
       <div className="flex-1 overflow-x-auto px-6 py-5">
         <DndContext
@@ -155,6 +201,8 @@ export function KanbanBoard() {
                   canMoveRight={i < columns.length - 1}
                   onAddCard={addCard}
                   onRemoveCard={(tender_id) => void removeCard(tender_id)}
+                  boardTenderIds={boardTenderIds}
+                  onArchiveCard={(card_id) => void archiveCard(card_id)}
                 />
                 {i < columns.length - 1 && (
                   <InsertColumnSlot
@@ -229,6 +277,12 @@ export function KanbanBoard() {
           </DragOverlay>
         </DndContext>
       </div>
+
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={() => void reload()}
+      />
     </div>
   );
 }

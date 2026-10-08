@@ -7,6 +7,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from fastapi import FastAPI
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -19,6 +20,9 @@ from app.application.use_cases.calendar.refresh_synced_tender_dates import (
 from app.application.use_cases.exports.export_jobs import (
     CompleteExportJobUseCase,
     ReconcileExportJobsUseCase,
+)
+from app.application.use_cases.kanban.auto_archive_old_cards import (
+    AutoArchiveOldCardsUseCase,
 )
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.milestones.extract_tender_milestones import (
@@ -49,6 +53,7 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarEventLinkRepository,
 )
 from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.repositories.kanban_repository import KanbanCardRepository
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -122,6 +127,24 @@ async def reconcile_export_jobs() -> tuple[int, int]:
     """Al arrancar: falla lo que quedó en proceso y vacía los archivos vencidos."""
     async with async_session_maker() as session:
         return await ReconcileExportJobsUseCase(ExportJobRepository(session)).execute()
+
+
+def build_kanban_archive_runner(age_days: int = 90) -> Callable[[], Awaitable[list[UUID]]]:
+    """Runner diario del `KanbanArchiveScheduler` (HdU 10, CA4).
+
+    Abre su propia sesión en cada vuelta: el bucle vive fuera del ciclo de
+    petición de FastAPI, igual que el resto de runners de este archivo.
+    """
+
+    async def auto_archive() -> list[UUID]:
+        async with async_session_maker() as session:
+            use_case = AutoArchiveOldCardsUseCase(
+                card_repo=KanbanCardRepository(session),
+                age_days=age_days,
+            )
+            return await use_case.execute()
+
+    return auto_archive
 
 
 def build_milestone_refresh_runner(
