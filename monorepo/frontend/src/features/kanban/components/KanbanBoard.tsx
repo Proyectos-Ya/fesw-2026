@@ -158,6 +158,9 @@ export function KanbanBoard() {
         >
           <Icon name="clock" size={16} />
           <span>Historial</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setEditorOpen(true)}
           aria-label="Editar tablero"
           className="flex-none rounded-md p-2 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors"
