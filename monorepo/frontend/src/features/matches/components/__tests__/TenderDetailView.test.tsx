@@ -66,11 +66,13 @@ vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () =>
     tenderCode,
     onReadyKeyChange,
     onUploadSuccess,
+    onAnalysisFinished,
   }: {
     tenderId: string;
     tenderCode: string;
     onReadyKeyChange?: (k: string) => void;
     onUploadSuccess?: () => void;
+    onAnalysisFinished?: () => void;
   }) => (
     <div data-testid="tender-attachments-panel">
       <span>{`${tenderId}|${tenderCode}`}</span>
@@ -83,6 +85,9 @@ vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () =>
         }}
       >
         Simular subida
+      </button>
+      <button type="button" onClick={() => onAnalysisFinished?.()}>
+        Simular análisis terminado
       </button>
     </div>
   ),
@@ -188,6 +193,29 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     await user.click(screen.getByRole("button", { name: "simular subida de bases" }));
 
     expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
+  });
+
+  it("al subir un anexo recarga la tabla de hitos (plan 233)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+    const seccion = await screen.findByTestId("milestones-section");
+    const antes = seccion.getAttribute("data-refresh-key");
+
+    await user.click(screen.getByTestId("mock-simulate-attachment-upload"));
+
+    expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
+  });
+
+  it("cuando termina el análisis de los anexos vuelve a leer el análisis (plan 233)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByTestId("milestones-section");
+    await waitFor(() => expect(tenderService.getDeepAnalysisOnly).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Simular análisis terminado" }));
+
+    await waitFor(() => expect(tenderService.getDeepAnalysisOnly).toHaveBeenCalledTimes(2));
   });
 
   it("monta la entrada a la postulación (HU-20)", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type DragEvent } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent } from "react";
 
 import { compraAgilFichaUrl } from "@/features/matches/utils/links";
 import { Button } from "@/features/shared/components/Button";
@@ -19,10 +19,15 @@ interface TenderAttachmentsPanelProps {
   tenderCode: string;
   onReadyKeyChange?: (readyKey: string) => void;
   onUploadSuccess?: () => void;
+  /** El análisis + cotización con los anexos terminó: la ficha lo vuelve a leer. */
+  onAnalysisFinished?: () => void;
 }
 
 /** Tope de respaldo mientras la lista no carga; el real lo informa el backend. */
 const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+/** Una llamada a Gemini tarda segundos: se consulta seguido mientras analiza. */
+const ANALYSIS_POLL_MS = 5_000;
 
 /**
  * Anexos de la licitación (plan 233).
@@ -36,6 +41,7 @@ export function TenderAttachmentsPanel({
   tenderCode,
   onReadyKeyChange,
   onUploadSuccess,
+  onAnalysisFinished,
 }: TenderAttachmentsPanelProps) {
   const titleId = useId();
   const { state, reload, refresh } = useTenderAttachments(tenderId);
@@ -106,6 +112,15 @@ export function TenderAttachmentsPanel({
   useEffect(() => {
     onReadyKeyChange?.(readyKey);
   }, [readyKey, onReadyKeyChange]);
+
+  // Subir un anexo dispara el análisis + cotización en segundo plano (plan 233).
+  const analyzing = data?.analysis_running === true;
+  useProcessingPoll(analyzing, refresh, { intervalMs: ANALYSIS_POLL_MS, maxTicks: 60 });
+  const wasAnalyzing = useRef(false);
+  useEffect(() => {
+    if (wasAnalyzing.current && !analyzing) onAnalysisFinished?.();
+    wasAnalyzing.current = analyzing;
+  }, [analyzing, onAnalysisFinished]);
 
   const processingDisabled =
     data !== null &&
@@ -247,6 +262,12 @@ export function TenderAttachmentsPanel({
             onClose={uploads.dismissRejections}
           />
         </div>
+      )}
+
+      {analyzing && (
+        <p role="status" className="mt-3 text-xs text-text-muted">
+          Analizando anexos para el análisis de compatibilidad y la cotización…
+        </p>
       )}
 
       {processingDisabled && (

@@ -262,6 +262,16 @@ export function TenderDetailView({
     }
   }, [tenderId, analysis]);
 
+  // El análisis + cotización con los anexos corre en segundo plano (plan 233):
+  // al terminar se vuelve a leer el análisis guardado.
+  const handleAnalysisFinished = useCallback(() => {
+    void getDeepAnalysisOnly(tenderId)
+      .then((ana) => setAnalysis(ana))
+      .catch((err: unknown) => {
+        console.error("Error al recargar el análisis de compatibilidad:", err);
+      });
+  }, [tenderId]);
+
   const handleReadyKeyChange = useCallback(
     (newKey: string) => {
       setDigestRefreshKey(newKey);
@@ -588,7 +598,11 @@ export function TenderDetailView({
         onUploadSuccess={() => {
           reportInteraction("anexo");
           void triggerScoreRecalculation();
+          // Subir un anexo dispara la extracción de hitos (plan 233): la sección
+          // empieza a consultar mientras la IA lee.
+          setMilestonesRefreshKey((k) => k + 1);
         }}
+        onAnalysisFinished={handleAnalysisFinished}
       />
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-5">

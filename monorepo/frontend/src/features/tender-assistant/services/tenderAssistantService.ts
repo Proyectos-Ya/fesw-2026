@@ -15,14 +15,6 @@ export function createTenderChatSession(
 }
 
 /**
- * Tiempo límite de la subida. El backend responde después de que Gemini genera el
- * análisis y la cotización (hasta 60 s), así que los 60 s por defecto del cliente
- * la cortarían con el archivo ya guardado. Mismo valor que las acciones de la
- * postulación: cubre al backend y queda bajo el corte de 120 s de Vercel.
- */
-const UPLOAD_TIMEOUT_MS = 115_000;
-
-/**
  * Carga un documento adjunto para el asistente de la licitación (.pdf, .xlsx, .png).
  */
 export function uploadTenderDocument(
@@ -35,7 +27,6 @@ export function uploadTenderDocument(
   return apiFetch<TenderChatDocument>(`/tenders/${tenderId}/assistant/documents`, {
     method: "POST",
     body: formData,
-    timeoutMs: UPLOAD_TIMEOUT_MS,
   });
 }
 
