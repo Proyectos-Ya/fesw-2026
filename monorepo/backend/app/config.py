@@ -290,8 +290,9 @@ class Settings(BaseSettings):
     attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
 
     # --- Anexos: extracción con Gemini y resumen (plan 233, decisión 4) ---
-    # Por defecto activo en local para procesar trabajos de la cola de anexos.
-    run_attachment_processing: bool = True
+    # Apagado por defecto: cada archivo es una llamada pagada a Gemini. El
+    # docker-compose lo enciende en local; en producción hay que pedirlo.
+    run_attachment_processing: bool = False
     # Llamadas a `generateContent` por día de Chile. Al agotarse, la cola espera al
     # día siguiente sin llamar. 0 pausa la extracción sin apagar el bucle.
     attachment_gemini_daily_budget: int = Field(default=100, ge=0)
