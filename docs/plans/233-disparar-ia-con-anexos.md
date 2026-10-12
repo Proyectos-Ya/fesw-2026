@@ -1,7 +1,7 @@
 # Plan Técnico: Disparar hitos y análisis con la subida de un anexo
 
 **Issue asociada**: Refs #233  
-**Estado**: En curso (parte 2)  
+**Estado**: Completado  
 **Fecha**: 2026-10-12  
 
 ---
@@ -160,10 +160,10 @@ al chat.
 
 ### Tareas
 
-- [ ] Red/Green: `anexos_de_la_empresa` devuelve los anexos de la empresa y los
+- [x] Red/Green: `anexos_de_la_empresa` devuelve los anexos de la empresa y los
       compartidos, y marca como dañado lo que no se puede leer.
-- [ ] Red/Green: la factibilidad y el borrador mandan esos anexos a la IA y
+- [x] Red/Green: la factibilidad y el borrador mandan esos anexos a la IA y
       `analysis_documents` guarda sus nombres.
-- [ ] Cableado en `app/bootstrap/proposals.py`.
-- [ ] Red/Green: `ProposalView` muestra el panel de anexos y el aviso de bases usa
+- [x] Cableado en `app/bootstrap/proposals.py`.
+- [x] Red/Green: `ProposalView` muestra el panel de anexos y el aviso de bases usa
       los anexos.

@@ -377,3 +377,42 @@ class InMemoryAttachmentTrustRepository(IAttachmentTrustRepository):
 
     async def release(self) -> None:
         self.liberadas += 1
+
+
+async def guardar_anexo(
+    archivos: InMemoryAttachmentFileRepository,
+    oficiales,
+    almacen: FakeAttachmentStorage,
+    *,
+    tender_id: UUID,
+    nombre: str,
+    workspace_id: UUID | None,
+    contenido: bytes | None = b"%PDF",
+) -> AttachmentFile:
+    """Un anexo guardado, con su fila oficial y su objeto en el almacenamiento.
+
+    `workspace_id=None` es la versión canónica compartida. `contenido=None`
+    simula el objeto que falta en el almacenamiento. `oficiales` es un
+    `InMemoryTenderAttachmentRepository`.
+    """
+    oficial = await oficiales.create_attachment(tender_id, uuid4(), nombre)
+    compartido = workspace_id is None
+    archivo = AttachmentFile(
+        id=uuid4(),
+        tender_attachment_id=oficial.id,
+        tender_id=tender_id,
+        sha256=uuid4().hex * 2,
+        size_bytes=len(contenido or b""),
+        storage_key=f"anexos/{uuid4()}",
+        source=AttachmentFileSource.MANUAL,
+        uploader_user_id=None if compartido else uuid4(),
+        workspace_id=workspace_id,
+        visibility=AttachmentVisibility.SHARED if compartido else AttachmentVisibility.PRIVATE,
+        trust=AttachmentTrust.CORROBORATED if compartido else AttachmentTrust.PENDING,
+        status=AttachmentFileStatus.STORED,
+        created_at=datetime(2026, 10, 12, 12, 0),
+    )
+    archivos.filas[archivo.id] = archivo
+    if contenido is not None:
+        almacen.subir(archivo.storage_key, contenido)
+    return archivo
