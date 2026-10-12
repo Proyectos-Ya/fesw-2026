@@ -24,7 +24,7 @@ import { DefaultTimeDialog } from "./DefaultTimeDialog";
 
 interface MilestonesSectionProps {
   tenderId: string;
-  /** Cambia cuando se suben bases en el asistente, para recargar la tabla. */
+  /** Cambia cuando se sube un anexo en la ficha, para recargar la tabla (plan 233). */
   refreshKey?: number;
   /** Solo para pruebas: fija el "ahora" con que se calculan los plazos. */
   now?: Date;
@@ -97,15 +97,15 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
 
       {documentsCount === 0 && (
         <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
-          Sube las bases en el asistente de la licitación y la IA extraerá sola las visitas
+          Sube los anexos de la licitación en la sección Anexos y la IA extraerá sola las visitas
           técnicas, entregas y otros plazos.
         </p>
       )}
 
       {documentsCount > 0 && pendingCount === 0 && extraction !== "running" && (
         <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
-          Ya se extrajeron los hitos de todas las bases subidas. Para volver a leer una, elimínala
-          y súbela de nuevo en el asistente.
+          Ya se extrajeron los hitos de todos los anexos subidos. Para volver a leer uno, bórralo
+          y súbelo de nuevo en Anexos.
         </p>
       )}
 
