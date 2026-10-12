@@ -219,3 +219,39 @@ def test_las_rutas_nuevas_aparecen_en_openapi():
         operacion = paths[ruta][metodo]
         assert operacion["summary"] == resumen
         assert operacion["tags"] == ["Tender attachments"]
+
+
+def test_subir_un_anexo_dispara_hitos_y_analisis():
+    # Plan 233: los hitos y el análisis + cotización se agendan al guardar un anexo.
+    from app.application.services.schedule_ai_on_stored import (
+        ScheduleMilestonesOnStored,
+        ScheduleTenderAnalysisOnStored,
+    )
+
+    promocion = attachments.get_attachment_promotion_listener(
+        None, attachments.get_attachment_visibility_listener()
+    )
+    hitos, analisis = object(), object()
+
+    guardado = attachments.get_attachment_stored_listener(
+        promocion, milestones=hitos, analysis=analisis
+    )
+
+    tipos = [type(listener) for listener in guardado.listeners]
+    assert tipos == [
+        AttachmentPromotionListener,
+        ScheduleMilestonesOnStored,
+        ScheduleTenderAnalysisOnStored,
+    ]
+    assert guardado.listeners[1].extraction is hitos
+    assert guardado.listeners[2].analysis is analisis
+
+
+def test_bootstrap_deja_el_analisis_en_segundo_plano_en_app_state(monkeypatch):
+    from app.infrastructure.services.tender_analysis_background import (
+        AsyncioTenderAnalysisBackground,
+    )
+
+    app = _bootstrap(monkeypatch, None)
+
+    assert isinstance(app.state.tender_analysis_background, AsyncioTenderAnalysisBackground)

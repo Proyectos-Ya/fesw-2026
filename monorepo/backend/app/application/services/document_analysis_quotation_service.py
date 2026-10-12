@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.quotation import QuotationInput
 from app.domain.entities.supplier import Supplier
@@ -17,12 +18,14 @@ class IDocumentAnalysisAndQuotationService(ABC):
     @abstractmethod
     async def analyze_and_quote(
         self,
-        document_bytes: bytes,
-        file_name: str,
-        file_type: str,
+        documents: list[DocumentContextDTO],
         tender: Tender,
         supplier: Supplier,
         matching_score: float | None = None,
     ) -> DocumentAnalysisAndQuotationResult:
-        """Genera conjuntamente análisis profundo y cotización estimada a partir de un documento y contexto."""
+        """Genera en una sola llamada el análisis profundo y la cotización estimada.
+
+        `documents` son los anexos de la licitación (plan 233). Los tipos que el
+        servicio no sabe mandar se omiten.
+        """
         ...

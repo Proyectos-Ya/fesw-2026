@@ -260,6 +260,7 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*tareas, return_exceptions=True)
     await app.state.export_background.shutdown()
     await app.state.milestone_extraction_background.shutdown()
+    await app.state.tender_analysis_background.shutdown()
 
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()

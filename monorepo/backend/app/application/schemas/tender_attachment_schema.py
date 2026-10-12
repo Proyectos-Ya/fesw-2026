@@ -63,6 +63,8 @@ class TenderAttachmentsResponse(BaseModel):
     can_upload: bool = False
     max_upload_size_bytes: int = MAX_ATTACHMENT_SIZE_BYTES
     processing_enabled: bool = False
+    # El análisis + cotización de la empresa con sus anexos está corriendo (plan 233).
+    analysis_running: bool = False
 
 
 class AttachmentUploadUrlRequest(BaseModel):

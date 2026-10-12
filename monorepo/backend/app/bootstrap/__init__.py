@@ -30,6 +30,7 @@ from app.bootstrap.routes import register_routes
 from app.bootstrap.runners import (
     build_export_background,
     build_milestone_extraction_background,
+    build_tender_analysis_background,
 )
 from app.config import settings
 from app.infrastructure.services.attachment_processing_scheduler import (
@@ -126,6 +127,7 @@ def bootstrap(app: FastAPI) -> None:
 
     app.state.export_background = build_export_background(app)
     app.state.milestone_extraction_background = build_milestone_extraction_background(app)
+    app.state.tender_analysis_background = build_tender_analysis_background(app)
 
     # Los coeficientes son inmutables y salen de la configuración, así que una
     # sola instancia sirve a todas las peticiones. El repositorio de vectores de

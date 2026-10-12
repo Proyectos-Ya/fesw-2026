@@ -44,6 +44,9 @@ from app.application.services.milestone_extraction_background import (
 from app.application.services.proposal_ai_service import IProposalAIService
 from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.application.services.reranker_service import IRerankerService
+from app.application.services.tender_analysis_background import (
+    ITenderAnalysisBackground,
+)
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
@@ -161,6 +164,10 @@ def get_milestone_extraction_service(request: Request) -> IMilestoneExtractionAI
 
 def get_milestone_extraction_background(request: Request) -> IMilestoneExtractionBackground:
     return request.app.state.milestone_extraction_background
+
+
+def get_tender_analysis_background(request: Request) -> ITenderAnalysisBackground:
+    return request.app.state.tender_analysis_background
 
 
 def get_calendar_providers(request: Request) -> CalendarProviders:

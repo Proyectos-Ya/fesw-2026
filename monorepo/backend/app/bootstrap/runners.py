@@ -53,6 +53,9 @@ from app.application.use_cases.notifications.scan_supplier_for_alerts import (
 from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle import (
     RankingTelemetryCycleResult,
 )
+from app.application.use_cases.tender_attachments.analyze_tender_attachments import (
+    AnalyzeTenderAttachmentsUseCase,
+)
 from app.bootstrap.calendar import build_sync_milestones_use_case
 from app.bootstrap.matching import (
     build_compatibility_scorer,
@@ -80,6 +83,7 @@ from app.infrastructure.repositories.notification_repository import (
     NotificationPreferenceRepository,
     NotificationRepository,
 )
+from app.infrastructure.repositories.quotation_repository import QuotationRepository
 from app.infrastructure.repositories.sql_attachment_file_repository import (
     SqlAttachmentFileRepository,
 )
@@ -104,6 +108,9 @@ from app.infrastructure.services.milestone_extraction_background import (
 )
 from app.infrastructure.services.ranking_telemetry_jobs import (
     build_ranking_telemetry_cycle,
+)
+from app.infrastructure.services.tender_analysis_background import (
+    AsyncioTenderAnalysisBackground,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,6 +158,30 @@ def build_milestone_extraction_background(app: FastAPI) -> AsyncioMilestoneExtra
             )
 
     return AsyncioMilestoneExtractionBackground(open_extraction)
+
+
+def build_tender_analysis_background(app: FastAPI) -> AsyncioTenderAnalysisBackground:
+    """Análisis + cotización con los anexos, apenas se sube uno (plan 233).
+
+    Cada pasada abre su propia sesión: cuando Gemini termina, la sesión de la
+    subida que la originó ya se cerró.
+    """
+
+    @asynccontextmanager
+    async def open_analysis():
+        async with async_session_maker() as session:
+            yield AnalyzeTenderAttachmentsUseCase(
+                suppliers=SupplierRepository(session),
+                tenders=TenderRepository(session),
+                files=SqlAttachmentFileRepository(session),
+                attachments=SqlTenderAttachmentRepository(session),
+                storage=app.state.attachment_storage,
+                matching_results=MatchingResultRepository(session),
+                quotations=QuotationRepository(session),
+                service=app.state.document_analysis_quotation_service,
+            )
+
+    return AsyncioTenderAnalysisBackground(open_analysis)
 
 
 async def reconcile_export_jobs() -> tuple[int, int]:

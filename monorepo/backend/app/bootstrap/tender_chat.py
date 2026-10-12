@@ -29,8 +29,6 @@ from app.bootstrap.repositories import (
     AttachmentExtractionRepoDep,
     AttachmentFileRepoDep,
     GeminiUsageRepoDep,
-    MatchingResultRepoDep,
-    QuotationRepoDep,
     SupplierRepoDep,
     TenderAttachmentRepoDep,
     TenderChatRepoDep,
@@ -39,9 +37,7 @@ from app.bootstrap.repositories import (
 )
 from app.bootstrap.services import (
     AttachmentStorageDep,
-    DocumentAnalysisQuotationServiceDep,
     DocumentValidatorDep,
-    MilestoneExtractionBackgroundDep,
     get_tender_assistant_ai_service,
 )
 
@@ -49,22 +45,11 @@ from app.bootstrap.services import (
 def get_upload_tender_chat_doc_use_case(
     chat_repo: TenderChatRepoDep,
     validator_service: DocumentValidatorDep,
-    milestone_extraction: MilestoneExtractionBackgroundDep,
-    supplier_repo: SupplierRepoDep,
-    tender_repo: TenderRepoDep,
-    quotation_repo: QuotationRepoDep,
-    matching_result_repo: MatchingResultRepoDep,
-    unified_service: DocumentAnalysisQuotationServiceDep,
 ) -> UploadTenderChatDocumentUseCase:
+    # Subir al chat ya no dispara hitos ni análisis: los disparan los anexos (plan 233).
     return UploadTenderChatDocumentUseCase(
         chat_repo=chat_repo,
         validator_service=validator_service,
-        milestone_extraction=milestone_extraction,
-        supplier_repo=supplier_repo,
-        tender_repo=tender_repo,
-        quotation_repo=quotation_repo,
-        matching_result_repo=matching_result_repo,
-        unified_service=unified_service,
     )
 
 

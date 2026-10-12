@@ -410,3 +410,29 @@ async def test_sin_lector_processing_queda_en_none():
     assert res.official[0].processing is None
     assert res.processing_enabled is False
 
+
+
+class AnalisisFijo:
+    def __init__(self, en_curso: set[tuple[UUID, UUID]]) -> None:
+        self.en_curso = en_curso
+
+    def is_running(self, workspace_id, tender_id) -> bool:
+        return (workspace_id, tender_id) in self.en_curso
+
+
+async def test_informa_si_se_estan_analizando_los_anexos_de_la_empresa():
+    # Así el panel muestra "Analizando anexos…" y la ficha recarga al terminar (plan 233).
+    repo, tender_id, _ = await _con_un_anexo()
+    analisis = AnalisisFijo({(WS, tender_id)})
+
+    propia = await _caso(repo, analysis=analisis).execute(
+        tender_id, access=WorkspaceAccess(WS, can_upload=True)
+    )
+    otra = await _caso(repo, analysis=analisis).execute(
+        tender_id, access=WorkspaceAccess(OTRA, can_upload=True)
+    )
+    sin_empresa = await _caso(repo, analysis=analisis).execute(tender_id)
+
+    assert propia.analysis_running is True
+    assert otra.analysis_running is False
+    assert sin_empresa.analysis_running is False

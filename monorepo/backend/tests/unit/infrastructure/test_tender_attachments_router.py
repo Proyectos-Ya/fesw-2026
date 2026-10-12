@@ -127,6 +127,7 @@ def test_lista_los_anexos_oficiales_con_su_estado_y_la_fecha_en_utc(api):
         "can_upload": False,
         "max_upload_size_bytes": 52428800,
         "processing_enabled": False,
+        "analysis_running": False,
     }
     api.use_case.execute.assert_awaited_once_with(api.tender_id, access=None)
 
@@ -146,6 +147,7 @@ def test_una_lista_sin_sincronizar_devuelve_null(api):
         "can_upload": False,
         "max_upload_size_bytes": 52428800,
         "processing_enabled": False,
+        "analysis_running": False,
     }
 
 

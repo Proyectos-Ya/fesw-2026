@@ -32,6 +32,16 @@ from app.application.services.attachment_visibility_listener import (
 from app.application.services.enqueue_extraction_listener import (
     EnqueueExtractionOnStored,
 )
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+)
+from app.application.services.schedule_ai_on_stored import (
+    ScheduleMilestonesOnStored,
+    ScheduleTenderAnalysisOnStored,
+)
+from app.application.services.tender_analysis_background import (
+    ITenderAnalysisBackground,
+)
 from app.application.use_cases.attachment_processing.build_tender_digest import (
     BuildTenderDigestUseCase,
 )
@@ -67,6 +77,8 @@ from app.bootstrap.repositories import (
 from app.bootstrap.services import (
     AttachmentStorageDep,
     get_attachment_processing_notifier,
+    get_milestone_extraction_background,
+    get_tender_analysis_background,
 )
 from app.config import settings
 from app.infrastructure.db import async_session_maker
@@ -130,11 +142,23 @@ def get_attachment_stored_listener(
         IAttachmentProcessingNotifier | None,
         Depends(get_attachment_processing_notifier),
     ] = None,
+    milestones: Annotated[
+        IMilestoneExtractionBackground | None,
+        Depends(get_milestone_extraction_background),
+    ] = None,
+    analysis: Annotated[
+        ITenderAnalysisBackground | None, Depends(get_tender_analysis_background)
+    ] = None,
 ) -> IAttachmentStoredListener:
-    # Decisión 6 (promoción) y decisión 4 (extracción).
+    # Decisión 6 (promoción), decisión 4 (extracción) y, al subir un anexo, los
+    # hitos y el análisis + cotización (plan 233-disparar-ia-con-anexos).
     listeners: list[IAttachmentStoredListener] = [promotion]
     if jobs is not None and notifier is not None:
         listeners.append(EnqueueExtractionOnStored(jobs=jobs, notifier=notifier))
+    if milestones is not None:
+        listeners.append(ScheduleMilestonesOnStored(milestones))
+    if analysis is not None:
+        listeners.append(ScheduleTenderAnalysisOnStored(analysis))
     return CompositeAttachmentStoredListener(listeners)
 
 
@@ -162,6 +186,9 @@ def get_tender_attachments_use_case(
         IAttachmentProcessingStatusReader | None,
         Depends(get_attachment_processing_status_reader),
     ] = None,
+    analysis: Annotated[
+        ITenderAnalysisBackground | None, Depends(get_tender_analysis_background)
+    ] = None,
 ) -> GetTenderAttachmentsUseCase:
     return GetTenderAttachmentsUseCase(
         attachments,
@@ -170,6 +197,7 @@ def get_tender_attachments_use_case(
         storage_available=storage is not None,
         processing=status,
         processing_enabled=settings.run_attachment_processing and storage is not None,
+        analysis=analysis,
     )
 
 
