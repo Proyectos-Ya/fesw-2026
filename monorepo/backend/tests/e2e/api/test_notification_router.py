@@ -11,7 +11,17 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app import bootstrap
+from app.bootstrap.notifications import (
+    get_count_unread_use_case,
+    get_list_deliveries_use_case,
+    get_list_notifications_use_case,
+    get_mark_all_read_use_case,
+    get_mark_notification_read_use_case,
+    get_notification_preferences_use_case,
+    get_update_notification_preferences_use_case,
+)
+from app.bootstrap.repositories import get_supplier_repo, get_user_repo
+from app.bootstrap.services import get_embedding_service, get_supplier_vector_repo
 from app.domain.entities.notification import (
     MilestoneReminder,
     Notification,
@@ -82,37 +92,37 @@ async def api(dobles: Dobles) -> AsyncGenerator[AsyncClient, None]:
         UpdateNotificationPreferencesUseCase,
     )
 
-    app.dependency_overrides[bootstrap.get_user_repo] = lambda: dobles.users
-    app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: (
+    app.dependency_overrides[get_user_repo] = lambda: dobles.users
+    app.dependency_overrides[get_supplier_repo] = lambda: (
         InMemorySupplierRepository()
     )
-    app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: (
+    app.dependency_overrides[get_supplier_vector_repo] = lambda: (
         FakeSupplierVectorRepository()
     )
-    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
+    app.dependency_overrides[get_embedding_service] = lambda: (
         FakeEmbeddingService()
     )
-    app.dependency_overrides[bootstrap.get_list_notifications_use_case] = lambda: (
+    app.dependency_overrides[get_list_notifications_use_case] = lambda: (
         ListNotificationsUseCase(
             notification_repo=dobles.notifications, tender_repo=dobles.tenders
         )
     )
-    app.dependency_overrides[bootstrap.get_count_unread_use_case] = lambda: (
+    app.dependency_overrides[get_count_unread_use_case] = lambda: (
         CountUnreadNotificationsUseCase(notification_repo=dobles.notifications)
     )
-    app.dependency_overrides[bootstrap.get_mark_notification_read_use_case] = lambda: (
+    app.dependency_overrides[get_mark_notification_read_use_case] = lambda: (
         MarkNotificationReadUseCase(notification_repo=dobles.notifications)
     )
-    app.dependency_overrides[bootstrap.get_mark_all_read_use_case] = lambda: (
+    app.dependency_overrides[get_mark_all_read_use_case] = lambda: (
         MarkAllNotificationsReadUseCase(notification_repo=dobles.notifications)
     )
-    app.dependency_overrides[bootstrap.get_notification_preferences_use_case] = lambda: (
+    app.dependency_overrides[get_notification_preferences_use_case] = lambda: (
         GetNotificationPreferencesUseCase(preference_repo=dobles.preferences)
     )
-    app.dependency_overrides[bootstrap.get_update_notification_preferences_use_case] = (
+    app.dependency_overrides[get_update_notification_preferences_use_case] = (
         lambda: UpdateNotificationPreferencesUseCase(preference_repo=dobles.preferences)
     )
-    app.dependency_overrides[bootstrap.get_list_deliveries_use_case] = lambda: (
+    app.dependency_overrides[get_list_deliveries_use_case] = lambda: (
         ListDeliveriesUseCase(delivery_repo=dobles.deliveries)
     )
 

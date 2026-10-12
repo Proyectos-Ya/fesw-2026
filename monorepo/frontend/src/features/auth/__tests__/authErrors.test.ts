@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mensajeDeErrorAuth } from "../authErrors";
+import { correoSinConfirmar, mensajeDeErrorAuth } from "../authErrors";
 
 /** Imita el AuthError de supabase-js: un Error con `code` opcional. */
 function authError(message: string, code?: string): Error {
@@ -43,5 +43,20 @@ describe("mensajeDeErrorAuth", () => {
 
   it("deja pasar un mensaje que no conoce", () => {
     expect(mensajeDeErrorAuth(authError("Algo nuevo"), RESPALDO)).toBe("Algo nuevo");
+  });
+});
+
+describe("correoSinConfirmar", () => {
+  it("reconoce el error por su código", () => {
+    expect(correoSinConfirmar(authError("x", "email_not_confirmed"))).toBe(true);
+  });
+
+  it("reconoce el error por su mensaje", () => {
+    expect(correoSinConfirmar(authError("Email not confirmed"))).toBe(true);
+  });
+
+  it("no confunde otros errores", () => {
+    expect(correoSinConfirmar(authError("Invalid login credentials", "invalid_credentials"))).toBe(false);
+    expect(correoSinConfirmar("texto")).toBe(false);
   });
 });

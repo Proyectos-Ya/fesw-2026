@@ -1,11 +1,12 @@
-"""Las dependencias de la lista oficial de anexos en bootstrap.py resuelven bien
+"""Las dependencias de la lista oficial de anexos en el bootstrap resuelven bien
 y la ruta queda montada en la aplicación (sin NameError ni errores de importación)."""
 
 from unittest.mock import AsyncMock
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import get_tender_attachment_repo, get_tender_attachments_use_case
+from app.bootstrap.attachments import get_tender_attachments_use_case
+from app.bootstrap.repositories import get_tender_attachment_repo
 from app.infrastructure.repositories.sql_attachment_file_repository import (
     SqlAttachmentFileRepository,
 )

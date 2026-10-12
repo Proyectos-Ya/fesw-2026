@@ -42,7 +42,7 @@ const GENERIC_MESSAGE = "No se pudo subir el archivo. Inténtalo nuevamente.";
 /** Mensaje para la persona; los errores con `code` del backend ya vienen redactados. */
 function uploadErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.code !== null) return error.message;
+    if (error.code !== undefined) return error.message;
     if (error.status === 422) return "Los datos del archivo no son válidos.";
     return GENERIC_MESSAGE;
   }

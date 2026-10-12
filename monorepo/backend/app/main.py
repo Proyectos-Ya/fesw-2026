@@ -6,12 +6,14 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import (
-    bootstrap,
+from app.bootstrap import bootstrap
+from app.bootstrap.runners import (
     build_attachment_processing_runner,
+    build_kanban_archive_runner,
     build_milestone_refresh_runner,
     build_notification_runners,
     build_ranking_telemetry_runner,
+    reconcile_export_jobs,
 )
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
@@ -25,6 +27,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.attachment_processing_scheduler import (
     AttachmentProcessingScheduler,
+)
+from app.infrastructure.services.kanban.archive_scheduler import (
+    KanbanArchiveScheduler,
 )
 from app.infrastructure.services.milestone_refresh_scheduler import (
     MilestoneRefreshScheduler,
@@ -80,6 +85,12 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSession(engine) as session:
         await seed_database_metadata(session)
+
+    # Exportaciones en segundo plano (HdU 19): viven en la memoria del proceso,
+    # así que las que quedaron a medias antes de este arranque ya no terminarán.
+    colgadas, purgadas = await reconcile_export_jobs()
+    if colgadas or purgadas:
+        print(f"[Main] Exportaciones: {colgadas} interrumpidas, {purgadas} vencidas limpiadas")
 
     if "suppliers" not in existing:
         app.state.qdrant_client.create_collection(
@@ -145,6 +156,18 @@ async def lifespan(app: FastAPI):
     # que ya no vive acá (ver arriba). No compite con el cron: no toca la cola
     # `tender_metadata`, solo pide el detalle de las licitaciones que alguien
     # tiene sincronizadas y siguen abiertas, que son unas pocas por vuelta.
+    # Auto-archivado del Kanban (HdU 10, CA4). Barrido diario que marca como
+    # `auto_3m` todo lo que lleve más de 90 días en el tablero sin tocarse.
+    kanban_archive_task = None
+    if getattr(settings, "run_kanban_auto_archive", True):
+        kanban_archive_scheduler = KanbanArchiveScheduler(
+            auto_archive=build_kanban_archive_runner(age_days=90),
+        )
+        print("[Main] Iniciando auto-archivado del tablero Kanban...")
+        kanban_archive_task = asyncio.create_task(
+            kanban_archive_scheduler.start_loop()
+        )
+
     milestone_refresh_task = None
     if settings.run_milestone_refresh and app.state.calendar_providers:
         refresher = MercadoPublicoTenderRefresher(
@@ -227,6 +250,7 @@ async def lifespan(app: FastAPI):
             milestone_refresh_task,
             ranking_telemetry_task,
             attachment_processing_task,
+            kanban_archive_task,
         )
         if t
     ]
@@ -234,6 +258,8 @@ async def lifespan(app: FastAPI):
         tarea.cancel()
     if tareas:
         await asyncio.gather(*tareas, return_exceptions=True)
+    await app.state.export_background.shutdown()
+    await app.state.milestone_extraction_background.shutdown()
 
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()

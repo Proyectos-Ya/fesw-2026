@@ -5,7 +5,7 @@ class CalendarError(Exception):
     """Base de los errores de sincronización con calendarios externos."""
 
 
-_NOMBRES = {"google": "Google Calendar"}
+_NOMBRES = {"google": "Google Calendar", "outlook": "Outlook Calendar"}
 
 
 class CalendarNotConfigured(CalendarError):
@@ -34,7 +34,7 @@ class CalendarAuthExpired(CalendarError):
 class CalendarPermissionMissing(CalendarError):
     def __init__(
         self,
-        message: str = "No autorizaste el acceso a tu calendario. Vuelve a conectar y marca el permiso de Google Calendar.",
+        message: str = "No autorizaste el acceso a tu calendario. Vuelve a conectar y acepta el permiso para crear eventos en tu calendario.",
     ):
         super().__init__(message)
 

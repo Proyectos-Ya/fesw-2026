@@ -26,7 +26,7 @@ def api():
         updated_at=utc_now_naive(),
         items=[
             MaterialItem(
-                description="Cemento", unit="saco", quantity="2.5", unit_price="100.25"
+                description="Cemento", unit="saco", quantity="2", unit_price="100"
             )
         ],
     )
@@ -47,7 +47,7 @@ def api():
     )
 
 
-def test_roundtrip_decimal_response(api):
+def test_roundtrip_integer_response(api):
     client, use_case, path, *_ = api
     payload = {
         "currency": "CLP",
@@ -55,21 +55,23 @@ def test_roundtrip_decimal_response(api):
             {
                 "description": "Cemento",
                 "unit": "saco",
-                "quantity": "2.5",
-                "unit_price": "100.25",
+                "quantity": "2",
+                "unit_price": "100",
             }
         ],
     }
     response = client.put(path, json=payload)
     assert response.status_code == 200
-    assert response.json()["total"] == "250.63"
-    assert client.get(path).json()["items"][0]["subtotal"] == "250.63"
+    assert response.json()["total"] == "200"
+    assert client.get(path).json()["items"][0]["subtotal"] == "200"
 
 
 @pytest.mark.parametrize(
     "payload",
     [
         {"items": []},
+        {"items": [{"description": "x", "unit": "u", "quantity": "1.5", "unit_price": "10"}]},
+        {"items": [{"description": "x", "unit": "u", "quantity": "1", "unit_price": "10.5"}]},
         {"items": [{"description": "x", "unit": "u", "quantity": 0, "unit_price": 10}]},
         {"items": [{"description": "x", "unit": "u", "quantity": 1, "unit_price": -1}]},
         {

@@ -16,7 +16,12 @@ from app.application.repositories.tender_repository import (
 from app.application.services.document_analysis_quotation_service import (
     IDocumentAnalysisAndQuotationService,
 )
-from app.application.services.document_validator_service import IDocumentValidatorService
+from app.application.services.document_validator_service import (
+    IDocumentValidatorService,
+)
+from app.application.services.milestone_extraction_background import (
+    IMilestoneExtractionBackground,
+)
 from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.deep_analysis import DeepAnalysis
 from app.domain.entities.quotation import Quotation
@@ -55,6 +60,7 @@ class UploadTenderChatDocumentUseCase:
         quotation_repo: Optional[IQuotationRepository] = None,
         matching_result_repo: Optional[IMatchingResultRepository] = None,
         unified_service: Optional[IDocumentAnalysisAndQuotationService] = None,
+        milestone_extraction: Optional[IMilestoneExtractionBackground] = None,
     ):
         self.chat_repo = chat_repo
         self.validator_service = validator_service
@@ -63,6 +69,7 @@ class UploadTenderChatDocumentUseCase:
         self.quotation_repo = quotation_repo
         self.matching_result_repo = matching_result_repo
         self.unified_service = unified_service
+        self.milestone_extraction = milestone_extraction
 
     async def execute(
         self,
@@ -119,7 +126,14 @@ class UploadTenderChatDocumentUseCase:
         # 5. Persistir documento
         saved_doc = await self.chat_repo.save_document(doc=doc, file_bytes=file_bytes)
 
-        # 6. Generar análisis profundo y cotización estimada si los servicios están configurados
+        # 6. Extraer los hitos de las bases sin que el usuario tenga que pedirlo
+        # (HU-16, criterio 1). Corre en segundo plano y va antes del análisis: el
+        # análisis puede salir antes (sin empresa, sin licitación) y los hitos no
+        # dependen de él.
+        if self.milestone_extraction is not None:
+            self.milestone_extraction.schedule(user_id, tender_id)
+
+        # 7. Generar análisis profundo y cotización estimada si los servicios están configurados
         if (
             self.unified_service is None
             or self.tender_repo is None
@@ -182,11 +196,15 @@ class UploadTenderChatDocumentUseCase:
 
             # Persistir DeepAnalysis y Quotation
             saved_analysis = await self.tender_repo.save_deep_analysis(unified_result.analysis)
-            saved_quotation = await self.quotation_repo.save(
-                supplier_id=supplier.id,
-                tender_id=tender.id,
-                data=unified_result.quotation,
-            )
+            # Hay una sola cotización por empresa y licitación, y el usuario la edita
+            # en la postulación: la de la IA solo llena una vacía, nunca la reemplaza.
+            saved_quotation = await self.quotation_repo.get(supplier.id, tender.id)
+            if saved_quotation is None:
+                saved_quotation = await self.quotation_repo.save(
+                    supplier_id=supplier.id,
+                    tender_id=tender.id,
+                    data=unified_result.quotation,
+                )
 
             return UploadTenderChatDocumentResult(
                 **saved_doc.model_dump(),

@@ -11,14 +11,13 @@ from app.application.use_cases.questions.answer_question_use_case import (
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
-
-# from app.bootstrap import get_answer_question_use_case
 from app.domain.entities.question import Question
 from app.domain.entities.user import User
 
 
 def create_question_router(
     get_smart_question_use_case: Callable,
+    get_answer_question_use_case: Callable,
     get_current_user: Callable,
 ) -> APIRouter:
 
@@ -27,8 +26,6 @@ def create_question_router(
         tags=["Smart Questions"],
         dependencies=[Depends(get_current_user)],  # Obliga a estar logeado
     )
-
-    from app.bootstrap import get_answer_question_use_case
 
     @router.get(
         "",

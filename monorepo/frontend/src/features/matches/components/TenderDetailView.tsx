@@ -31,10 +31,13 @@ import { compraAgilFichaUrl } from "../utils/links";
 import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
-import { QuotationEditor } from "@/features/quotations/QuotationEditor";
 import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
 import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
+import { ExportActions } from "@/features/tender-export/components/ExportActions";
+import { ShareDialog } from "@/features/tender-sharing/components/ShareDialog";
+import { ProposalEntryCard } from "@/features/proposals/components/ProposalEntryCard";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
+import { TenderBoardSelector } from "@/features/kanban/components/TenderBoardSelector";
 import {
   daysUntilClosing,
   formatCLP,
@@ -110,8 +113,12 @@ export function TenderDetailView({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  // Sube al subir bases en el asistente: la tabla de hitos recarga y muestra
+  // que la IA las está leyendo.
+  const [milestonesRefreshKey, setMilestonesRefreshKey] = useState(0);
   const [isSaved, setIsSaved] = useState(false);
   const [digestRefreshKey, setDigestRefreshKey] = useState("");
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const reportInteraction = useTenderInteractionReporter(
     tenderId,
@@ -506,6 +513,18 @@ export function TenderDetailView({
 
             <div className="flex-1" />
 
+            <TenderBoardSelector tenderId={tenderId} />
+
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(true)}
+              aria-label="Compartir licitación"
+              title="Compartir con un enlace de 7 días"
+              className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95"
+            >
+              <Icon name="share-2" size={18} />
+            </button>
+
             <button
               type="button"
               onClick={handleToggleSave}
@@ -553,6 +572,10 @@ export function TenderDetailView({
                 </span>
               </>
             )}
+          </div>
+
+          <div className="mt-4">
+            <ExportActions tenderId={tenderId} />
           </div>
         </div>
       </header>
@@ -636,13 +659,9 @@ export function TenderDetailView({
         </div>
       </Section>
 
+      <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
+
       {/* AI Compatibility Analysis CTA Card */}
-      <QuotationEditor
-        tenderId={tenderId}
-        tenderCode={tender.code}
-        tenderItems={tender.items}
-        onSaved={() => reportInteraction("cotizacion")}
-      />
       <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
@@ -697,6 +716,8 @@ export function TenderDetailView({
           )}
         </div>
       </div>
+
+      <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
       {/* El desfase se avisa, no se corrige solo: regenerar cuesta una llamada
           a la IA, así que la decisión es del usuario. */}
@@ -819,7 +840,7 @@ export function TenderDetailView({
       )}
 
       <Section title="Hitos y fechas importantes" icon="calendar">
-        <MilestonesSection tenderId={tenderId} />
+        <MilestonesSection tenderId={tenderId} refreshKey={milestonesRefreshKey} />
         <p className="mt-4 text-xs text-text-subtle">
           Última modificación en Mercado Público:{" "}
           {formatDateTime(tender.last_change_at)}
@@ -858,6 +879,7 @@ export function TenderDetailView({
         tenderTitle={tender.name}
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
+        onDocumentsChanged={() => setMilestonesRefreshKey((k) => k + 1)}
       />
     </section>
   );

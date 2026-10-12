@@ -24,6 +24,7 @@ from app.application.services.compatibility_formula import (
     CompatibilityFormula,
 )
 from app.application.services.compatibility_scorer import CompatibilityScorer
+from app.bootstrap import matching, runners, services
 from app.config import settings
 from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
     QdrantTenderItemVectorRepository,
@@ -51,7 +52,7 @@ def test_la_formula_sale_de_la_configuracion(monkeypatch) -> None:
     for nombre, valor in valores.items():
         monkeypatch.setattr(settings, nombre, valor)
 
-    formula = bootstrap.build_compatibility_formula()
+    formula = matching.build_compatibility_formula()
 
     assert formula == CompatibilityFormula(
         relevant=CalibrationCoefficients(
@@ -66,14 +67,14 @@ def test_la_formula_sale_de_la_configuracion(monkeypatch) -> None:
 def test_la_version_del_modelo_identifica_la_formula(monkeypatch) -> None:
     monkeypatch.setattr(settings, "embedding_model", "BAAI/bge-m3")
 
-    assert bootstrap.compatibility_model_version() == "BAAI/bge-m3+compat-calib-v1"
+    assert matching.compatibility_model_version() == "BAAI/bge-m3+compat-calib-v1"
 
 
 def test_la_version_sigue_al_modelo_de_embeddings(monkeypatch) -> None:
     """Cambiar de modelo de embeddings también tiene que vencer la caché."""
     monkeypatch.setattr(settings, "embedding_model", "otro/modelo")
 
-    assert bootstrap.compatibility_model_version().startswith("otro/modelo+")
+    assert matching.compatibility_model_version().startswith("otro/modelo+")
 
 
 def test_get_compatibility_scorer_arma_el_scorer_con_todas_sus_piezas() -> None:
@@ -81,8 +82,8 @@ def test_get_compatibility_scorer_arma_el_scorer_con_todas_sus_piezas() -> None:
     embedding = FakeEmbeddingService()
     item_repo = InMemoryTenderItemVectorRepository()
 
-    scorer = bootstrap.get_compatibility_scorer(
-        session=MagicMock(),
+    scorer = matching.get_compatibility_scorer(
+        matching_result_repo=MagicMock(),
         reranker_service=reranker,
         embedding_service=embedding,
         item_vector_repo=item_repo,
@@ -94,24 +95,27 @@ def test_get_compatibility_scorer_arma_el_scorer_con_todas_sus_piezas() -> None:
     assert scorer.embedding_service is embedding
     assert scorer.item_vector_repo is item_repo
     assert scorer.formula is FORMULA_DE_PRUEBA
-    assert scorer.model_version == bootstrap.compatibility_model_version()
+    assert scorer.model_version == matching.compatibility_model_version()
 
 
 def test_el_ranking_y_el_scorer_comparten_la_version_del_modelo() -> None:
     """Si difirieran, el ranking guardaría filas que él mismo daría por vencidas
     en la siguiente petición y recalcularía en cada visita."""
-    scorer = bootstrap.get_compatibility_scorer(
-        session=MagicMock(),
+    scorer = matching.get_compatibility_scorer(
+        matching_result_repo=MagicMock(),
         reranker_service=FakeRerankerService(),
         embedding_service=FakeEmbeddingService(),
         item_vector_repo=InMemoryTenderItemVectorRepository(),
         formula=FORMULA_DE_PRUEBA,
     )
 
-    use_case = bootstrap.get_rank_tenders_use_case(
-        session=MagicMock(),
+    use_case = matching.get_rank_tenders_use_case(
+        supplier_repo=MagicMock(),
         supplier_vector_repo=MagicMock(),
         tender_vector_repo=MagicMock(),
+        tender_repo=MagicMock(),
+        matching_result_repo=MagicMock(),
+        lexical_tender_repo=MagicMock(),
         scorer=scorer,
         embedding_service=FakeEmbeddingService(),
         item_vector_repo=InMemoryTenderItemVectorRepository(),
@@ -127,10 +131,13 @@ def test_el_ranking_recibe_el_repo_de_partidas_y_el_embedding_de_la_busqueda_por
     embedding = FakeEmbeddingService()
     item_repo = InMemoryTenderItemVectorRepository()
 
-    use_case = bootstrap.get_rank_tenders_use_case(
-        session=MagicMock(),
+    use_case = matching.get_rank_tenders_use_case(
+        supplier_repo=MagicMock(),
         supplier_vector_repo=MagicMock(),
         tender_vector_repo=MagicMock(),
+        tender_repo=MagicMock(),
+        matching_result_repo=MagicMock(),
+        lexical_tender_repo=MagicMock(),
         scorer=MagicMock(),
         embedding_service=embedding,
         item_vector_repo=item_repo,
@@ -146,7 +153,7 @@ def test_get_tender_item_vector_repo_usa_el_cliente_de_la_aplicacion() -> None:
         app=SimpleNamespace(state=SimpleNamespace(qdrant_async_client=qdrant))
     )
 
-    repo = bootstrap.get_tender_item_vector_repo(request)  # type: ignore[arg-type]
+    repo = services.get_tender_item_vector_repo(request)  # type: ignore[arg-type]
 
     assert isinstance(repo, QdrantTenderItemVectorRepository)
     assert repo._client is qdrant
@@ -160,7 +167,7 @@ def test_get_compatibility_formula_devuelve_la_de_app_state() -> None:
         )
     )
 
-    assert bootstrap.get_compatibility_formula(request) is FORMULA_DE_PRUEBA  # type: ignore[arg-type]
+    assert services.get_compatibility_formula(request) is FORMULA_DE_PRUEBA  # type: ignore[arg-type]
 
 
 def test_bootstrap_registra_la_formula_y_ya_no_la_ponderacion(monkeypatch) -> None:
@@ -170,7 +177,7 @@ def test_bootstrap_registra_la_formula_y_ya_no_la_ponderacion(monkeypatch) -> No
 
     bootstrap.bootstrap(app)
 
-    assert app.state.compatibility_formula == bootstrap.build_compatibility_formula()
+    assert app.state.compatibility_formula == matching.build_compatibility_formula()
     assert not hasattr(app.state, "weighting_service")
 
 
@@ -212,12 +219,12 @@ async def test_el_escaneo_de_alertas_usa_el_mismo_scorer_que_los_endpoints(
 
     async def sin_pausa(_segundos) -> None: ...
 
-    monkeypatch.setattr(bootstrap, "ScanSupplierForAlertsUseCase", EscaneoEspia)
-    monkeypatch.setattr(bootstrap, "SupplierRepository", ProveedoresFalsos)
-    monkeypatch.setattr(bootstrap, "async_session_maker", sesion_falsa)
-    monkeypatch.setattr(bootstrap.asyncio, "sleep", sin_pausa)
+    monkeypatch.setattr(runners, "ScanSupplierForAlertsUseCase", EscaneoEspia)
+    monkeypatch.setattr(runners, "SupplierRepository", ProveedoresFalsos)
+    monkeypatch.setattr(runners, "async_session_maker", sesion_falsa)
+    monkeypatch.setattr(runners.asyncio, "sleep", sin_pausa)
 
-    scan_all, *_ = bootstrap.build_notification_runners(app)
+    scan_all, *_ = runners.build_notification_runners(app)
     await scan_all()
 
     [rank_tenders] = armados
@@ -228,7 +235,7 @@ async def test_el_escaneo_de_alertas_usa_el_mismo_scorer_que_los_endpoints(
     assert scorer.formula is FORMULA_DE_PRUEBA
     assert isinstance(scorer.item_vector_repo, QdrantTenderItemVectorRepository)
     assert scorer.item_vector_repo._client is qdrant
-    assert scorer.model_version == bootstrap.compatibility_model_version()
+    assert scorer.model_version == matching.compatibility_model_version()
     assert rank_tenders.model_version == scorer.model_version
     # Y el mismo segundo canal de candidatas (keywords contra partidas): el
     # escaneo reescribe el ranking que ve el usuario, así que si buscara con

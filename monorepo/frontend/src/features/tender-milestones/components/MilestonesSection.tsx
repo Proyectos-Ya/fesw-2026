@@ -10,6 +10,7 @@ import { useCalendarSync } from "../hooks/useCalendarSync";
 import { useMilestoneReminders } from "../hooks/useMilestoneReminders";
 import { useTenderMilestones } from "../hooks/useTenderMilestones";
 import {
+  CALENDAR_PROVIDER_LABELS,
   MILESTONE_KIND_LABELS,
   MILESTONE_SOURCE_LABELS,
   REMINDER_DAYS_OPTIONS,
@@ -18,23 +19,30 @@ import {
   type TenderMilestone,
 } from "../types";
 import { formatMilestoneDate, urgencyBadge } from "../utils/milestoneFormat";
-import { CalendarSyncBar } from "./CalendarSyncBar";
+import { CalendarSyncPanel } from "./CalendarSyncPanel";
 import { DefaultTimeDialog } from "./DefaultTimeDialog";
 
 interface MilestonesSectionProps {
   tenderId: string;
+  /** Cambia cuando se suben bases en el asistente, para recargar la tabla. */
+  refreshKey?: number;
   /** Solo para pruebas: fija el "ahora" con que se calculan los plazos. */
   now?: Date;
 }
 
 const NO_MILESTONES: TenderMilestone[] = [];
 
-export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
+export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSectionProps) {
   const { state, reload, refresh, extract, isExtracting, extractError, notice } =
-    useTenderMilestones(tenderId);
+    useTenderMilestones(tenderId, refreshKey);
   const milestones = state.status === "ready" ? state.data.milestones : NO_MILESTONES;
   const onSynced = useCallback(() => void refresh(), [refresh]);
-  const calendar = useCalendarSync({ tenderId, milestones, onSynced });
+  // Un hook por proveedor, en orden fijo: así el orden de los hooks no cambia
+  // entre renders. Cada uno se ofrece solo si su proveedor está configurado.
+  const google = useCalendarSync({ tenderId, milestones, onSynced, provider: "google" });
+  const outlook = useCalendarSync({ tenderId, milestones, onSynced, provider: "outlook" });
+  const calendars = [google, outlook].filter((c) => c.available);
+  const askingTime = calendars.find((c) => c.state.status === "needsTime");
   const reminders = useMilestoneReminders(tenderId);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -49,7 +57,8 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
   const allPendingSelected = pending.length > 0 && pending.every((m) => selected.has(m.id));
   const toggleAll = () =>
     setSelected(allPendingSelected ? new Set() : new Set(pending.map((m) => m.id)));
-  const selectable = calendar.available;
+  const selectable = calendars.length > 0;
+  const selectedIds = () => milestones.filter((m) => selected.has(m.id)).map((m) => m.id);
 
   if (state.status === "loading") {
     return (
@@ -64,6 +73,8 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
   }
 
   const documentsCount = state.data.documents_count;
+  const pendingCount = state.data.pending_documents_count;
+  const extraction = state.data.extraction_status;
 
   return (
     <div className="space-y-4">
@@ -75,7 +86,8 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
           variant="ghost"
           onClick={() => void extract()}
           isLoading={isExtracting}
-          disabled={documentsCount === 0 || isExtracting}
+          // Cada base se lee una sola vez: volver a leerla daba hitos duplicados o perdidos.
+          disabled={pendingCount === 0 || isExtracting || extraction === "running"}
           className="shrink-0 border border-border-subtle"
         >
           <Icon name="sparkles" size={14} />
@@ -85,8 +97,29 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
 
       {documentsCount === 0 && (
         <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
-          Adjunta las bases en el asistente de la licitación para que la IA extraiga visitas
+          Sube las bases en el asistente de la licitación y la IA extraerá sola las visitas
           técnicas, entregas y otros plazos.
+        </p>
+      )}
+
+      {documentsCount > 0 && pendingCount === 0 && extraction !== "running" && (
+        <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
+          Ya se extrajeron los hitos de todas las bases subidas. Para volver a leer una, elimínala
+          y súbela de nuevo en el asistente.
+        </p>
+      )}
+
+      {extraction === "running" && !isExtracting && (
+        <p role="status" className="flex items-center gap-2 text-xs font-medium text-primary">
+          <Icon name="sparkles" size={12} />
+          La IA está leyendo las bases que subiste. Los plazos que encuentre aparecerán aquí.
+        </p>
+      )}
+
+      {extraction === "failed" && !isExtracting && !extractError && (
+        <p role="alert" className="text-xs font-medium text-danger">
+          No se pudieron extraer los hitos automáticamente. Inténtalo con el botón «Extraer hitos de
+          las bases».
         </p>
       )}
 
@@ -104,11 +137,11 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
         </p>
       )}
 
-      {calendar.available && (
-        <CalendarSyncBar
-          calendar={calendar}
+      {calendars.length > 0 && (
+        <CalendarSyncPanel
+          calendars={calendars}
           selectedCount={selected.size}
-          onSync={() => void calendar.sync(milestones.filter((m) => selected.has(m.id)).map((m) => m.id))}
+          onSync={(calendar) => void calendar.sync(selectedIds())}
         />
       )}
 
@@ -156,12 +189,12 @@ export function MilestonesSection({ tenderId, now }: MilestonesSectionProps) {
         </div>
       )}
 
-      {calendar.state.status === "needsTime" && (
+      {askingTime?.state.status === "needsTime" && (
         <DefaultTimeDialog
           open
-          count={calendar.state.missingCount}
-          onConfirm={(time) => void calendar.confirmTime(time)}
-          onCancel={calendar.cancelTime}
+          count={askingTime.state.missingCount}
+          onConfirm={(time) => void askingTime.confirmTime(time)}
+          onCancel={askingTime.cancelTime}
         />
       )}
     </div>
@@ -237,10 +270,14 @@ function MilestoneRow({
         </Badge>
       </td>
       <td className="py-3 pr-4">
-        {milestone.synced_providers.includes("google") ? (
-          <Badge tone="teal" iconLeft={<Icon name="calendar-check" size={12} />}>
-            En Google Calendar
-          </Badge>
+        {milestone.synced_providers.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {milestone.synced_providers.map((provider) => (
+              <Badge key={provider} tone="teal" iconLeft={<Icon name="calendar-check" size={12} />}>
+                En {CALENDAR_PROVIDER_LABELS[provider]}
+              </Badge>
+            ))}
+          </div>
         ) : (
           <span className="text-xs text-text-subtle">—</span>
         )}

@@ -300,3 +300,144 @@ async def test_upload_document_when_unified_service_fails_saves_document_gracefu
     assert fake_service.call_count == 1
     assert result.deep_analysis is None
     assert result.quotation is None
+
+
+class ExtraccionDeHitosEspia:
+    """Anota cuándo se agendó la extracción de hitos (HU-16), en el orden compartido."""
+
+    def __init__(self, orden: list[str]) -> None:
+        self.orden = orden
+        self.agendados: list[tuple] = []
+
+    def schedule(self, user_id, tender_id) -> None:
+        self.orden.append("hitos")
+        self.agendados.append((user_id, tender_id))
+
+
+class ServicioUnificadoEspia(FakeUnifiedService):
+    def __init__(self, orden: list[str], **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.orden = orden
+
+    async def analyze_and_quote(self, *args, **kwargs):
+        self.orden.append("analisis")
+        return await super().analyze_and_quote(*args, **kwargs)
+
+
+def _resultado_de_la_ia(tender_id, supplier_id) -> DocumentAnalysisAndQuotationResult:
+    return DocumentAnalysisAndQuotationResult(
+        analysis=DeepAnalysis(
+            id=uuid4(),
+            tender_id=tender_id,
+            supplier_id=supplier_id,
+            compatibility_score=70.0,
+            recommendation="Postular",
+            justification="Calza con el rubro.",
+        ),
+        quotation=QuotationInput(
+            currency="CLP",
+            items=[
+                MaterialItem(
+                    description="Sugerencia de la IA",
+                    unit="unidad",
+                    quantity=Decimal("1"),
+                    unit_price=Decimal("1000"),
+                )
+            ],
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_sin_empresa_igual_agenda_los_hitos(chat_repo, supplier_repo, tender_repo, quotation_repo):
+    # El análisis sale antes sin empresa, pero los hitos de las bases no dependen de ella.
+    orden: list[str] = []
+    hitos = ExtraccionDeHitosEspia(orden)
+    user_id, tender_id = uuid4(), uuid4()
+    use_case = UploadTenderChatDocumentUseCase(
+        chat_repo=chat_repo,
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        quotation_repo=quotation_repo,
+        unified_service=ServicioUnificadoEspia(orden),
+        milestone_extraction=hitos,
+    )
+
+    await use_case.execute(
+        tender_id=tender_id, user_id=user_id, file_name="bases.pdf", file_bytes=b"%PDF-1.4"
+    )
+
+    assert hitos.agendados == [(user_id, tender_id)]
+    assert orden == ["hitos"]
+
+
+@pytest.mark.asyncio
+async def test_agenda_los_hitos_antes_del_analisis(chat_repo, supplier_repo, tender_repo, quotation_repo):
+    # Los hitos corren en segundo plano: agendarlos primero no hace esperar a nadie,
+    # y la extracción avanza mientras Gemini analiza.
+    orden: list[str] = []
+    user_id, tender_id = uuid4(), uuid4()
+    supplier = create_supplier(user_id)
+    await supplier_repo.save(supplier)
+    tender_repo.tenders[tender_id] = create_tender(tender_id)
+    use_case = UploadTenderChatDocumentUseCase(
+        chat_repo=chat_repo,
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        quotation_repo=quotation_repo,
+        unified_service=ServicioUnificadoEspia(
+            orden, result=_resultado_de_la_ia(tender_id, supplier.id)
+        ),
+        milestone_extraction=ExtraccionDeHitosEspia(orden),
+    )
+
+    await use_case.execute(
+        tender_id=tender_id, user_id=user_id, file_name="bases.pdf", file_bytes=b"%PDF-1.4"
+    )
+
+    assert orden == ["hitos", "analisis"]
+
+
+@pytest.mark.asyncio
+async def test_no_pisa_una_cotizacion_que_ya_existe(chat_repo, supplier_repo, tender_repo, quotation_repo):
+    # Hay una sola cotización por empresa y licitación, y el usuario la edita en la
+    # postulación. La de la IA solo llena una vacía.
+    user_id, tender_id = uuid4(), uuid4()
+    supplier = create_supplier(user_id)
+    await supplier_repo.save(supplier)
+    tender_repo.tenders[tender_id] = create_tender(tender_id)
+    del_usuario = await quotation_repo.save(
+        supplier.id,
+        tender_id,
+        QuotationInput(
+            currency="CLP",
+            items=[
+                MaterialItem(
+                    description="Armada a mano",
+                    unit="unidad",
+                    quantity=Decimal("2"),
+                    unit_price=Decimal("5000"),
+                )
+            ],
+        ),
+    )
+    servicio = FakeUnifiedService(result=_resultado_de_la_ia(tender_id, supplier.id))
+    use_case = UploadTenderChatDocumentUseCase(
+        chat_repo=chat_repo,
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        quotation_repo=quotation_repo,
+        unified_service=servicio,
+    )
+
+    result = await use_case.execute(
+        tender_id=tender_id, user_id=user_id, file_name="bases.pdf", file_bytes=b"%PDF-1.4"
+    )
+
+    guardada = await quotation_repo.get(supplier.id, tender_id)
+    assert guardada is del_usuario
+    assert [i.description for i in guardada.items] == ["Armada a mano"]
+    assert result.quotation is del_usuario
+    # El análisis sí se guarda: ese no lo edita el usuario.
+    assert servicio.call_count == 1
+    assert result.deep_analysis is not None

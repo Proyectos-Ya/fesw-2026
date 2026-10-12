@@ -2,10 +2,13 @@
 resuelven correctamente sin NameError ni errores de importación."""
 
 from unittest.mock import AsyncMock
+
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.bootstrap import get_tender_chat_repo
-from app.infrastructure.repositories.sql_tender_chat_repository import SQLTenderChatRepository
+from app.bootstrap.repositories import get_tender_chat_repo
+from app.infrastructure.repositories.sql_tender_chat_repository import (
+    SQLTenderChatRepository,
+)
 
 
 def test_get_tender_chat_repo_instantiation():

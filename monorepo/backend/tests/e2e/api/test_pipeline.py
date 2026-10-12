@@ -46,7 +46,7 @@ async def test_crear_proveedor_retorna_201(api: AsyncClient) -> None:
 
 async def test_crear_proveedor_indexa_en_qdrant(api: AsyncClient) -> None:
     """Crear un proveedor también registra su vector en el repositorio vectorial."""
-    from app.bootstrap import get_supplier_vector_repo
+    from app.bootstrap.services import get_supplier_vector_repo
     from app.main import app
 
     captured_vector_repo = None

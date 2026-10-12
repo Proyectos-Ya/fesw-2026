@@ -249,7 +249,7 @@ async def _main_async(aplicar: bool, confirmar_prod: bool, limit: Optional[int])
         )
         sys.exit(1)
 
-    from app.bootstrap import build_attachment_storage
+    from app.bootstrap.builders import build_attachment_storage
     from app.infrastructure.db import async_session_maker
 
     storage = build_attachment_storage()

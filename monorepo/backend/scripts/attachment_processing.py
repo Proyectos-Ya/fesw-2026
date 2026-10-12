@@ -6,10 +6,8 @@ import sys
 
 from sqlalchemy import update
 
-from app.bootstrap import (
-    build_attachment_processing_runner,
-    build_attachment_storage,
-)
+from app.bootstrap.builders import build_attachment_storage
+from app.bootstrap.runners import build_attachment_processing_runner
 from app.config import settings
 from app.domain.entities.attachment_processing import (
     ProcessingJobKind,

@@ -97,11 +97,10 @@ describe("HomeDashboard - Banner de invitaciones pendientes (CA4, CA5, CA6)", ()
     ).toBeInTheDocument();
   });
 
-  it("muestra el banner sobre las recomendaciones para usuario con organizaciones previas e informa que conserva sus membresías (CA5, CA6)", async () => {
+  it("no muestra el banner de invitaciones en el dashboard de recomendaciones para no saturar al usuario con empresa activa", async () => {
     vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([]);
-    const mockAccept = vi.fn().mockResolvedValue(undefined);
 
-    const spy = vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
+    vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
       workspaces: [
         {
           supplier_id: "sup-prev",
@@ -129,77 +128,20 @@ describe("HomeDashboard - Banner de invitaciones pendientes (CA4, CA5, CA6)", ()
       switchActiveWorkspace: vi.fn(),
       refreshWorkspaces: vi.fn(),
       refreshInvitations: vi.fn(),
-      acceptPendingInvitation: mockAccept,
+      acceptPendingInvitation: vi.fn(),
       rejectPendingInvitation: vi.fn(),
     });
 
-    const { rerender } = render(<HomeDashboard />);
+    render(<HomeDashboard />);
 
     expect(
       await screen.findByText("Sin licitaciones de alta compatibilidad hoy"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Ingeniería Austral SpA/)).toBeInTheDocument();
+
+    // El dashboard de licitaciones no debe tener el banner invasivo
+    expect(screen.queryByText(/Ingeniería Austral SpA/)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/sin perder tus membresías actuales/i),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /aceptar invitación/i }));
-
-    await waitFor(() => {
-      expect(mockAccept).toHaveBeenCalledWith("tok-home-1");
-    });
-
-    // Tras aceptar, las invitaciones quedan vacías y el banner desaparece (CA6)
-    spy.mockReturnValue({
-      workspaces: [
-        {
-          supplier_id: "sup-prev",
-          legal_name: "Consultora Andina Ltda",
-          trade_name: "Andina",
-          rut: "77.654.321-7",
-          role: "admin",
-          status: "active",
-          is_active_context: true,
-        },
-        {
-          supplier_id: "sup-austral",
-          legal_name: "Ingeniería Austral SpA",
-          trade_name: "Austral",
-          rut: "76.123.456-0",
-          role: "member",
-          status: "active",
-          is_active_context: false,
-        },
-      ],
-      recentWorkspaces: [],
-      activeWorkspace: {
-        user_id: "u-1",
-        active_supplier_id: "sup-prev",
-        active_supplier_name: "Andina",
-        role: "admin",
-        permissions: ["invite_members"],
-        is_admin: true,
-      },
-      invitations: [],
-      isLoading: false,
-      isAdmin: true,
-      hasPermission: () => true,
-      switchActiveWorkspace: vi.fn(),
-      refreshWorkspaces: vi.fn(),
-      refreshInvitations: vi.fn(),
-      acceptPendingInvitation: mockAccept,
-      rejectPendingInvitation: vi.fn(),
-    });
-
-    rerender(<HomeDashboard />);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText(/Ingeniería Austral SpA/),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByText("Sin licitaciones de alta compatibilidad hoy"),
-      ).toBeInTheDocument();
-    });
+      screen.queryByText(/sin perder tus membresías actuales/i),
+    ).not.toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.domain.entities.quotation import MaterialItem, Quotation, QuotationInput
+from app.domain.entities.quotation import StoredMaterialItem, Quotation, QuotationInput
 from app.infrastructure.repositories.quotation_model import (
     QuotationMaterialModel,
     QuotationModel,
@@ -42,7 +42,7 @@ class QuotationRepository:
             currency=model.currency,
             updated_at=model.updated_at,
             items=[
-                MaterialItem(
+                StoredMaterialItem(
                     description=row.description,
                     unit=row.unit,
                     quantity=row.quantity,

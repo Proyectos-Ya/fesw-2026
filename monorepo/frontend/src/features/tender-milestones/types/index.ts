@@ -13,9 +13,10 @@ export type MilestoneKind =
 
 export type MilestoneSource = "mercado_publico" | "ia_documento";
 
-export type MilestoneUrgency = "vencido" | "critico" | "proximo" | "normal";
+/** `critico`: le quedan 5 días de calendario o menos y se destaca en rojo (criterio 9). */
+export type MilestoneUrgency = "vencido" | "critico" | "normal";
 
-export type CalendarProvider = "google";
+export type CalendarProvider = "google" | "outlook";
 
 export interface TenderMilestone {
   id: string;
@@ -49,16 +50,36 @@ export interface MilestoneReminderResponse {
   reminder_days_before: ReminderDaysBefore | null;
 }
 
+/**
+ * La IA extrae los hitos sola al subir las bases. `running` mientras lee;
+ * `failed` si la última extracción automática no pudo terminar.
+ */
+export type MilestoneExtractionStatus = "idle" | "running" | "failed";
+
 export interface MilestoneList {
   milestones: TenderMilestone[];
   documents_count: number;
   discarded_count: number;
+  /** Bases subidas cuyo archivo ya no está en el servidor: hay que volver a subirlas. */
+  unavailable_documents_count: number;
+  extraction_status: MilestoneExtractionStatus;
+  /** Bases que todavía no se leen (nuevas o que fallaron). Cada base se lee una sola vez. */
+  pending_documents_count: number;
+  /** Bases que la IA no pudo leer en esta extracción. */
+  failed_documents_count: number;
 }
 
-export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google"];
+export const CALENDAR_PROVIDERS: readonly CalendarProvider[] = ["google", "outlook"];
 
 export const CALENDAR_PROVIDER_LABELS: Record<CalendarProvider, string> = {
   google: "Google Calendar",
+  outlook: "Outlook Calendar",
+};
+
+/** Quién pide la autorización y de qué cuenta: "te llevamos a Google", "tu cuenta de Microsoft". */
+export const CALENDAR_ACCOUNT_LABELS: Record<CalendarProvider, { vendor: string; account: string }> = {
+  google: { vendor: "Google", account: "tu cuenta de Google" },
+  outlook: { vendor: "Microsoft", account: "tu cuenta de Microsoft" },
 };
 
 export interface CalendarConnection {

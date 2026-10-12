@@ -4,7 +4,7 @@ Compatible hacia atrás: crea una tabla nueva y agrega una columna nullable a
 `tender`. La versión anterior no conoce ninguna de las dos y sigue funcionando.
 
 Revision ID: cad6ec974305
-Revises: ea51f4f30556
+Revises: 9fc5e8be46b9
 Create Date: 2026-10-03 06:28:14.306933
 """
 from collections.abc import Sequence
@@ -20,7 +20,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "cad6ec974305"
-down_revision: str | Sequence[str] | None = "ea51f4f30556"  # = salida de `alembic heads`
+down_revision: str | Sequence[str] | None = "9fc5e8be46b9"  # = salida de `alembic heads`
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

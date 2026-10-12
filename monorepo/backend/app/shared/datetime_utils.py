@@ -60,6 +60,18 @@ def chile_day_bounds_utc(day: date) -> tuple[datetime, datetime]:
     )
 
 
+def aware_to_utc_naive(value: datetime | None) -> datetime | None:
+    """Quita la zona de una fecha que la trae, convirtiéndola antes a UTC.
+
+    A diferencia de `to_utc_naive`, un valor naive **se deja igual**: se asume ya
+    en UTC, que es el invariante de lo persistido. Sirve para fechas que vuelven
+    de un JSON con sufijo ``Z`` o que manda un cliente con su offset.
+    """
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
 def leer_fecha_mp(valor: str | None) -> datetime | None:
     """Lee una fecha de Mercado Público como hora de Chile, naive.
 

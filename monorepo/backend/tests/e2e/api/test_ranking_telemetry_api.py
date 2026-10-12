@@ -9,10 +9,8 @@ from httpx import AsyncClient
 from app.application.use_cases.ranking_telemetry.record_tender_interaction import (
     RecordTenderInteractionUseCase,
 )
-from app.bootstrap import (
-    get_rank_tenders_use_case,
-    get_record_tender_interaction_use_case,
-)
+from app.bootstrap.matching import get_rank_tenders_use_case
+from app.bootstrap.ranking_telemetry import get_record_tender_interaction_use_case
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.ranking_telemetry import RankingImpression
 from app.main import app

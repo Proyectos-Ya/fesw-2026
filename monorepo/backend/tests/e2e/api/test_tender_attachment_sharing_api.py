@@ -19,7 +19,6 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app import bootstrap
 from app.application.services.attachment_stored_listener import (
     CompositeAttachmentStoredListener,
 )
@@ -30,6 +29,7 @@ from app.application.use_cases.tender_attachments.promote_attachment import (
     AttachmentPromotionListener,
     PromoteAttachmentUseCase,
 )
+from app.bootstrap import attachments, repositories, services
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.domain.services.attachment_files import clave_privada
 from app.main import app
@@ -115,13 +115,13 @@ async def anexos(api: AsyncClient) -> Anexos:
         )
 
     promocion = AttachmentPromotionListener(abrir)
-    app.dependency_overrides[bootstrap.get_tender_attachment_repo] = lambda: mundo.repo
-    app.dependency_overrides[bootstrap.get_attachment_file_repo] = lambda: mundo.archivos
-    app.dependency_overrides[bootstrap.get_attachment_storage] = lambda: mundo.storage
-    app.dependency_overrides[bootstrap.get_attachment_stored_listener] = lambda: (
+    app.dependency_overrides[repositories.get_tender_attachment_repo] = lambda: mundo.repo
+    app.dependency_overrides[repositories.get_attachment_file_repo] = lambda: mundo.archivos
+    app.dependency_overrides[services.get_attachment_storage] = lambda: mundo.storage
+    app.dependency_overrides[attachments.get_attachment_stored_listener] = lambda: (
         CompositeAttachmentStoredListener([promocion])
     )
-    app.dependency_overrides[bootstrap.get_attachment_deleted_listener] = lambda: promocion
+    app.dependency_overrides[attachments.get_attachment_deleted_listener] = lambda: promocion
     return mundo
 
 

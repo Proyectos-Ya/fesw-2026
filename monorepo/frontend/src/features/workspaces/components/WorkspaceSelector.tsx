@@ -17,7 +17,7 @@ export function getRoleBadge(role: MemberRole) {
       };
     case "member":
       return {
-        label: "Miembro",
+        label: "Representante",
         className: "bg-blue-100 text-blue-700 border-blue-200",
       };
     case "viewer":
@@ -34,6 +34,7 @@ export function WorkspaceSelector() {
     activeWorkspace,
     switchActiveWorkspace,
     isLoading,
+    invitations,
   } = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -139,6 +140,22 @@ export function WorkspaceSelector() {
 
         {isOpen && (
           <div className="absolute top-full left-0 mt-1.5 w-full min-w-[240px] rounded-xl border border-border-subtle bg-white p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150">
+            {invitations && invitations.length > 0 && (
+              <div className="mb-1.5 pb-1 border-b border-border-subtle">
+                <Link
+                  href="/workspaces"
+                  onClick={() => setIsOpen(false)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg bg-primary-soft/70 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Icon name="mail" size={13} />
+                    <span>Invitaciones pendientes ({invitations.length})</span>
+                  </div>
+                  <Icon name="arrow-right" size={12} />
+                </Link>
+              </div>
+            )}
+
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-subtle border-b border-border-subtle mb-1">
               Espacios de trabajo
             </div>

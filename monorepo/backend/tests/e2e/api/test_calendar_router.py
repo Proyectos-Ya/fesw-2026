@@ -10,7 +10,13 @@ from uuid import uuid4
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app import bootstrap
+from app.bootstrap.calendar import get_calendar_connection_repo
+from app.bootstrap.repositories import get_supplier_repo, get_user_repo
+from app.bootstrap.services import (
+    get_calendar_providers,
+    get_embedding_service,
+    get_supplier_vector_repo,
+)
 from app.main import app
 from tests.support.api_auth import autenticar, preparar_auth
 from tests.unit.application.fakes import (
@@ -25,14 +31,14 @@ from tests.unit.application.milestone_fakes import InMemoryCalendarConnectionRep
 @pytest_asyncio.fixture
 async def api() -> AsyncGenerator[AsyncClient, None]:
     users = InMemoryUserRepository()
-    app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
-    app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: InMemorySupplierRepository()
-    app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: FakeSupplierVectorRepository()
-    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: FakeEmbeddingService()
+    app.dependency_overrides[get_user_repo] = lambda: users
+    app.dependency_overrides[get_supplier_repo] = lambda: InMemorySupplierRepository()
+    app.dependency_overrides[get_supplier_vector_repo] = lambda: FakeSupplierVectorRepository()
+    app.dependency_overrides[get_embedding_service] = lambda: FakeEmbeddingService()
     conexiones = InMemoryCalendarConnectionRepository()
-    app.dependency_overrides[bootstrap.get_calendar_connection_repo] = lambda: conexiones
+    app.dependency_overrides[get_calendar_connection_repo] = lambda: conexiones
     # Independiente del .env local: como si Google Calendar no estuviera configurado.
-    app.dependency_overrides[bootstrap.get_calendar_providers] = lambda: {}
+    app.dependency_overrides[get_calendar_providers] = lambda: {}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         preparar_auth(app, ac)
         yield ac

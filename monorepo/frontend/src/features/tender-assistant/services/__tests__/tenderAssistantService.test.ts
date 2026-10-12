@@ -91,6 +91,36 @@ describe("tenderAssistantService", () => {
       expect(options.body).toBeInstanceOf(FormData);
       expect(result).toEqual(mockDoc);
     });
+
+    it("espera al análisis con IA: no corta a los 60 s, sí a los 115 s", async () => {
+      // La subida responde después de que Gemini genera el análisis y la cotización.
+      vi.useFakeTimers();
+      try {
+        let senal: AbortSignal | undefined;
+        const fetchMock = vi.fn(
+          (_url: string, options: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              senal = options.signal ?? undefined;
+              senal?.addEventListener("abort", () =>
+                reject(new DOMException("abortada", "AbortError")),
+              );
+            }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        const file = new File(["x"], "bases.pdf", { type: "application/pdf" });
+        const subida = uploadTenderDocument("tender-abc", file).catch((e: unknown) => e);
+
+        await vi.advanceTimersByTimeAsync(61_000);
+        expect(senal?.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(54_001);
+        expect(senal?.aborted).toBe(true);
+        expect(await subida).toBeInstanceOf(Error);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("listTenderDocuments", () => {

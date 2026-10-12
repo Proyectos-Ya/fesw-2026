@@ -24,6 +24,7 @@ from app.application.services.attachment_visibility_listener import (
 from app.application.use_cases.tender_attachments.promote_attachment import (
     AttachmentPromotionListener,
 )
+from app.bootstrap import attachments, builders, repositories, services
 from app.config import settings
 from app.infrastructure.repositories.sql_attachment_file_repository import (
     SqlAttachmentFileRepository,
@@ -57,14 +58,14 @@ def test_con_r2_completo_se_usa_r2_tambien_en_desarrollo(monkeypatch, es_dev):
     _con_r2(monkeypatch)
     monkeypatch.setattr(settings, "is_dev", es_dev)
 
-    assert isinstance(bootstrap.build_attachment_storage(), R2AttachmentStorage)
+    assert isinstance(builders.build_attachment_storage(), R2AttachmentStorage)
 
 
 def test_sin_r2_y_en_desarrollo_se_usa_el_disco_local(monkeypatch):
     _sin_r2(monkeypatch)
     monkeypatch.setattr(settings, "is_dev", True)
 
-    almacenamiento = bootstrap.build_attachment_storage()
+    almacenamiento = builders.build_attachment_storage()
 
     assert isinstance(almacenamiento, LocalDiskAttachmentStorage)
 
@@ -73,7 +74,7 @@ def test_sin_r2_y_fuera_de_desarrollo_la_subida_queda_apagada(monkeypatch):
     _sin_r2(monkeypatch)
     monkeypatch.setattr(settings, "is_dev", False)
 
-    assert bootstrap.build_attachment_storage() is None
+    assert builders.build_attachment_storage() is None
 
 
 def _rutas(app: FastAPI) -> set[tuple[str, str]]:
@@ -127,7 +128,7 @@ def test_el_getter_lee_el_almacenamiento_de_app_state():
             class state:  # noqa: N801
                 attachment_storage = "el-almacenamiento"
 
-    assert bootstrap.get_attachment_storage(Peticion()) == "el-almacenamiento"  # type: ignore[arg-type]
+    assert services.get_attachment_storage(Peticion()) == "el-almacenamiento"  # type: ignore[arg-type]
 
 
 def test_sin_almacenamiento_en_app_state_el_getter_devuelve_none():
@@ -136,25 +137,25 @@ def test_sin_almacenamiento_en_app_state_el_getter_devuelve_none():
             class state:  # noqa: N801
                 pass
 
-    assert bootstrap.get_attachment_storage(Peticion()) is None  # type: ignore[arg-type]
+    assert services.get_attachment_storage(Peticion()) is None  # type: ignore[arg-type]
 
 
 def test_las_dependencias_se_arman_con_lo_recibido():
     sesion = AsyncMock(spec=AsyncSession)
-    archivos = bootstrap.get_attachment_file_repo(sesion)
-    promocion = bootstrap.get_attachment_promotion_listener(
-        None, bootstrap.get_attachment_visibility_listener()
+    archivos = repositories.get_attachment_file_repo(sesion)
+    promocion = attachments.get_attachment_promotion_listener(
+        None, attachments.get_attachment_visibility_listener()
     )
-    guardado = bootstrap.get_attachment_stored_listener(promocion)
-    borrado = bootstrap.get_attachment_deleted_listener(promocion)
+    guardado = attachments.get_attachment_stored_listener(promocion)
+    borrado = attachments.get_attachment_deleted_listener(promocion)
 
     assert isinstance(archivos, SqlAttachmentFileRepository)
 
-    pedir = bootstrap.get_request_attachment_upload_use_case(
-        bootstrap.get_tender_attachment_repo(sesion), archivos, None, guardado
+    pedir = attachments.get_request_attachment_upload_use_case(
+        repositories.get_tender_attachment_repo(sesion), archivos, None, guardado
     )
-    completar = bootstrap.get_complete_attachment_upload_use_case(archivos, None, guardado)
-    borrar = bootstrap.get_delete_attachment_file_use_case(archivos, None, borrado)
+    completar = attachments.get_complete_attachment_upload_use_case(archivos, None, guardado)
+    borrar = attachments.get_delete_attachment_file_use_case(archivos, None, borrado)
 
     assert pedir.files is archivos and pedir.storage is None
     assert pedir.uploads_per_month == settings.attachment_manual_uploads_per_month
@@ -164,12 +165,12 @@ def test_las_dependencias_se_arman_con_lo_recibido():
 
 
 def test_la_promocion_se_cuelga_de_guardado_y_de_borrado():
-    promocion = bootstrap.get_attachment_promotion_listener(
-        None, bootstrap.get_attachment_visibility_listener()
+    promocion = attachments.get_attachment_promotion_listener(
+        None, attachments.get_attachment_visibility_listener()
     )
 
-    guardado = bootstrap.get_attachment_stored_listener(promocion)
-    borrado = bootstrap.get_attachment_deleted_listener(promocion)
+    guardado = attachments.get_attachment_stored_listener(promocion)
+    borrado = attachments.get_attachment_deleted_listener(promocion)
 
     assert isinstance(promocion, AttachmentPromotionListener)
     assert isinstance(guardado, CompositeAttachmentStoredListener)
@@ -180,14 +181,14 @@ def test_la_promocion_se_cuelga_de_guardado_y_de_borrado():
 
 def test_hasta_la_decision_4_nadie_escucha_los_cambios_de_visibilidad():
     assert isinstance(
-        bootstrap.get_attachment_visibility_listener(), NoopAttachmentVisibilityListener
+        attachments.get_attachment_visibility_listener(), NoopAttachmentVisibilityListener
     )
 
 
 async def test_cada_promocion_abre_su_propia_sesion():
     # La promoción toma un candado y hace su propio commit: no puede usar la sesión de
     # la petición. Construir y cerrar una sesión sin consultas no conecta.
-    abrir = bootstrap.build_promotion_opener(None, NoopAttachmentVisibilityListener())
+    abrir = attachments.build_promotion_opener(None, NoopAttachmentVisibilityListener())
 
     async with abrir() as primera, abrir() as segunda:
         assert isinstance(primera.trust, SqlAttachmentTrustRepository)

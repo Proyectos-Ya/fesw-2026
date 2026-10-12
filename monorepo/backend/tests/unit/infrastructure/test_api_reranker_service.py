@@ -104,7 +104,48 @@ class TestCorrespondenciaDeResultados:
         assert json.loads(ruta.last.request.content)["top_n"] == 2
 
 
+class TestTextosLargos:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_pide_truncar_en_vez_de_rechazar(self):
+        """El modelo acepta 1024 tokens por par consulta + licitación.
+
+        Por omisión Pinecone rechaza con 400 la petición entera si un solo par
+        se pasa, y una licitación con decenas de ítems se pasa. El 6 de octubre
+        de 2026 eso dejó sin recomendaciones a una empresa recién creada. El
+        modo local ya recorta (`max_length=512`); acá se pide lo mismo.
+        Ver docs/decisions/0001-truncar-textos-del-reranker.md.
+        """
+        ruta = respx.post(URL).mock(return_value=_respuesta([(0, 0.9)]))
+
+        await _servicio().rerank("x", CANDIDATAS, limit=1)
+
+        cuerpo = json.loads(ruta.calls.last.request.content)
+        assert cuerpo["parameters"] == {"truncate": "END"}
+
+
 class TestFallosDelProveedor:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_un_error_deja_en_el_log_el_motivo_y_las_candidatas(self, caplog):
+        """`raise_for_status()` solo dice "400 Bad Request".
+
+        El motivo viene en el cuerpo, y el `index` que suele nombrar solo se
+        puede traducir a una licitación con la lista de ids en el orden enviado.
+        Sin esto, el 400 del 6 de octubre no se pudo atribuir a ninguna.
+        """
+        respx.post(URL).mock(
+            return_value=httpx.Response(
+                400, json={"error": {"message": "documento 1 demasiado largo"}}
+            )
+        )
+
+        with caplog.at_level("ERROR"), pytest.raises(httpx.HTTPStatusError):
+            await _servicio().rerank("x", CANDIDATAS, limit=3)
+
+        assert "documento 1 demasiado largo" in caplog.text
+        assert str(ID_B) in caplog.text
+
     @respx.mock
     @pytest.mark.asyncio
     async def test_un_error_se_propaga(self):
