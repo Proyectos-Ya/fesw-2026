@@ -44,6 +44,9 @@ from app.application.repositories.matching_result_repository import (
 from app.application.repositories.matching_shadow_repository import (
     IMatchingShadowRepository,
 )
+from app.application.repositories.milestone_attachment_repository import (
+    IMilestoneAttachmentRepository,
+)
 from app.application.repositories.milestone_document_repository import (
     IMilestoneDocumentRepository,
 )
@@ -153,6 +156,9 @@ from app.infrastructure.repositories.sql_tender_digest_repository import (
     SqlTenderDigestRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_attachment_repository import (
+    TenderMilestoneAttachmentRepository,
+)
 from app.infrastructure.repositories.tender_milestone_document_repository import (
     TenderMilestoneDocumentRepository,
 )
@@ -258,6 +264,10 @@ def get_tender_milestone_repo(session: SessionDep) -> ITenderMilestoneRepository
 
 def get_milestone_document_repo(session: SessionDep) -> IMilestoneDocumentRepository:
     return TenderMilestoneDocumentRepository(session)
+
+
+def get_milestone_attachment_repo(session: SessionDep) -> IMilestoneAttachmentRepository:
+    return TenderMilestoneAttachmentRepository(session)
 
 
 def get_calendar_oauth_state_repo(session: SessionDep) -> ICalendarOAuthStateRepository:
@@ -393,6 +403,9 @@ TenderMilestoneRepoDep = Annotated[
 ]
 MilestoneDocumentRepoDep = Annotated[
     IMilestoneDocumentRepository, Depends(get_milestone_document_repo)
+]
+MilestoneAttachmentRepoDep = Annotated[
+    IMilestoneAttachmentRepository, Depends(get_milestone_attachment_repo)
 ]
 
 

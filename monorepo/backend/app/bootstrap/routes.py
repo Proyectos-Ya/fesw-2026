@@ -331,6 +331,7 @@ def register_routes(app: FastAPI) -> None:
             get_extract_tender_milestones_use_case,
             get_set_milestone_reminder_use_case,
             get_milestone_extraction_background,
+            get_optional_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(

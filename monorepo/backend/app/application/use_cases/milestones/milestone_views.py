@@ -195,7 +195,15 @@ def merge_ai_milestones(
 def changed(existing: list[TenderMilestone], merged: list[TenderMilestone]) -> list[TenderMilestone]:
     """Los hitos que son nuevos o cambiaron de fecha, título o descripción."""
     por_id = {m.id: m for m in existing}
-    campos = ("title", "description", "due_at", "has_time", "source_excerpt", "source_document_id")
+    campos = (
+        "title",
+        "description",
+        "due_at",
+        "has_time",
+        "source_excerpt",
+        "source_document_id",
+        "source_file_id",
+    )
     return [
         m for m in merged
         if m.id not in por_id or any(getattr(m, c) != getattr(por_id[m.id], c) for c in campos)
@@ -262,6 +270,32 @@ async def remove_orphan_ai_milestones(
         if m.source is MilestoneSource.IA_DOCUMENTO
         and m.source_document_id is not None
         and m.source_document_id not in document_ids
+    ]
+    if not huerfanos:
+        return
+    sincronizados = await synced_providers_by_milestone(event_links, huerfanos)
+    borrar = [i for i in huerfanos if i not in sincronizados]
+    if borrar:
+        await milestones.delete_many(user_id, borrar)
+
+
+async def remove_orphan_file_milestones(
+    milestones: ITenderMilestoneRepository,
+    event_links: ICalendarEventLinkRepository,
+    user_id: UUID,
+    tender_id: UUID,
+    file_ids: set[UUID],
+) -> None:
+    """Quita los hitos de IA de anexos que ya no están visibles, salvo los sincronizados.
+
+    `source_file_id` no tiene FK: borrar el archivo no arrastra sus hitos.
+    """
+    huerfanos = [
+        m.id
+        for m in await milestones.list_for_tender(user_id, tender_id)
+        if m.source is MilestoneSource.IA_DOCUMENTO
+        and m.source_file_id is not None
+        and m.source_file_id not in file_ids
     ]
     if not huerfanos:
         return

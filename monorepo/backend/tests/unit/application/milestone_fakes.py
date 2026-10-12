@@ -8,6 +8,9 @@ from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
     ICalendarOAuthStateRepository,
 )
+from app.application.repositories.milestone_attachment_repository import (
+    IMilestoneAttachmentRepository,
+)
 from app.application.repositories.milestone_document_repository import (
     IMilestoneDocumentRepository,
 )
@@ -161,6 +164,25 @@ class InMemoryMilestoneDocumentRepository(IMilestoneDocumentRepository):
         now: datetime,
     ) -> None:
         self.items[document_id] = (user_id, tender_id, milestones_found)
+
+
+class InMemoryMilestoneAttachmentRepository(IMilestoneAttachmentRepository):
+    def __init__(self) -> None:
+        # (usuario, archivo): (licitación, hitos)
+        self.items: dict[tuple[UUID, UUID], tuple[UUID, int]] = {}
+
+    async def list_processed(self, user_id: UUID, tender_id: UUID) -> set[UUID]:
+        return {a for (u, a), (t, _) in self.items.items() if u == user_id and t == tender_id}
+
+    async def mark_processed(
+        self,
+        user_id: UUID,
+        tender_id: UUID,
+        attachment_file_id: UUID,
+        milestones_found: int,
+        now: datetime,
+    ) -> None:
+        self.items[(user_id, attachment_file_id)] = (tender_id, milestones_found)
 
 
 class InMemoryCalendarConnectionRepository(ICalendarConnectionRepository):

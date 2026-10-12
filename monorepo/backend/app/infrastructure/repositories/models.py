@@ -83,6 +83,9 @@ from app.infrastructure.repositories.tender_chat_model import (
     TenderChatMessageModel,
     TenderChatSessionModel,
 )
+from app.infrastructure.repositories.tender_milestone_attachment_model import (
+    TenderMilestoneAttachmentModel,
+)
 from app.infrastructure.repositories.tender_milestone_document_model import (
     TenderMilestoneDocumentModel,
 )
@@ -120,6 +123,7 @@ __all__ = [
     "ExtensionFetchJobModel",
     "ExtensionInstallationModel",
     "TenderMilestoneModel",
+    "TenderMilestoneAttachmentModel",
     "TenderMilestoneDocumentModel",
     "QuotationModel",
     "QuotationMaterialModel",
