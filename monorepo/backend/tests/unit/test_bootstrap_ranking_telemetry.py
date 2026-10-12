@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from app import bootstrap
 from app.application.services.recent_ranking_registry import RecentRankingRegistry
+from app.bootstrap import ranking_telemetry, services
 from app.domain.entities.matching_result import MatchingResult
 from tests.unit.application.fakes import FakeEmbeddingService, FakeRerankerService
 
@@ -26,12 +27,12 @@ class SesionRota:
 async def test_registrar_impresiones_nunca_lanza_aunque_la_base_falle(monkeypatch):
     # Corre como tarea en segundo plano: un fallo de telemetría no puede
     # convertirse en un error para el usuario.
-    monkeypatch.setattr(bootstrap, "async_session_maker", lambda: SesionRota())
+    monkeypatch.setattr(ranking_telemetry, "async_session_maker", lambda: SesionRota())
     resultados = [
         MatchingResult(supplier_id=uuid4(), tender_id=uuid4(), model_version="m1")
     ]
 
-    await bootstrap.registrar_impresiones_de_ranking(
+    await ranking_telemetry.registrar_impresiones_de_ranking(
         uuid4(), uuid4(), resultados, datetime(2026, 10, 3, 12, 0)
     )
 
@@ -62,10 +63,10 @@ def test_el_getter_del_registro_lee_app_state():
             class state:  # noqa: N801
                 ranking_registry = registro
 
-    assert bootstrap.get_ranking_registry(Peticion()) is registro  # type: ignore[arg-type]
+    assert services.get_ranking_registry(Peticion()) is registro  # type: ignore[arg-type]
 
 
 def test_el_registrador_inyectado_es_la_funcion_de_segundo_plano():
-    assert bootstrap.get_ranking_impression_logger() is (
-        bootstrap.registrar_impresiones_de_ranking
+    assert ranking_telemetry.get_ranking_impression_logger() is (
+        ranking_telemetry.registrar_impresiones_de_ranking
     )

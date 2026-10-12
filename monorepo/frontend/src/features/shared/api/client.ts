@@ -51,18 +51,29 @@ const MENSAJE_ERROR_SERVIDOR =
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
 /**
+ * Opciones de una petición: las de `fetch` más el tiempo límite propio.
+ *
+ * `timeoutMs` reemplaza los 60 s por defecto para las rutas que se sabe que
+ * tardan más, como las que esperan a la IA. No viaja a `fetch`.
+ */
+export interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+/**
  * Error de una respuesta HTTP no exitosa del backend.
  *
- * `code` es el código estable (`quota_exceeded`, `attachment_name_mismatch`…) que
- * algunos endpoints mandan junto al `detail`; `body` es el JSON completo para leer
- * sus extras (`limit`, `expected_name`…). Ambos son opcionales: la mayoría de los
- * errores solo traen `detail`.
+ * `code` es el código estable (`quota_exceeded`, `share_link_revoked`…) que
+ * algunos endpoints mandan junto al `detail` cuando el status no alcanza para
+ * distinguir el caso; `body` es el JSON completo para leer sus extras (`limit`,
+ * `expected_name`…). Ambos son opcionales: la mayoría de los errores solo traen
+ * `detail`.
  */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    public readonly code: string | null = null,
+    public readonly code?: string,
     public readonly body: unknown = null,
   ) {
     super(message);
@@ -79,19 +90,15 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Cliente fetch tipado contra la API de Chiripa.
+ * Hace la petición contra la API y devuelve la respuesta ya validada.
  * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
- * que vienen como `{ detail: string }`.
- *
- * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
- * agrega esta función.
+ * que vienen como `{ detail: string }`. Lo comparten `apiFetch` (JSON) y
+ * `apiDownload` (archivos).
  */
-export async function apiFetch<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
+async function solicitar(path: string, opciones?: ApiRequestOptions): Promise<Response> {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...options } = opciones ?? {};
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // Es una lectura local de la sesión en memoria: solo toca la red cuando el
   // token está por vencer y hay que refrescarlo.
@@ -104,10 +111,10 @@ export async function apiFetch<T>(
       signal: controller.signal,
       credentials: "include",
       headers: {
-        ...(options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         // Antes de `options.headers` para que quien llame pueda sobreescribirlo.
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options?.headers,
+        ...options.headers,
       },
 
     });
@@ -123,28 +130,17 @@ export async function apiFetch<T>(
   if (!response.ok) {
     // Un 5xx no controlado llega en texto plano; su statusText ("Internal
     // Server Error") no le sirve a quien lo lee. Si el backend manda `detail`,
-    // ese mensaje tiene prioridad más abajo.
+    // ese mensaje tiene prioridad.
     let detail = response.status >= 500 ? MENSAJE_ERROR_SERVIDOR : response.statusText;
-    let code: string | null = null;
+    let code: string | undefined;
     let errorBody: unknown = null;
     try {
       const body: unknown = await response.json();
       errorBody = body;
-      if (
-        body &&
-        typeof body === "object" &&
-        "detail" in body &&
-        typeof (body as { detail: unknown }).detail === "string"
-      ) {
-        detail = (body as { detail: string }).detail;
-      }
-      if (
-        body &&
-        typeof body === "object" &&
-        "code" in body &&
-        typeof (body as { code: unknown }).code === "string"
-      ) {
-        code = (body as { code: string }).code;
+      if (body && typeof body === "object") {
+        const campos = body as { detail?: unknown; code?: unknown };
+        if (typeof campos.detail === "string") detail = campos.detail;
+        if (typeof campos.code === "string") code = campos.code;
       }
     } catch {
       // Respuesta sin cuerpo JSON: se mantiene el mensaje de respaldo.
@@ -159,10 +155,94 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail, code, errorBody);
   }
 
+  return response;
+}
+
+/**
+ * Cliente fetch tipado contra la API de Chiripa.
+ * Adjunta el token de sesión de Supabase y normaliza los errores de FastAPI,
+ * que vienen como `{ detail: string }`.
+ *
+ * `path` es la ruta del backend tal cual (`/auth/me`); el prefijo `/api` lo
+ * agrega esta función.
+ */
+export async function apiFetch<T>(
+  path: string,
+  options?: ApiRequestOptions,
+): Promise<T> {
+  const response = await solicitar(path, options);
+
   // 204 No Content (ej: logout) no trae cuerpo: parsearlo como JSON lanzaría.
   if (response.status === 204) {
     return undefined as T;
   }
 
   return response.json() as Promise<T>;
+}
+
+/** Un archivo descargado de la API. */
+export interface ArchivoDescargado {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Descarga un archivo de la API (por ejemplo, un `.docx`). El nombre sale del
+ * `Content-Disposition`; si no viene, se usa `nombrePorDefecto`.
+ */
+export async function apiDownload(
+  path: string,
+  nombrePorDefecto = "archivo",
+): Promise<ArchivoDescargado> {
+  const response = await solicitar(path);
+  return {
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")) ?? nombrePorDefecto,
+  };
+}
+
+export type ExportDownloadResult =
+  | { kind: "file"; blob: Blob; filename: string | null }
+  /** 202: el backend aceptó el pedido pero el archivo todavía no está (HdU 19). */
+  | { kind: "accepted"; body: unknown };
+
+function filenameFrom(disposition: string | null): string | null {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Como `apiDownload`, pero para endpoints que pueden responder 202 porque el
+ * archivo sigue generándose (exportaciones de la HdU 19).
+ */
+export async function apiDownloadOrAccepted(
+  path: string,
+  options?: RequestInit,
+): Promise<ExportDownloadResult> {
+  const response = await solicitar(path, options);
+
+  if (response.status === 202) {
+    return { kind: "accepted", body: (await response.json()) as unknown };
+  }
+
+  return {
+    kind: "file",
+    blob: await response.blob(),
+    filename: filenameFrom(response.headers.get("Content-Disposition")),
+  };
+}
+
+/**
+ * Guarda un archivo recibido del backend, con el mismo truco de ancla que la
+ * descarga del CSV de cotizaciones.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

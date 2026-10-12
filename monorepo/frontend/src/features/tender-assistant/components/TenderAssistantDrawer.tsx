@@ -12,6 +12,8 @@ interface TenderAssistantDrawerProps {
   tenderTitle?: string;
   isOpen: boolean;
   onClose: () => void;
+  /** Tras subir un documento: la ficha recarga los hitos que la IA extrae de él. */
+  onDocumentsChanged?: () => void;
 }
 
 export function TenderAssistantDrawer({
@@ -19,6 +21,7 @@ export function TenderAssistantDrawer({
   tenderTitle,
   isOpen,
   onClose,
+  onDocumentsChanged,
 }: TenderAssistantDrawerProps) {
   const {
     messages,
@@ -37,7 +40,7 @@ export function TenderAssistantDrawer({
     error: documentError,
     uploadDocument,
     removeDocument,
-  } = useTenderDocuments(isOpen ? tenderId : "");
+  } = useTenderDocuments(isOpen ? tenderId : "", onDocumentsChanged);
 
   if (!isOpen) return null;
 

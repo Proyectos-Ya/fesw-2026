@@ -163,6 +163,7 @@ def _respuesta(resultado: TenderAttachmentsResult) -> TenderAttachmentsResponse:
         can_upload=resultado.can_upload,
         max_upload_size_bytes=resultado.max_upload_size_bytes,
         processing_enabled=resultado.processing_enabled,
+        analysis_running=resultado.analysis_running,
     )
 
 

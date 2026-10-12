@@ -49,12 +49,6 @@ vi.mock("@/features/tender-attachments/components/DigestCard", () => ({
   DigestCard: () => null,
 }));
 
-vi.mock("@/features/quotations/QuotationEditor", () => ({
-  QuotationEditor: ({ onSaved }: { onSaved?: () => void }) => (
-    <button onClick={() => onSaved?.()}>Simular cotización guardada</button>
-  ),
-}));
-
 vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   fetchSavedTenders: vi.fn(),
   saveTenderApi: vi.fn(),
@@ -242,20 +236,6 @@ describe("TenderDetailView: telemetría del ranking", () => {
       CTX,
     );
     expect(mockRouter.push).toHaveBeenCalledWith("/matches/tender-50/analisis");
-  });
-
-  it("guardar la cotización informa 'cotizacion'", async () => {
-    const user = userEvent.setup();
-    render(<TenderDetailView tenderId="tender-50" rankingContext={CTX} />);
-
-    await user.click(await screen.findByRole("button", { name: "Simular cotización guardada" }));
-
-    expect(reportTenderInteraction).toHaveBeenCalledWith(
-      "tender-50",
-      "cotizacion",
-      "detalle",
-      CTX,
-    );
   });
 
   it("subir un anexo informa 'anexo'", async () => {

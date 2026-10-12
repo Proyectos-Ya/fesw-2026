@@ -197,4 +197,3 @@ async def test_upload_valid_document_with_validator_service_success(repo):
 
     assert doc.file_name == "bases_validas.pdf"
     assert doc.file_type == "pdf"
-

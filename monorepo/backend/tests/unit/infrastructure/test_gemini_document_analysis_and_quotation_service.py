@@ -7,6 +7,7 @@ import pytest
 import respx
 from httpx import Response
 
+from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender, TenderItem
 from app.domain.errors.document_analysis_quotation_errors import (
@@ -122,9 +123,11 @@ async def test_analyze_and_quote_pdf_success_exactly_one_call(service):
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
-        document_bytes=pdf_bytes,
-        file_name="Bases_Tecnicas.pdf",
-        file_type="pdf",
+        documents=[
+            DocumentContextDTO(
+                document_name="Bases_Tecnicas.pdf", file_type="pdf", file_bytes=pdf_bytes
+            )
+        ],
         tender=tender,
         supplier=supplier,
         matching_score=88.0,
@@ -210,9 +213,11 @@ async def test_analyze_and_quote_enforces_matching_score_if_provided(service):
 
     # Pasamos matching_score=75.5 explícito
     result = await service.analyze_and_quote(
-        document_bytes=b"sample",
-        file_name="doc.pdf",
-        file_type="pdf",
+        documents=[
+            DocumentContextDTO(
+                document_name="doc.pdf", file_type="pdf", file_bytes=b"sample"
+            )
+        ],
         tender=tender,
         supplier=supplier,
         matching_score=75.5,
@@ -266,9 +271,11 @@ async def test_analyze_and_quote_uses_model_score_when_no_matching_score(service
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
-        document_bytes=b"sample",
-        file_name="doc.pdf",
-        file_type="pdf",
+        documents=[
+            DocumentContextDTO(
+                document_name="doc.pdf", file_type="pdf", file_bytes=b"sample"
+            )
+        ],
         tender=tender,
         supplier=supplier,
         matching_score=None,
@@ -322,9 +329,11 @@ async def test_analyze_and_quote_handles_png_multimodal(service):
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
-        document_bytes=b"fake-png-bytes",
-        file_name="plano.png",
-        file_type="png",
+        documents=[
+            DocumentContextDTO(
+                document_name="plano.png", file_type="png", file_bytes=b"fake-png-bytes"
+            )
+        ],
         tender=tender,
         supplier=supplier,
     )
@@ -348,9 +357,11 @@ async def test_analyze_and_quote_gemini_500_raises_service_error(service):
 
     with pytest.raises(DocumentAnalysisAndQuotationServiceError, match="HTTP 500"):
         await service.analyze_and_quote(
-            document_bytes=b"sample",
-            file_name="doc.pdf",
-            file_type="pdf",
+            documents=[
+                DocumentContextDTO(
+                    document_name="doc.pdf", file_type="pdf", file_bytes=b"sample"
+                )
+            ],
             tender=tender,
             supplier=supplier,
         )
@@ -382,9 +393,100 @@ async def test_analyze_and_quote_invalid_json_raises_service_error(service):
 
     with pytest.raises(DocumentAnalysisAndQuotationServiceError, match="No se pudo decodificar"):
         await service.analyze_and_quote(
-            document_bytes=b"sample",
-            file_name="doc.pdf",
-            file_type="pdf",
+            documents=[
+                DocumentContextDTO(
+                    document_name="doc.pdf", file_type="pdf", file_bytes=b"sample"
+                )
+            ],
             tender=tender,
             supplier=supplier,
         )
+
+
+def _respuesta_valida() -> dict:
+    return {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps({
+                                "analysis": {
+                                    "compatibility_score": 70.0,
+                                    "recommendation": "Postular",
+                                    "justification": "Calza.",
+                                },
+                                "quotation": {
+                                    "currency": "CLP",
+                                    "items": [
+                                        {
+                                            "description": "Servicio",
+                                            "unit": "GL",
+                                            "quantity": 1,
+                                            "unit_price": 1000,
+                                            "subtotal": 1000,
+                                        }
+                                    ],
+                                    "total": 1000,
+                                },
+                            })
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_varios_anexos_van_en_una_sola_llamada(service):
+    # El análisis considera todas las bases a la vez (plan 233).
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+    ).mock(return_value=Response(200, json=_respuesta_valida()))
+
+    await service.analyze_and_quote(
+        documents=[
+            DocumentContextDTO(document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF-1"),
+            DocumentContextDTO(document_name="plano.png", file_type="png", file_bytes=b"png"),
+            DocumentContextDTO(document_name="formulario.docx", file_type="docx", file_bytes=b"doc"),
+        ],
+        tender=create_test_tender(),
+        supplier=create_test_supplier(),
+    )
+
+    assert route.call_count == 1
+    parts = json.loads(route.calls[0].request.content)["contents"][0]["parts"]
+    tipos = [p["inlineData"]["mimeType"] for p in parts if "inlineData" in p]
+    assert tipos == ["application/pdf", "image/png"]
+    textos = " ".join(p.get("text", "") for p in parts)
+    assert "bases.pdf" in textos and "plano.png" in textos
+    # El tipo que no sabe mandar se omite en vez de mandarlo con un MIME equivocado.
+    assert "formulario.docx" not in textos
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_omite_lo_que_pasa_el_tope_de_tamano(service, monkeypatch):
+    # Gemini rechaza las peticiones con archivos en línea demasiado grandes.
+    from app.infrastructure.services import (
+        gemini_document_analysis_and_quotation_service as modulo,
+    )
+
+    monkeypatch.setattr(modulo, "MAX_INLINE_BYTES", 10)
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+    ).mock(return_value=Response(200, json=_respuesta_valida()))
+
+    await service.analyze_and_quote(
+        documents=[
+            DocumentContextDTO(document_name="cabe.pdf", file_type="pdf", file_bytes=b"12345678"),
+            DocumentContextDTO(document_name="no-cabe.pdf", file_type="pdf", file_bytes=b"12345678"),
+        ],
+        tender=create_test_tender(),
+        supplier=create_test_supplier(),
+    )
+
+    parts = json.loads(route.calls[0].request.content)["contents"][0]["parts"]
+    assert len([p for p in parts if "inlineData" in p]) == 1

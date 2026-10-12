@@ -125,4 +125,32 @@ describe("useTenderDocuments (HU-05.2)", () => {
     expect(result.current.documents).toEqual([]);
     expect(result.current.canUpload).toBe(true);
   });
+
+  it("avisa tras subir un documento, para que la ficha recargue los hitos (HU-16)", async () => {
+    vi.mocked(tenderAssistantService.listTenderDocuments).mockResolvedValue([]);
+    vi.mocked(tenderAssistantService.uploadTenderDocument).mockResolvedValue(mockDoc);
+    const onDocumentsChanged = vi.fn();
+    const { result } = renderHook(() => useTenderDocuments("tender-1", onDocumentsChanged));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.uploadDocument(new File(["pdf"], "bases.pdf", { type: "application/pdf" }));
+    });
+
+    expect(onDocumentsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("no avisa si la subida falla", async () => {
+    vi.mocked(tenderAssistantService.listTenderDocuments).mockResolvedValue([]);
+    vi.mocked(tenderAssistantService.uploadTenderDocument).mockRejectedValue(new Error("400"));
+    const onDocumentsChanged = vi.fn();
+    const { result } = renderHook(() => useTenderDocuments("tender-1", onDocumentsChanged));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.uploadDocument(new File(["x"], "malware.exe")).catch(() => undefined);
+    });
+
+    expect(onDocumentsChanged).not.toHaveBeenCalled();
+  });
 });

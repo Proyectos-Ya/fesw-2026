@@ -203,4 +203,102 @@ describe("useCalendarSync", () => {
     expect(calendarService.disconnectCalendar).toHaveBeenCalledWith("google");
     expect(result.current.connection?.connected).toBe(false);
   });
+
+  describe("con Outlook", () => {
+    const OUTLOOK_CONECTADO = [
+      { provider: "outlook" as const, connected: true, account_email: "u@outlook.com", needs_reconnect: false },
+    ];
+
+    function setupOutlook(conexiones: CalendarConnection[]) {
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue(conexiones);
+      const navigate = vi.fn();
+      const hook = renderHook(() =>
+        useCalendarSync({
+          tenderId: "t-1",
+          milestones: [CON_HORA, SIN_HORA],
+          onSynced: vi.fn(),
+          navigate,
+          provider: "outlook",
+        }),
+      );
+      return { ...hook, navigate };
+    }
+
+    it("solo está disponible si Outlook está configurado", async () => {
+      const { result } = setupOutlook(CONECTADO);
+
+      await waitFor(() => expect(result.current.loadingConnection).toBe(false));
+      expect(result.current.available).toBe(false);
+    });
+
+    it("sincroniza contra Outlook", async () => {
+      vi.mocked(calendarService.syncMilestones).mockResolvedValue({
+        results: [{ milestone_id: "m-1", synced: true }],
+        failed_count: 0,
+      });
+      const { result } = setupOutlook(OUTLOOK_CONECTADO);
+      await waitFor(() => expect(result.current.connection?.connected).toBe(true));
+
+      await act(async () => {
+        await result.current.sync(["m-1"]);
+      });
+
+      expect(calendarService.syncMilestones).toHaveBeenCalledWith("t-1", "outlook", ["m-1"], null);
+      expect(result.current.provider).toBe("outlook");
+    });
+
+    it("si falla un hito lo dice con el nombre de Outlook", async () => {
+      vi.mocked(calendarService.syncMilestones).mockResolvedValue({
+        results: [{ milestone_id: "m-1", synced: false }],
+        failed_count: 1,
+      });
+      const { result } = setupOutlook(OUTLOOK_CONECTADO);
+      await waitFor(() => expect(result.current.connection?.connected).toBe(true));
+
+      await act(async () => {
+        await result.current.sync(["m-1"]);
+      });
+
+      expect(result.current.state.status === "error" && result.current.state.message).toMatch(
+        /no se enviaron a Outlook Calendar/,
+      );
+    });
+
+    it("sin conexión redirige a autorizar con Microsoft", async () => {
+      vi.mocked(calendarService.startCalendarAuthorization).mockResolvedValue({
+        authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1",
+      });
+      const { result, navigate } = setupOutlook([
+        { provider: "outlook" as const, connected: false, account_email: null, needs_reconnect: false },
+      ]);
+      await waitFor(() => expect(result.current.loadingConnection).toBe(false));
+
+      await act(async () => {
+        await result.current.sync(["m-1"]);
+      });
+
+      expect(calendarService.startCalendarAuthorization).toHaveBeenCalledWith("outlook", {
+        tender_id: "t-1",
+        milestone_ids: ["m-1"],
+        default_time: null,
+      });
+      expect(navigate).toHaveBeenCalledWith(
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1",
+      );
+    });
+
+    it("no se lleva lo pendiente de Google", async () => {
+      savePendingCalendarSync({
+        provider: "google",
+        tender_id: "t-1",
+        milestone_ids: ["m-1"],
+        default_time: null,
+        account_email: "u@gmail.com",
+      });
+      const { result } = setupOutlook(OUTLOOK_CONECTADO);
+
+      await waitFor(() => expect(result.current.loadingConnection).toBe(false));
+      expect(calendarService.syncMilestones).not.toHaveBeenCalled();
+    });
+  });
 });

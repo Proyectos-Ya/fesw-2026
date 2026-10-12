@@ -41,6 +41,7 @@ from tests.unit.application.milestone_fakes import (
 
 AHORA = datetime(2026, 10, 1, 12, 0)
 GOOGLE = CalendarProvider.GOOGLE
+OUTLOOK = CalendarProvider.OUTLOOK
 CIERRE = datetime(2026, 10, 20, 18, 0)
 NUEVO_CIERRE = datetime(2026, 10, 27, 18, 0)
 
@@ -65,6 +66,7 @@ class Escenario:
         self.enlaces = InMemoryCalendarEventLinkRepository(self.hitos)
         self.conexiones = InMemoryCalendarConnectionRepository()
         self.google = FakeCalendarProviderClient()
+        self.outlook = FakeCalendarProviderClient()
         self.avisos = InMemoryNotificationRepository()
         self.entregas = InMemoryNotificationDeliveryRepository()
         self.preferencias = InMemoryNotificationPreferenceRepository()
@@ -74,7 +76,7 @@ class Escenario:
             milestones=self.hitos,
             connections=self.conexiones,
             event_links=self.enlaces,
-            providers={GOOGLE: self.google},
+            providers={GOOGLE: self.google, OUTLOOK: self.outlook},
             app_base_url="https://proyectosya.cl",
             now=lambda: AHORA,
         )
@@ -107,13 +109,16 @@ class Escenario:
         )
         return tender
 
-    async def usuario_sincronizado(self, tender: Tender) -> tuple[UUID, str]:
-        """Usuario con los hitos oficiales y el cierre ya en su Google Calendar."""
+    async def usuario_sincronizado(
+        self, tender: Tender, provider: CalendarProvider = GOOGLE
+    ) -> tuple[UUID, str]:
+        """Usuario con los hitos oficiales y el cierre ya en su calendario."""
         user_id = uuid4()
         hitos = mercado_publico_milestones(tender, user_id)
         await self.hitos.save_many(hitos)
         cierre = next(h for h in hitos if h.kind is MilestoneKind.CIERRE_POSTULACION)
-        evento_id = await self.google.create_event(
+        cliente = self.outlook if provider is OUTLOOK else self.google
+        evento_id = await cliente.create_event(
             "ya29.acceso",
             CalendarEventDraft.from_milestone(cierre, tender_title=tender.name, return_url="https://x"),
         )
@@ -121,7 +126,7 @@ class Escenario:
             CalendarEventLink(
                 user_id=user_id,
                 milestone_id=cierre.id,
-                provider=GOOGLE,
+                provider=provider,
                 external_event_id=evento_id,
                 synced_due_at=cierre.due_at,
             )
@@ -129,7 +134,7 @@ class Escenario:
         await self.conexiones.save(
             CalendarConnection(
                 user_id=user_id,
-                provider=GOOGLE,
+                provider=provider,
                 access_token="ya29.acceso",
                 refresh_token="1//refresco",
                 expires_at=AHORA + timedelta(hours=1),
@@ -182,6 +187,20 @@ class TestCambioDeFecha:
         assert cambiadas == 1
         assert escenario.google.actualizados == [evento_id]
         assert escenario.google.eventos[evento_id].start == NUEVO_CIERRE
+
+    async def test_actualiza_tambien_el_evento_en_outlook(self):
+        # Criterio 4 con Outlook: el refresco recorre el proveedor de cada evento.
+        escenario = Escenario()
+        tender = escenario.licitacion()
+        _, evento_id = await escenario.usuario_sincronizado(tender, provider=OUTLOOK)
+        escenario.mover_cierre(tender)
+
+        cambiadas = await escenario.use_case.execute()
+
+        assert cambiadas == 1
+        assert escenario.outlook.actualizados == [evento_id]
+        assert escenario.outlook.eventos[evento_id].start == NUEVO_CIERRE
+        assert escenario.google.actualizados == []
 
     async def test_actualiza_el_hito_oficial(self):
         escenario = Escenario()

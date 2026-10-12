@@ -31,12 +31,11 @@ describe("InviteMemberModal", () => {
   it("renderiza el modal correctamente con el nombre de la empresa", () => {
     render(<InviteMemberModal {...defaultProps} />);
 
-    expect(
-      screen.getByRole("heading", { name: "Invitar miembro" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Invitar miembro" })).toBeInTheDocument();
     expect(screen.getByText("Constructora Andes SpA")).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electrónico del usuario")).toBeInTheDocument();
     expect(screen.getByLabelText("Rol asignado")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /representante/i })).toBeInTheDocument();
   });
 
   it("muestra error si se intenta enviar un correo inválido", async () => {

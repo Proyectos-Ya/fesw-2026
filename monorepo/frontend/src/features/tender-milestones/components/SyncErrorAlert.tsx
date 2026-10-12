@@ -4,10 +4,12 @@ interface SyncErrorAlertProps {
   message: string;
   /** El acceso expiró o se revocó: reintentar no basta, hay que volver a autorizar. */
   reconnect: boolean;
+  /** "Google Calendar", "Outlook Calendar": el botón dice cuál reconectar. */
+  providerLabel: string;
   onRetry: () => void;
 }
 
-export function SyncErrorAlert({ message, reconnect, onRetry }: SyncErrorAlertProps) {
+export function SyncErrorAlert({ message, reconnect, providerLabel, onRetry }: SyncErrorAlertProps) {
   return (
     <div
       role="alert"
@@ -15,7 +17,7 @@ export function SyncErrorAlert({ message, reconnect, onRetry }: SyncErrorAlertPr
     >
       <span>{message}</span>
       <Button variant="ghost" onClick={onRetry} className="shrink-0">
-        {reconnect ? "Reconectar Google Calendar" : "Reintentar"}
+        {reconnect ? `Reconectar ${providerLabel}` : "Reintentar"}
       </Button>
     </div>
   );

@@ -14,7 +14,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app import bootstrap
+from app.bootstrap import repositories, services
 from app.config import settings
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.main import app
@@ -79,9 +79,9 @@ async def anexos(api: AsyncClient) -> Anexos:
     # El fixture `api` limpia los overrides al terminar el test.
     mundo = Anexos()
     await mundo.preparar()
-    app.dependency_overrides[bootstrap.get_tender_attachment_repo] = lambda: mundo.repo
-    app.dependency_overrides[bootstrap.get_attachment_file_repo] = lambda: mundo.archivos
-    app.dependency_overrides[bootstrap.get_attachment_storage] = lambda: mundo.storage
+    app.dependency_overrides[repositories.get_tender_attachment_repo] = lambda: mundo.repo
+    app.dependency_overrides[repositories.get_attachment_file_repo] = lambda: mundo.archivos
+    app.dependency_overrides[services.get_attachment_storage] = lambda: mundo.storage
     return mundo
 
 

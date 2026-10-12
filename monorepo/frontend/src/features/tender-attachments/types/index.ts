@@ -49,6 +49,8 @@ export interface TenderAttachments {
   can_upload: boolean;
   max_upload_size_bytes: number;
   processing_enabled?: boolean;
+  /** El análisis + cotización de la empresa con sus anexos está corriendo (plan 233). */
+  analysis_running?: boolean;
 }
 
 export interface UploadUrlRequest {

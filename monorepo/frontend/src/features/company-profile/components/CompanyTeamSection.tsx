@@ -26,7 +26,7 @@ interface CompanyTeamSectionProps {
 
 function formatRoleLabel(role: MemberRole): string {
   if (role === "admin") return "Administrador";
-  return "Miembro";
+  return "Representante";
 }
 
 export function CompanyTeamSection({
@@ -191,7 +191,7 @@ export function CompanyTeamSection({
       if (err instanceof ApiError || err instanceof Error) {
         setFormError(err.message);
       } else {
-        setFormError("No se pudo revocar el acceso del miembro.");
+        setFormError("No se pudo revocar el acceso del representante.");
       }
       setMemberToRevoke(null);
     } finally {
@@ -254,7 +254,7 @@ export function CompanyTeamSection({
                 disabled={isSubmitting}
                 className="w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
               >
-                <option value="member">Miembro</option>
+                <option value="member">Representante</option>
                 <option value="admin">Administrador</option>
               </select>
             </div>

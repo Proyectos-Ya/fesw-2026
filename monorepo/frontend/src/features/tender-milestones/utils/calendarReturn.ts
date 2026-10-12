@@ -1,9 +1,9 @@
-import type { CalendarAuthorizationResult } from "../types";
+import type { CalendarAuthorizationResult, CalendarProvider } from "../types";
 
 /**
  * Licitación desde la que se salió a autorizar el calendario.
  *
- * Si el usuario cancela en Google, la respuesta no trae nada propio de la app
+ * Si el usuario cancela en Google o Microsoft, la respuesta no trae nada propio de la app
  * más que el `state`, que es opaco; esto permite ofrecerle volver a donde estaba.
  */
 const KEY = "proyectosya.calendar-return-tender";
@@ -37,12 +37,21 @@ export function savePendingCalendarSync(pending: CalendarAuthorizationResult): v
   }
 }
 
-export function consumePendingCalendarSync(tenderId: string): CalendarAuthorizationResult | null {
+/**
+ * Solo lo consume el proveedor con el que se autorizó: con Google y Outlook en
+ * la misma ficha, cada uno tiene su hook y no debe llevarse lo del otro.
+ */
+export function consumePendingCalendarSync(
+  tenderId: string,
+  provider: CalendarProvider,
+): CalendarAuthorizationResult | null {
   try {
     const raw = window.sessionStorage.getItem(PENDING_KEY);
     if (raw === null) return null;
     const pending: unknown = JSON.parse(raw);
-    if (!isPendingSync(pending) || pending.tender_id !== tenderId) return null;
+    if (!isPendingSync(pending) || pending.tender_id !== tenderId || pending.provider !== provider) {
+      return null;
+    }
     window.sessionStorage.removeItem(PENDING_KEY);
     return pending;
   } catch {

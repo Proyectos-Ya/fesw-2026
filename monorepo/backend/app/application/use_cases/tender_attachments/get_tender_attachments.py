@@ -13,6 +13,9 @@ from app.application.repositories.attachment_processing_status_reader import (
 from app.application.repositories.tender_attachment_repository import (
     ITenderAttachmentRepository,
 )
+from app.application.services.tender_analysis_background import (
+    ITenderAnalysisBackground,
+)
 from app.domain.entities.attachment_extraction import EXTRACTION_PROMPT_VERSION
 from app.domain.entities.attachment_file import AttachmentFile
 from app.domain.entities.attachment_processing import (
@@ -69,6 +72,8 @@ class TenderAttachmentsResult:
     can_upload: bool = False
     max_upload_size_bytes: int = MAX_ATTACHMENT_SIZE_BYTES
     processing_enabled: bool = False
+    # Análisis + cotización de la empresa en curso (plan 233).
+    analysis_running: bool = False
 
 
 class GetTenderAttachmentsUseCase:
@@ -83,6 +88,7 @@ class GetTenderAttachmentsUseCase:
         storage_available: bool,
         processing: IAttachmentProcessingStatusReader | None = None,
         processing_enabled: bool = False,
+        analysis: ITenderAnalysisBackground | None = None,
         prompt_version: str = EXTRACTION_PROMPT_VERSION,
         clock: Callable[[], datetime] = utc_now_naive,
     ) -> None:
@@ -92,6 +98,7 @@ class GetTenderAttachmentsUseCase:
         self.storage_available = storage_available
         self.processing = processing
         self.processing_enabled = processing_enabled
+        self.analysis = analysis
         self.prompt_version = prompt_version
         self.clock = clock
 
@@ -167,4 +174,9 @@ class GetTenderAttachmentsUseCase:
                 access and access.can_upload and self.storage_available
             ),
             processing_enabled=self.processing_enabled,
+            analysis_running=bool(
+                access
+                and self.analysis is not None
+                and self.analysis.is_running(access.workspace_id, tender_id)
+            ),
         )

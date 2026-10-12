@@ -632,3 +632,51 @@ describe("TenderAttachmentsPanel — subida manual (plan 233, decisión 2)", () 
   });
 });
 
+
+describe("TenderAttachmentsPanel: análisis con los anexos (plan 233)", () => {
+  beforeEach(() => {
+    clearTenderAttachmentsCache();
+    window.localStorage.clear();
+    vi.mocked(service.getTenderAttachments).mockReset();
+  });
+
+  it("mientras se analizan los anexos lo avisa", async () => {
+    vi.mocked(service.getTenderAttachments).mockResolvedValue(
+      buildTenderAttachments({ official: [], can_upload: true, analysis_running: true }),
+    );
+
+    renderPanel();
+
+    const aviso = await screen.findByText(/Analizando anexos/);
+    expect(aviso.closest("[role='status']")).not.toBeNull();
+  });
+
+  it("consulta mientras analiza y avisa a la ficha cuando termina", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(service.getTenderAttachments)
+        .mockResolvedValueOnce(
+          buildTenderAttachments({ official: [], can_upload: true, analysis_running: true }),
+        )
+        .mockResolvedValue(
+          buildTenderAttachments({ official: [], can_upload: true, analysis_running: false }),
+        );
+      const onAnalysisFinished = vi.fn();
+      render(
+        <TenderAttachmentsPanel
+          tenderId="t-1"
+          tenderCode="5052-431-COT26"
+          onAnalysisFinished={onAnalysisFinished}
+        />,
+      );
+      await screen.findByText(/Analizando anexos/);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await waitFor(() => expect(onAnalysisFinished).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(/Analizando anexos/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

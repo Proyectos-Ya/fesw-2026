@@ -3,7 +3,6 @@ from collections.abc import AsyncGenerator
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app import bootstrap
 from app.application.services.attachment_deleted_listener import (
     NoopAttachmentDeletedListener,
 )
@@ -11,6 +10,23 @@ from app.application.services.attachment_stored_listener import (
     NoopAttachmentStoredListener,
 )
 from app.application.services.recent_ranking_registry import RecentRankingRegistry
+from app.bootstrap.attachments import (
+    get_attachment_deleted_listener,
+    get_attachment_stored_listener,
+)
+from app.bootstrap.ranking_telemetry import get_ranking_impression_logger
+from app.bootstrap.repositories import (
+    get_supplier_invitation_repo,
+    get_supplier_member_repo,
+    get_supplier_repo,
+    get_user_repo,
+)
+from app.bootstrap.services import (
+    get_email_service,
+    get_embedding_service,
+    get_ranking_registry,
+    get_supplier_vector_repo,
+)
 from app.main import app
 from tests.support.api_auth import preparar_auth
 from tests.unit.application.fakes import (
@@ -44,25 +60,25 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     # Uno por test: el de `app.state` se compartiría entre tests.
     registro = RecentRankingRegistry()
 
-    app.dependency_overrides[bootstrap.get_user_repo] = lambda: users
-    app.dependency_overrides[bootstrap.get_supplier_repo] = lambda: suppliers
-    app.dependency_overrides[bootstrap.get_supplier_member_repo] = lambda: members
-    app.dependency_overrides[bootstrap.get_supplier_invitation_repo] = lambda: invitations
-    app.dependency_overrides[bootstrap.get_supplier_vector_repo] = lambda: vectors
-    app.dependency_overrides[bootstrap.get_embedding_service] = lambda: (
+    app.dependency_overrides[get_user_repo] = lambda: users
+    app.dependency_overrides[get_supplier_repo] = lambda: suppliers
+    app.dependency_overrides[get_supplier_member_repo] = lambda: members
+    app.dependency_overrides[get_supplier_invitation_repo] = lambda: invitations
+    app.dependency_overrides[get_supplier_vector_repo] = lambda: vectors
+    app.dependency_overrides[get_embedding_service] = lambda: (
         FakeEmbeddingService()
     )
-    app.dependency_overrides[bootstrap.get_email_service] = lambda: emails
+    app.dependency_overrides[get_email_service] = lambda: emails
     # Sin estos overrides, los tests de `/tenders/recommended` intentarían escribir
     # las impresiones en la base de desarrollo.
-    app.dependency_overrides[bootstrap.get_ranking_impression_logger] = lambda: impresiones
-    app.dependency_overrides[bootstrap.get_ranking_registry] = lambda: registro
+    app.dependency_overrides[get_ranking_impression_logger] = lambda: impresiones
+    app.dependency_overrides[get_ranking_registry] = lambda: registro
     # Sin estos, `complete` y `DELETE` de un anexo abrirían su propia sesión contra la
     # base del `.env`: la promoción de la decisión 6 no usa la sesión de la petición.
-    app.dependency_overrides[bootstrap.get_attachment_stored_listener] = lambda: (
+    app.dependency_overrides[get_attachment_stored_listener] = lambda: (
         NoopAttachmentStoredListener()
     )
-    app.dependency_overrides[bootstrap.get_attachment_deleted_listener] = lambda: (
+    app.dependency_overrides[get_attachment_deleted_listener] = lambda: (
         NoopAttachmentDeletedListener()
     )
 

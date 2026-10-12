@@ -191,4 +191,30 @@ describe("PendingInvitationsList", () => {
     });
     expect(mockRefreshInvitations).toHaveBeenCalled();
   });
+
+  it("muestra el rol Representante cuando la invitación es para un miembro no administrador", () => {
+    const memberInvitation: SupplierInvitation = {
+      ...sampleInvitation,
+      id: "inv-rep-1",
+      role: "member",
+    };
+
+    vi.spyOn(WorkspaceContextModule, "useWorkspace").mockReturnValue({
+      workspaces: [],
+      recentWorkspaces: [],
+      activeWorkspace: null,
+      invitations: [memberInvitation],
+      isLoading: false,
+      isAdmin: false,
+      hasPermission: vi.fn(),
+      switchActiveWorkspace: vi.fn(),
+      refreshWorkspaces: vi.fn(),
+      refreshInvitations: mockRefreshInvitations,
+      acceptPendingInvitation: mockAccept,
+      rejectPendingInvitation: mockReject,
+    });
+
+    render(<PendingInvitationsList />);
+    expect(screen.getByText("Representante")).toBeInTheDocument();
+  });
 });

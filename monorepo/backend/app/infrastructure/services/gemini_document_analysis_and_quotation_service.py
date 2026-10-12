@@ -9,6 +9,7 @@ from app.application.services.document_analysis_quotation_service import (
     DocumentAnalysisAndQuotationResult,
     IDocumentAnalysisAndQuotationService,
 )
+from app.application.services.tender_assistant_ai_service import DocumentContextDTO
 from app.domain.entities.deep_analysis import (
     VALID_RECOMMENDATIONS,
     DeepAnalysis,
@@ -36,7 +37,7 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
         self,
         tender: Tender,
         supplier: Supplier,
-        file_name: str,
+        file_names: list[str],
         matching_score: float | None = None,
     ) -> str:
         tender_items_str = ""
@@ -78,7 +79,8 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
             f"[INSTRUCCIONES DEL SISTEMA]\n"
             f"Eres un analista experto en licitaciones de Mercado Público de Chile y cotizador técnico-comercial.\n"
             f"Tu misión es analizar conjuntamente los antecedentes de la licitación, el perfil de la empresa proveedora, "
-            f"y el documento adjunto subido '{file_name}' para generar en una sola evaluación estructurada:\n"
+            f"y los anexos de la licitación ({', '.join(repr(n) for n in file_names) or 'ninguno legible'}) "
+            f"para generar en una sola evaluación estructurada:\n"
             f"1. UN ANÁLISIS PROFUNDO DE COMPATIBILIDAD (analysis):\n"
             f"{score_directive}"
             f"- 'recommendation': Limítala estrictamente a uno de: 'Postular', 'Evaluar con cautela', 'No recomendado'.\n"
@@ -100,41 +102,16 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
 
     async def analyze_and_quote(
         self,
-        document_bytes: bytes,
-        file_name: str,
-        file_type: str,
+        documents: list[DocumentContextDTO],
         tender: Tender,
         supplier: Supplier,
         matching_score: float | None = None,
     ) -> DocumentAnalysisAndQuotationResult:
-        normalized_type = file_type.lower().strip()
+        enviados, partes_de_documentos = _partes_de_documentos(documents)
         parts: list[dict] = [
-            {"text": self._build_prompt(tender, supplier, file_name, matching_score)}
+            {"text": self._build_prompt(tender, supplier, enviados, matching_score)},
+            *partes_de_documentos,
         ]
-
-        if normalized_type == "pdf":
-            b64_data = base64.b64encode(document_bytes).decode("utf-8")
-            parts.append({
-                "inlineData": {
-                    "mimeType": "application/pdf",
-                    "data": b64_data,
-                }
-            })
-            parts.append({"text": f"Documento adjunto analizado: '{file_name}'"})
-        elif normalized_type == "png":
-            b64_data = base64.b64encode(document_bytes).decode("utf-8")
-            parts.append({
-                "inlineData": {
-                    "mimeType": "image/png",
-                    "data": b64_data,
-                }
-            })
-            parts.append({"text": f"Imagen/Plano adjunto analizado: '{file_name}'"})
-        elif normalized_type == "xlsx":
-            xlsx_text = xlsx_to_text(document_bytes, file_name)
-            parts.append({"text": f"Contenido de planilla adjunta '{file_name}':\n{xlsx_text}"})
-        else:
-            parts.append({"text": f"Documento adjunto: '{file_name}' (tipo {file_type})"})
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
         payload = {
@@ -295,3 +272,47 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
             analysis=deep_analysis,
             quotation=quotation_input,
         )
+
+
+# Gemini acepta unos 20 MB por petición con archivos en línea, y base64 suma un
+# tercio. Se manda hasta este total en bytes crudos; lo que no cabe se omite.
+MAX_INLINE_BYTES = 15 * 1024 * 1024
+
+
+def _partes_de_documentos(
+    documents: list[DocumentContextDTO],
+) -> tuple[list[str], list[dict]]:
+    """Las partes de la petición para cada documento y los nombres de los enviados.
+
+    PDF y PNG van en línea, XLSX como texto. Los demás tipos se omiten: mandarlos
+    con un MIME equivocado hace fallar la llamada entera.
+    """
+    enviados: list[str] = []
+    partes: list[dict] = []
+    total = 0
+    for documento in documents:
+        tipo = documento.file_type.lower().strip()
+        nombre = documento.document_name
+        if tipo == "xlsx":
+            partes.append({
+                "text": f"Contenido de planilla adjunta '{nombre}':\n"
+                f"{xlsx_to_text(documento.file_bytes, nombre)}"
+            })
+            enviados.append(nombre)
+            continue
+        if tipo not in ("pdf", "png"):
+            logger.info("Se omite el anexo '%s': la IA no lee el tipo '%s'.", nombre, tipo)
+            continue
+        if total + len(documento.file_bytes) > MAX_INLINE_BYTES:
+            logger.warning("Se omite el anexo '%s': pasa el tope de tamaño de la llamada.", nombre)
+            continue
+        total += len(documento.file_bytes)
+        partes.append({
+            "inlineData": {
+                "mimeType": "application/pdf" if tipo == "pdf" else "image/png",
+                "data": base64.b64encode(documento.file_bytes).decode("utf-8"),
+            }
+        })
+        partes.append({"text": f"Anexo adjunto: '{nombre}'"})
+        enviados.append(nombre)
+    return enviados, partes

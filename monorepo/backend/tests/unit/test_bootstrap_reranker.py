@@ -14,7 +14,7 @@ import logging
 
 import pytest
 
-from app.bootstrap import MockRerankerService, build_reranker_service
+from app.bootstrap.builders import MockRerankerService, build_reranker_service
 from app.config import settings
 from app.infrastructure.services import bge_reranker_service as modulo_reranker
 

@@ -5,7 +5,16 @@ import { loginUrlWithReturn } from "../returnUrl";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./env";
 
 /** Rutas que se sirven sin sesión. Todo lo demás exige una. */
-const PUBLICAS = ["/login", "/register", "/verificar", "/auth", "/privacidad"];
+const PUBLICAS = [
+  "/login",
+  "/register",
+  "/verificar",
+  "/auth",
+  "/privacidad",
+  // HdU 19: el enlace compartido lo abre alguien sin cuenta.
+  "/compartido",
+  "/enlace-caducado",
+];
 
 function esPublica(pathname: string): boolean {
   return PUBLICAS.some(

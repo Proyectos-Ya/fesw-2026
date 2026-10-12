@@ -313,3 +313,71 @@ def build_invitation_html_body(
         "</div>"
     )
 
+
+# --- Exportaciones en segundo plano (HdU 19, criterios 8 y 9) ---
+
+
+@dataclass(frozen=True)
+class ExportReadyItem:
+    """Un archivo que tardó más de 10 s y se terminó en segundo plano."""
+
+    job_id: UUID
+    tender_name: str
+    # "PDF" o "Excel": es lo que el usuario pidió, dicho como lo diría él.
+    format_label: str
+
+
+def export_download_url(base_url: str, job_id: UUID) -> str:
+    """Página de la app que descarga el archivo, previa sesión."""
+    return f"{base_url.rstrip('/')}/exportaciones/{job_id}"
+
+
+def _envoltorio(cuerpo: str) -> str:
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;'
+        f'max-width:600px;margin:0 auto;padding:24px">{cuerpo}</div>'
+    )
+
+
+def build_export_ready_subject(item: ExportReadyItem) -> str:
+    return f"Tu {item.format_label} está listo: {item.tender_name}"
+
+
+def build_export_ready_text_body(item: ExportReadyItem, base_url: str) -> str:
+    return (
+        f"El {item.format_label} de la licitación «{item.tender_name}» ya está listo.\n\n"
+        f"Descárgalo aquí: {export_download_url(base_url, item.job_id)}\n\n"
+        "El enlace está disponible por 7 días y requiere iniciar sesión.\n"
+    )
+
+
+def build_export_ready_html_body(item: ExportReadyItem, base_url: str) -> str:
+    url = export_download_url(base_url, item.job_id)
+    return _envoltorio(
+        f'<p style="font-size:15px">El {escape(item.format_label)} de la licitación '
+        f"<strong>{escape(item.tender_name)}</strong> ya está listo.</p>"
+        f'<a href="{escape(url)}" style="display:inline-block;background:#0f766e;'
+        "color:#ffffff;padding:8px 16px;border-radius:6px;"
+        f'text-decoration:none;font-size:14px">Descargar {escape(item.format_label)}</a>'
+        '<p style="color:#6b6259;font-size:13px">El enlace está disponible por 7 días '
+        "y requiere iniciar sesión.</p>"
+    )
+
+
+def build_export_failed_subject(item: ExportReadyItem) -> str:
+    return f"No se pudo generar tu {item.format_label}: {item.tender_name}"
+
+
+def build_export_failed_text_body(item: ExportReadyItem) -> str:
+    return (
+        f"No pudimos generar el {item.format_label} de la licitación «{item.tender_name}».\n\n"
+        "Vuelve a exportarlo desde la ficha de la licitación.\n"
+    )
+
+
+def build_export_failed_html_body(item: ExportReadyItem) -> str:
+    return _envoltorio(
+        f'<p style="font-size:15px">No pudimos generar el {escape(item.format_label)} '
+        f"de la licitación <strong>{escape(item.tender_name)}</strong>.</p>"
+        '<p style="font-size:14px">Vuelve a exportarlo desde la ficha de la licitación.</p>'
+    )

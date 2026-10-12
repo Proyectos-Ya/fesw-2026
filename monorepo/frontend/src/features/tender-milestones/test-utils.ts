@@ -22,6 +22,10 @@ export function buildMilestoneList(overrides: Partial<MilestoneList> = {}): Mile
     milestones: [buildMilestone()],
     documents_count: 0,
     discarded_count: 0,
+    unavailable_documents_count: 0,
+    extraction_status: "idle",
+    pending_documents_count: 0,
+    failed_documents_count: 0,
     ...overrides,
   };
 }

@@ -177,7 +177,7 @@ def _exigir_embedding_real(embedding: IEmbeddingService) -> None:
     `build_embedding_service` cae a `MockEmbeddingService` en desarrollo cuando el
     modelo no carga. Acá eso significaría persistir vectores de puros ceros.
     """
-    from app.bootstrap import MockEmbeddingService
+    from app.bootstrap.builders import MockEmbeddingService
 
     if isinstance(embedding, MockEmbeddingService):
         sys.exit(
@@ -500,7 +500,7 @@ async def cargar(args: argparse.Namespace) -> None:
     # que es lo que hace barata esa corrida.
     embedding: IEmbeddingService | None = None
     if not args.solo_payload:
-        from app.bootstrap import build_embedding_service
+        from app.bootstrap.builders import build_embedding_service
 
         embedding = build_embedding_service()
         _exigir_embedding_real(embedding)

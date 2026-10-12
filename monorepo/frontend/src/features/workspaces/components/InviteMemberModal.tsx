@@ -153,7 +153,7 @@ export function InviteMemberModal({
                 onChange={(e) => setRole(e.target.value as MemberRole)}
                 className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
               >
-                <option value="member">Miembro (Visualización y postulación)</option>
+                <option value="member">Representante (Visualización y postulación)</option>
                 <option value="admin">Administrador (Gestión total y miembros)</option>
               </select>
             </div>

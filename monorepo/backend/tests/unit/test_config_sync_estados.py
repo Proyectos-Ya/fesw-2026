@@ -31,18 +31,24 @@ class TestValoresPorDefecto:
         assert s.sync_estados_limite == 9000
         assert s.sync_estados_timeout_minutos == 50.0
 
+    def test_incompletas_toleradas(self):
+        """3 seguidas = 3 h con la API fallando: ahí sí vale un correo."""
+        assert _construir().sync_estados_incompletas_toleradas == 3
+
 
 class TestDesdeElEntorno:
     def test_se_leen_de_las_variables(self, monkeypatch):
         monkeypatch.setenv("SYNC_ESTADOS_VENTANA_HORAS", "3.5")
         monkeypatch.setenv("SYNC_ESTADOS_LIMITE", "5000")
         monkeypatch.setenv("SYNC_ESTADOS_TIMEOUT_MINUTOS", "40")
+        monkeypatch.setenv("SYNC_ESTADOS_INCOMPLETAS_TOLERADAS", "6")
 
         s = _construir()
 
         assert s.sync_estados_ventana_horas == 3.5
         assert s.sync_estados_limite == 5000
         assert s.sync_estados_timeout_minutos == 40.0
+        assert s.sync_estados_incompletas_toleradas == 6
 
     @pytest.mark.parametrize(
         "variable",
@@ -50,6 +56,7 @@ class TestDesdeElEntorno:
             "SYNC_ESTADOS_VENTANA_HORAS",
             "SYNC_ESTADOS_LIMITE",
             "SYNC_ESTADOS_TIMEOUT_MINUTOS",
+            "SYNC_ESTADOS_INCOMPLETAS_TOLERADAS",
         ],
     )
     def test_cero_o_negativo_se_rechaza(self, monkeypatch, variable):

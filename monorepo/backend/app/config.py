@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
     sync_estados_limite: int = Field(default=9000, gt=0)
     sync_estados_timeout_minutos: float = Field(default=50.0, gt=0)
+    # Corridas incompletas seguidas (la API cortó el listado) que se toleran
+    # saliendo con 0. Una suelta la cubre la ventana de la siguiente; recién al
+    # juntar estas hay horas sin mirar y vale el correo de "crashed" de Railway.
+    sync_estados_incompletas_toleradas: int = Field(default=3, gt=0)
     # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
@@ -231,6 +235,9 @@ class Settings(BaseSettings):
     notification_scan_interval_seconds: int = 300
     notification_digest_hour: int = 8
 
+    # HdU 19, criterios 8 y 9: si un PDF o Excel tarda más que esto, se responde
+    # de inmediato y se avisa por correo cuando esté listo.
+    export_inline_timeout_seconds: float = Field(default=10.0, gt=0)
     # --- Sincronización con Google Calendar (HU-16) ---
     # Opcional: sin el cliente configurado, el resto de la app funciona igual y
     # los endpoints de calendario responden que la sincronización no está
@@ -238,11 +245,19 @@ class Settings(BaseSettings):
     # exactamente con la registrada en Google Cloud.
     google_calendar_client_id: str | None = None
     google_calendar_client_secret: str | None = None
+    # --- Sincronización con Outlook Calendar (HU-16, criterio 2) ---
+    # Igual que Google: opcional, y la redirección (APP_BASE_URL +
+    # /calendario/callback/outlook) debe estar registrada tal cual en la app de
+    # Microsoft Entra ID. `common` acepta cuentas personales y de trabajo;
+    # `consumers` solo personales.
+    microsoft_calendar_client_id: str | None = None
+    microsoft_calendar_client_secret: str | None = None
+    microsoft_calendar_tenant: str = "common"
     # Llave Fernet para cifrar los tokens en la base. Admite varias separadas
     # por coma para rotarla: la primera cifra y todas descifran.
     token_encryption_key: str | None = None
     # Revisa en Mercado Público si cambiaron las fechas de las licitaciones que
-    # alguien tiene en su calendario. Solo corre con Google Calendar configurado.
+    # alguien tiene en su calendario. Solo corre con algún calendario configurado.
     run_milestone_refresh: bool = True
     milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
@@ -275,8 +290,9 @@ class Settings(BaseSettings):
     attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
 
     # --- Anexos: extracción con Gemini y resumen (plan 233, decisión 4) ---
-    # Por defecto activo en local para procesar trabajos de la cola de anexos.
-    run_attachment_processing: bool = True
+    # Apagado por defecto: cada archivo es una llamada pagada a Gemini. El
+    # docker-compose lo enciende en local; en producción hay que pedirlo.
+    run_attachment_processing: bool = False
     # Llamadas a `generateContent` por día de Chile. Al agotarse, la cola espera al
     # día siguiente sin llamar. 0 pausa la extracción sin apagar el bucle.
     attachment_gemini_daily_budget: int = Field(default=100, ge=0)
@@ -294,6 +310,10 @@ class Settings(BaseSettings):
 
     # --- Matching en sombra con anexos (plan 233, decisión 9) ---
     matching_shadow_enabled: bool = False
+
+    # Auto-archivado diario del tablero Kanban (HdU 10, CA4). Barrido que
+    # mueve a historial las tarjetas con más de 90 días en el tablero.
+    run_kanban_auto_archive: bool = True
 
     @property
     def attachment_extraction_model(self) -> str:
@@ -401,27 +421,43 @@ class Settings(BaseSettings):
     def google_calendar_redirect_uri(self) -> str:
         return f"{self.app_base_url.rstrip('/')}/calendario/callback/google"
 
+    @property
+    def microsoft_calendar_enabled(self) -> bool:
+        return self.microsoft_calendar_client_id is not None
+
+    @property
+    def microsoft_calendar_redirect_uri(self) -> str:
+        return f"{self.app_base_url.rstrip('/')}/calendario/callback/outlook"
+
     @model_validator(mode="after")
     def _exigir_configuracion_de_calendario(self) -> "Settings":
-        """Con el cliente de Google puesto, el secreto y la llave son obligatorios.
+        """Con el cliente de un calendario puesto, su secreto y la llave son obligatorios.
 
         Sin la llave, los tokens de los usuarios no se podrían guardar cifrados;
-        mejor que no arranque a que falle al conectar el primer calendario.
+        mejor que no arranque a que falle al conectar el primer calendario. La
+        llave es una sola para Google y Outlook.
         """
-        if not self.google_calendar_client_id:
-            return self
-        faltantes = [
-            nombre
-            for nombre, valor in (
-                ("GOOGLE_CALENDAR_CLIENT_SECRET", self.google_calendar_client_secret),
-                ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
-            )
-            if not valor
-        ]
-        if faltantes:
-            raise ValueError(
-                "Falta configurar para Google Calendar: " + ", ".join(faltantes)
-            )
+        for nombre, prefijo, cliente, secreto in (
+            ("Google Calendar", "GOOGLE", self.google_calendar_client_id, self.google_calendar_client_secret),
+            (
+                "Outlook Calendar",
+                "MICROSOFT",
+                self.microsoft_calendar_client_id,
+                self.microsoft_calendar_client_secret,
+            ),
+        ):
+            if not cliente:
+                continue
+            faltantes = [
+                variable
+                for variable, valor in (
+                    (f"{prefijo}_CALENDAR_CLIENT_SECRET", secreto),
+                    ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key),
+                )
+                if not valor
+            ]
+            if faltantes:
+                raise ValueError(f"Falta configurar para {nombre}: " + ", ".join(faltantes))
         return self
 
     @property
@@ -468,6 +504,8 @@ class Settings(BaseSettings):
         "company_lookup_api_key",
         "google_calendar_client_id",
         "google_calendar_client_secret",
+        "microsoft_calendar_client_id",
+        "microsoft_calendar_client_secret",
         "token_encryption_key",
         "r2_account_id",
         "r2_access_key_id",

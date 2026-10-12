@@ -7,6 +7,7 @@ import pytest
 
 from app.shared.datetime_utils import (
     CHILE_TZ,
+    aware_to_utc_naive,
     chile_date,
     chile_day_bounds_utc,
     serialize_utc,
@@ -165,3 +166,22 @@ class TestChileDate:
 
     def test_un_instante_de_la_tarde_es_el_mismo_dia(self):
         assert chile_date(datetime(2026, 10, 3, 15, 0)) == date(2026, 10, 3)
+
+
+class TestAwareToUtcNaive:
+    """Para fechas que vuelven de JSON con "Z" o llegan del cliente con offset."""
+
+    def test_convierte_una_fecha_con_zona_a_utc_sin_zona(self):
+        santiago = timezone(timedelta(hours=-3))
+        valor = datetime(2027, 6, 30, 0, 0, tzinfo=santiago)
+
+        assert aware_to_utc_naive(valor) == datetime(2027, 6, 30, 3, 0)
+
+    def test_deja_igual_una_fecha_sin_zona(self):
+        """A diferencia de `to_utc_naive`, no la asume en hora de Chile."""
+        valor = datetime(2027, 6, 30, 0, 0)
+
+        assert aware_to_utc_naive(valor) == valor
+
+    def test_none_sigue_siendo_none(self):
+        assert aware_to_utc_naive(None) is None

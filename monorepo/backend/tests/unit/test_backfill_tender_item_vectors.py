@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.bootstrap import MockEmbeddingService
+from app.bootstrap.builders import MockEmbeddingService
 from scripts.backfill_tender_item_vectors import (
     TAMANO_LOTE_EMBEDDING,
     Resumen,
@@ -783,13 +783,13 @@ class TestCargarSoloPayload:
     """El cableado de `cargar`: con `--solo-payload` no se toca el modelo."""
 
     async def test_no_construye_el_servicio_de_embeddings(self, monkeypatch):
-        from app import bootstrap
+        from app.bootstrap import builders
         from scripts import backfill_tender_item_vectors as script
 
         def no_debe_llamarse():
             raise AssertionError("--solo-payload no debe cargar el modelo de embeddings")
 
-        monkeypatch.setattr(bootstrap, "build_embedding_service", no_debe_llamarse)
+        monkeypatch.setattr(builders, "build_embedding_service", no_debe_llamarse)
 
         repo = InMemoryTenderItemVectorRepository()
         await repo.upsert(_id(1), [[1.0, 0.0, 0.0]])

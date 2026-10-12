@@ -20,6 +20,7 @@ _MARGEN_REFRESCO = timedelta(minutes=1)
 
 class CalendarProvider(StrEnum):
     GOOGLE = "google"
+    OUTLOOK = "outlook"
 
 
 class CalendarConnectionStatus(StrEnum):

@@ -22,16 +22,20 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
 * **Convención de nombre**: `<número-issue>-<slug-descriptivo>.md` (ejemplo: `240-integracion-notificaciones.md`).
 * **Regla**: El plan debe ser revisado por un humano antes de comenzar a escribir código de producción. Las issues de GitHub definen el **QUÉ** y los planes el **CÓMO** (siempre enlazar con `Refs #NNN`).
 * **Planes activos / registrados**:
+  * [227-mejoras-cotizaciones.md](./plans/227-mejoras-cotizaciones.md): Cantidades automáticas, enteros y PDF.
   * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
   * [256-matching-qdrant-onboarding-telemetria.md](./plans/256-matching-qdrant-onboarding-telemetria.md): Matching: canal léxico (sparse BM25) sumado a los canales densos, caso sin historial y lectura de la telemetría del ranking.
   * [233-anexos-extension-navegador.md](./plans/233-anexos-extension-navegador.md): Anexos de Mercado Público (subida, extracción con Gemini y extensión de navegador), segundo llamado, NDCG en producción y matching en sombra (Spike 2).
+  * [233-disparar-ia-con-anexos.md](./plans/233-disparar-ia-con-anexos.md): Los hitos y el análisis + cotización se disparan al subir un anexo y leen los anexos, en vez de los documentos del chat.
   * [instrucciones-decision-7.md](./plans/instrucciones-decision-7.md): Instrucciones técnicas de implementación para la Extensión de Navegador (Fase 3, Decisión 7).
+  * [292-postulacion-preguntas-y-feedback.md](./plans/292-postulacion-preguntas-y-feedback.md): Preguntas basadas en las bases y feedback de carga en la postulación (mejoras a HU-20).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
 * **Convención de nombre**: `<NNNN>-<slug>.md` con cuatro dígitos correlativos (ejemplo: `0001-seleccion-motor-vectorial.md`).
 * **Estructura**: Contexto, Decisión tomada, Alternativas descartadas y Consecuencias.
 * **Decisiones registradas**:
+  * [0001-truncar-textos-del-reranker.md](./decisions/0001-truncar-textos-del-reranker.md): Pinecone recorta los pares que pasan los 1024 tokens en vez de rechazar el rerank. Solución provisoria con investigación pendiente.
   * [0002-confianza-de-anexos-compartidos.md](./decisions/0002-confianza-de-anexos-compartidos.md): Modelo de confianza, privacidad y ciclo de vida de anexos oficiales compartidos entre empresas (Plan 233, Decisión 6).
   * [0003-arquitectura-extension-navegador.md](./decisions/0003-arquitectura-extension-navegador.md): Arquitectura de la extensión de navegador, compatibilidad multi-navegador con WXT, Bridge y adaptador de Mercado Público (Plan 233, Decisión 7).
   * [0005-matching-en-sombra-con-anexos.md](./decisions/0005-matching-en-sombra-con-anexos.md): Matching enriquecido en sombra con anexos oficiales, recorte de tokens a 512, variantes att-text-v1 y att-items-v1, y replay con NDCG (Plan 233, Decisión 9).

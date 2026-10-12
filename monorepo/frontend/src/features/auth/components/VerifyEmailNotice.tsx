@@ -21,7 +21,10 @@ const ESPERA_ENTRE_REENVIOS = 60;
 
 function VerifyEmailNoticeInner() {
   const params = useSearchParams();
-  const email = params.get("email") ?? "";
+  const emailDeLaUrl = params.get("email") ?? "";
+  // Cuando el enlace vence, `/auth/confirm` redirige sin correo: se pide acá.
+  const [emailEscrito, setEmailEscrito] = useState("");
+  const email = emailDeLaUrl || emailEscrito.trim();
   const errorDelEnlace = params.get("error");
 
   const [restante, setRestante] = useState(0);
@@ -95,20 +98,29 @@ function VerifyEmailNoticeInner() {
             </div>
           )}
 
-          {email && (
-            <Button
+          {!emailDeLaUrl && (
+            <input
+              type="email"
+              value={emailEscrito}
+              onChange={(e) => setEmailEscrito(e.target.value)}
+              placeholder="tu@correo.cl"
+              aria-label="Correo electrónico"
+              className="mb-4 w-full rounded-md border border-border-default bg-white px-3 py-2 text-sm"
+            />
+          )}
+
+          <Button
               type="button"
               variant="ghost"
               onClick={reenviar}
               isLoading={estado === "enviando"}
-              disabled={restante > 0}
+              disabled={restante > 0 || !email}
               className="w-full border border-border-default hover:bg-white hover:border-border-strong text-text-strong font-bold"
             >
               {restante > 0
                 ? `Reenviar en ${restante}s`
                 : "Reenviar el correo de confirmación"}
             </Button>
-          )}
 
           <p className="text-sm text-text-muted mt-8">
             ¿No lo encuentras? Mira en spam o correo no deseado. El enlace vence

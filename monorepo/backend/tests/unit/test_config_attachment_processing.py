@@ -21,7 +21,9 @@ def _construir(**extra) -> Settings:
 def test_defaults_procesamiento_anexos(monkeypatch):
     monkeypatch.delenv("RUN_ATTACHMENT_PROCESSING", raising=False)
     s = _construir()
-    assert s.run_attachment_processing is True
+    # Apagado si nadie lo pide: cada archivo es una llamada pagada a Gemini, y un
+    # despliegue sin la variable no debe empezar a gastar (como dice `.env.example`).
+    assert s.run_attachment_processing is False
     assert s.attachment_gemini_daily_budget == 100
     assert s.gemini_extraction_model is None
     assert s.attachment_extraction_model == "x"

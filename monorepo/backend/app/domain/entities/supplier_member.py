@@ -34,6 +34,7 @@ ALL_PERMISSIONS: tuple[str, ...] = (
     "save_tenders",
     "chat_assistant",
     "deep_analysis",
+    "generate_proposal",
     UPLOAD_ATTACHMENTS,
 )
 
@@ -47,6 +48,7 @@ _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
         UPLOAD_ATTACHMENTS,
     },
     MemberRole.MEMBER: {
@@ -54,6 +56,7 @@ _ROLE_PERMISSIONS: dict[MemberRole, set[str]] = {
         "save_tenders",
         "chat_assistant",
         "deep_analysis",
+        "generate_proposal",
         UPLOAD_ATTACHMENTS,
     },
     MemberRole.VIEWER: {

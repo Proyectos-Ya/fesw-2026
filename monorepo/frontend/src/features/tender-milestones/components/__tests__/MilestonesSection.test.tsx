@@ -71,7 +71,7 @@ describe("MilestonesSection", () => {
     expect(visita.getByText("Visita técnica")).toBeInTheDocument();
     expect(visita.getByText("Extraído por IA")).toBeInTheDocument();
     expect(visita.getByText("03 oct 2026, 15:00")).toBeInTheDocument();
-    expect(visita.getByText("En 2 días")).toBeInTheDocument();
+    expect(visita.getByText("¡Vence en 2 días!")).toBeInTheDocument();
     expect(visita.getByText("a las 15:00 del día 3")).toBeInTheDocument();
     expect(within(filas()[1]).getByText("Mercado Público")).toBeInTheDocument();
   });
@@ -87,6 +87,17 @@ describe("MilestonesSection", () => {
 
     expect(await screen.findByText("20 oct 2026")).toBeInTheDocument();
     expect(screen.getByText("Sin hora exacta")).toBeInTheDocument();
+  });
+
+  it("marca los hitos ya sincronizados en cada calendario", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ milestones: [buildMilestone({ synced_providers: ["google", "outlook"] })] }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByText("En Google Calendar")).toBeInTheDocument();
+    expect(screen.getByText("En Outlook Calendar")).toBeInTheDocument();
   });
 
   it("marca los hitos ya sincronizados con Google Calendar", async () => {
@@ -106,12 +117,61 @@ describe("MilestonesSection", () => {
 
     const boton = await screen.findByRole("button", { name: /extraer hitos de las bases/i });
     expect(boton).toBeDisabled();
-    expect(screen.getByText(/adjunta las bases en el asistente/i)).toBeInTheDocument();
+    expect(screen.getByText(/sube los anexos de la licitación/i)).toBeInTheDocument();
+  });
+
+  it("con todas las bases ya leídas no deja volver a extraer y explica cómo releer una", async () => {
+    // Volver a leer las mismas bases duplicaba o borraba hitos.
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 2, pending_documents_count: 0 }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByRole("button", { name: /extraer hitos de las bases/i })).toBeDisabled();
+    expect(screen.getByText(/ya se extrajeron los hitos de todos los anexos subidos/i)).toBeInTheDocument();
+  });
+
+  it("con una base pendiente permite extraer", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 2, pending_documents_count: 1 }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByRole("button", { name: /extraer hitos de las bases/i })).toBeEnabled();
+    expect(screen.queryByText(/ya se extrajeron los hitos/i)).not.toBeInTheDocument();
+  });
+
+  it("mientras la IA lee las bases recién subidas lo dice y no deja extraer a mano", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, extraction_status: "running" }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(await screen.findByText(/la ia está leyendo las bases que subiste/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /extraer hitos de las bases/i })).toBeDisabled();
+  });
+
+  it("si la extracción automática falló invita a reintentar con el botón", async () => {
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1, extraction_status: "failed" }),
+    );
+
+    render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+    expect(
+      await screen.findByText(/no se pudieron extraer los hitos automáticamente/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /extraer hitos de las bases/i })).toBeEnabled();
   });
 
   it("extrae los hitos de las bases y muestra el resultado", async () => {
     const user = userEvent.setup();
-    vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList({ documents_count: 1 }));
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1 }),
+    );
     vi.mocked(service.extractTenderMilestones).mockResolvedValue(
       buildMilestoneList({
         documents_count: 1,
@@ -133,7 +193,9 @@ describe("MilestonesSection", () => {
 
   it("si la extracción falla muestra el error y permite reintentar", async () => {
     const user = userEvent.setup();
-    vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList({ documents_count: 1 }));
+    vi.mocked(service.getTenderMilestones).mockResolvedValue(
+      buildMilestoneList({ documents_count: 1, pending_documents_count: 1 }),
+    );
     vi.mocked(service.extractTenderMilestones)
       .mockRejectedValueOnce(new ApiError(503, "No se pudieron extraer los hitos de las bases en este momento."))
       .mockResolvedValueOnce(buildMilestoneList({ documents_count: 1 }));
@@ -162,8 +224,102 @@ describe("MilestonesSection", () => {
     await waitFor(() => expect(filas()).toHaveLength(1));
   });
 
+  describe("botón Sincronizar con mi calendario (criterio 2)", () => {
+    const OUTLOOK_SIN_CONECTAR = {
+      provider: "outlook" as const,
+      connected: false,
+      account_email: null,
+      needs_reconnect: false,
+    };
+    const AMBOS = [...CONECTADO, OUTLOOK_SIN_CONECTAR];
+
+    it("con los dos configurados, el botón abre un menú para elegir el calendario", async () => {
+      const user = userEvent.setup();
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue(AMBOS);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      await user.click(await screen.findByRole("checkbox", { name: /seleccionar cierre/i }));
+      const boton = screen.getByRole("button", { name: /sincronizar con mi calendario/i });
+      expect(boton).toHaveAttribute("aria-haspopup", "menu");
+      await user.click(boton);
+
+      const menu = screen.getByRole("menu");
+      expect(within(menu).getByRole("menuitem", { name: /google calendar/i })).toHaveTextContent(
+        /conectado como u@gmail.com/i,
+      );
+      expect(within(menu).getByRole("menuitem", { name: /outlook calendar/i })).toHaveTextContent(
+        /sin conectar/i,
+      );
+      expect(calendarService.syncMilestones).not.toHaveBeenCalled();
+    });
+
+    it("elegir Outlook en el menú sincroniza con Outlook", async () => {
+      const user = userEvent.setup();
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([
+        ...CONECTADO,
+        { ...OUTLOOK_SIN_CONECTAR, connected: true, account_email: "u@outlook.com" },
+      ]);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+      vi.mocked(calendarService.syncMilestones).mockResolvedValue({
+        results: [{ milestone_id: "m-1", synced: true }],
+        failed_count: 0,
+      });
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      await user.click(await screen.findByRole("checkbox", { name: /seleccionar cierre/i }));
+      await user.click(screen.getByRole("button", { name: /sincronizar con mi calendario/i }));
+      await user.click(screen.getByRole("menuitem", { name: /outlook calendar/i }));
+
+      expect(await screen.findByText("1 hito sincronizado con Outlook Calendar.")).toBeInTheDocument();
+      expect(calendarService.syncMilestones).toHaveBeenCalledWith("t-1", "outlook", ["m-1"], null);
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    it("con un solo calendario configurado el botón sincroniza directo, sin menú", async () => {
+      const user = userEvent.setup();
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([
+        { ...OUTLOOK_SIN_CONECTAR, connected: true, account_email: "u@outlook.com" },
+      ]);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+      vi.mocked(calendarService.syncMilestones).mockResolvedValue({
+        results: [{ milestone_id: "m-1", synced: true }],
+        failed_count: 0,
+      });
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      await user.click(await screen.findByRole("checkbox", { name: /seleccionar cierre/i }));
+      const boton = screen.getByRole("button", { name: /sincronizar con mi calendario/i });
+      expect(boton).not.toHaveAttribute("aria-haspopup");
+      await user.click(boton);
+
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(await screen.findByText("1 hito sincronizado con Outlook Calendar.")).toBeInTheDocument();
+    });
+
+    it("muestra el estado de cada calendario configurado", async () => {
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue(AMBOS);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      expect(await screen.findByText(/google calendar: conectado como u@gmail.com/i)).toBeInTheDocument();
+      expect(screen.getByText(/outlook calendar: sin conectar/i)).toBeInTheDocument();
+    });
+
+    it("solo con Outlook configurado no menciona Google", async () => {
+      vi.mocked(calendarService.getCalendarConnections).mockResolvedValue([OUTLOOK_SIN_CONECTAR]);
+      vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
+
+      render(<MilestonesSection tenderId="t-1" now={AHORA} />);
+
+      expect(await screen.findByText(/outlook calendar: sin conectar/i)).toBeInTheDocument();
+      expect(screen.queryByText(/google calendar/i)).not.toBeInTheDocument();
+    });
+  });
+
   describe("sincronización con Google Calendar", () => {
-    it("sin Google configurado no muestra el botón de sincronizar", async () => {
+    it("sin calendarios configurados no muestra el botón de sincronizar", async () => {
       vi.mocked(service.getTenderMilestones).mockResolvedValue(buildMilestoneList());
 
       render(<MilestonesSection tenderId="t-1" now={AHORA} />);
@@ -171,7 +327,7 @@ describe("MilestonesSection", () => {
       await waitFor(() => expect(filas()).toHaveLength(1));
       await waitFor(() => expect(calendarService.getCalendarConnections).toHaveBeenCalled());
       expect(
-        screen.queryByRole("button", { name: /sincronizar con google calendar/i }),
+        screen.queryByRole("button", { name: /sincronizar con mi calendario/i }),
       ).not.toBeInTheDocument();
     });
 
@@ -182,7 +338,7 @@ describe("MilestonesSection", () => {
       render(<MilestonesSection tenderId="t-1" now={AHORA} />);
 
       expect(await screen.findByText(/conectado como u@gmail.com/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /sincronizar con google calendar/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /sincronizar con mi calendario/i })).toBeDisabled();
     });
 
     it("sincroniza los hitos elegidos y los marca en la tabla", async () => {
@@ -203,7 +359,7 @@ describe("MilestonesSection", () => {
       await user.click(
         screen.getByRole("checkbox", { name: /seleccionar cierre de recepción de ofertas/i }),
       );
-      await user.click(screen.getByRole("button", { name: /sincronizar con google calendar/i }));
+      await user.click(screen.getByRole("button", { name: /sincronizar con mi calendario/i }));
 
       expect(await screen.findByText("1 hito sincronizado con Google Calendar.")).toBeInTheDocument();
       expect(calendarService.syncMilestones).toHaveBeenCalledWith("t-1", "google", ["m-1"], null);
@@ -226,7 +382,7 @@ describe("MilestonesSection", () => {
       await screen.findByText(/conectado como/i);
 
       await user.click(screen.getByRole("checkbox", { name: /seleccionar cierre/i }));
-      await user.click(screen.getByRole("button", { name: /sincronizar con google calendar/i }));
+      await user.click(screen.getByRole("button", { name: /sincronizar con mi calendario/i }));
 
       const dialogo = await screen.findByRole("dialog", { name: /confirma una hora/i });
       await user.click(within(dialogo).getByRole("button", { name: /confirmar y sincronizar/i }));
@@ -248,7 +404,7 @@ describe("MilestonesSection", () => {
       await screen.findByText(/conectado como/i);
 
       await user.click(screen.getByRole("checkbox", { name: /seleccionar cierre/i }));
-      await user.click(screen.getByRole("button", { name: /sincronizar con google calendar/i }));
+      await user.click(screen.getByRole("button", { name: /sincronizar con mi calendario/i }));
 
       const alerta = await screen.findByRole("alert");
       expect(alerta).toHaveTextContent("La sincronización no pudo completarse.");
