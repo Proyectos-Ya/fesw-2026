@@ -26,6 +26,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
   * [256-matching-qdrant-onboarding-telemetria.md](./plans/256-matching-qdrant-onboarding-telemetria.md): Matching: canal léxico (sparse BM25) sumado a los canales densos, caso sin historial y lectura de la telemetría del ranking.
   * [233-anexos-extension-navegador.md](./plans/233-anexos-extension-navegador.md): Anexos de Mercado Público (subida, extracción con Gemini y extensión de navegador), segundo llamado, NDCG en producción y matching en sombra (Spike 2).
+  * [233-disparar-ia-con-anexos.md](./plans/233-disparar-ia-con-anexos.md): Los hitos y el análisis + cotización se disparan al subir un anexo y leen los anexos, en vez de los documentos del chat.
   * [instrucciones-decision-7.md](./plans/instrucciones-decision-7.md): Instrucciones técnicas de implementación para la Extensión de Navegador (Fase 3, Decisión 7).
   * [292-postulacion-preguntas-y-feedback.md](./plans/292-postulacion-preguntas-y-feedback.md): Preguntas basadas en las bases y feedback de carga en la postulación (mejoras a HU-20).
 
