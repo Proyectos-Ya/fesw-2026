@@ -1,7 +1,7 @@
 # Plan Técnico: Disparar hitos y análisis con la subida de un anexo
 
 **Issue asociada**: Refs #233  
-**Estado**: Aprobado  
+**Estado**: Completado  
 **Fecha**: 2026-10-12  
 
 ---
@@ -82,33 +82,35 @@ botón "volver a analizar" de la ficha use los anexos.
 ## 3. Desglose de Tareas (Checklist)
 
 ### Backend
-- [ ] Red/Green: `ScheduleMilestonesOnStored` y `ScheduleTenderAnalysisOnStored`
+- [x] Red/Green: `ScheduleMilestonesOnStored` y `ScheduleTenderAnalysisOnStored`
       agendan con el usuario y la empresa correctos, e ignoran archivos no
       `STORED` y la versión canónica compartida. Se cuelgan en
       `app/bootstrap/attachments.py`.
-- [ ] Red/Green: tabla, modelo, repositorio y migración de
+- [x] Red/Green: tabla, modelo, repositorio y migración de
       `tender_milestone_attachment`. `alembic heads` debe dar una sola línea.
-- [ ] Red/Green: la extracción de hitos lee los anexos visibles, guarda
+- [x] Red/Green: la extracción de hitos lee los anexos visibles, guarda
       `source_file_id`, no relee lo ya procesado, reutiliza los hitos
       equivalentes (incluidos los del chat), limpia los huérfanos de anexos
       borrados y no toca los sincronizados.
-- [ ] Red/Green: `GetTenderMilestonesUseCase` cuenta los anexos pendientes del
+- [x] Red/Green: `GetTenderMilestonesUseCase` cuenta los anexos pendientes del
       usuario y agenda la extracción si no hay una en curso.
-- [ ] Red/Green: `analyze_and_quote` con varios documentos y tope de tamaño;
+- [x] Red/Green: `analyze_and_quote` con varios documentos y tope de tamaño;
       `AnalyzeTenderAttachmentsUseCase` y su segundo plano; la cotización solo se
       guarda si no existe.
-- [ ] Red/Green: `GET /tenders/{id}/attachments` informa si el análisis está en
+- [x] Red/Green: `GET /tenders/{id}/attachments` informa si el análisis está en
       curso.
-- [ ] `UploadTenderChatDocumentUseCase` vuelve a solo guardar. Sus tests del
+- [x] `UploadTenderChatDocumentUseCase` vuelve a solo guardar. Sus tests del
       análisis pasan al caso de uso nuevo.
-- [ ] e2e: completar la subida de un anexo agenda hitos y análisis.
+- [x] Cableado: completar la subida de un anexo agenda hitos y análisis
+      (`tests/unit/test_bootstrap_attachment_uploads.py`). El e2e de subida
+      necesita Postgres local y su `conftest` reemplaza los listeners.
 
 ### Frontend
-- [ ] Red/Green: al subir un anexo, la ficha recarga la sección de hitos
+- [x] Red/Green: al subir un anexo, la ficha recarga la sección de hitos
       (`milestonesRefreshKey`), como hoy lo hace el chat.
-- [ ] Red/Green: el panel de anexos muestra "Analizando anexos…" y la ficha
+- [x] Red/Green: el panel de anexos muestra "Analizando anexos…" y la ficha
       recarga el análisis y el cotizador cuando termina.
-- [ ] La subida al chat vuelve al tiempo límite por defecto.
+- [x] La subida al chat vuelve al tiempo límite por defecto.
 
 ---
 
