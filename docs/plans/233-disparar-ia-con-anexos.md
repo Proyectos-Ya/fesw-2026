@@ -1,7 +1,7 @@
 # Plan Técnico: Disparar hitos y análisis con la subida de un anexo
 
 **Issue asociada**: Refs #233  
-**Estado**: Completado  
+**Estado**: En curso (parte 2)  
 **Fecha**: 2026-10-12  
 
 ---
@@ -130,3 +130,40 @@ pnpm exec tsc --noEmit
 Prueba manual local, con `IS_DEV=true` y disco local en vez de R2: subir un PDF
 de bases como anexo desde la ficha y ver aparecer hitos, análisis y cotización.
 Usa llamadas pagadas a Gemini.
+
+---
+
+## 5. Parte 2: la postulación lee los anexos
+
+Aprobada el 2026-10-12. La factibilidad y el borrador de la postulación (HU-20)
+dejan de leer los documentos del chat y leen los mismos anexos que los hitos y
+el análisis.
+
+**Cambio de comportamiento:** los documentos del chat eran por usuario (plan
+230, §5 punto 7). Los anexos son por empresa (los propios y los compartidos):
+dos miembros de la misma empresa ven los mismos documentos en su postulación.
+
+### Decisiones
+
+- `adjuntos_del_usuario` (`proposals/_documentos.py`) se reemplaza por
+  `anexos_de_la_empresa`, que usa `anexos_visibles` y devuelve los mismos
+  `DocumentContextDTO`. Un anexo que no se puede leer va con
+  `is_corrupted=True`.
+- La huella del análisis y `analysis_documents` no cambian: los nombres guardados
+  pasan a ser los nombres oficiales de los anexos.
+- La pantalla de postulación muestra el panel de anexos de la ficha en vez de su
+  propia subida al chat, así que subir desde ahí también dispara hitos y
+  análisis.
+
+Fuera de alcance: el asistente (sigue leyendo anexos y chat) y quitar la subida
+al chat.
+
+### Tareas
+
+- [ ] Red/Green: `anexos_de_la_empresa` devuelve los anexos de la empresa y los
+      compartidos, y marca como dañado lo que no se puede leer.
+- [ ] Red/Green: la factibilidad y el borrador mandan esos anexos a la IA y
+      `analysis_documents` guarda sus nombres.
+- [ ] Cableado en `app/bootstrap/proposals.py`.
+- [ ] Red/Green: `ProposalView` muestra el panel de anexos y el aviso de bases usa
+      los anexos.
