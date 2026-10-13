@@ -743,3 +743,38 @@ class TestElegirModo:
     def test_el_resto_son_frecuentes(self):
         assert elegir_modo(datetime(2026, 10, 13, 8, 1), hora_nocturna=6) == "frecuente"
         assert elegir_modo(datetime(2026, 10, 13, 4, 0), hora_nocturna=6) == "frecuente"
+
+
+class TestRetencion:
+    """La nocturna poda la cola una vez por semana, al final y aislado."""
+
+    async def _correr_con_purga(self, servicio: ServicioFalso, purgar) -> int:
+        async def contar(*_) -> int:
+            return 0
+
+        return await sincronizar(_args(), servicio, contar=contar, purgar=purgar)
+
+    async def test_poda_despues_de_cerrar_la_corrida(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+        cierres_al_podar: list[int] = []
+
+        async def purgar() -> int:
+            cierres_al_podar.append(len(servicio.cierres_de("nocturna")))
+            return 12
+
+        codigo = await self._correr_con_purga(servicio, purgar)
+
+        assert cierres_al_podar == [1]
+        assert "12 filas viejas" in capsys.readouterr().out
+        assert codigo == 0
+
+    async def test_si_falla_la_corrida_sale_igual(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        async def purgar() -> int:
+            raise RuntimeError("sin base")
+
+        codigo = await self._correr_con_purga(servicio, purgar)
+
+        assert codigo == 0
+        assert "AVISO" in capsys.readouterr().out

@@ -101,6 +101,11 @@ MAX_REINTENTOS_NOCTURNOS = 5
 # son una licitación rota sino el gateway.
 UMBRAL_CORTACIRCUITO = 10
 
+# Retención de la cola (plan 305). Sin poda, `tender_metadata` crecía ~5.600
+# filas por día hábil para siempre.
+RETENCION_PROCESADAS = timedelta(days=30)
+RETENCION_TERMINALES = timedelta(days=60)
+
 
 @dataclass
 class ResultadoListado:
@@ -670,6 +675,47 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                         resultado.actualizar += cambiadas
             await session.commit()
         return resultado
+
+    async def purgar_cola(self, *, ahora: datetime | None = None) -> int:
+        """Borra de la cola lo que ya no sirve y devuelve cuántas filas (plan 305).
+
+        - Procesadas hace más de `RETENCION_PROCESADAS` cuya licitación ya no
+          está activa, o que nunca llegó a `tender` (detalle vacío, otra
+          región). Si una reabre, el cron de estados la vuelve a encolar.
+        - Terminales hace más de `RETENCION_TERMINALES`.
+
+        Lo pendiente no se toca, por viejo que sea.
+        """
+        ahora = ahora or utc_now_naive()
+        async with AsyncSession(self.engine) as session:
+            resultado = await session.exec(  # type: ignore[call-overload]
+                text(
+                    """
+                    DELETE FROM tender_metadata m
+                     WHERE (
+                            m.is_processed
+                            AND m.discarded_at IS NULL
+                            AND COALESCE(m.detail_fetched_at, m.updated_at)
+                                < :corte_procesadas
+                            AND NOT EXISTS (
+                                SELECT 1
+                                  FROM tender t
+                                  JOIN tender_status s ON s.id = t.status_id
+                                 WHERE t.code = m.code
+                                   AND s.code = ANY(CAST(:activos AS varchar[]))
+                            )
+                           )
+                        OR m.discarded_at < :corte_terminales
+                    """
+                ),
+                params={
+                    "corte_procesadas": ahora - RETENCION_PROCESADAS,
+                    "corte_terminales": ahora - RETENCION_TERMINALES,
+                    "activos": sorted(ACTIVE_TENDER_STATUSES),
+                },
+            )
+            await session.commit()
+            return resultado.rowcount or 0
 
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.

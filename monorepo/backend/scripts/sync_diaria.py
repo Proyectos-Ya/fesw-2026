@@ -158,6 +158,9 @@ INTENTOS_FRECUENTE = 2
 INTENTOS_NOCTURNA = 3
 INTENTOS_REINTENTOS = 1
 
+# La nocturna poda la cola una vez por semana (domingo, con poco movimiento).
+DIA_RETENCION = 6
+
 
 async def con_timeout(
     corutina: Coroutine[Any, Any, int],
@@ -261,8 +264,12 @@ async def sincronizar(
     | None = None,
     fijar_intentos: Callable[[int], None] | None = None,
     peticiones: Callable[[], int] | None = None,
+    purgar: Callable[[], Awaitable[int]] | None = None,
 ) -> int:
     """La corrida nocturna: lista por tramos, vacía la cola y reintenta.
+
+    `purgar`, si viene, poda la cola al final: `_correr` lo pasa una vez por
+    semana.
 
     Recibe sus colaboradores en vez de construirlos: lo que decide si un tramo
     es `ok` o `partial` —y con eso, si el cursor avanza— es lógica que conviene
@@ -404,6 +411,16 @@ async def sincronizar(
         )
         raise
 
+    # Al final y aislado: la corrida ya quedó registrada. Un fallo acá no cambia
+    # el código de salida; la poda de la semana siguiente lo cubre.
+    if purgar is not None:
+        try:
+            print(f"Retención de la cola: {await purgar()} filas viejas borradas.")
+        except Exception as error:
+            print(
+                f"\nAVISO: no se pudo podar la cola ({type(error).__name__}: {error})."
+            )
+
     print(f"\nCorrida '{estado}' en {(time.perf_counter() - inicio) / 60:.1f} min.")
     # Pendientes por errores de red no cuentan como fallo: la cola las retoma. La
     # cuota agotada sí, aunque el cursor avance, porque si se repite el ticket no
@@ -497,6 +514,9 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
             aplicar_anexos=lambda listas: aplicar_documentos_oficiales(engine, listas),
             fijar_intentos=fijar_intentos,
             peticiones=lambda: cliente.peticiones,
+            purgar=servicio.purgar_cola
+            if utc_now_naive().weekday() == DIA_RETENCION
+            else None,
         )
     finally:
         await engine.dispose()
