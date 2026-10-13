@@ -1,5 +1,7 @@
 import asyncio
 import random
+import statistics
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -169,6 +171,16 @@ def _params_ventana(
     return params
 
 
+@dataclass
+class _Pagina:
+    """Una página del listado ya interpretada (ver `_pedir_pagina`)."""
+
+    numero: int
+    estado: str
+    items: list[dict[str, Any]] = field(default_factory=list)
+    total_paginas: int = 1
+
+
 class MercadoPublicoClient:
     """Cliente de Compra Ágil, con rotación de tickets.
 
@@ -193,6 +205,7 @@ class MercadoPublicoClient:
         api_keys: list[str] | None = None,
         intentos_detalle: int = 4,
         max_peticiones: int | None = None,
+        concurrencia_listado: int = 1,
     ):
         tickets = [t for t in (api_keys or ([api_key] if api_key else [])) if t]
         if not tickets:
@@ -211,6 +224,37 @@ class MercadoPublicoClient:
         self.peticiones = 0
         # Tope de la corrida. `None` = sin tope.
         self.max_peticiones = max_peticiones
+        # Páginas del listado que se piden a la vez, después de la primera.
+        self.concurrencia_listado = max(1, concurrencia_listado)
+        # (tipo, resultado, segundos) de cada petición, para `resumen()`.
+        self._registros: list[tuple[str, str, float]] = []
+
+    def _anotar(self, tipo: str, resultado: str, inicio: float) -> None:
+        self._registros.append((tipo, resultado, time.perf_counter() - inicio))
+
+    def resumen(self) -> dict[str, dict[str, Any]]:
+        """Peticiones por tipo, con sus resultados y latencias (plan 305).
+
+        Es lo que cada corrida deja en su línea `RESUMEN` del log: cuántas
+        respondieron 200, cuántas 504, cuántas se cortaron por timeout, y cuánto
+        tardaron (p50 y p90), por separado el listado y el detalle.
+        """
+        resumen: dict[str, dict[str, Any]] = {}
+        for tipo in ("listado", "detalle"):
+            registros = [r for r in self._registros if r[0] == tipo]
+            segundos = sorted(r[2] for r in registros)
+            por_resultado: dict[str, int] = {}
+            for _, resultado, _ in registros:
+                por_resultado[resultado] = por_resultado.get(resultado, 0) + 1
+            resumen[tipo] = {
+                "peticiones": len(registros),
+                "por_resultado": por_resultado,
+                "p50_s": round(statistics.median(segundos), 1) if segundos else None,
+                "p90_s": round(segundos[int(0.9 * (len(segundos) - 1))], 1)
+                if segundos
+                else None,
+            }
+        return resumen
 
     def _contar_peticion(self) -> None:
         """Descuenta una petición del presupuesto, o corta si ya no queda."""
@@ -274,106 +318,96 @@ class MercadoPublicoClient:
         sin una ventana de tiempo acompañándolo, la API responde 504.
         """
         all_items: list[dict[str, Any]] = []
-        current_page = 1
         # Optimista: solo se baja a False si la paginación se corta antes de
         # haber visto la última página que la API declara, o si se saltó alguna.
         completo = True
-        # Lo declara la primera página. Sin ella no se sabe hasta dónde seguir,
-        # así que si esa cae no se salta: se corta.
-        total_pages: int | None = None
-        caidas_seguidas = 0
+
+        def params_de(numero: int) -> dict[str, Any]:
+            return _params_ventana(
+                from_date,
+                to_date,
+                por_publicacion=por_publicacion,
+                estado=estado,
+                numero_pagina=numero,
+            )
 
         async with httpx.AsyncClient() as client:
-            while len(all_items) < quantity:
-                params = _params_ventana(
-                    from_date,
-                    to_date,
-                    por_publicacion=por_publicacion,
-                    estado=estado,
-                    numero_pagina=current_page,
+            # La primera va sola: es la que dice cuántas páginas hay. Sin ella no
+            # se sabe hasta dónde seguir, así que si cae no se salta: se corta.
+            primera = await self._pedir_pagina(client, 1, params_de(1))
+            if primera.estado != "ok":
+                print(
+                    f"[API MP] Página 1 sin respuesta ({primera.estado}). Se "
+                    "detiene la paginación con 0 licitaciones listadas."
                 )
-                try:
-                    print(
-                        f"[API MP] Consultando página {current_page} (listado de cambios) a {self.base_url}..."
+                return ListadoLicitaciones(items=[], completo=False)
+            if not primera.items:
+                return ListadoLicitaciones(items=[], completo=True)
+            all_items.extend(primera.items)
+            if al_recibir_pagina is not None:
+                await al_recibir_pagina(primera.items)
+            total_pages = primera.total_paginas
+
+            # El resto, por tandas de `concurrencia_listado`. Cada tanda se
+            # entrega en orden de página: un código repetido en dos páginas no
+            # puede aplicarse con el dato viejo encima del nuevo.
+            siguiente = 2
+            caidas_seguidas = 0
+            seguir = True
+            while seguir and siguiente <= total_pages and len(all_items) < quantity:
+                tanda = list(
+                    range(
+                        siguiente,
+                        min(siguiente + self.concurrencia_listado, total_pages + 1),
                     )
-                    response = await self._get_con_reintentos(client, params)
-                    if response is None:
+                )
+                paginas = await asyncio.gather(
+                    *(self._pedir_pagina(client, n, params_de(n)) for n in tanda)
+                )
+                for pagina in paginas:
+                    if pagina.estado == "caida":
                         # Agotados los reintentos ante 5xx o timeouts. La página
-                        # se pierde, pero las siguientes suelen responder: el
-                        # gateway falla de a una, no en bloque.
+                        # se pierde, pero las siguientes suelen responder.
                         completo = False
                         caidas_seguidas += 1
-                        if (
-                            total_pages is None
-                            or caidas_seguidas >= PAGINAS_CAIDAS_SEGUIDAS_MAX
-                        ):
+                        if caidas_seguidas >= PAGINAS_CAIDAS_SEGUIDAS_MAX:
                             print(
-                                f"[API MP] Página {current_page} no respondió tras varios "
-                                "intentos. Se detiene la paginación con "
+                                f"[API MP] {caidas_seguidas} páginas seguidas sin "
+                                "responder. Se detiene la paginación con "
                                 f"{len(all_items)} licitaciones listadas."
                             )
+                            seguir = False
                             break
                         print(
-                            f"[API MP] Página {current_page} no respondió tras varios "
-                            "intentos. Se salta y se sigue con la siguiente."
+                            f"[API MP] Página {pagina.numero} no respondió tras "
+                            "varios intentos. Se salta y se sigue con la siguiente."
                         )
-                        if current_page >= total_pages:
-                            break
-                        current_page += 1
                         continue
-                    if response.status_code == 429:
-                        # Llega aquí solo tras agotar los reintentos y todos los
-                        # tickets: seguir pidiendo solo gasta más.
+                    if pagina.estado != "ok":
+                        # Cuota agotada, presupuesto de la corrida o un error que
+                        # reintentar no arregla: seguir pidiendo solo gasta más.
                         print(
-                            "[API MP] Cuota agotada (429 tras varios reintentos). "
-                            f"Se detiene la paginación con {len(all_items)} "
+                            f"[API MP] Página {pagina.numero}: {pagina.estado}. Se "
+                            f"detiene la paginación con {len(all_items)} "
                             "licitaciones listadas."
                         )
                         completo = False
+                        seguir = False
                         break
-                    response.raise_for_status()
-
-                    envelope = cast(dict[str, Any], response.json())
-                    payload = cast(dict[str, Any], envelope.get("payload", {})) or {}
-                    items = cast(list[dict[str, Any]], payload.get("items", [])) or []
-
-                    if not items:
+                    if not pagina.items:
+                        seguir = False
                         break
-
-                    all_items.extend(items)
+                    all_items.extend(pagina.items)
                     caidas_seguidas = 0
                     if al_recibir_pagina is not None:
-                        await al_recibir_pagina(items)
-
-                    paginacion = payload.get("paginacion", {}) or {}
-                    total_pages = paginacion.get("total_paginas", 1)
-                    if current_page >= total_pages:
+                        await al_recibir_pagina(pagina.items)
+                    if len(all_items) >= quantity:
+                        seguir = False
                         break
-
-                    current_page += 1
-
-                    # Pequeño delay para no saturar la API entre páginas de listado
+                siguiente += len(tanda)
+                if seguir:
+                    # Pequeña pausa entre tandas para no saturar la API.
                     await asyncio.sleep(0.5)
-
-                except PresupuestoAgotadoError as e:
-                    print(
-                        f"[API MP] {e} Se detiene la paginación con "
-                        f"{len(all_items)} licitaciones listadas."
-                    )
-                    completo = False
-                    break
-                except httpx.HTTPStatusError as http_err:
-                    print(
-                        f"[HTTP Error MP] Error en página {current_page} al listar licitaciones: {http_err.response.status_code}"
-                    )
-                    completo = False
-                    break
-                except Exception as e:
-                    print(
-                        f"[Error MP] Falla inesperada en página {current_page} al listar licitaciones: {e}"
-                    )
-                    completo = False
-                    break
 
         # El `while` termina solo cuando ya se juntaron `quantity` items, y en
         # ese caso quedan páginas sin mirar: el corte lo puso el llamador con su
@@ -382,6 +416,39 @@ class MercadoPublicoClient:
             completo = False
 
         return ListadoLicitaciones(items=all_items[:quantity], completo=completo)
+
+    async def _pedir_pagina(
+        self, client: httpx.AsyncClient, numero: int, params: dict[str, Any]
+    ) -> "_Pagina":
+        """Una página del listado, ya interpretada. Nunca levanta.
+
+        `estado` es `ok`, `caida` (5xx o timeouts tras los reintentos), `cuota`
+        (429 tras rotar todos los tickets), `presupuesto` (la corrida llegó a su
+        máximo) o `error` (una respuesta que reintentar no arregla).
+        """
+        print(f"[API MP] Consultando página {numero} (listado) a {self.base_url}...")
+        try:
+            response = await self._get_con_reintentos(client, params)
+        except PresupuestoAgotadoError as e:
+            print(f"[API MP] {e}")
+            return _Pagina(numero, "presupuesto")
+        if response is None:
+            return _Pagina(numero, "caida")
+        if response.status_code == 429:
+            return _Pagina(numero, "cuota")
+        if response.status_code >= 400:
+            print(f"[HTTP Error MP] Página {numero}: {response.status_code}")
+            return _Pagina(numero, "error")
+        try:
+            envelope = cast(dict[str, Any], response.json())
+        except Exception as e:  # noqa: BLE001
+            print(f"[Error MP] Página {numero} ilegible: {e}")
+            return _Pagina(numero, "error")
+        payload = cast(dict[str, Any], envelope.get("payload", {})) or {}
+        items = cast(list[dict[str, Any]], payload.get("items", [])) or []
+        paginacion = cast(dict[str, Any], payload.get("paginacion", {})) or {}
+        total = paginacion.get("total_paginas", 1)
+        return _Pagina(numero, "ok", items, total if isinstance(total, int) else 1)
 
     async def contar(
         self,
@@ -472,12 +539,18 @@ class MercadoPublicoClient:
         while True:
             try:
                 self._contar_peticion()
-                respuesta = await client.get(
-                    self.base_url,
-                    headers=self._cabeceras(),
-                    params=params,
-                    timeout=60.0,
-                )
+                inicio = time.perf_counter()
+                try:
+                    respuesta = await client.get(
+                        self.base_url,
+                        headers=self._cabeceras(),
+                        params=params,
+                        timeout=60.0,
+                    )
+                except (httpx.TimeoutException, httpx.TransportError) as e:
+                    self._anotar("listado", type(e).__name__, inicio)
+                    raise
+                self._anotar("listado", str(respuesta.status_code), inicio)
                 if respuesta.status_code < 500 and respuesta.status_code != 429:
                     return respuesta
                 if respuesta.status_code == 429:
@@ -555,9 +628,15 @@ class MercadoPublicoClient:
                 ultimo = intento == intentos
                 try:
                     self._contar_peticion()
-                    response = await client.get(
-                        detail_url, headers=self._cabeceras(), timeout=30.0
-                    )
+                    inicio = time.perf_counter()
+                    try:
+                        response = await client.get(
+                            detail_url, headers=self._cabeceras(), timeout=30.0
+                        )
+                    except (httpx.TimeoutException, httpx.TransportError) as e:
+                        self._anotar("detalle", type(e).__name__, inicio)
+                        raise
+                    self._anotar("detalle", str(response.status_code), inicio)
                 except (httpx.TimeoutException, httpx.TransportError) as e:
                     # La licitación está: fue la conexión la que falló.
                     if ultimo:

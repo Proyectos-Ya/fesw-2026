@@ -106,6 +106,7 @@ from app.infrastructure.services.tenders.tender_ingestion_service import (
 from scripts.ingesta_compartida import (
     aplicar_documentos_oficiales,
     construir_servicio,
+    imprimir_resumen,
     marcar_vencidas,
     preparar_destino,
 )
@@ -166,8 +167,12 @@ async def sincronizar_estados(
     cerrar_corrida: Callable[[UUID, bool, int, int | None], Awaitable[int]]
     | None = None,
     peticiones: Callable[[], int] | None = None,
+    metricas: Callable[[], dict[str, Any]] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
+
+    `metricas()` devuelve el resumen de peticiones del cliente, que va en la
+    línea `RESUMEN` del log junto con lo que hizo la corrida.
 
     Recibe sus colaboradores en vez de construirlos, igual que `sync_diaria`:
     el orden de las etapas y el código de salida se prueban sin Postgres ni
@@ -213,6 +218,25 @@ async def sincronizar_estados(
             corrida, completo, listadas, peticiones() if peticiones else None
         )
 
+    def resumir(**extra: Any) -> None:
+        imprimir_resumen(
+            "sync_estados",
+            {
+                "ventana_h": args.ventana_horas,
+                "aplicadas": aplicadas,
+                "conocidas": resultado.conocidas,
+                "actualizadas": resultado.actualizadas,
+                "sacadas_del_indice": resultado.sacadas_del_indice,
+                "reabiertas": resultado.reabiertas,
+                "reencoladas": resultado.reencoladas,
+                "nuevas": resultado.nuevas,
+                "descartadas": resultado.descartadas,
+                "duracion_min": round((time.perf_counter() - inicio) / 60, 1),
+                "api": metricas() if metricas else None,
+                **extra,
+            },
+        )
+
     try:
         listado = await listar(
             timedelta(hours=args.ventana_horas), args.limite, al_recibir
@@ -221,6 +245,7 @@ async def sincronizar_estados(
         # Venció el tope: la fila queda cerrada como incompleta y cuenta para la
         # racha, en vez de desaparecer como antes.
         await cerrar(False, aplicadas)
+        resumir(cancelada=True, completo=False)
         raise
 
     print(
@@ -236,8 +261,10 @@ async def sincronizar_estados(
         "descartadas."
     )
 
+    vencidas = None
     if not args.sin_marcar:
-        print(f"Vencidas marcadas como cerradas: {await marcar_vencidas()}")
+        vencidas = await marcar_vencidas()
+        print(f"Vencidas marcadas como cerradas: {vencidas}")
 
     if aplicar_anexos is not None:
         if anexos["fallo"] is None:
@@ -281,6 +308,16 @@ async def sincronizar_estados(
         codigo = 1
 
     print(f"\nCorrida en {(time.perf_counter() - inicio) / 60:.1f} min.")
+    resumir(
+        cancelada=False,
+        completo=listado.completo,
+        listadas=listado.listadas,
+        ilegibles=listado.ilegibles,
+        vencidas=vencidas,
+        incompletas_seguidas=seguidas,
+        anexos_fallaron=anexos["fallo"] is not None,
+        codigo=codigo,
+    )
     return codigo
 
 
@@ -341,6 +378,7 @@ async def _correr(args: argparse.Namespace) -> int:
                 engine, corrida, completo, listadas, peticiones
             ),
             peticiones=lambda: servicio.client.peticiones,
+            metricas=servicio.client.resumen,
         )
     finally:
         await engine.dispose()

@@ -111,6 +111,7 @@ from scripts.ingesta_compartida import (
     construir_servicio,
     contar_pendientes,
     es_local,
+    imprimir_resumen,
     preparar_destino,
     vaciar_cola,
 )
@@ -267,6 +268,7 @@ async def sincronizar(
     peticiones: Callable[[], int] | None = None,
     purgar: Callable[[], Awaitable[int]] | None = None,
     embeddings: Callable[[], int] | None = None,
+    metricas: Callable[[], dict[str, Any]] | None = None,
 ) -> int:
     """La corrida nocturna: lista por tramos, vacía la cola y reintenta.
 
@@ -306,9 +308,35 @@ async def sincronizar(
     limite = args.limite or settings.mercadopublico_fetching_limit
     tramo = timedelta(hours=getattr(args, "tramo_horas", TRAMO_HORAS))
 
+    tramos = {"ok": 0, "partial": 0}
+    listadas = 0
+    nuevas = 0
+    resultado = ResultadoRondas()
+    reintentos = ResultadoRondas()
+
+    def resumir(**extra: Any) -> None:
+        imprimir_resumen(
+            "ingesta",
+            {
+                "modo": "nocturna",
+                "tramos": tramos,
+                "listadas": listadas,
+                "nuevas": nuevas,
+                "procesadas": resultado.procesadas,
+                "pendientes": resultado.pendientes,
+                "reintentos_entraron": reintentos.procesadas,
+                "reintentos_pendientes": reintentos.pendientes,
+                "cuota_agotada": resultado.cuota_agotada,
+                "api_caida": resultado.api_caida or reintentos.api_caida,
+                "sin_avance": resultado.sin_avance,
+                "embeddings": embeddings() if embeddings else None,
+                "duracion_min": round((time.perf_counter() - inicio) / 60, 1),
+                "api": metricas() if metricas else None,
+                **extra,
+            },
+        )
+
     try:
-        listadas = 0
-        nuevas = 0
         todo_ok = True
         anexos_fallaron = False
         for t_desde, t_hasta in partir_en_tramos(desde, hasta, tramo):
@@ -327,6 +355,7 @@ async def sincronizar(
             listadas += listado.listadas
             nuevas += listado.nuevas
             estado_tramo = "ok" if listado.completo else "partial"
+            tramos[estado_tramo] += 1
             await servicio.registrar_fin(
                 tramo_id, status=estado_tramo, listed=listado.listadas
             )
@@ -393,7 +422,6 @@ async def sincronizar(
                 f"Reintentos nocturnos: {reintentos.procesadas} entraron, "
                 f"{reintentos.pendientes} siguen pendientes."
             )
-            resultado.procesadas += reintentos.procesadas
             resultado.cuota_agotada = reintentos.cuota_agotada
 
         estado = "ok" if todo_ok else "partial"
@@ -401,7 +429,7 @@ async def sincronizar(
             run_id,
             status=estado,
             listed=listadas,
-            processed=resultado.procesadas,
+            processed=resultado.procesadas + reintentos.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
             embedding_calls=embeddings() if embeddings else None,
@@ -413,6 +441,7 @@ async def sincronizar(
             requests=peticiones() if peticiones else None,
             embedding_calls=embeddings() if embeddings else None,
         )
+        resumir(cancelada=True)
         raise
 
     # Al final y aislado: la corrida ya quedó registrada. Un fallo acá no cambia
@@ -430,7 +459,9 @@ async def sincronizar(
     # cuota agotada sí, aunque el cursor avance, porque si se repite el ticket no
     # alcanza para el volumen diario y alguien tiene que enterarse.
     ok = estado == "ok" and not resultado.cuota_agotada and not anexos_fallaron
-    return 0 if ok else 1
+    codigo = 0 if ok else 1
+    resumir(cancelada=False, estado=estado, codigo=codigo)
+    return codigo
 
 
 async def vaciar_frecuente(
@@ -442,6 +473,7 @@ async def vaciar_frecuente(
     fijar_intentos: Callable[[int], None] | None = None,
     peticiones: Callable[[], int] | None = None,
     embeddings: Callable[[], int] | None = None,
+    metricas: Callable[[], dict[str, Any]] | None = None,
 ) -> int:
     """La corrida frecuente (cada 2 h): baja el detalle de lo que dejó el cron de
     estados en la cola, sin listar ni tocar el cursor.
@@ -456,6 +488,26 @@ async def vaciar_frecuente(
 
     ahora = utc_now_naive()
     run_id = await servicio.registrar_inicio(ahora, ahora, kind="frecuente")
+    resultado = ResultadoRondas()
+
+    def resumir(**extra: Any) -> None:
+        imprimir_resumen(
+            "ingesta",
+            {
+                "modo": "frecuente",
+                "procesadas": resultado.procesadas,
+                "pendientes": resultado.pendientes,
+                "rondas": resultado.rondas,
+                "cuota_agotada": resultado.cuota_agotada,
+                "api_caida": resultado.api_caida,
+                "sin_avance": resultado.sin_avance,
+                "embeddings": embeddings() if embeddings else None,
+                "duracion_min": round((time.perf_counter() - inicio) / 60, 1),
+                "api": metricas() if metricas else None,
+                **extra,
+            },
+        )
+
     try:
         if fijar_intentos is not None:
             fijar_intentos(INTENTOS_FRECUENTE)
@@ -483,10 +535,13 @@ async def vaciar_frecuente(
             requests=peticiones() if peticiones else None,
             embedding_calls=embeddings() if embeddings else None,
         )
+        resumir(cancelada=True)
         raise
 
     print(f"\nCorrida frecuente en {(time.perf_counter() - inicio) / 60:.1f} min.")
-    return 1 if resultado.cuota_agotada else 0
+    codigo = 1 if resultado.cuota_agotada else 0
+    resumir(cancelada=False, codigo=codigo)
+    return codigo
 
 
 async def _correr(args: argparse.Namespace, modo: str) -> int:
@@ -520,6 +575,7 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
                 fijar_intentos=fijar_intentos,
                 peticiones=lambda: cliente.peticiones,
                 embeddings=embeddings,
+                metricas=cliente.resumen,
             )
         return await sincronizar(
             args,
@@ -530,6 +586,7 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
             fijar_intentos=fijar_intentos,
             peticiones=lambda: cliente.peticiones,
             embeddings=embeddings,
+            metricas=cliente.resumen,
             purgar=servicio.purgar_cola
             if utc_now_naive().weekday() == DIA_RETENCION
             else None,

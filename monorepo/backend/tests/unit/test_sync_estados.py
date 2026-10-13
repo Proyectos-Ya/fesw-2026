@@ -410,3 +410,57 @@ class TestDefaultsDesdeElEntorno:
         args = construir_parser().parse_args(["--ventana-horas", "1"])
 
         assert args.ventana_horas == 1.0
+
+
+def _resumen(salida: str) -> dict:
+    import json
+
+    [linea] = [x for x in salida.splitlines() if x.startswith("RESUMEN ")]
+    return json.loads(linea.removeprefix("RESUMEN "))
+
+
+class TestLineaDeResumen:
+    """Una línea `RESUMEN` en JSON por corrida, para leer un día entero de logs
+    filtrando por esa palabra (plan 305)."""
+
+    async def test_resume_la_corrida(self, capsys):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]])
+
+        await sincronizar_estados(
+            _args(),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            abrir_corrida=piezas.abrir,
+            cerrar_corrida=piezas.cerrar,
+            peticiones=lambda: 42,
+            metricas=lambda: {"listado": {"peticiones": 42}},
+        )
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert resumen["cron"] == "sync_estados"
+        assert resumen["completo"] is True
+        assert resumen["listadas"] == 2
+        assert resumen["nuevas"] == 2
+        assert resumen["vencidas"] == 3
+        assert resumen["codigo"] == 0
+        assert resumen["api"] == {"listado": {"peticiones": 42}}
+        assert "duracion_min" in resumen
+
+    async def test_tambien_si_vence_el_tope(self, capsys):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]], colgar_despues=1)
+
+        async def correr() -> int:
+            return await sincronizar_estados(
+                _args(),
+                listar=piezas.listar,
+                aplicar=piezas.aplicar,
+                marcar_vencidas=piezas.marcar_vencidas,
+                metricas=lambda: {},
+            )
+
+        await con_tope(correr(), segundos=0.05)
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert resumen["cancelada"] is True
+        assert resumen["aplicadas"] == 1

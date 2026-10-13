@@ -128,3 +128,25 @@ class TestEmbeddingsContados:
 
         assert (contados.llamadas, contados.textos) == (2, 3)
         assert vectores == [[0.0]]
+
+
+class TestConcurrenciaDelListado:
+    """Los crons piden el listado de a 3 páginas (plan 305), configurable."""
+
+    def test_por_defecto_es_3(self):
+        from app.config import Settings
+
+        assert Settings.model_fields["mercadopublico_listing_concurrency"].default == 3
+
+    def test_construir_servicio_la_pasa_al_cliente(self, monkeypatch):
+        from app.config import settings
+        from scripts import ingesta_compartida
+
+        monkeypatch.setattr(settings, "mercadopublico_listing_concurrency", 4)
+        monkeypatch.setattr(ingesta_compartida, "crear_engine", lambda: None)
+
+        servicio, _, qdrant = ingesta_compartida.construir_servicio(
+            con_embeddings=False
+        )
+
+        assert servicio.client.concurrencia_listado == 4

@@ -11,10 +11,12 @@ de corte del bucle —cuota agotada, rondas sin avance— salieron de corridas r
 contra la API y no son obvias.
 """
 
+import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
@@ -91,6 +93,18 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     print("Colección 'tender_lexical' lista.\n")
 
 
+def imprimir_resumen(cron: str, datos: dict[str, Any]) -> None:
+    """Una línea `RESUMEN {json}` por corrida (plan 305).
+
+    Para revisar un día entero de crons basta filtrar los logs de Railway por
+    `RESUMEN`: cada línea trae la corrida completa en un JSON de una línea.
+    """
+    print(
+        "RESUMEN "
+        + json.dumps({"cron": cron, **datos}, ensure_ascii=False, default=str)
+    )
+
+
 class EmbeddingsContados(IEmbeddingService):
     """Envuelve el servicio de embeddings y cuenta sus llamadas (plan 305).
 
@@ -132,7 +146,10 @@ def construir_servicio(
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     servicio = TenderIngestionService(
         engine=engine,
-        client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
+        client=MercadoPublicoClient(
+            api_keys=settings.mercado_publico_tickets,
+            concurrencia_listado=settings.mercadopublico_listing_concurrency,
+        ),
         embedding_service=(
             EmbeddingsContados(build_embedding_service())  # type: ignore[arg-type]
             if con_embeddings

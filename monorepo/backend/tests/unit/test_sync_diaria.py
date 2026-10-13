@@ -804,3 +804,68 @@ class TestLlamadasDeEmbeddings:
         await vaciar_frecuente(_args(), servicio, contar=contar, embeddings=lambda: 5)
 
         assert servicio.cierre["embedding_calls"] == 5
+
+
+def _resumen(salida: str) -> dict:
+    import json
+
+    [linea] = [x for x in salida.splitlines() if x.startswith("RESUMEN ")]
+    return json.loads(linea.removeprefix("RESUMEN "))
+
+
+class TestLineaDeResumen:
+    async def test_la_nocturna_resume_tramos_vaciado_y_api(self, capsys):
+        servicio = ServicioFalso(
+            ResultadoListado(listadas=5, completo=True), pendientes=2
+        )
+
+        async def contar(*_) -> int:
+            return servicio.pendientes
+
+        codigo = await sincronizar(
+            _args(tramo_horas=12),
+            servicio,
+            contar=contar,
+            metricas=lambda: {"detalle": {"peticiones": 9}},
+            embeddings=lambda: 4,
+        )
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert resumen["cron"] == "ingesta"
+        assert resumen["modo"] == "nocturna"
+        assert resumen["tramos"] == {"ok": 2, "partial": 0}
+        assert resumen["listadas"] == 10
+        assert resumen["procesadas"] == 2
+        assert resumen["embeddings"] == 4
+        assert resumen["api"] == {"detalle": {"peticiones": 9}}
+        assert resumen["codigo"] == codigo
+
+    async def test_la_frecuente_tambien(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=3)
+
+        async def contar(*_) -> int:
+            return servicio.pendientes
+
+        await vaciar_frecuente(_args(), servicio, contar=contar, metricas=lambda: {})
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert (resumen["modo"], resumen["procesadas"]) == ("frecuente", 3)
+
+    async def test_si_vence_el_tope_tambien_resume(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=4)
+
+        async def colgada(*args, **kwargs):
+            await asyncio.sleep(10)
+
+        servicio.process_unprocessed_tenders = colgada  # type: ignore[method-assign]
+
+        async def contar(*_) -> int:
+            return servicio.pendientes
+
+        await con_timeout(
+            vaciar_frecuente(_args(), servicio, contar=contar, metricas=lambda: {}),
+            segundos=0.05,
+            codigo_al_vencer=0,
+        )
+
+        assert _resumen(capsys.readouterr().out)["cancelada"] is True
