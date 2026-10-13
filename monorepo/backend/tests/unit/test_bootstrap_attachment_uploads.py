@@ -78,10 +78,12 @@ def test_sin_r2_y_fuera_de_desarrollo_la_subida_queda_apagada(monkeypatch):
 
 
 def _rutas(app: FastAPI) -> set[tuple[str, str]]:
+    # Se leen del esquema OpenAPI: desde FastAPI 0.141, `app.routes` solo lista
+    # los routers incluidos, no sus rutas.
     return {
-        (ruta.path, metodo)
-        for ruta in app.routes
-        for metodo in getattr(ruta, "methods", None) or ()
+        (ruta, metodo.upper())
+        for ruta, operaciones in app.openapi()["paths"].items()
+        for metodo in operaciones
     }
 
 
@@ -102,7 +104,7 @@ def test_el_receptor_del_disco_local_se_monta_solo_con_disco_local(monkeypatch, 
     app = _bootstrap(monkeypatch, local)
 
     assert app.state.attachment_storage is local
-    assert ("/dev-storage/{key:path}", "PUT") in _rutas(app)
+    assert ("/dev-storage/{key}", "PUT") in _rutas(app)
     # Las rutas de escritura de anexos también están.
     assert (
         "/tenders/{tender_id}/attachments/{attachment_id}/upload-url",
@@ -119,7 +121,7 @@ def test_el_receptor_no_se_monta_con_r2_ni_sin_almacenamiento(monkeypatch, almac
 
     app = _bootstrap(monkeypatch, almacenamiento)
 
-    assert ("/dev-storage/{key:path}", "PUT") not in _rutas(app)
+    assert ("/dev-storage/{key}", "PUT") not in _rutas(app)
 
 
 def test_el_getter_lee_el_almacenamiento_de_app_state():

@@ -43,18 +43,20 @@ class ExtensionInstallationModel(SQLModel, table=True):
     )
     is_active: bool = Field(
         default=True,
-        sa_column=sa.Column(sa.Boolean(), nullable=False, index=True),
+        sa_column=sa.Column(
+            sa.Boolean(), nullable=False, index=True, server_default=sa.text("true")
+        ),
     )
     last_heartbeat_at: datetime | None = Field(
         default=None, sa_column=sa.Column(sa.DateTime(), nullable=True)
     )
     created_at: datetime = Field(
         default_factory=utc_now_naive,
-        sa_column=sa.Column(sa.DateTime(), nullable=False),
+        sa_column=sa.Column(sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
     updated_at: datetime = Field(
         default_factory=utc_now_naive,
-        sa_column=sa.Column(sa.DateTime(), nullable=False),
+        sa_column=sa.Column(sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
 
@@ -67,7 +69,7 @@ class ExtensionFetchJobModel(SQLModel, table=True):
     tender_id: UUID = Field(
         sa_column=sa.Column(
             sa.Uuid(),
-            sa.ForeignKey("tenders.id", ondelete="CASCADE"),
+            sa.ForeignKey("tender.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         )
@@ -77,10 +79,15 @@ class ExtensionFetchJobModel(SQLModel, table=True):
     )
     status: str = Field(
         default="pending",
-        sa_column=sa.Column(sa.String(32), nullable=False, index=True),
+        sa_column=sa.Column(
+            sa.String(32), nullable=False, index=True, server_default=sa.text("'pending'")
+        ),
     )
     priority: int = Field(
-        default=0, sa_column=sa.Column(sa.Integer(), nullable=False, index=True)
+        default=0,
+        sa_column=sa.Column(
+            sa.Integer(), nullable=False, index=True, server_default=sa.text("0")
+        ),
     )
     leased_to_installation_id: UUID | None = Field(
         default=None,
@@ -88,7 +95,6 @@ class ExtensionFetchJobModel(SQLModel, table=True):
             sa.Uuid(),
             sa.ForeignKey("extension_installation.id", ondelete="SET NULL"),
             nullable=True,
-            index=True,
         ),
     )
     leased_at: datetime | None = Field(
@@ -99,10 +105,12 @@ class ExtensionFetchJobModel(SQLModel, table=True):
         sa_column=sa.Column(sa.DateTime(), nullable=True, index=True),
     )
     attempts: int = Field(
-        default=0, sa_column=sa.Column(sa.Integer(), nullable=False)
+        default=0,
+        sa_column=sa.Column(sa.Integer(), nullable=False, server_default=sa.text("0")),
     )
     max_attempts: int = Field(
-        default=3, sa_column=sa.Column(sa.Integer(), nullable=False)
+        default=3,
+        sa_column=sa.Column(sa.Integer(), nullable=False, server_default=sa.text("3")),
     )
     error_code: str | None = Field(
         default=None, sa_column=sa.Column(sa.String(64), nullable=True)
@@ -116,11 +124,11 @@ class ExtensionFetchJobModel(SQLModel, table=True):
     )
     created_at: datetime = Field(
         default_factory=utc_now_naive,
-        sa_column=sa.Column(sa.DateTime(), nullable=False),
+        sa_column=sa.Column(sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
     updated_at: datetime = Field(
         default_factory=utc_now_naive,
-        sa_column=sa.Column(sa.DateTime(), nullable=False),
+        sa_column=sa.Column(sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
 
     __table_args__ = (

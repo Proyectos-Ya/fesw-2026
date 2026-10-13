@@ -3,6 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -23,8 +24,8 @@ class MatchingShadowScoreModel(SQLModel, table=True):
 
     id: UUID = Field(primary_key=True)
     ranking_id: UUID | None = Field(default=None, index=True)
-    supplier_id: UUID = Field(foreign_key="supplier.id", index=True)
-    tender_id: UUID = Field(foreign_key="tender.id", index=True)
+    supplier_id: UUID = Field(foreign_key="supplier.id", ondelete="CASCADE", index=True)
+    tender_id: UUID = Field(foreign_key="tender.id", ondelete="CASCADE", index=True)
     variant: str = Field(index=True)
     baseline_score: float
     shadow_score: float
@@ -44,9 +45,9 @@ class TenderAttachmentItemModel(SQLModel, table=True):
     __tablename__ = "tender_attachment_item"  # type: ignore
 
     id: UUID = Field(primary_key=True)
-    tender_id: UUID = Field(foreign_key="tender.id", index=True)
+    tender_id: UUID = Field(foreign_key="tender.id", ondelete="CASCADE", index=True)
     title: str
-    description: str | None = Field(default=None)
+    description: str | None = Field(default=None, sa_type=sa.Text)
     quantity: float | None = Field(default=None)
     unit: str | None = Field(default=None)
     created_at: datetime

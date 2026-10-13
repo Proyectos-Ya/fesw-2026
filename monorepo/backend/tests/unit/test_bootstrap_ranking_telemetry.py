@@ -47,12 +47,10 @@ def test_bootstrap_registra_el_registro_de_rankings_y_la_ruta_de_interacciones(
     bootstrap.bootstrap(app)
 
     assert isinstance(app.state.ranking_registry, RecentRankingRegistry)
-    rutas = {
-        (ruta.path, metodo)
-        for ruta in app.routes
-        for metodo in getattr(ruta, "methods", None) or ()
-    }
-    assert ("/tenders/{tender_id}/interactions", "POST") in rutas
+    # Del esquema OpenAPI: desde FastAPI 0.141, `app.routes` no lista las rutas
+    # de los routers incluidos.
+    rutas = app.openapi()["paths"]
+    assert "post" in rutas["/tenders/{tender_id}/interactions"]
 
 
 def test_el_getter_del_registro_lee_app_state():
