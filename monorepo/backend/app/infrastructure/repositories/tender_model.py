@@ -165,7 +165,11 @@ class IngestionRunModel(SQLModel, table=True):
     listed: int = Field(default=0)
     processed: int = Field(default=0)
     failed: int = Field(default=0)
-    # "running" | "ok" | "partial" | "failed".
+    # "running" | "ok" | "partial" | "failed" | "vaciada".
+    #
+    # `vaciada` es el cierre de una corrida frecuente (plan 305), que solo vacía
+    # la cola. No es `ok` para que ningún cursor la lea, tampoco el de la
+    # versión anterior del script, que no mira el tipo.
     #
     # `ok` significa **que se listó la ventana entera**, no que se procesara
     # todo. Son cosas distintas a propósito: una vez que los códigos están en

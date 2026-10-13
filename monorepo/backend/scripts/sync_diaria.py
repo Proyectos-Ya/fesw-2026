@@ -465,9 +465,12 @@ async def vaciar_frecuente(
             modo=ModoCola.NUEVAS,
         )
         _avisos_del_vaciado(resultado)
+        # `vaciada` y no `ok`: la versión anterior de este script lee el cursor
+        # de cualquier corrida `ok` sin mirar el tipo, y la ventana de esta fila
+        # es "ahora". Con `ok`, volver a esa versión saltaría el cursor.
         await servicio.registrar_fin(
             run_id,
-            status="ok",
+            status="vaciada",
             processed=resultado.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,

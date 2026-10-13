@@ -679,7 +679,9 @@ class TestModoFrecuente:
 
         assert servicio.ventanas_pedidas == []
         assert servicio.inicios[0][0] == "frecuente"
-        assert servicio.cierre["status"] == "ok"
+        # No `ok`: la versión anterior lee el cursor de cualquier `ok` sin mirar
+        # el tipo, y esta fila tiene la ventana en "ahora".
+        assert servicio.cierre["status"] == "vaciada"
         assert servicio.cierre["processed"] == 4
         assert servicio.cierre["requests"] == 9
         assert [m for m, _ in servicio.pasadas] == [ModoCola.NUEVAS]
