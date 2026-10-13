@@ -93,3 +93,6 @@ class TenderDetailResponse(BaseModel):
     tender: Tender
     score_pct: int | None = None
     is_closed: bool
+    # Si está en el ranking cacheado de la empresa activa. En falso la ficha
+    # ofrece calcular o recalcular el puntaje a pedido.
+    is_recommended: bool = False
