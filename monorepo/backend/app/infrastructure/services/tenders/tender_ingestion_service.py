@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func, update
+from sqlalchemy import func, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
@@ -24,7 +24,12 @@ from app.application.services.tender_ingestion_queue import ITenderIngestionQueu
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
-from app.domain.models.cambio_estado import CambioDeEstado
+from app.domain.models.cambio_estado import (
+    CambioDeEstado,
+    Intencion,
+    PunteroDeCambio,
+    ResultadoPunteros,
+)
 from app.domain.models.tender_ingestion_dto import (
     DocumentoOficialDTO,
     ItemLicitacionDTO,
@@ -173,6 +178,134 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
     return cierre is not None and cierre <= ahora_utc_naive
 
 
+# Margen al comparar `fecha_ultimo_cambio` con la última bajada del detalle. La
+# hora de la API viene en hora de Chile y se convierte, y el cambio pudo no
+# alcanzar a salir en un detalle pedido segundos después. Mejor una bajada de más
+# que un cambio sin ver.
+MARGEN_CAMBIO = timedelta(minutes=5)
+
+# Lo que entra a cada sentencia del puntero, como columnas de una tabla.
+_VALORES = """
+    unnest(
+        CAST(:ids AS uuid[]),
+        CAST(:codes AS varchar[]),
+        CAST(:estados AS varchar[]),
+        CAST(:cambios AS timestamp[])
+    ) AS v(id, code, estado, cambio)
+"""
+
+# Si los datos de la API traen algo que no estaba: estado distinto o fecha más
+# nueva. Sin esto, cada pasada reescribiría filas idénticas.
+_API_CAMBIO = """
+    tm.api_status_code IS DISTINCT FROM EXCLUDED.api_status_code
+    OR EXCLUDED.api_changed_at > COALESCE(tm.api_changed_at, CAST('-infinity' AS timestamp))
+"""
+
+_API_SET = """
+    api_status_code = EXCLUDED.api_status_code,
+    api_changed_at = GREATEST(tm.api_changed_at, EXCLUDED.api_changed_at)
+"""
+
+# Cuándo una conocida que ya está en la cola tiene que volver a bajarse.
+_HAY_QUE_BAJAR = {
+    Intencion.ACTUALIZAR_SI_CAMBIO: """
+        tm.discarded_at IS NULL
+        AND EXCLUDED.api_changed_at IS NOT NULL
+        AND EXCLUDED.api_changed_at
+            > COALESCE(
+                tm.detail_fetched_at - CAST(:margen AS interval),
+                CAST('-infinity' AS timestamp)
+            )
+        AND (tm.is_processed OR tm.pending_reason IS DISTINCT FROM 'actualizar')
+    """,
+    # Una reapertura se baja siempre. Revive lo que se descartó por inactivo,
+    # que justamente dejó de estarlo, pero no lo que falla siempre.
+    Intencion.REABIERTA: """
+        (tm.discarded_at IS NULL OR tm.discard_reason = 'inactiva_en_listado')
+        AND (
+            tm.is_processed
+            OR tm.discarded_at IS NOT NULL
+            OR tm.pending_reason IS DISTINCT FROM 'actualizar'
+        )
+    """,
+}
+
+
+def _sql_actualizar(intencion: Intencion) -> str:
+    bajar = _HAY_QUE_BAJAR[intencion]
+    return f"""
+        INSERT INTO tender_metadata AS tm (
+            id, code, is_processed, attempts, night_retries, pending_reason,
+            api_status_code, api_changed_at, created_at, updated_at
+        )
+        SELECT v.id, v.code, false, 0, 0, 'actualizar', v.estado, v.cambio,
+               :ahora, :ahora
+          FROM {_VALORES}
+        ON CONFLICT (code) DO UPDATE SET
+            {_API_SET},
+            pending_reason = CASE WHEN {bajar} THEN 'actualizar'
+                                  ELSE tm.pending_reason END,
+            -- Solo vuelve a 0 si venía procesada: una pendiente que falla
+            -- siempre tiene que llegar a la noche, no empezar de nuevo.
+            attempts = CASE WHEN ({bajar}) AND tm.is_processed THEN 0
+                            ELSE tm.attempts END,
+            is_processed = CASE WHEN {bajar} THEN false ELSE tm.is_processed END,
+            discard_reason = CASE WHEN {bajar} THEN NULL ELSE tm.discard_reason END,
+            discarded_at = CASE WHEN {bajar} THEN NULL ELSE tm.discarded_at END,
+            updated_at = CASE WHEN {bajar} THEN :ahora ELSE tm.updated_at END
+        WHERE {_API_CAMBIO} OR ({bajar})
+        RETURNING tm.updated_at = :ahora
+    """
+
+
+_SQL_PUNTEROS: dict[Intencion, str] = {
+    # Solo crea: una fila que ya estaba (procesada, pendiente o terminal) no
+    # cambia de estado por aparecer de nuevo en el listado.
+    Intencion.NUEVA: f"""
+        INSERT INTO tender_metadata AS tm (
+            id, code, is_processed, attempts, night_retries, pending_reason,
+            api_status_code, api_changed_at, created_at, updated_at
+        )
+        SELECT v.id, v.code, false, 0, 0, 'nueva', v.estado, v.cambio,
+               :ahora, :ahora
+          FROM {_VALORES}
+        ON CONFLICT (code) DO UPDATE SET {_API_SET}
+        WHERE {_API_CAMBIO}
+        RETURNING (xmax = 0)
+    """,
+    Intencion.ACTUALIZAR_SI_CAMBIO: _sql_actualizar(Intencion.ACTUALIZAR_SI_CAMBIO),
+    Intencion.REABIERTA: _sql_actualizar(Intencion.REABIERTA),
+    # No crea filas: una que no tenemos y ya no está activa no hay que bajarla.
+    # La pendiente pasa a terminal sin gastar intentos.
+    Intencion.INACTIVA: f"""
+        UPDATE tender_metadata AS tm SET
+            api_status_code = v.estado,
+            api_changed_at = GREATEST(tm.api_changed_at, v.cambio),
+            discarded_at = CASE WHEN tm.is_processed = false
+                                     AND tm.discarded_at IS NULL
+                                THEN :ahora ELSE tm.discarded_at END,
+            discard_reason = CASE WHEN tm.is_processed = false
+                                       AND tm.discarded_at IS NULL
+                                  THEN 'inactiva_en_listado'
+                                  ELSE tm.discard_reason END,
+            pending_reason = CASE WHEN tm.is_processed = false
+                                       AND tm.discarded_at IS NULL
+                                  THEN NULL ELSE tm.pending_reason END,
+            updated_at = CASE WHEN tm.is_processed = false
+                                   AND tm.discarded_at IS NULL
+                              THEN :ahora ELSE tm.updated_at END
+          FROM {_VALORES}
+         WHERE tm.code = v.code
+           AND (
+               tm.api_status_code IS DISTINCT FROM v.estado
+               OR v.cambio > COALESCE(tm.api_changed_at, CAST('-infinity' AS timestamp))
+               OR (tm.is_processed = false AND tm.discarded_at IS NULL)
+           )
+        RETURNING tm.discarded_at = :ahora
+    """,
+}
+
+
 class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
     def __init__(
         self,
@@ -243,9 +376,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     # Hoy no rompe nada porque `get_tenders` ya se llamó, pero
                     # cualquier uso posterior del filtro fallaría.
                     estado_item = item.get("estado", {}) or {}
-                    codigo_estado = (
-                        str(estado_item.get("codigo") or "").strip().lower()
-                    )
+                    codigo_estado = str(estado_item.get("codigo") or "").strip().lower()
                     if codigo_estado not in ACTIVE_TENDER_STATUSES:
                         continue
 
@@ -327,9 +458,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             nuevos += len(resultado.all())
         return nuevos
 
-    async def listar_cambios(
-        self, ventana: timedelta, limite: int
-    ) -> ListadoCambios:
+    async def listar_cambios(self, ventana: timedelta, limite: int) -> ListadoCambios:
         """Lo que cambió en la API en las últimas `ventana`, sin filtro de estado.
 
         Ventana de **cambios** (`ttl_cambio_ms`), siempre contada hacia atrás
@@ -395,6 +524,54 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                 reencoladas += len(resultado.all())
             await session.commit()
         return reencoladas
+
+    async def registrar_punteros(
+        self, punteros: list[PunteroDeCambio]
+    ) -> ResultadoPunteros:
+        """Deja en la cola el puntero de cada código listado (plan 305).
+
+        Una sentencia por intención y por lote. Si una conocida tiene que volver
+        a bajarse se decide acá, en el mismo upsert, contra `detail_fetched_at`:
+        el ingest la escribe en paralelo, y comparar contra una lectura previa
+        dejaría pasar un cambio que llegó entre la lectura y la escritura.
+        """
+        # Un ON CONFLICT DO UPDATE no puede tocar dos veces la misma fila en una
+        # sentencia. El caso de uso ya deja un cambio por código; esto es por si
+        # otro llamador no lo hace. Gana el último.
+        unicos = list({p.code: p for p in punteros}.values())
+        resultado = ResultadoPunteros()
+        if not unicos:
+            return resultado
+
+        por_intencion: dict[Intencion, list[PunteroDeCambio]] = {}
+        for puntero in unicos:
+            por_intencion.setdefault(puntero.intencion, []).append(puntero)
+
+        ahora = utc_now_naive()
+        async with AsyncSession(self.engine) as session:
+            for intencion, grupo in por_intencion.items():
+                sql = _SQL_PUNTEROS[intencion]
+                for lote in _lotes(grupo, LOTE_METADATA):
+                    filas = await session.exec(  # type: ignore[call-overload]
+                        text(sql),
+                        params={
+                            "ids": [uuid.uuid4() for _ in lote],
+                            "codes": [p.code for p in lote],
+                            "estados": [p.status_code for p in lote],
+                            "cambios": [p.changed_at for p in lote],
+                            "ahora": ahora,
+                            "margen": MARGEN_CAMBIO,
+                        },
+                    )
+                    cambiadas = sum(1 for (cambio,) in filas.all() if cambio)
+                    if intencion is Intencion.NUEVA:
+                        resultado.nuevas += cambiadas
+                    elif intencion is Intencion.INACTIVA:
+                        resultado.descartadas += cambiadas
+                    else:
+                        resultado.actualizar += cambiadas
+            await session.commit()
+        return resultado
 
     async def ventana_a_sincronizar(self) -> tuple[datetime, datetime]:
         """De cuándo a cuándo preguntar, según hasta dónde llegó la última buena.
@@ -511,9 +688,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         # que salir, y lo que hace falta es que las que aún no empezaron no
         # gasten sus cuatro reintentos contra una cuota que ya no existe.
         cuota_agotada = asyncio.Event()
-        semaforo = asyncio.Semaphore(
-            max(1, settings.mercadopublico_detail_concurrency)
-        )
+        semaforo = asyncio.Semaphore(max(1, settings.mercadopublico_detail_concurrency))
 
         await asyncio.gather(
             *(
@@ -650,7 +825,11 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         """
         detalle = await self.client.get_tender_detail(code)
         fechas = (detalle or {}).get("fechas") or {}
-        if not detalle or not fechas.get("fecha_publicacion") or not fechas.get("fecha_cierre"):
+        if (
+            not detalle
+            or not fechas.get("fecha_publicacion")
+            or not fechas.get("fecha_cierre")
+        ):
             return None
         dto = self._parse_to_dto(detalle)
         async with AsyncSession(self.engine) as session:

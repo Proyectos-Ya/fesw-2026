@@ -8,8 +8,10 @@ Reglas que protege:
   en SQL: se reencola para que el ingest la reindexe entera (si se la marcara
   activa acá, el ingest vería "sin cambios" y nunca recrearía el punto).
 - Qdrant antes que SQL, como en el resto de la ingesta.
-- Las publicadas que cambiaron después de la última bajada de su detalle se
-  reencolan, para que `_actualizar` decida si cambió el texto.
+- Cada código listado deja un puntero en la cola (plan 305): `nueva` si no lo
+  tenemos y sigue abierto, `actualizar` si lo tenemos activo (el SQL decide si
+  el cambio es posterior a la última bajada), `reabierta` si vuelve a estar
+  activo e `inactiva` si ya no lo está.
 - El llamado vigente y el cierre de cada llamado se registran en toda
   licitación conocida (también en una reapertura), en una escritura aparte que
   no mueve `updated_at` y va después de Qdrant y del estado.
@@ -23,7 +25,13 @@ from app.application.repositories.tender_status_sync_repository import (
 )
 from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
 from app.application.use_cases.sync_tender_statuses import SyncTenderStatusesUseCase
-from app.domain.models.cambio_estado import CambioDeEstado, LicitacionConocida
+from app.domain.models.cambio_estado import (
+    CambioDeEstado,
+    Intencion,
+    LicitacionConocida,
+    PunteroDeCambio,
+    ResultadoPunteros,
+)
 from app.shared.datetime_utils import to_utc_epoch
 from tests.unit.application.fakes import FakeTenderVectorRepository
 
@@ -78,11 +86,31 @@ class VectorFalso(FakeTenderVectorRepository):
 
 class ColaFalsa(ITenderIngestionQueue):
     def __init__(self) -> None:
-        self.reencolados: list[str] = []
+        self.punteros: list[PunteroDeCambio] = []
 
     async def reencolar(self, codigos: list[str]) -> int:
-        self.reencolados.extend(codigos)
-        return len(codigos)
+        raise AssertionError("el caso de uso deja punteros, no reencola")
+
+    async def registrar_punteros(
+        self, punteros: list[PunteroDeCambio]
+    ) -> ResultadoPunteros:
+        self.punteros.extend(punteros)
+        return ResultadoPunteros(
+            nuevas=sum(p.intencion is Intencion.NUEVA for p in punteros),
+            actualizar=sum(
+                p.intencion in (Intencion.ACTUALIZAR_SI_CAMBIO, Intencion.REABIERTA)
+                for p in punteros
+            ),
+            descartadas=sum(p.intencion is Intencion.INACTIVA for p in punteros),
+        )
+
+    def intencion(self, code: str) -> Intencion | None:
+        return next((p.intencion for p in self.punteros if p.code == code), None)
+
+    @property
+    def reencolados(self) -> list[str]:
+        """Lo que vuelve a la cola sin condición: las reaperturas."""
+        return [p.code for p in self.punteros if p.intencion is Intencion.REABIERTA]
 
 
 def _conocida(code: str, status_id: int) -> LicitacionConocida:
@@ -114,11 +142,14 @@ def _cambio(
     )
 
 
+AHORA = datetime(2026, 10, 1, 12, 0)  # antes de CIERRE: las publicadas siguen abiertas
+
+
 def _armar(conocidas: list[LicitacionConocida]):
     log: list[str] = []
     repo, vector, cola = RepoFalso(conocidas, log), VectorFalso(log), ColaFalsa()
     caso = SyncTenderStatusesUseCase(
-        repository=repo, tender_vector_repo=vector, cola=cola
+        repository=repo, tender_vector_repo=vector, cola=cola, reloj=lambda: AHORA
     )
     return caso, repo, vector, cola, log
 
@@ -183,44 +214,87 @@ class TestVuelveAEstarActiva:
         assert resultado.reabiertas == 1
 
 
-class TestReencolado:
-    async def test_publicada_con_cambio_posterior_a_la_bajada_se_reencola(self):
+class TestPuntero:
+    async def test_una_conocida_activa_queda_para_actualizar_si_cambio(self):
+        """Si el cambio es posterior a la última bajada lo decide el SQL."""
         caso, _, _, cola, _ = _armar([_conocida("A", PUBLICADA)])
+        cambio = _cambio(
+            "A", PUBLICADA, "publicada", changed_at=BAJADA + timedelta(hours=1)
+        )
+
+        await caso.execute([cambio])
+
+        assert cola.punteros == [
+            PunteroDeCambio(
+                code="A",
+                status_code="publicada",
+                changed_at=BAJADA + timedelta(hours=1),
+                intencion=Intencion.ACTUALIZAR_SI_CAMBIO,
+            )
+        ]
+
+    async def test_una_reapertura_se_reencola_sin_condicion(self):
+        caso, _, _, cola, _ = _armar([_conocida("A", CERRADA)])
+
+        await caso.execute([_cambio("A", PUBLICADA, "publicada")])
+
+        assert cola.intencion("A") is Intencion.REABIERTA
+
+    async def test_una_que_deja_de_estar_activa_se_marca_inactiva(self):
+        """Si seguía pendiente en la cola, pasa a terminal sin gastar intentos."""
+        caso, _, _, cola, _ = _armar([_conocida("A", PUBLICADA)])
+
+        await caso.execute([_cambio("A", DESIERTA, "desierta")])
+
+        assert cola.intencion("A") is Intencion.INACTIVA
+
+    async def test_una_publicada_que_no_tenemos_es_nueva(self):
+        caso, repo, vector, cola, _ = _armar([])
+
+        resultado = await caso.execute([_cambio("N", PUBLICADA, "publicada")])
+
+        assert cola.intencion("N") is Intencion.NUEVA
+        assert resultado.nuevas == 1
+        # No se escribe nada en `tender` ni en Qdrant: la trae la ingesta.
+        assert repo.sobrescritos == [] and vector.payloads == {}
+
+    async def test_una_publicada_con_el_cierre_vencido_no_es_nueva(self):
+        """Mismo filtro que el listado nocturno: no vale una petición."""
+        caso, _, _, cola, _ = _armar([])
 
         await caso.execute(
             [
                 _cambio(
-                    "A", PUBLICADA, "publicada", changed_at=BAJADA + timedelta(hours=1)
+                    "N", PUBLICADA, "publicada", closing_at=AHORA - timedelta(hours=1)
                 )
             ]
         )
 
-        assert cola.reencolados == ["A"]
+        assert cola.intencion("N") is Intencion.INACTIVA
 
-    async def test_cambio_anterior_a_la_bajada_no_se_reencola(self):
-        """Ya se bajó el detalle después de ese cambio (o es el mismo)."""
-        caso, _, _, cola, _ = _armar([_conocida("A", PUBLICADA)])
+    async def test_una_no_activa_que_no_tenemos_queda_inactiva(self):
+        caso, _, _, cola, _ = _armar([])
 
-        await caso.execute([_cambio("A", PUBLICADA, "publicada", changed_at=BAJADA)])
+        await caso.execute([_cambio("N", DESIERTA, "desierta")])
 
-        assert cola.reencolados == []
+        assert cola.intencion("N") is Intencion.INACTIVA
 
-    async def test_sin_fecha_de_cambio_no_se_reencola(self):
-        caso, _, _, cola, _ = _armar([_conocida("A", PUBLICADA)])
+    async def test_el_resultado_suma_lo_que_dejo_la_cola(self):
+        caso, _, _, _, _ = _armar([_conocida("A", PUBLICADA), _conocida("B", CERRADA)])
 
-        await caso.execute([_cambio("A", PUBLICADA, "publicada", changed_at=None)])
-
-        assert cola.reencolados == []
-
-    async def test_las_no_activas_no_se_reencolan(self):
-        """Su contenido ya no se muestra ni se recomienda: no vale una petición."""
-        caso, _, _, cola, _ = _armar([_conocida("A", PUBLICADA)])
-
-        await caso.execute(
-            [_cambio("A", DESIERTA, "desierta", changed_at=BAJADA + timedelta(hours=1))]
+        resultado = await caso.execute(
+            [
+                _cambio("A", DESIERTA, "desierta"),
+                _cambio("B", PUBLICADA, "publicada"),
+                _cambio("N", PUBLICADA, "publicada"),
+            ]
         )
 
-        assert cola.reencolados == []
+        assert (resultado.nuevas, resultado.reencoladas, resultado.descartadas) == (
+            1,
+            1,
+            1,
+        )
 
 
 class TestBordes:
@@ -230,6 +304,7 @@ class TestBordes:
         resultado = await caso.execute([_cambio("NUEVA", PUBLICADA, "publicada")])
 
         assert repo.sobrescritos == [] and cola.reencolados == []
+        assert cola.intencion("NUEVA") is Intencion.NUEVA
         assert vector.payloads == {} and vector.deleted == []
         assert resultado.conocidas == 0
 
@@ -337,9 +412,7 @@ class TestLlamado:
     async def test_las_desconocidas_no_registran_llamado(self):
         caso, repo, _, _, log = _armar([])
 
-        await caso.execute(
-            [_cambio("NUEVA", PUBLICADA, "publicada", call_number=1)]
-        )
+        await caso.execute([_cambio("NUEVA", PUBLICADA, "publicada", call_number=1)])
 
         assert repo.llamados == []
         assert "sql-llamado" not in log
@@ -347,9 +420,7 @@ class TestLlamado:
     async def test_el_llamado_se_escribe_despues_de_qdrant_y_del_estado(self):
         caso, _, _, _, log = _armar([_conocida("A", PUBLICADA)])
 
-        await caso.execute(
-            [_cambio("A", CANCELADA, "cancelada", call_number=1)]
-        )
+        await caso.execute([_cambio("A", CANCELADA, "cancelada", call_number=1)])
 
         assert log == ["qdrant", "sql", "sql-llamado"]
 
