@@ -47,6 +47,11 @@ class _TenderTexto:
     description: str | None
 
 
+def _ordenadas(items: list[TenderItemModel]) -> list[TenderItemModel]:
+    """Las partidas en un orden que no depende de cómo las devolvió la fuente."""
+    return sorted(items, key=lambda i: (i.name or "", i.description or ""))
+
+
 class TenderIngestionUseCase:
     def __init__(
         self,
@@ -162,7 +167,9 @@ class TenderIngestionUseCase:
                 # el mismo orden: si SQL falla después, queda un punto sin fila,
                 # que el ranking limpia solo. Llevan el mismo payload que el punto
                 # de la licitación para pre-filtrar dentro de su propia colección.
-                await self._guardar_vectores_de_partidas(tender_id, tender_items, payload)
+                await self._guardar_vectores_de_partidas(
+                    tender_id, tender_items, payload
+                )
                 await self._guardar_vector_lexico(tender_id, text, payload)
 
             # Recién acá se abre la transacción SQL. Ambos get_or_create
@@ -180,7 +187,9 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code, code=dto.status_semantic_code
             )
             await self.repo.save_complex_tender(new_tender, tender_items)
-            await self._sincronizar_anexos(tender_id, dto)  # FK: después de la licitación
+            await self._sincronizar_anexos(
+                tender_id, dto
+            )  # FK: después de la licitación
 
             return {"status": "success", "tender_code": dto.code}
 
@@ -245,11 +254,18 @@ class TenderIngestionUseCase:
         items_nuevos = self._construir_items(existente.id, dto)
         items_actuales = await self.repo.get_items_by_tender_id(existente.id)
 
-        texto_actual = self.text_builder.build_from_tender(existente, items_actuales)
         texto_nuevo = self.text_builder.build_from_tender(
             _TenderTexto(name=dto.name, description=dto.description), items_nuevos
         )
-        cambio_semantico = texto_actual != texto_nuevo
+        # La comparación ordena las partidas: Postgres no garantiza su orden, y
+        # si contara, un detalle idéntico volvería a pagar todos los embeddings
+        # (plan 305). El texto del embedding conserva el orden de la API.
+        cambio_semantico = self.text_builder.build_from_tender(
+            existente, _ordenadas(items_actuales)
+        ) != self.text_builder.build_from_tender(
+            _TenderTexto(name=dto.name, description=dto.description),
+            _ordenadas(items_nuevos),
+        )
         cambio_metadatos = self._metadatos_cambiaron(existente, dto)
         cambio_llamado = self._llamado_cambio(existente, dto)
 
@@ -303,7 +319,9 @@ class TenderIngestionUseCase:
             )
             # Cambió el texto (o vuelve a estar activa y no tenía puntos): los
             # vectores por partida se rehacen con el mismo payload.
-            await self._guardar_vectores_de_partidas(existente.id, items_nuevos, payload)
+            await self._guardar_vectores_de_partidas(
+                existente.id, items_nuevos, payload
+            )
             await self._guardar_vector_lexico(existente.id, texto_nuevo, payload)
         else:
             metadatos = {

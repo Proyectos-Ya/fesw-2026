@@ -1181,6 +1181,17 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         estado = detail.get("estado", {}) or {}
         llamado = leer_llamado(detail)
 
+        # Sin las dos fechas oficiales no se ingesta: antes se rellenaban con
+        # "ahora", y `_actualizar` lo leía como un cambio de cierre. El error
+        # cuenta como intento y, si se repite, la licitación pasa a terminal.
+        faltan = [
+            campo
+            for campo in ("fecha_publicacion", "fecha_cierre")
+            if not leer_fecha_mp(fechas.get(campo))
+        ]
+        if faltan:
+            raise ValueError(f"El detalle no trae {' ni '.join(faltan)}.")
+
         def parse_date(date_str) -> datetime:
             # Naive en hora de Chile: el DTO la pasa a UTC (`normalize_to_utc`).
             # Mismo lector que el listado y el cron de estados.

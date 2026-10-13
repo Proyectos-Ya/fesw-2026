@@ -679,7 +679,11 @@ async def test_cambio_semantico_regenera_los_vectores_de_partidas() -> None:
     """Si cambian las partidas, los vectores viejos ya no describen la licitación."""
     dto = _make_dto(items=_ITEMS_DOS_PARTIDAS)
     guardadas = _items_modelo(
-        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+        _make_dto(
+            items=[
+                {"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}
+            ]
+        )
     )
     item_repo = InMemoryTenderItemVectorRepository()
     await item_repo.upsert(_ID_EXISTENTE, [[9.0, 9.0, 9.0]])
@@ -768,7 +772,9 @@ async def test_sin_cambios_no_toca_los_vectores_de_partidas() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_alta_guarda_las_partidas_con_el_mismo_payload_que_la_licitacion() -> None:
+async def test_alta_guarda_las_partidas_con_el_mismo_payload_que_la_licitacion() -> (
+    None
+):
     vector_repo = FakeTenderVectorRepository()
     item_repo = InMemoryTenderItemVectorRepository()
     repo = FakeTenderRepository()
@@ -805,11 +811,17 @@ async def test_alta_sin_partidas_no_deja_payload_huerfano() -> None:
 async def test_cambio_semantico_reescribe_las_partidas_con_el_payload_nuevo() -> None:
     dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
     guardadas = _items_modelo(
-        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+        _make_dto(
+            items=[
+                {"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}
+            ]
+        )
     )
     vector_repo = FakeTenderVectorRepository()
     item_repo = InMemoryTenderItemVectorRepository()
-    await item_repo.upsert(_ID_EXISTENTE, [[9.0, 9.0, 9.0]], {"status_code": "publicada"})
+    await item_repo.upsert(
+        _ID_EXISTENTE, [[9.0, 9.0, 9.0]], {"status_code": "publicada"}
+    )
     use_case = TenderIngestionUseCase(
         repository=RepoQueTeniaLaLicitacion(dto, items_guardados=guardadas),
         embedding_service=FakeEmbeddingPorTexto(),
@@ -834,7 +846,11 @@ async def test_cambio_semantico_conserva_comuna_y_provincia_en_ambos_payloads() 
     """
     dto = _make_dto(organismo="I Municipalidad de Santiago", items=_ITEMS_DOS_PARTIDAS)
     guardadas = _items_modelo(
-        _make_dto(items=[{"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}])
+        _make_dto(
+            items=[
+                {"nombre_producto": "Ladrillo", "cantidad": 1, "unidad_medida": "un"}
+            ]
+        )
     )
     vector_repo = FakeTenderVectorRepository()
     item_repo = InMemoryTenderItemVectorRepository()
@@ -927,7 +943,9 @@ async def test_sin_cambios_no_toca_el_payload_de_las_partidas() -> None:
     assert item_repo.payloads == {_ID_EXISTENTE: {"status_code": "otro"}}
 
 
-async def test_cambio_de_metadatos_sin_repositorio_de_partidas_sigue_funcionando() -> None:
+async def test_cambio_de_metadatos_sin_repositorio_de_partidas_sigue_funcionando() -> (
+    None
+):
     dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, monto=80_000_000.0)
     vector_repo = FakeTenderVectorRepository()
     use_case = TenderIngestionUseCase(
@@ -944,7 +962,9 @@ async def test_cambio_de_metadatos_sin_repositorio_de_partidas_sigue_funcionando
     assert vector_repo.payloads[_ID_EXISTENTE]["available_amount_clp"] == 80_000_000.0
 
 
-async def test_una_licitacion_que_se_cierra_pierde_tambien_sus_vectores_de_partidas() -> None:
+async def test_una_licitacion_que_se_cierra_pierde_tambien_sus_vectores_de_partidas() -> (
+    None
+):
     """Qdrant guarda solo activas, y el canal de keywords busca en `tender_items`:
     si ahí quedara el punto de una cerrada, seguiría ocupando cupos del ranking
     hasta que la limpieza de huérfanos lo encontrara."""
@@ -952,9 +972,13 @@ async def test_una_licitacion_que_se_cierra_pierde_tambien_sus_vectores_de_parti
     dto = _make_dto(items=_ITEMS_DOS_PARTIDAS, status_code=3, estado_codigo="cerrada")
     vector_repo = FakeTenderVectorRepository()
     item_repo = InMemoryTenderItemVectorRepository()
-    await item_repo.upsert(_ID_EXISTENTE, [[1.0, 0.0, 0.0]], {"status_code": "publicada"})
+    await item_repo.upsert(
+        _ID_EXISTENTE, [[1.0, 0.0, 0.0]], {"status_code": "publicada"}
+    )
     use_case = TenderIngestionUseCase(
-        repository=RepoQueTeniaLaLicitacion(guardada, items_guardados=_items_modelo(guardada)),
+        repository=RepoQueTeniaLaLicitacion(
+            guardada, items_guardados=_items_modelo(guardada)
+        ),
         embedding_service=FakeEmbeddingPorTexto(),
         tender_vector_repo=vector_repo,
         tender_item_vector_repo=item_repo,
@@ -1144,7 +1168,9 @@ async def test_actualizar_con_cambio_semantico_actualiza_vector_lexico() -> None
         lexical_tender_repo=lexical_repo,
     )
 
-    dto = _make_dto(code="LIC-001", nombre="Nuevo título modificado con palabras distintas")
+    dto = _make_dto(
+        code="LIC-001", nombre="Nuevo título modificado con palabras distintas"
+    )
     res = await use_case.execute(dto)
 
     assert res["status"] == "updated"
@@ -1178,6 +1204,7 @@ async def test_actualizar_que_se_cierra_elimina_vector_lexico() -> None:
     lexical_repo = FakeLexicalTenderRepository()
     # Fingimos que ya existía en el repo léxico con índices dummy
     from app.application.services.lexical_tokenizer import SparseTermVector
+
     lexical_repo.vectors[tender_id] = SparseTermVector(indices=[10], values=[1.0])
 
     use_case = TenderIngestionUseCase(
@@ -1233,8 +1260,11 @@ async def test_actualizar_solo_metadatos_actualiza_payload_lexico() -> None:
 
     lexical_repo = FakeLexicalTenderRepository()
     from app.application.services.lexical_tokenizer import LexicalTokenizer
+
     tokenizer = LexicalTokenizer()
-    lexical_repo.vectors[tender_id] = tokenizer.encode_sparse("Construcción de sede comunal")
+    lexical_repo.vectors[tender_id] = tokenizer.encode_sparse(
+        "Construcción de sede comunal"
+    )
 
     use_case = TenderIngestionUseCase(
         repository=RepoConExistente(),
@@ -1250,3 +1280,61 @@ async def test_actualizar_solo_metadatos_actualiza_payload_lexico() -> None:
     assert res["status"] == "updated"
     assert res["semantico"] is False
     assert lexical_repo.payloads[tender_id]["available_amount_clp"] == 80_000_000.0
+
+
+async def test_las_mismas_partidas_en_otro_orden_no_son_un_cambio() -> None:
+    """Plan 305: Postgres no garantiza el orden de las partidas guardadas.
+
+    Si el texto comparado dependiera del orden, un detalle idéntico volvería a
+    pagar el embedding de la licitación y el de cada partida, y reescribiría las
+    partidas. Con la ingesta cada 2 h y las `actualizar` del cron de estados,
+    eso pasaría muchas veces al día.
+    """
+    dto = _make_dto(
+        items=[
+            {"nombre_producto": "Cemento", "cantidad": 10, "unidad_medida": "un"},
+            {"nombre_producto": "Arena", "cantidad": 5, "unidad_medida": "m3"},
+        ]
+    )
+
+    class RepoConPartidasDesordenadas(FakeTenderRepository):
+        async def get_by_code(self, code: str) -> TenderModel:  # noqa: ARG002
+            return TenderModel(
+                id=_ID_EXISTENTE,
+                code=dto.code,
+                name=dto.name,
+                description=dto.description,
+                status_id=dto.status_code,
+                published_at=dto.published_at,
+                closing_at=dto.closing_at,
+                last_change_at=dto.published_at,
+                buyer_rut=dto.buyer_rut,
+                buyer_unit=dto.buyer_unit,
+                available_amount_clp=dto.available_amount_clp,
+            )
+
+        async def get_items_by_tender_id(self, tender_id: UUID) -> list:  # noqa: ARG002
+            return [
+                TenderItemModel(
+                    id=uuid4(),
+                    tender_id=_ID_EXISTENTE,
+                    product_code="0",
+                    name=item.nombre_producto,
+                    description=item.descripcion,
+                    quantity=item.cantidad,
+                    unit_of_measure=item.unidad_medida,
+                )
+                for item in reversed(dto.items)
+            ]
+
+    embedding = FakeEmbeddingService()
+    use_case = TenderIngestionUseCase(
+        repository=RepoConPartidasDesordenadas(),
+        embedding_service=embedding,
+        tender_vector_repo=FakeTenderVectorRepository(),
+    )
+
+    resultado = await use_case.execute(dto)
+
+    assert resultado["status"] == "unchanged"
+    assert embedding.calls == []

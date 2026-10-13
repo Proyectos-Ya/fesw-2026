@@ -322,3 +322,29 @@ class TestCarreraConElCronDeEstados:
         fila = await _metadata(entorno, "CAMBIA-1")
         assert len(vectores.upserts) == 1
         assert (fila.is_processed, fila.pending_reason) == (False, "actualizar")
+
+
+class ClienteSinFechas(ClienteFalso):
+    async def get_tender_detail(self, code: str) -> dict:
+        detalle = await super().get_tender_detail(code)
+        detalle["fechas"] = {"fecha_publicacion": "2026-09-01 10:00"}
+        return detalle
+
+
+class TestDetalleSinFechas:
+    async def test_no_se_guarda_con_la_hora_actual(self, entorno):
+        """El parser ponía "ahora" en la fecha que faltaba, y `_actualizar` lo
+        leía como un cambio de cierre. Con las `actualizar` del cron de estados
+        ese camino deja de ser raro (plan 305)."""
+        await _encolar(entorno, ["SIN-FECHA-1"])
+        vectores = VectorRepoFalso()
+
+        await _servicio(
+            entorno, ClienteSinFechas(), vectores
+        ).process_unprocessed_tenders()
+
+        fila = await _metadata(entorno, "SIN-FECHA-1")
+        assert vectores.upserts == []
+        assert fila.is_processed is False
+        assert fila.attempts == 1
+        assert "fecha_cierre" in (fila.last_error or "")
