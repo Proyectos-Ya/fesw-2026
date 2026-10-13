@@ -12,8 +12,8 @@ Qué hace, en orden
 1. **Registra la corrida** en `sync_estados_run`, como incompleta. Si vence el
    tope o el proceso muere, la fila queda y cuenta para la racha.
 2. **Lista lo que cambió** en las últimas `--ventana-horas` (listado por
-   `ttl_cambio_ms`, sin filtro de estado). Cuesta una petición cada 20
-   licitaciones; no pide el detalle.
+   `ttl_cambio_ms`, sin filtro de estado). Cuesta una petición cada 10
+   licitaciones (ver `TAMANO_PAGINA`); no pide el detalle.
 3. **Aplica cada página apenas llega** (plan 305), con
    `SyncTenderStatusesUseCase`: borra del índice la que dejó de estar activa,
    actualiza el payload de la que sigue activa y deja en la cola un puntero por
@@ -37,8 +37,10 @@ idempotente.
 
 El volumen manda sobre el tamaño. Medido el 2026-09-29 a mediodía: **1.620
 cambios en una hora** (661 publicadas, 535 cerradas, 64 desiertas, 24
-canceladas) y 3.090 en dos. A 20 por página y ~12 s por página, una ventana de
-2 h en hora punta son ~150 páginas y 15-30 min. El techo es 6 h porque la API
+canceladas) y 3.090 en dos. Medido el 2026-10-13 en hora punta: ~2.100 cambios
+en 2 h, y a 10 por página y ~13,5 s por página son ~210 páginas y unos 47 min,
+justo bajo el tope de 50 min. Con 20 por página la mitad de las páginas daba 504
+y la corrida vencía el tope. El techo es 6 h porque la API
 corta el listado en 10.000 resultados y a ese ritmo 6 h ya rondan los 9.000.
 
 No escribe en `ingestion_run` ni toca el cursor: `sync_diaria` se niega a correr

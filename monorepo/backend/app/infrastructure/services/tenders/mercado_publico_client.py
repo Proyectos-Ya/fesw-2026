@@ -67,12 +67,19 @@ def _iso_8601(momento: datetime) -> str:
 
 
 # La API acepta `tamano_pagina` entre **10 y 50** (medido el 2026-09-10: un 1
-# devuelve 400 con ese mensaje). 50 es el máximo, pero tarda ~21 s por página y su
-# gateway corta cerca de los 30: el 504 aparece de forma intermitente. Con 20 la
-# respuesta baja a unos pocos segundos y es estable. Son más llamadas al endpoint
-# de listado, pero ese cuesta una petición por página frente a una por licitación
-# en el de detalle, así que el impacto en la cuota es marginal.
-TAMANO_PAGINA = 20
+# devuelve 400 con ese mensaje). Se usa el mínimo porque lo que decide el 504 es
+# el tamaño de la página, no el de la ventana. Medido el 2026-10-13 en hora punta
+# (18:22-18:43 UTC), una petición por caso sin reintentos:
+#
+#   10 por página: 6 de 6 respondieron, 13,5 s de media.
+#   20 por página: la mitad a dos tercios, ~24 s; el resto, 504 a los ~29 s.
+#   50 por página: ninguna.
+#
+# Una ventana de 15 min fallaba igual que una de 2 h. Con 10 se hacen el doble de
+# páginas, pero casi ninguna se reintenta, así que en total son ~30% más
+# peticiones y la corrida termina antes. Fuera de hora punta 20 también respondía
+# bien; 10 se usa siempre para no depender de la hora.
+TAMANO_PAGINA = 10
 
 # Ventana por defecto cuando el delta no es positivo.
 VENTANA_POR_DEFECTO_MS = 86400000

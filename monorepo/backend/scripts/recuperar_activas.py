@@ -15,7 +15,7 @@ Qué hace
 2. **Lista por publicación** su rango de fechas (`estado=publicada`), en tramos
    de 6 h, y aplica cada página como el cron de estados: estado, cierre,
    llamado y el puntero de la cola para las que cambiaron después de la última
-   bajada. Cuesta una petición cada 20 licitaciones, no una por licitación.
+   bajada. Cuesta una petición cada 10 licitaciones, no una por licitación.
 3. **Encola las que no aparecen como publicadas**: ya no lo están, y su
    detalle (que baja la ingesta) confirma en qué estado quedaron. Si algún tramo
    del listado vino incompleto no encola nada, porque "no aparece" ya no
