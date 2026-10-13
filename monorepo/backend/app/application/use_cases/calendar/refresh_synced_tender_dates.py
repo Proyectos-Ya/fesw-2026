@@ -59,14 +59,17 @@ class RefreshSyncedTenderDatesUseCase:
     """Detecta cambios de fechas oficiales en licitaciones con hitos sincronizados (criterio 4).
 
     Solo revisa licitaciones que alguien tiene en su calendario y que siguen
-    abiertas: son las únicas donde un cambio mueve un evento, y así la cuota de
-    Mercado Público no se gasta en el resto del corpus.
+    abiertas: son las únicas donde un cambio mueve un evento.
+
+    Sin `refresher` (plan 305) toma las fechas de la licitación guardada, que el
+    cron de estados actualiza cada hora desde el listado, y no gasta cuota de
+    Mercado Público. Con `refresher` vuelve a pedir el detalle, como antes.
     """
 
     def __init__(
         self,
         tenders: ITenderRepository,
-        refresher: ITenderRefresher,
+        refresher: ITenderRefresher | None,
         milestones: ITenderMilestoneRepository,
         event_links: ICalendarEventLinkRepository,
         sync: SyncMilestonesToCalendarUseCase,
@@ -95,13 +98,20 @@ class RefreshSyncedTenderDatesUseCase:
         for tender in await self.tenders.get_tenders(TenderFilters(ids=tender_ids)):
             if tender.closing_at < ahora:
                 continue
-            try:
-                oficiales = await self.refresher.refresh(tender.code)
-            except Exception as error:
-                logger.warning(
-                    "No se pudieron refrescar las fechas de %s: %s", tender.code, error
+            if self.refresher is None:
+                oficiales = OfficialTenderDates(
+                    published_at=tender.published_at, closing_at=tender.closing_at
                 )
-                continue
+            else:
+                try:
+                    oficiales = await self.refresher.refresh(tender.code)
+                except Exception as error:
+                    logger.warning(
+                        "No se pudieron refrescar las fechas de %s: %s",
+                        tender.code,
+                        error,
+                    )
+                    continue
             if oficiales is None:
                 continue
             hitos = await self.milestones.list_by_tender_and_source(

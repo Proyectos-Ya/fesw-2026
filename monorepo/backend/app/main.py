@@ -40,15 +40,6 @@ from app.infrastructure.services.notifications.notification_scheduler import (
 from app.infrastructure.services.ranking_telemetry_scheduler import (
     RankingTelemetryScheduler,
 )
-from app.infrastructure.services.tenders.mercado_publico_client import (
-    MercadoPublicoClient,
-)
-from app.infrastructure.services.tenders.tender_ingestion_service import (
-    TenderIngestionService,
-)
-from app.infrastructure.services.tenders.tender_refresher import (
-    MercadoPublicoTenderRefresher,
-)
 
 
 @asynccontextmanager
@@ -170,16 +161,11 @@ async def lifespan(app: FastAPI):
 
     milestone_refresh_task = None
     if settings.run_milestone_refresh and app.state.calendar_providers:
-        refresher = MercadoPublicoTenderRefresher(
-            TenderIngestionService(
-                engine=engine,
-                client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
-                embedding_service=app.state.embedding_service,
-                qdrant_client=app.state.qdrant_async_client,
-            )
-        )
+        # Sin refresher (plan 305): compara los hitos con las fechas que el cron
+        # de estados ya escribe cada hora en `tender`, sin gastar cuota de
+        # Mercado Público desde el proceso de la API.
         milestone_scheduler = MilestoneRefreshScheduler(
-            refresh=build_milestone_refresh_runner(app, refresher),
+            refresh=build_milestone_refresh_runner(app, None),
             interval_seconds=settings.milestone_refresh_interval_seconds,
         )
         print("[Main] Iniciando revisión de cambios de fechas de hitos...")
