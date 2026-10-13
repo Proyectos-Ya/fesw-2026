@@ -20,13 +20,23 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.services.tender_ingestion_service import (
+    ITenderIngestionService,
+    ModoCola,
+)
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     ResultadoListado,
     ResultadoProceso,
 )
-from scripts.sync_diaria import con_timeout, sincronizar, verificar_destino
+from scripts.sync_diaria import (
+    con_timeout,
+    elegir_modo,
+    partir_en_tramos,
+    sincronizar,
+    vaciar_frecuente,
+    verificar_destino,
+)
 
 
 class ServicioFalso(ITenderIngestionService):
@@ -41,6 +51,14 @@ class ServicioFalso(ITenderIngestionService):
         # `started_at` de las corridas que figuran en `running`.
         self.corridas_en_curso: list[datetime] = []
         self.inicio_registrado = False
+        # Plan 305: cada corrida y cada tramo dejan su fila, con su tipo.
+        self.inicios: list[tuple[str, datetime, datetime]] = []
+        self.cierres: list[dict] = []
+        self.ventanas_pedidas: list[tuple] = []
+        self.pasadas: list[tuple[ModoCola, datetime | None]] = []
+        # Si un tramo dado (por índice) vuelve incompleto.
+        self.tramos_incompletos: set[int] = set()
+        self._tipos: dict[UUID, str] = {}
 
     async def fetch_tenders_metadata(
         self,
@@ -53,13 +71,21 @@ class ServicioFalso(ITenderIngestionService):
         hasta: datetime | None = None,
     ) -> ResultadoListado:
         self.ventana_pedida = (desde, hasta)
+        self.ventanas_pedidas.append((desde, hasta))
         self.limite_pedido = limite
         self.por_publicacion_pedido = por_publicacion
+        if len(self.ventanas_pedidas) - 1 in self.tramos_incompletos:
+            return ResultadoListado(nuevas=0, listadas=1, completo=False, documentos={})
         return self.listado
 
     async def process_unprocessed_tenders(
-        self, limite: int | None = None, **_
+        self,
+        limite: int | None = None,
+        *,
+        modo: ModoCola = ModoCola.TODAS,
+        antes_de: datetime | None = None,
     ) -> ResultadoProceso:
+        self.pasadas.append((modo, antes_de))
         if self.cuota_agotada:
             return ResultadoProceso(cuota_agotada=True)
         procesadas, self.pendientes = self.pendientes, 0
@@ -69,9 +95,14 @@ class ServicioFalso(ITenderIngestionService):
         hasta = datetime(2026, 9, 10, tzinfo=UTC)
         return hasta - timedelta(days=1), hasta
 
-    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> UUID:
+    async def registrar_inicio(
+        self, desde: datetime, hasta: datetime, *, kind: str = "tramo"
+    ) -> UUID:
         self.inicio_registrado = True
-        return uuid4()
+        self.inicios.append((kind, desde, hasta))
+        run_id = uuid4()
+        self._tipos[run_id] = kind
+        return run_id
 
     async def cerrar_corridas_colgadas(self, antes_de: datetime) -> int:
         viejas = [c for c in self.corridas_en_curso if c < antes_de]
@@ -89,23 +120,36 @@ class ServicioFalso(ITenderIngestionService):
         listed: int = 0,
         processed: int = 0,
         failed: int = 0,
+        requests: int | None = None,
     ) -> None:
         self.cierre = {
             "status": status,
             "listed": listed,
             "processed": processed,
             "failed": failed,
+            "requests": requests,
+            "kind": self._tipos.get(run_id),
         }
+        self.cierres.append(self.cierre)
+
+    def cierres_de(self, kind: str) -> list[dict]:
+        return [c for c in self.cierres if c["kind"] == kind]
 
 
 def _args(**extra) -> argparse.Namespace:
-    base = {"limite": 5000, "estado": "publicada", "sin_marcar": False}
+    # Un tramo más ancho que la ventana del doble: un solo tramo, como antes.
+    base = {
+        "limite": 5000,
+        "estado": "publicada",
+        "sin_marcar": False,
+        "tramo_horas": 24 * 30,
+    }
     base.update(extra)
     return argparse.Namespace(**base)
 
 
 async def _correr(servicio: ServicioFalso, args=None) -> int:
-    async def contar() -> int:
+    async def contar(*_) -> int:
         return servicio.pendientes
 
     return await sincronizar(args or _args(), servicio, contar=contar)
@@ -310,7 +354,7 @@ class TestPrepararDestino:
             orden.append("preparar")
             print("PREPARADO")
 
-        async def contar() -> int:
+        async def contar(*_) -> int:
             return servicio.pendientes
 
         await sincronizar(
@@ -362,7 +406,7 @@ class TestListaOficialDeAnexos:
     DOC = DocumentoOficialDTO(mp_document_id=1, nombre="Bases.pdf")
 
     async def _correr_con_anexos(self, servicio: ServicioFalso, aplicar_anexos) -> int:
-        async def contar() -> int:
+        async def contar(*_) -> int:
             return servicio.pendientes
 
         return await sincronizar(
@@ -498,3 +542,204 @@ def _hace(*, horas: float) -> datetime:
     from app.shared.datetime_utils import utc_now_naive
 
     return utc_now_naive() - timedelta(hours=horas)
+
+
+class TestTramos:
+    """Plan 305: la ventana nocturna se lista por tramos y cada uno mueve el cursor.
+
+    Antes la ventana era una sola, y si la corrida vencía el tope al vaciar la
+    cola, el cursor no avanzaba aunque el listado hubiera venido completo. Del
+    2026-10-06 al 10-12 eso dejó el cursor detenido una semana.
+    """
+
+    def test_parte_la_ventana_en_tramos_contiguos(self):
+        desde = datetime(2026, 10, 1)
+        hasta = desde + timedelta(hours=15)
+
+        tramos = partir_en_tramos(desde, hasta, timedelta(hours=6))
+
+        assert tramos == [
+            (desde, desde + timedelta(hours=6)),
+            (desde + timedelta(hours=6), desde + timedelta(hours=12)),
+            (desde + timedelta(hours=12), hasta),
+        ]
+
+    async def test_cada_tramo_completo_cierra_su_fila_en_ok(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=5, completo=True))
+
+        codigo = await _correr(servicio, _args(tramo_horas=6))
+
+        tramos = servicio.cierres_de("tramo")
+        assert len(tramos) == 4  # la ventana del doble es de 24 h
+        assert all(c["status"] == "ok" for c in tramos)
+        assert codigo == 0
+
+    async def test_un_tramo_incompleto_corta_los_siguientes(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=5, completo=True))
+        servicio.tramos_incompletos = {1}
+
+        codigo = await _correr(servicio, _args(tramo_horas=6))
+
+        assert len(servicio.ventanas_pedidas) == 2
+        assert [c["status"] for c in servicio.cierres_de("tramo")] == [
+            "ok",
+            "partial",
+        ]
+        assert servicio.cierre["kind"] == "nocturna"
+        assert servicio.cierre["status"] == "partial"
+        assert codigo == 1
+
+    async def test_la_corrida_entera_tiene_su_fila_y_se_cierra_al_final(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=5, completo=True))
+
+        await _correr(servicio, _args(tramo_horas=6))
+
+        assert servicio.inicios[0][0] == "nocturna"
+        assert servicio.cierres[-1]["kind"] == "nocturna"
+        assert servicio.cierres[-1]["listed"] == 20
+
+    async def test_los_anexos_se_aplican_despues_de_cerrar_cada_tramo(self):
+        doc = DocumentoOficialDTO(mp_document_id=1, nombre="Bases.pdf")
+        servicio = ServicioFalso(
+            ResultadoListado(listadas=1, completo=True, documentos={"A": [doc]})
+        )
+        cierres_al_llamar: list[int] = []
+
+        async def aplicar_anexos(listas) -> int:
+            cierres_al_llamar.append(len(servicio.cierres_de("tramo")))
+            return 1
+
+        async def contar(*_) -> int:
+            return 0
+
+        await sincronizar(
+            _args(tramo_horas=12),
+            servicio,
+            contar=contar,
+            aplicar_anexos=aplicar_anexos,
+        )
+
+        assert cierres_al_llamar == [1, 2]
+
+
+class TestVaciadoNocturno:
+    async def test_vacia_las_nuevas_y_despues_reintenta_lo_que_fallo_antes(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=3)
+        intentos: list[int] = []
+        # Una fila que falló antes de la corrida, que la pasada de reintentos
+        # resuelve en la primera ronda.
+        por_reintentar = [1]
+
+        async def contar(modo=ModoCola.TODAS, antes_de=None) -> int:
+            if modo is ModoCola.REINTENTOS:
+                return por_reintentar.pop() if por_reintentar else 0
+            return servicio.pendientes
+
+        await sincronizar(
+            _args(),
+            servicio,
+            contar=contar,
+            fijar_intentos=intentos.append,
+        )
+
+        modos = [m for m, _ in servicio.pasadas]
+        assert modos[0] is ModoCola.NUEVAS
+        assert ModoCola.REINTENTOS in modos
+        antes_de = next(a for m, a in servicio.pasadas if m is ModoCola.REINTENTOS)
+        assert antes_de is not None
+        # 3 intentos HTTP al vaciar, 1 en la pasada de reintentos.
+        assert intentos == [3, 1]
+
+    async def test_guarda_las_peticiones_de_la_corrida(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        async def contar(modo=ModoCola.TODAS, antes_de=None) -> int:
+            return 0
+
+        await sincronizar(_args(), servicio, contar=contar, peticiones=lambda: 77)
+
+        assert servicio.cierre["requests"] == 77
+
+
+class TestModoFrecuente:
+    """Cada 2 h: solo vacía las nuevas, sin listar ni tocar el cursor."""
+
+    async def _frecuente(self, servicio: ServicioFalso, **extra) -> int:
+        async def contar(modo=ModoCola.TODAS, antes_de=None) -> int:
+            return servicio.pendientes
+
+        return await vaciar_frecuente(_args(), servicio, contar=contar, **extra)
+
+    async def test_no_lista_y_registra_una_corrida_frecuente(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=4)
+
+        codigo = await self._frecuente(servicio, peticiones=lambda: 9)
+
+        assert servicio.ventanas_pedidas == []
+        assert servicio.inicios[0][0] == "frecuente"
+        assert servicio.cierre["status"] == "ok"
+        assert servicio.cierre["processed"] == 4
+        assert servicio.cierre["requests"] == 9
+        assert [m for m, _ in servicio.pasadas] == [ModoCola.NUEVAS]
+        assert codigo == 0
+
+    async def test_usa_dos_intentos_por_detalle(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=1)
+        intentos: list[int] = []
+
+        await self._frecuente(servicio, fijar_intentos=intentos.append)
+
+        assert intentos == [2]
+
+    async def test_si_la_nocturna_sigue_corriendo_sale_con_0_sin_hacer_nada(
+        self, capsys
+    ):
+        """Es esperable: la nocturna puede seguir vaciando la cola a las 08:00."""
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=4)
+        servicio.corridas_en_curso = [_hace(horas=2)]
+
+        codigo = await self._frecuente(servicio)
+
+        assert codigo == 0
+        assert servicio.pasadas == []
+        assert "otra corrida" in capsys.readouterr().out
+
+    async def test_no_cierra_como_colgada_una_nocturna_de_hace_dos_horas(self):
+        """El corte de colgadas es el tope de la nocturna, no el de la frecuente."""
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+        servicio.corridas_en_curso = [_hace(horas=2)]
+
+        await self._frecuente(servicio)
+
+        assert servicio.corridas_en_curso == [servicio.corridas_en_curso[0]]
+
+    async def test_cuota_agotada_sale_con_1(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=4)
+        servicio.cuota_agotada = True
+
+        assert await self._frecuente(servicio) == 1
+
+    async def test_si_vence_el_tope_cierra_su_fila(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=4)
+
+        async def colgada(*args, **kwargs):
+            await asyncio.sleep(10)
+
+        servicio.process_unprocessed_tenders = colgada  # type: ignore[method-assign]
+
+        codigo = await con_timeout(
+            self._frecuente(servicio), segundos=0.05, codigo_al_vencer=0
+        )
+
+        assert codigo == 0
+        assert servicio.cierre["kind"] == "frecuente"
+        assert servicio.cierre["status"] == "failed"
+
+
+class TestElegirModo:
+    def test_la_corrida_de_las_seis_utc_es_la_nocturna(self):
+        assert elegir_modo(datetime(2026, 10, 13, 6, 3), hora_nocturna=6) == "nocturna"
+
+    def test_el_resto_son_frecuentes(self):
+        assert elegir_modo(datetime(2026, 10, 13, 8, 1), hora_nocturna=6) == "frecuente"
+        assert elegir_modo(datetime(2026, 10, 13, 4, 0), hora_nocturna=6) == "frecuente"

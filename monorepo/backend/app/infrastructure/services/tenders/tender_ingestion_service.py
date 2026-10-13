@@ -678,15 +678,23 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         entera". Una `partial` —el listado se cortó a mitad— o una `failed` no
         mueven el cursor: si lo movieran, el tramo que no se alcanzó a listar no
         se volvería a pedir nunca, que es justo el agujero que esto tapa.
+
+        Y solo los tramos de la nocturna (plan 305), más las filas de antes, sin
+        tipo. La fila de la corrida nocturna entera y la de cada frecuente también
+        terminan en `ok`, pero no listaron su ventana por tramos.
         """
         async with AsyncSession(self.engine) as session:
             stmt = select(func.max(col(IngestionRunModel.window_to))).where(
-                IngestionRunModel.status == "ok"
+                IngestionRunModel.status == "ok",
+                col(IngestionRunModel.kind).is_(None)
+                | (col(IngestionRunModel.kind) == "tramo"),
             )
             ultimo_cierre = (await session.exec(stmt)).one_or_none()  # type: ignore[call-overload]
         return calcular_ventana(ultimo_cierre, utc_now_naive())
 
-    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> uuid.UUID:
+    async def registrar_inicio(
+        self, desde: datetime, hasta: datetime, *, kind: str = "tramo"
+    ) -> uuid.UUID:
         """Abre la corrida en estado `running`.
 
         Se escribe al empezar y no al terminar a propósito: si el proceso muere
@@ -702,6 +710,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     window_from=_en_utc_naive(desde),
                     window_to=_en_utc_naive(hasta),
                     status="running",
+                    kind=kind,
                 )
             )
             await session.commit()
@@ -715,8 +724,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         listed: int = 0,
         processed: int = 0,
         failed: int = 0,
+        requests: int | None = None,
     ) -> None:
-        """Cierra la corrida. Solo `ok` mueve el cursor."""
+        """Cierra la corrida. Solo un tramo `ok` mueve el cursor."""
         async with AsyncSession(self.engine) as session:
             corrida = await session.get(IngestionRunModel, run_id)
             if corrida is None:
@@ -725,6 +735,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             corrida.listed = listed
             corrida.processed = processed
             corrida.failed = failed
+            corrida.requests = requests
             corrida.finished_at = utc_now_naive()
             session.add(corrida)
             await session.commit()

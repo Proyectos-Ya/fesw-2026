@@ -67,8 +67,15 @@ class ITenderIngestionService(ABC):
         pass
 
     @abstractmethod
-    async def registrar_inicio(self, desde: datetime, hasta: datetime) -> UUID:
-        """Abre una corrida en estado `running` y devuelve su id."""
+    async def registrar_inicio(
+        self, desde: datetime, hasta: datetime, *, kind: str = "tramo"
+    ) -> UUID:
+        """Abre una corrida en estado `running` y devuelve su id.
+
+        `kind` (plan 305): `tramo` para cada tramo listado de la nocturna, que
+        son los únicos que mueven el cursor; `nocturna` para la corrida nocturna
+        entera y `frecuente` para la que solo vacía la cola.
+        """
         pass
 
     @abstractmethod
@@ -80,8 +87,9 @@ class ITenderIngestionService(ABC):
         listed: int = 0,
         processed: int = 0,
         failed: int = 0,
+        requests: int | None = None,
     ) -> None:
-        """Cierra la corrida. Solo `ok` mueve el cursor."""
+        """Cierra la corrida. Solo un tramo `ok` mueve el cursor."""
         pass
 
     @abstractmethod
