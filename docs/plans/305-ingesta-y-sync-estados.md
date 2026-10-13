@@ -1,0 +1,326 @@
+# Plan Técnico: Ingesta y sync-estados con etiquetado de pendientes
+
+**Issue asociada**: Refs #305  
+**Estado**: En Revisión  
+**Fecha**: 2026-10-13  
+
+---
+
+## 1. Contexto y Objetivo
+
+Chiripa trae las Compras Ágiles con dos crons de Railway, ambos desde la imagen
+de `monorepo/backend`:
+
+| Cron | Script | Horario | Qué hace hoy |
+|---|---|---|---|
+| `ingesta-Ptyv` | `scripts/sync_diaria.py` | 06:00 UTC | Lista lo publicado desde el cursor, encola y baja el detalle de las nuevas |
+| `sync-estados` | `scripts/sync_estados.py` | cada hora | Lista lo que cambió en las últimas 2 h y aplica estado y cierre a lo que ya tenemos |
+
+Lo que se midió en producción entre el 2026-10-05 y el 2026-10-12:
+
+- **La ingesta no cerró ninguna corrida `ok` en 7 días.** El cursor quedó en el
+  2026-10-05 06:06. La ventana crece cada día, la corrida vence el tope de 6 h y
+  no mueve el cursor, aunque el listado haya venido completo. El 10-06 la cortó
+  un despliegue de `main`.
+- **240 Compras Ágiles dan 504 siempre** al pedir el detalle, también en la
+  página oficial. Tienen entre 13 y 21 intentos y gastan unas 2 h y ~2.400
+  peticiones cada noche.
+- **sync-estados no ve cambios entre las 12:00 y las 20:00 UTC de los días
+  hábiles.** A las 12:00 la primera página da 504 y el listado se corta en 0.
+  Después vence el tope de 50 min, y como los cambios se aplican al terminar el
+  listado, se pierde todo y la corrida no queda en `sync_estados_run`. Del 10-06
+  al 10-09 quedaron 30,6 h sin cubrir.
+- **2.637 licitaciones activas** no se escriben desde el último tramo sin
+  cobertura y pueden tener cambios que no vimos.
+- **Latencia.** Una Compra Ágil está abierta 47,5 h (mediana) y tarda 17,2 h
+  (mediana) en entrar a Chiripa. El 5,8 % entra ya cerrada.
+- **Los errores son 504 y 500 del gateway** de Mercado Público, en horario de
+  oficina de Chile. El fin de semana no hay fallas. No hay 403 ni bloqueos, así
+  que no se cambia nada de IP.
+
+El objetivo es separar responsabilidades. sync-estados lista y deja cada código
+etiquetado en `tender_metadata` como `nueva` o `actualizar`. La ingesta corre
+cada 2 h y baja los detalles de lo etiquetado. Ninguna corrida pierde lo que ya
+listó, y una compra que falla siempre deja de pedirse después de 5 noches.
+
+**Fuera de alcance:**
+
+- La frecuencia y el tamaño de la ventana de sync-estados. Se deciden con una
+  medición de latencia y 504 por tamaño de ventana, en otro PR.
+- Que una primera página caída no corte el listado de sync-estados. Se cruza con
+  el tamaño de la ventana.
+- Mostrar en Chiripa las compras sin detalle.
+- Una política distinta para la hora punta. Por ahora la ingesta trabaja igual
+  todo el día y se revisa con los datos de consumo.
+- Guardar una huella del ítem del listado. Primero se mide cuántas `actualizar`
+  terminan sin cambios.
+
+---
+
+## 2. Decisiones Técnicas y Arquitectura
+
+### 2.1 Quién hace qué
+
+| Paso | Quién | Cuándo |
+|---|---|---|
+| Listar cambios, aplicar estado, cierre, llamado y anexos, y etiquetar | sync-estados | cada hora |
+| Bajar el detalle de `nueva` y `actualizar` | ingesta, modo `frecuente` | cada 2 h |
+| Red de seguridad: listar por publicación, en tramos, lo que sync-estados no vio | ingesta, modo `nocturna` | 06:00 UTC |
+| Reintentos de las que fallaron (máximo 5) | ingesta, modo `nocturna` | 06:00 UTC |
+
+Las dos ingestas son el mismo script y el mismo servicio de Railway.
+`--modo auto` elige `nocturna` en la corrida de las 06:00 UTC y `frecuente` en el
+resto. El cron pasa de `0 6 * * *` a `0 */2 * * *` desde el panel, después del
+merge y con confirmación.
+
+### 2.2 Esquema
+
+Una migración, encadenada tras `1ddfcce953b7`, con columnas nullable y
+compatible hacia atrás. Antes de escribirla se usan las skills `supabase` y
+`supabase-postgres-best-practices`.
+
+`tender_metadata`:
+
+| Columna | Tipo | Uso |
+|---|---|---|
+| `pending_reason` | varchar null | `nueva` o `actualizar` mientras `is_processed=false` |
+| `api_status_code` | varchar null | Estado según el último listado |
+| `api_changed_at` | timestamp null | `fecha_ultimo_cambio` más reciente vista. Se escribe con `GREATEST` |
+| `detail_fetched_at` | timestamp null | Cuándo se **pidió** el último detalle que se procesó bien. Se rellena desde `tender.last_change_at` |
+| `night_retries` | int null | Reintentos nocturnos usados (máximo 5) |
+| `discarded_at` | timestamp null | Estado terminal: no se vuelve a pedir ni a encolar |
+| `discard_reason` | varchar null | `reintentos_agotados`, `inactiva_en_listado` o `abandono_por_error` |
+
+`ingestion_run` suma `kind` (`nocturna` o `frecuente`; `null` cuenta como
+`nocturna`) y `requests`. `sync_estados_run` suma `requests`, más lo necesario
+para insertar la fila al empezar y cerrarla al terminar.
+
+Hay un índice parcial para la cola:
+`(pending_reason, attempts, created_at) WHERE is_processed = false AND discarded_at IS NULL`.
+
+Hay un paso de datos que pasa a terminal las 240 actuales:
+`last_error LIKE 'ErrorTransitorioMercadoPublico:%' AND attempts >= 3`.
+
+### 2.3 sync-estados: aplicar por página y etiquetar
+
+- `MercadoPublicoClient.get_tenders` recibe un callback opcional por página.
+  `listar_cambios` lo expone y `sincronizar_estados` aplica cada página apenas
+  llega. Por página van:
+  - `SyncTenderStatusesUseCase.execute`, con estado, cierre, llamado,
+    Qdrant y etiquetado;
+  - `aplicar_documentos_oficiales`, aislado en su try/except, como hoy.
+- Un puerto nuevo en `app/application/services/` reemplaza a `reencolar` en el
+  caso de uso. Su implementación en `TenderIngestionService` hace el upsert del
+  puntero con estas reglas:
+  - **No está en `tender`, sigue publicada y pasa los filtros de cierre vencido y
+    región:** `nueva`. Los filtros se extraen de `fetch_tenders_metadata` a una
+    función compartida.
+  - **Está en `tender`, activa, con `changed_at` posterior a
+    `detail_fetched_at` + 5 min, o reabierta:** `actualizar`. Solo pone
+    `attempts=0` si la fila venía procesada, y nunca toca `night_retries`.
+  - **Pendiente en la cola pero inactiva según el listado:** `discarded_at`
+    con motivo `inactiva_en_listado`.
+  - **Filas con `discarded_at`:** no se reactivan.
+  - **Guarda de escritura:** solo escribe si cambió `api_changed_at` o
+    `api_status_code`.
+- `sync_estados_run` se inserta al empezar y se cierra al terminar. Si vence el
+  tope, queda incompleta con lo listado hasta ahí. Se corrige el texto de
+  `con_tope`.
+
+### 2.4 Ingesta
+
+- **Modo `frecuente`** (tope de 100 min, que termina con salida 0):
+  - Vacía las filas con `is_processed=false`, `discarded_at IS NULL` y
+    `night_retries=0`, con `nueva` primero.
+  - Hace 2 intentos HTTP por detalle.
+  - Una fila que falla queda para la noche. Con eso la regla es 1 intento al
+    descubrirla y después solo reintentos nocturnos.
+- **Modo `nocturna`** (tope de 6 h), en este orden:
+  1. **Red de seguridad.** Lista por publicación en tramos de 6 h. Cada tramo
+     completo cierra su fila de `ingestion_run` en `ok` y mueve el cursor. Al
+     primer tramo incompleto se detiene. Los anexos se aplican después de cada
+     tramo, para los códigos que ya están en `tender`.
+  2. **Vaciar la cola**, con 3 intentos HTTP por detalle.
+  3. **Reintentos.** Una pasada sobre las filas que fallaron antes de que
+     empezara esta corrida, con 1 intento HTTP. Cada una gasta un
+     `night_retries`. Al llegar a 5 pasa a `discarded_at` con motivo
+     `reintentos_agotados`.
+  4. **Retención, una vez por semana.** Borra las procesadas de licitaciones
+     inactivas de más de 30 días y las descartadas de más de 60.
+- **Cortacircuito.** 10 errores transitorios seguidos cortan la pasada, igual
+  que hoy `cuota_agotada`. Las filas que no se alcanzaron no gastan intento.
+- **Presupuesto.** El cliente cuenta sus peticiones. `--max-peticiones` corta la
+  corrida al llegar al tope. El total se guarda en `requests`, junto con las
+  llamadas a la API de embeddings.
+- **Carrera con sync-estados.** `_marcar_procesada` solo limpia la etiqueta si
+  `api_changed_at <= detail_fetched_at`. Si hubo un cambio después de pedir el
+  detalle, la fila sigue como `actualizar` y la ingesta no escribe estado,
+  cierre ni llamado desde ese detalle.
+- `_registrar_fallo` cambia el abandono silencioso de hoy por `discarded_at`
+  con motivo `abandono_por_error`.
+- `contar_pendientes` usa el mismo filtro que `_pendientes`, y `vaciar_cola`
+  mide el avance con `pasada.procesadas`.
+- `_parse_to_dto` no reemplaza fechas faltantes por "ahora". Usa la misma guarda
+  que `refresh_tender`.
+- `get_items_by_tender_id` ordena las partidas, para no detectar falsos cambios
+  de texto. Con los vectores por partida, un falso cambio regenera todos.
+
+### 2.5 Otros consumidores de cuota
+
+- **Refresher de hitos.** `RefreshSyncedTenderDatesUseCase` deja de pedir el
+  detalle. Compara los hitos con `tender.closing_at` y `published_at`, y mantiene
+  fuera el cierre del segundo llamado. El scheduler deja de correr al arrancar
+  la API.
+- **Tickets.** Cada servicio de Railway ordena `MERCADO_PUBLICO_API_KEYS` de
+  forma distinta, para partir de un ticket propio. Es un cambio de variables
+  que se hace con confirmación, sin código.
+
+### 2.6 Recuperación de una sola vez
+
+`scripts/recuperar_activas.py` hace estos pasos:
+
+1. Toma las activas con cierre a más de 1 h y `updated_at` anterior al
+   2026-10-09 20:00 UTC.
+2. Lista por publicación su rango de fechas, unas 300 páginas.
+3. Aplica estado y cierre con `SyncTenderStatusesUseCase`.
+4. Etiqueta `actualizar` solo las que cambiaron.
+5. Las que ya no aparecen como publicadas también quedan como `actualizar`, para
+   que su detalle confirme el estado.
+
+Tiene `--dry-run` y `--limite`. No se corre la misma noche que la primera
+nocturna después del despliegue.
+
+### 2.7 Consumo esperado
+
+Lo estimó una revisión aparte contra el código, en peticiones al día a
+Mercado Público:
+
+| Escenario | Hoy | Con este plan |
+|---|---|---|
+| Día hábil normal | ~9.800-10.600 | ~7.000-8.500 |
+| Día malo de 504 | ~12.000-13.000 | ~10.000 |
+
+La cuota es de 10.000 al día por ticket. Con 2 tickets hay margen, y un tercero
+queda de reserva para la recuperación.
+
+Con los vectores por partida de develop, cada licitación nueva cuesta 2 llamadas
+a la API de embeddings y ~3,8 textos (2,77 partidas en promedio). Este PR no
+cambia ese total, pero lo registra.
+
+Railway pasa de ~6 a ~8-10 h de contenedor al día, con 0,36 GB de memoria. La
+diferencia es de menos de un dólar al mes.
+
+### 2.8 Operación
+
+- `AGENTS.md`: no se mergea a `main` entre las 06:00 y las 12:00 UTC (03:00 a
+  09:00 de Chile). Un despliegue corta los crons en curso.
+- Este PR no debería salir en el mismo release que el spike 2 de matching, para
+  poder medir por separado el consumo de cada uno.
+
+---
+
+## 3. Desglose de Tareas (Checklist)
+
+### Backend
+
+**Esquema**
+- [ ] Red: `tests/integration/test_migraciones.py` detecta las columnas nuevas.
+- [ ] Green: modelos en `tender_model.py` y `sync_estados_run_model.py`, y la
+      migración con el paso de datos.
+
+**Cliente**
+- [ ] Red (respx): el callback se llama una vez por página y en orden.
+- [ ] Red (respx): los intentos de detalle son configurables.
+- [ ] Red (respx): el contador de peticiones.
+- [ ] Green: `mercado_publico_client.py`.
+
+**Puntero**
+- [ ] Red: `SyncTenderStatusesUseCase` etiqueta `nueva` y `actualizar`.
+- [ ] Red: descarta las inactivas.
+- [ ] Red: no reencola sin cambio posterior a `detail_fetched_at`.
+- [ ] Red: conserva el llamado.
+- [ ] Red (integración): el upsert con `GREATEST` y la guarda.
+- [ ] Red (integración): `discarded_at` no se reactiva.
+- [ ] Green: el puerto, su implementación y el caso de uso.
+
+**sync-estados**
+- [ ] Red (`Piezas`): aplica por página.
+- [ ] Red (`Piezas`): los anexos van por página y aislados.
+- [ ] Red (`Piezas`): la corrida queda registrada cuando vence el tope.
+- [ ] Green: `scripts/sync_estados.py` y `sync_estados_run_repository.py`.
+
+**Cola de la ingesta**
+- [ ] Red (integración): el filtro y el orden por modo.
+- [ ] Red (integración): el cortacircuito.
+- [ ] Red (integración): `_marcar_procesada` condicional.
+- [ ] Red (integración): `abandono_por_error`.
+- [ ] Red (integración): `contar_pendientes` alineado.
+- [ ] Green: `tender_ingestion_service.py` e `ingesta_compartida.py`.
+
+**Modos de la ingesta**
+- [ ] Red (`ServicioFalso`): el orden de cada modo.
+- [ ] Red (`ServicioFalso`): el cursor por tramo y el corte en el primer
+      incompleto.
+- [ ] Red (`ServicioFalso`): los reintentos nocturnos hasta el descarte.
+- [ ] Red (`ServicioFalso`): el tope del modo frecuente sale con 0.
+- [ ] Red (`ServicioFalso`): `--modo auto`.
+- [ ] Green: `scripts/sync_diaria.py`.
+
+**Arreglos menores**
+- [ ] Red y Green: fechas faltantes en `_parse_to_dto`.
+- [ ] Red y Green: orden de las partidas en `get_items_by_tender_id`.
+
+**Refresher de hitos**
+- [ ] Red: compara con la base sin llamar al cliente.
+- [ ] Green: `refresh_synced_tender_dates.py` y el scheduler.
+
+**Retención**
+- [ ] Red (integración): qué se borra y qué no.
+- [ ] Green: el paso semanal de la nocturna.
+
+**Recuperación**
+- [ ] Red (fakes): la selección, el etiquetado y `--dry-run`.
+- [ ] Green: `scripts/recuperar_activas.py`.
+
+**Refactor y documentación**
+- [ ] Docstrings de `sync_diaria.py` y `sync_estados.py`.
+- [ ] `AGENTS.md`.
+- [ ] Este plan.
+
+### Frontend
+
+No aplica.
+
+### Después del merge (con confirmación)
+
+- [ ] Cron de `ingesta-Ptyv`: `0 */2 * * *`.
+- [ ] Orden de `MERCADO_PUBLICO_API_KEYS` por servicio.
+- [ ] Correr `scripts/recuperar_activas.py` de noche.
+- [ ] Revisar durante 48 h:
+  - que la nocturna cierre `ok`;
+  - que haya una fila por hora en `sync_estados_run` en día hábil;
+  - que la demora de entrada baje de 17 h;
+  - el valor de `requests` por corrida.
+
+---
+
+## 4. Plan de Verificación y Pruebas
+
+```bash
+# Backend, desde monorepo/backend con .venv activo y `supabase start`
+pytest
+python -m scripts.migraciones
+alembic heads   # una sola línea
+
+# Corridas locales
+python -m scripts.sync_estados --ventana-horas 1
+python -m scripts.sync_diaria --modo frecuente --limite 50
+python -m scripts.sync_diaria --modo nocturna
+```
+
+En producción, después del despliegue, se revisan con el MCP de Railway y el de
+Supabase:
+
+- los logs de la primera corrida de cada modo;
+- `ingestion_run` y `sync_estados_run`;
+- la cola de `tender_metadata` agrupada por `pending_reason` y `discarded_at`.
