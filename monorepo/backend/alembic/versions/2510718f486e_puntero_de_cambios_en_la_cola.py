@@ -12,7 +12,8 @@ eso. Agrega:
   `api_changed_at`, `detail_fetched_at`), los reintentos nocturnos y el estado
   terminal (`discarded_at`, `discard_reason`), más un índice parcial con solo
   lo que todavía se puede pedir.
-- En `ingestion_run`, el tipo de corrida y las peticiones que hizo.
+- En `ingestion_run`, el tipo de corrida, las peticiones a Mercado Público y
+  las llamadas a la API de embeddings que hizo.
 - En `sync_estados_run`, el cierre de la corrida y las peticiones.
 
 Compatible con la versión anterior durante el despliegue: todas las columnas son
@@ -76,6 +77,9 @@ def upgrade() -> None:
     op.add_column("ingestion_run", sa.Column("kind", sa.String(), nullable=True))
     op.add_column("ingestion_run", sa.Column("requests", sa.Integer(), nullable=True))
     op.add_column(
+        "ingestion_run", sa.Column("embedding_calls", sa.Integer(), nullable=True)
+    )
+    op.add_column(
         "sync_estados_run", sa.Column("finished_at", sa.DateTime(), nullable=True)
     )
     op.add_column(
@@ -134,6 +138,7 @@ def downgrade() -> None:
     )
     op.drop_column("sync_estados_run", "requests")
     op.drop_column("sync_estados_run", "finished_at")
+    op.drop_column("ingestion_run", "embedding_calls")
     op.drop_column("ingestion_run", "requests")
     op.drop_column("ingestion_run", "kind")
     for columna in (

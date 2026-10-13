@@ -180,6 +180,8 @@ class IngestionRunModel(SQLModel, table=True):
     kind: str | None = Field(default=None)
     # Peticiones a Mercado Público que hizo la corrida, reintentos incluidos.
     requests: int | None = Field(default=None)
+    # Llamadas a la API de embeddings (cada una con uno o más textos).
+    embedding_calls: int | None = Field(default=None)
 
     # El cursor se lee como MAX(window_to) WHERE status = 'ok'.
     __table_args__ = (Index("ix_ingestion_run_cursor", "status", "window_to"),)

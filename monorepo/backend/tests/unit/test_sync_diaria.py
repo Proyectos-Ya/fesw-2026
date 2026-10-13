@@ -121,6 +121,7 @@ class ServicioFalso(ITenderIngestionService):
         processed: int = 0,
         failed: int = 0,
         requests: int | None = None,
+        embedding_calls: int | None = None,
     ) -> None:
         self.cierre = {
             "status": status,
@@ -128,6 +129,7 @@ class ServicioFalso(ITenderIngestionService):
             "processed": processed,
             "failed": failed,
             "requests": requests,
+            "embedding_calls": embedding_calls,
             "kind": self._tipos.get(run_id),
         }
         self.cierres.append(self.cierre)
@@ -778,3 +780,25 @@ class TestRetencion:
 
         assert codigo == 0
         assert "AVISO" in capsys.readouterr().out
+
+
+class TestLlamadasDeEmbeddings:
+    async def test_la_nocturna_guarda_las_llamadas_de_embeddings(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        async def contar(*_) -> int:
+            return 0
+
+        await sincronizar(_args(), servicio, contar=contar, embeddings=lambda: 31)
+
+        assert servicio.cierre["embedding_calls"] == 31
+
+    async def test_la_frecuente_tambien(self):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        async def contar(*_) -> int:
+            return 0
+
+        await vaciar_frecuente(_args(), servicio, contar=contar, embeddings=lambda: 5)
+
+        assert servicio.cierre["embedding_calls"] == 5

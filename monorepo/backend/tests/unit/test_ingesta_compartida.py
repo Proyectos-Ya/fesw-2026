@@ -105,3 +105,26 @@ class TestVaciarCola:
         assert resultado.sin_avance is False
         assert resultado.pendientes == 0
         assert resultado.procesadas == 900
+
+
+class TestEmbeddingsContados:
+    """Plan 305: cada corrida guarda cuántas veces llamó a la API de embeddings.
+
+    Con los vectores por partida, cada licitación nueva cuesta dos llamadas y
+    unos cuatro textos en vez de uno. Sin contarlo no se ve cuánto suma.
+    """
+
+    async def test_cuenta_llamadas_y_textos_y_delega(self):
+        from scripts.ingesta_compartida import EmbeddingsContados
+
+        class Interno:
+            async def embed(self, textos):
+                return [[0.0] for _ in textos]
+
+        contados = EmbeddingsContados(Interno())  # type: ignore[arg-type]
+
+        await contados.embed(["a", "b"])
+        vectores = await contados.embed(["c"])
+
+        assert (contados.llamadas, contados.textos) == (2, 3)
+        assert vectores == [[0.0]]

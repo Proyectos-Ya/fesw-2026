@@ -88,6 +88,7 @@ class ITenderIngestionService(ABC):
         processed: int = 0,
         failed: int = 0,
         requests: int | None = None,
+        embedding_calls: int | None = None,
     ) -> None:
         """Cierra la corrida. Solo un tramo `ok` mueve el cursor."""
         pass

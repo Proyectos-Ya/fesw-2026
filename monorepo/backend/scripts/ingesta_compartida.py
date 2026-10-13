@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.tender_ingestion_service import (
     ITenderIngestionService,
     ModoCola,
@@ -82,6 +83,25 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     print("Colección 'tender_items' lista.\n")
 
 
+class EmbeddingsContados(IEmbeddingService):
+    """Envuelve el servicio de embeddings y cuenta sus llamadas (plan 305).
+
+    Cada corrida de la ingesta guarda cuántas hizo en `ingestion_run`: con los
+    vectores por partida, una licitación nueva cuesta dos llamadas y unos
+    cuatro textos, y el proveedor cobra por eso.
+    """
+
+    def __init__(self, interno: IEmbeddingService) -> None:
+        self.interno = interno
+        self.llamadas = 0
+        self.textos = 0
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.llamadas += 1
+        self.textos += len(texts)
+        return await self.interno.embed(texts)
+
+
 class _SinEmbeddings:
     """Para procesos que no calculan vectores, como el cron de estados.
 
@@ -106,7 +126,9 @@ def construir_servicio(
         engine=engine,
         client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
         embedding_service=(
-            build_embedding_service() if con_embeddings else _SinEmbeddings()  # type: ignore[arg-type]
+            EmbeddingsContados(build_embedding_service())  # type: ignore[arg-type]
+            if con_embeddings
+            else _SinEmbeddings()  # type: ignore[arg-type]
         ),
         qdrant_client=qdrant,
     )

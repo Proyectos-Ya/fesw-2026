@@ -771,6 +771,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         processed: int = 0,
         failed: int = 0,
         requests: int | None = None,
+        embedding_calls: int | None = None,
     ) -> None:
         """Cierra la corrida. Solo un tramo `ok` mueve el cursor."""
         async with AsyncSession(self.engine) as session:
@@ -782,6 +783,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             corrida.processed = processed
             corrida.failed = failed
             corrida.requests = requests
+            corrida.embedding_calls = embedding_calls
             corrida.finished_at = utc_now_naive()
             session.add(corrida)
             await session.commit()

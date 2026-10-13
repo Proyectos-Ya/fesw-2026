@@ -105,6 +105,7 @@ from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.shared.constants import TENDER_STATUSES
 from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import (
+    EmbeddingsContados,
     ResultadoRondas,
     aplicar_documentos_oficiales,
     construir_servicio,
@@ -265,6 +266,7 @@ async def sincronizar(
     fijar_intentos: Callable[[int], None] | None = None,
     peticiones: Callable[[], int] | None = None,
     purgar: Callable[[], Awaitable[int]] | None = None,
+    embeddings: Callable[[], int] | None = None,
 ) -> int:
     """La corrida nocturna: lista por tramos, vacía la cola y reintenta.
 
@@ -402,12 +404,14 @@ async def sincronizar(
             processed=resultado.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
+            embedding_calls=embeddings() if embeddings else None,
         )
     except asyncio.CancelledError:
         await servicio.registrar_fin(
             run_id,
             status="failed",
             requests=peticiones() if peticiones else None,
+            embedding_calls=embeddings() if embeddings else None,
         )
         raise
 
@@ -437,6 +441,7 @@ async def vaciar_frecuente(
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
     fijar_intentos: Callable[[int], None] | None = None,
     peticiones: Callable[[], int] | None = None,
+    embeddings: Callable[[], int] | None = None,
 ) -> int:
     """La corrida frecuente (cada 2 h): baja el detalle de lo que dejó el cron de
     estados en la cola, sin listar ni tocar el cursor.
@@ -466,12 +471,14 @@ async def vaciar_frecuente(
             processed=resultado.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
+            embedding_calls=embeddings() if embeddings else None,
         )
     except asyncio.CancelledError:
         await servicio.registrar_fin(
             run_id,
             status="failed",
             requests=peticiones() if peticiones else None,
+            embedding_calls=embeddings() if embeddings else None,
         )
         raise
 
@@ -493,6 +500,10 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
     def fijar_intentos(intentos: int) -> None:
         cliente.intentos_detalle = intentos
 
+    def embeddings() -> int | None:
+        contados = servicio.embedding_service
+        return contados.llamadas if isinstance(contados, EmbeddingsContados) else None
+
     def contar(modo_cola: ModoCola, antes_de: datetime | None) -> Awaitable[int]:
         return contar_pendientes(engine, modo_cola, antes_de)
 
@@ -505,6 +516,7 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
                 preparar_destino=lambda: preparar_destino(engine, qdrant),
                 fijar_intentos=fijar_intentos,
                 peticiones=lambda: cliente.peticiones,
+                embeddings=embeddings,
             )
         return await sincronizar(
             args,
@@ -514,6 +526,7 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
             aplicar_anexos=lambda listas: aplicar_documentos_oficiales(engine, listas),
             fijar_intentos=fijar_intentos,
             peticiones=lambda: cliente.peticiones,
+            embeddings=embeddings,
             purgar=servicio.purgar_cola
             if utc_now_naive().weekday() == DIA_RETENCION
             else None,

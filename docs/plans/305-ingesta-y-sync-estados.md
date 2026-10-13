@@ -299,8 +299,8 @@ diferencia es de menos de un dólar al mes.
 - [x] Este plan.
 
 **Pendiente de este plan**
-- [ ] Contar las llamadas a la API de embeddings en `requests`. Hoy solo se
-      cuentan las peticiones a Mercado Público.
+- [x] Contar las llamadas a la API de embeddings. Van en una columna aparte,
+      `ingestion_run.embedding_calls`, porque se cobran por separado.
 
 ### Frontend
 
