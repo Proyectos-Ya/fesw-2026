@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -458,16 +459,39 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             nuevos += len(resultado.all())
         return nuevos
 
-    async def listar_cambios(self, ventana: timedelta, limite: int) -> ListadoCambios:
+    async def listar_cambios(
+        self,
+        ventana: timedelta,
+        limite: int,
+        al_recibir: Callable[[list[CambioDeEstado]], Awaitable[None]] | None = None,
+    ) -> ListadoCambios:
         """Lo que cambió en la API en las últimas `ventana`, sin filtro de estado.
 
         Ventana de **cambios** (`ttl_cambio_ms`), siempre contada hacia atrás
         desde ahora: no admite cursor. Sin filtro de estado porque justamente
         interesan las que pasaron a desierta, cancelada o cerrada.
+
+        `al_recibir` recibe los cambios legibles de cada página antes de que se
+        pida la siguiente, para aplicarlos a medida que llegan (plan 305).
         """
         hasta = utc_now_naive()
+
+        async def traducir_pagina(items: list[dict]) -> None:
+            assert al_recibir is not None
+            await al_recibir(
+                [c for c in (cambio_desde_item(i) for i in items) if c is not None]
+            )
+
+        # Solo se pasa si hay a quién entregar: así un cliente sin soporte de
+        # páginas (los dobles de los tests) sigue sirviendo.
+        por_pagina = {"al_recibir_pagina": traducir_pagina} if al_recibir else {}
         listado = await self.client.get_tenders(
-            hasta - ventana, hasta, limite, por_publicacion=False, estado=None
+            hasta - ventana,
+            hasta,
+            limite,
+            por_publicacion=False,
+            estado=None,
+            **por_pagina,
         )
         cambios = [
             cambio

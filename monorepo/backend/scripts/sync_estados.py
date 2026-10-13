@@ -9,19 +9,24 @@ ampliado se cerraba con la fecha vieja mientras todavía se podía postular.
 
 Qué hace, en orden
 ------------------
-1. **Lista lo que cambió** en las últimas `--ventana-horas` (listado por
+1. **Registra la corrida** en `sync_estados_run`, como incompleta. Si vence el
+   tope o el proceso muere, la fila queda y cuenta para la racha.
+2. **Lista lo que cambió** en las últimas `--ventana-horas` (listado por
    `ttl_cambio_ms`, sin filtro de estado). Cuesta una petición cada 20
    licitaciones; no pide el detalle.
-2. **Aplica estado y cierre** a las que ya tenemos (`SyncTenderStatusesUseCase`):
-   borra del índice la que dejó de estar activa, actualiza el payload de la que
-   sigue activa, y reencola las publicadas que cambiaron después de la última
-   bajada de su detalle, para que el nocturno vea si cambió el texto.
-3. **Marca vencidas.** Después de aplicar, para que un plazo ampliado no se
-   cierre con la fecha vieja. Antes lo hacía `sync_diaria`.
-4. **Refresca la lista oficial de anexos** con el mismo listado (plan 233,
+3. **Aplica cada página apenas llega** (plan 305), con
+   `SyncTenderStatusesUseCase`: borra del índice la que dejó de estar activa,
+   actualiza el payload de la que sigue activa y deja en la cola un puntero por
+   cada código. Las publicadas que no tenemos quedan como `nueva`; las que
+   tenemos y cambiaron después de la última bajada, como `actualizar`. La
+   ingesta baja el detalle de las dos. Antes se aplicaba todo al terminar el
+   listado, y una corrida que vencía el tope en hora punta lo perdía todo.
+4. **Refresca la lista oficial de anexos** de esa misma página (plan 233,
    decisión 1): el listado ya trae `documentos`, así que no cuesta peticiones.
-   Va al final y aislado: si falla, estados y cierres ya quedaron aplicados y
-   solo cambia el código de salida.
+   Aislado: si falla, estados y cierres ya quedaron aplicados.
+5. **Marca vencidas.** Después de aplicar, para que un plazo ampliado no se
+   cierre con la fecha vieja. Antes lo hacía `sync_diaria`.
+6. **Cierra la corrida** con lo listado y las peticiones hechas.
 
 Sobre la ventana
 ----------------
@@ -38,7 +43,8 @@ corta el listado en 10.000 resultados y a ese ritmo 6 h ya rondan los 9.000.
 
 No escribe en `ingestion_run` ni toca el cursor: `sync_diaria` se niega a correr
 si ve una corrida en `running`, y compartir la tabla la bloquearía cada vez que
-coincidan. Los dos crons pueden correr a la vez.
+coincidan. Los dos crons pueden correr a la vez: este escribe punteros en la
+cola y la ingesta los consume.
 
 Uso
 ---
@@ -56,8 +62,8 @@ Railway manda un correo de "crashed" por cada salida distinta de 0, así que el
   siguiente vuelva a pedir lo que faltó. Lo avisa en el log con la cuenta.
 - **1**: se juntaron `--incompletas-toleradas` incompletas seguidas (horas sin
   mirar), se tocó el techo de `--limite` (la configuración se queda corta y
-  esperar no lo arregla) o venció el tope de tiempo. Lo que sí llegó se aplica
-  igual.
+  esperar no lo arregla) o venció el tope de tiempo. Las páginas que llegaron
+  quedan aplicadas igual.
 - **2**: se negó a correr contra una base no local o la ventana es inválida.
 
 La racha de incompletas se cuenta en la tabla `sync_estados_run`. Un fallo al
@@ -72,6 +78,7 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import timedelta
 from typing import Any
+from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -135,21 +142,28 @@ async def con_tope(corutina: Coroutine[Any, Any, int], segundos: float) -> int:
     except TimeoutError:
         print(
             f"\nERROR: la corrida superó el tope de {segundos / 60:.0f} min y se "
-            "canceló. Lo aplicado hasta ahí queda; la corrida siguiente vuelve a "
+            "canceló. Las páginas que alcanzaron a llegar ya se aplicaron y la "
+            "corrida quedó registrada como incompleta; la siguiente vuelve a "
             "listar la ventana."
         )
         return 1
 
 
+AlRecibir = Callable[[list[CambioDeEstado]], Awaitable[None]]
+
+
 async def sincronizar_estados(
     args: argparse.Namespace,
     *,
-    listar: Callable[[timedelta, int], Awaitable[ListadoCambios]],
+    listar: Callable[[timedelta, int, AlRecibir], Awaitable[ListadoCambios]],
     aplicar: Callable[[list[CambioDeEstado]], Awaitable[ResultadoSyncEstados]],
     marcar_vencidas: Callable[[], Awaitable[int]],
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
     aplicar_anexos: Callable[[list[CambioDeEstado]], Awaitable[int]] | None = None,
-    registrar_corrida: Callable[[bool, int], Awaitable[int]] | None = None,
+    abrir_corrida: Callable[[], Awaitable[UUID]] | None = None,
+    cerrar_corrida: Callable[[UUID, bool, int, int | None], Awaitable[int]]
+    | None = None,
+    peticiones: Callable[[], int] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
@@ -157,39 +171,77 @@ async def sincronizar_estados(
     el orden de las etapas y el código de salida se prueban sin Postgres ni
     Qdrant.
 
-    `registrar_corrida(completo, listadas)` guarda la corrida y devuelve cuántas
-    incompletas van seguidas contándola. Sin él no hay historial y cualquier
-    incompleta sale con 1, como antes.
+    `listar` entrega cada página a `al_recibir` antes de pedir la siguiente, y
+    cada página se aplica ahí mismo (plan 305): si la corrida se corta después,
+    lo aplicado queda.
+
+    `abrir_corrida` registra la corrida al empezar y `cerrar_corrida(id,
+    completo, listadas, peticiones)` la cierra y devuelve cuántas incompletas van
+    seguidas contándola. Si vence el tope, se cierra como incompleta con lo que
+    alcanzó a listar. Sin ellos no hay historial y cualquier incompleta sale
+    con 1.
     """
     inicio = time.perf_counter()
     if preparar_destino is not None:
         await preparar_destino()
 
-    listado = await listar(timedelta(hours=args.ventana_horas), args.limite)
+    corrida = await abrir_corrida() if abrir_corrida is not None else None
+    resultado = ResultadoSyncEstados()
+    aplicadas = 0
+    anexos = {"refrescadas": 0, "fallo": None}
+
+    async def al_recibir(cambios: list[CambioDeEstado]) -> None:
+        nonlocal aplicadas
+        if not cambios:
+            return
+        resultado.sumar(await aplicar(cambios))
+        aplicadas += len(cambios)
+        # Aislado: estados y cierres de la página ya están aplicados. Un fallo
+        # acá no puede deshacerlos ni cortar el listado.
+        if aplicar_anexos is not None:
+            try:
+                anexos["refrescadas"] += await aplicar_anexos(cambios)
+            except Exception as error:
+                anexos["fallo"] = error
+
+    async def cerrar(completo: bool, listadas: int) -> int:
+        if corrida is None or cerrar_corrida is None:
+            return 0
+        return await cerrar_corrida(
+            corrida, completo, listadas, peticiones() if peticiones else None
+        )
+
+    try:
+        listado = await listar(
+            timedelta(hours=args.ventana_horas), args.limite, al_recibir
+        )
+    except asyncio.CancelledError:
+        # Venció el tope: la fila queda cerrada como incompleta y cuenta para la
+        # racha, en vez de desaparecer como antes.
+        await cerrar(False, aplicadas)
+        raise
+
     print(
         f"{listado.listadas} cambios listados ({listado.ilegibles} ilegibles) en "
         f"las últimas {args.ventana_horas:g} h."
     )
-
-    resultado = await aplicar(listado.cambios)
     print(
         f"{resultado.conocidas} conocidas: {resultado.actualizadas} actualizadas, "
         f"{resultado.llamados_actualizados} con llamado actualizado, "
         f"{resultado.sacadas_del_indice} sacadas del índice, "
-        f"{resultado.reabiertas} reabiertas, {resultado.reencoladas} reencoladas."
+        f"{resultado.reabiertas} reabiertas, {resultado.reencoladas} reencoladas. "
+        f"En la cola: {resultado.nuevas} nuevas, {resultado.descartadas} "
+        "descartadas."
     )
 
     if not args.sin_marcar:
         print(f"Vencidas marcadas como cerradas: {await marcar_vencidas()}")
 
-    # Al final y aislado: estados y cierres ya están aplicados y vencidas ya está
-    # marcado. Un fallo acá no puede deshacer nada de eso ni impedirlo, y tampoco
-    # cambia el código de salida: la corrida siguiente lo reintenta.
     if aplicar_anexos is not None:
-        try:
-            refrescadas = await aplicar_anexos(listado.cambios)
-            print(f"Listas de anexos refrescadas: {refrescadas}")
-        except Exception as error:
+        if anexos["fallo"] is None:
+            print(f"Listas de anexos refrescadas: {anexos['refrescadas']}")
+        else:
+            error = anexos["fallo"]
             print(
                 "\nAVISO: no se pudo refrescar la lista de anexos "
                 f"({type(error).__name__}: {error}).\n"
@@ -198,11 +250,8 @@ async def sincronizar_estados(
             )
 
     techo = listado.listadas >= args.limite
-    seguidas = (
-        await registrar_corrida(listado.completo, listado.listadas)
-        if registrar_corrida is not None
-        else 0
-    )
+    seguidas = await cerrar(listado.completo, listado.listadas)
+    historial = corrida is not None and cerrar_corrida is not None
     if techo:
         print(
             f"\nAVISO: se listaron {listado.listadas}, que es el techo de la corrida.\n"
@@ -212,7 +261,7 @@ async def sincronizar_estados(
         codigo = 1
     elif listado.completo:
         codigo = 0
-    elif registrar_corrida is not None and seguidas < args.incompletas_toleradas:
+    elif historial and seguidas < args.incompletas_toleradas:
         print(
             "\nAVISO: el listado quedó incompleto (la API cortó la paginación o se\n"
             "agotó la cuota). Lo que llegó se aplicó; la corrida siguiente vuelve\n"
@@ -250,10 +299,21 @@ async def _aplicar(
         return await caso.execute(cambios)
 
 
-async def _registrar(engine: AsyncEngine, completo: bool, listadas: int) -> int:
+async def _abrir(engine: AsyncEngine) -> UUID:
     async with AsyncSession(engine) as session:
-        return await SyncEstadosRunRepository(session).registrar(
-            completo=completo, listadas=listadas
+        return await SyncEstadosRunRepository(session).abrir()
+
+
+async def _cerrar(
+    engine: AsyncEngine,
+    corrida: UUID,
+    completo: bool,
+    listadas: int,
+    peticiones: int | None,
+) -> int:
+    async with AsyncSession(engine) as session:
+        return await SyncEstadosRunRepository(session).cerrar(
+            corrida, completo=completo, listadas=listadas, peticiones=peticiones
         )
 
 
@@ -274,9 +334,11 @@ async def _correr(args: argparse.Namespace) -> int:
             aplicar_anexos=lambda cambios: aplicar_documentos_oficiales(
                 engine, listas_desde_cambios(cambios)
             ),
-            registrar_corrida=lambda completo, listadas: _registrar(
-                engine, completo, listadas
+            abrir_corrida=lambda: _abrir(engine),
+            cerrar_corrida=lambda corrida, completo, listadas, peticiones: _cerrar(
+                engine, corrida, completo, listadas, peticiones
             ),
+            peticiones=lambda: servicio.client.peticiones,
         )
     finally:
         await engine.dispose()

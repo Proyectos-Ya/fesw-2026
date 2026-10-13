@@ -62,3 +62,47 @@ async def test_poda_lo_viejo(db_session):
     await repo.registrar(completo=True, listadas=1)
 
     assert await repo.contar() == 1
+
+
+class TestAbrirYCerrar:
+    """Plan 305: la corrida se registra al empezar y se cierra al terminar.
+
+    Una corrida que vence el tope o muere sin cerrarse queda igual en el
+    historial, como incompleta, y cuenta para la racha. Antes no dejaba fila.
+    """
+
+    async def test_una_corrida_abierta_cuenta_como_incompleta(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        await repo.abrir()
+
+        assert await repo.registrar(completo=False, listadas=1) == 2
+
+    async def test_cerrar_completa_devuelve_cero_y_guarda_los_datos(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        corrida = await repo.abrir()
+
+        seguidas = await repo.cerrar(corrida, completo=True, listadas=120, peticiones=7)
+
+        fila = await repo.obtener(corrida)
+        assert seguidas == 0
+        assert (fila.complete, fila.listed, fila.requests) == (True, 120, 7)
+        assert fila.finished_at is not None
+
+    async def test_cerrar_incompleta_cuenta_la_racha(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        await repo.registrar(completo=False, listadas=1)
+        corrida = await repo.abrir()
+
+        assert (
+            await repo.cerrar(corrida, completo=False, listadas=3, peticiones=None) == 2
+        )
+
+    async def test_abrir_poda_lo_viejo(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        await repo.registrar(
+            completo=True, listadas=1, momento=utc_now_naive() - timedelta(days=40)
+        )
+
+        await repo.abrir()
+
+        assert await repo.contar() == 1
