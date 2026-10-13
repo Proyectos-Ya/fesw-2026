@@ -1,7 +1,7 @@
 # Plan Técnico: Ingesta y sync-estados con etiquetado de pendientes
 
 **Issue asociada**: Refs #305  
-**Estado**: En Revisión  
+**Estado**: Implementado, pendiente de PR  
 **Fecha**: 2026-10-13  
 
 ---
@@ -87,16 +87,23 @@ compatible hacia atrás. Antes de escribirla se usan las skills `supabase` y
 | `api_status_code` | varchar null | Estado según el último listado |
 | `api_changed_at` | timestamp null | `fecha_ultimo_cambio` más reciente vista. Se escribe con `GREATEST` |
 | `detail_fetched_at` | timestamp null | Cuándo se **pidió** el último detalle que se procesó bien. Se rellena desde `tender.last_change_at` |
-| `night_retries` | int null | Reintentos nocturnos usados (máximo 5) |
+| `night_retries` | int, default 0 | Reintentos nocturnos usados (máximo 5). Un default constante tampoco reescribe la tabla |
 | `discarded_at` | timestamp null | Estado terminal: no se vuelve a pedir ni a encolar |
 | `discard_reason` | varchar null | `reintentos_agotados`, `inactiva_en_listado` o `abandono_por_error` |
 
-`ingestion_run` suma `kind` (`nocturna` o `frecuente`; `null` cuenta como
-`nocturna`) y `requests`. `sync_estados_run` suma `requests`, más lo necesario
-para insertar la fila al empezar y cerrarla al terminar.
+`ingestion_run` suma `kind` y `requests`. Los tipos son tres:
+
+- `tramo`: un tramo listado de la nocturna. Son las únicas filas que mueven el
+  cursor, junto con las de antes del plan, que no tienen tipo.
+- `nocturna`: la corrida nocturna entera. Queda en `running` mientras se vacía
+  la cola, para que una frecuente no se cruce.
+- `frecuente`: la corrida que solo vacía la cola.
+
+`sync_estados_run` suma `finished_at` y `requests`: la fila se inserta al
+empezar y se cierra al terminar.
 
 Hay un índice parcial para la cola:
-`(pending_reason, attempts, created_at) WHERE is_processed = false AND discarded_at IS NULL`.
+`(attempts, created_at) WHERE is_processed = false AND discarded_at IS NULL`.
 
 Hay un paso de datos que pasa a terminal las 240 actuales:
 `last_error LIKE 'ErrorTransitorioMercadoPublico:%' AND attempts >= 3`.
@@ -116,7 +123,9 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
     región:** `nueva`. Los filtros se extraen de `fetch_tenders_metadata` a una
     función compartida.
   - **Está en `tender`, activa, con `changed_at` posterior a
-    `detail_fetched_at` + 5 min, o reabierta:** `actualizar`. Solo pone
+    `detail_fetched_at` - 5 min, o reabierta:** `actualizar`. El margen va en
+    el sentido de bajar de más: un cambio de hasta 5 min antes del pedido pudo
+    no salir en ese detalle. Solo pone
     `attempts=0` si la fila venía procesada, y nunca toca `night_retries`.
   - **Pendiente en la cola pero inactiva según el listado:** `discarded_at`
     con motivo `inactiva_en_listado`.
@@ -131,7 +140,7 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
 
 - **Modo `frecuente`** (tope de 100 min, que termina con salida 0):
   - Vacía las filas con `is_processed=false`, `discarded_at IS NULL` y
-    `night_retries=0`, con `nueva` primero.
+    `attempts=0` (modo `NUEVAS`), con `nueva` primero.
   - Hace 2 intentos HTTP por detalle.
   - Una fila que falla queda para la noche. Con eso la regla es 1 intento al
     descubrirla y después solo reintentos nocturnos.
@@ -224,68 +233,74 @@ diferencia es de menos de un dólar al mes.
 ### Backend
 
 **Esquema**
-- [ ] Red: `tests/integration/test_migraciones.py` detecta las columnas nuevas.
-- [ ] Green: modelos en `tender_model.py` y `sync_estados_run_model.py`, y la
+- [x] Red: `tests/integration/test_migraciones.py` detecta las columnas nuevas.
+- [x] Green: modelos en `tender_model.py` y `sync_estados_run_model.py`, y la
       migración con el paso de datos.
 
 **Cliente**
-- [ ] Red (respx): el callback se llama una vez por página y en orden.
-- [ ] Red (respx): los intentos de detalle son configurables.
-- [ ] Red (respx): el contador de peticiones.
-- [ ] Green: `mercado_publico_client.py`.
+- [x] Red (respx): el callback se llama una vez por página y en orden.
+- [x] Red (respx): los intentos de detalle son configurables.
+- [x] Red (respx): el contador de peticiones.
+- [x] Green: `mercado_publico_client.py`.
 
 **Puntero**
-- [ ] Red: `SyncTenderStatusesUseCase` etiqueta `nueva` y `actualizar`.
-- [ ] Red: descarta las inactivas.
-- [ ] Red: no reencola sin cambio posterior a `detail_fetched_at`.
-- [ ] Red: conserva el llamado.
-- [ ] Red (integración): el upsert con `GREATEST` y la guarda.
-- [ ] Red (integración): `discarded_at` no se reactiva.
-- [ ] Green: el puerto, su implementación y el caso de uso.
+- [x] Red: `SyncTenderStatusesUseCase` etiqueta `nueva` y `actualizar`.
+- [x] Red: descarta las inactivas.
+- [x] Red: no reencola sin cambio posterior a `detail_fetched_at`.
+- [x] Red: conserva el llamado.
+- [x] Red (integración): el upsert con `GREATEST` y la guarda.
+- [x] Red (integración): `discarded_at` no se reactiva.
+- [x] Green: el puerto, su implementación y el caso de uso.
 
 **sync-estados**
-- [ ] Red (`Piezas`): aplica por página.
-- [ ] Red (`Piezas`): los anexos van por página y aislados.
-- [ ] Red (`Piezas`): la corrida queda registrada cuando vence el tope.
-- [ ] Green: `scripts/sync_estados.py` y `sync_estados_run_repository.py`.
+- [x] Red (`Piezas`): aplica por página.
+- [x] Red (`Piezas`): los anexos van por página y aislados.
+- [x] Red (`Piezas`): la corrida queda registrada cuando vence el tope.
+- [x] Green: `scripts/sync_estados.py` y `sync_estados_run_repository.py`.
 
 **Cola de la ingesta**
-- [ ] Red (integración): el filtro y el orden por modo.
-- [ ] Red (integración): el cortacircuito.
-- [ ] Red (integración): `_marcar_procesada` condicional.
-- [ ] Red (integración): `abandono_por_error`.
-- [ ] Red (integración): `contar_pendientes` alineado.
-- [ ] Green: `tender_ingestion_service.py` e `ingesta_compartida.py`.
+- [x] Red (integración): el filtro y el orden por modo.
+- [x] Red (integración): el cortacircuito.
+- [x] Red (integración): `_marcar_procesada` condicional.
+- [x] Red (integración): `abandono_por_error`.
+- [x] Red (integración): `contar_pendientes` alineado.
+- [x] Green: `tender_ingestion_service.py` e `ingesta_compartida.py`.
 
 **Modos de la ingesta**
-- [ ] Red (`ServicioFalso`): el orden de cada modo.
-- [ ] Red (`ServicioFalso`): el cursor por tramo y el corte en el primer
+- [x] Red (`ServicioFalso`): el orden de cada modo.
+- [x] Red (`ServicioFalso`): el cursor por tramo y el corte en el primer
       incompleto.
-- [ ] Red (`ServicioFalso`): los reintentos nocturnos hasta el descarte.
-- [ ] Red (`ServicioFalso`): el tope del modo frecuente sale con 0.
-- [ ] Red (`ServicioFalso`): `--modo auto`.
-- [ ] Green: `scripts/sync_diaria.py`.
+- [x] Red (`ServicioFalso`): los reintentos nocturnos hasta el descarte.
+- [x] Red (`ServicioFalso`): el tope del modo frecuente sale con 0.
+- [x] Red (`ServicioFalso`): `--modo auto`.
+- [x] Green: `scripts/sync_diaria.py`.
 
 **Arreglos menores**
-- [ ] Red y Green: fechas faltantes en `_parse_to_dto`.
-- [ ] Red y Green: orden de las partidas en `get_items_by_tender_id`.
+- [x] Red y Green: fechas faltantes en `_parse_to_dto`.
+- [x] Red y Green: orden de las partidas. Se ordenan al comparar el texto en
+      `_actualizar`, no en `get_items_by_tender_id`: así el texto del embedding
+      conserva el orden de la API.
 
 **Refresher de hitos**
-- [ ] Red: compara con la base sin llamar al cliente.
-- [ ] Green: `refresh_synced_tender_dates.py` y el scheduler.
+- [x] Red: compara con la base sin llamar al cliente.
+- [x] Green: `refresh_synced_tender_dates.py` y el scheduler.
 
 **Retención**
-- [ ] Red (integración): qué se borra y qué no.
-- [ ] Green: el paso semanal de la nocturna.
+- [x] Red (integración): qué se borra y qué no.
+- [x] Green: el paso semanal de la nocturna.
 
 **Recuperación**
-- [ ] Red (fakes): la selección, el etiquetado y `--dry-run`.
-- [ ] Green: `scripts/recuperar_activas.py`.
+- [x] Red (fakes): la selección, el etiquetado y `--dry-run`.
+- [x] Green: `scripts/recuperar_activas.py`.
 
 **Refactor y documentación**
-- [ ] Docstrings de `sync_diaria.py` y `sync_estados.py`.
-- [ ] `AGENTS.md`.
-- [ ] Este plan.
+- [x] Docstrings de `sync_diaria.py` y `sync_estados.py`.
+- [x] `AGENTS.md`.
+- [x] Este plan.
+
+**Pendiente de este plan**
+- [ ] Contar las llamadas a la API de embeddings en `requests`. Hoy solo se
+      cuentan las peticiones a Mercado Público.
 
 ### Frontend
 
