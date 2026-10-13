@@ -58,6 +58,9 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     colección `tenders` no existiría. Ambas operaciones son idempotentes, así que
     repetirlas en cada corrida no cuesta nada.
     """
+    from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+        QdrantLexicalTenderRepository,
+    )
     from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
         QdrantTenderItemVectorRepository,
     )
@@ -80,7 +83,12 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     await QdrantTenderItemVectorRepository(
         client=qdrant, vector_size=settings.embedding_vector_size
     ).ensure_collection()
-    print("Colección 'tender_items' lista.\n")
+    print("Colección 'tender_items' lista.")
+
+    # Y el vector léxico (BM25) del canal léxico. Sin la colección, la ingesta
+    # fallaba en cada licitación con un 404 de Qdrant (plan 305, 2026-10-13).
+    await QdrantLexicalTenderRepository(client=qdrant).ensure_collection()
+    print("Colección 'tender_lexical' lista.\n")
 
 
 class EmbeddingsContados(IEmbeddingService):
