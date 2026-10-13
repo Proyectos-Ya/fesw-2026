@@ -1,6 +1,6 @@
 import asyncio
 import random
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -21,6 +21,15 @@ class ErrorTransitorioMercadoPublico(Exception):
 
 class CuotaAgotadaError(ErrorTransitorioMercadoPublico):
     """429: se acabaron las peticiones del día. Insistir solo gasta más."""
+
+
+class PresupuestoAgotadoError(CuotaAgotadaError):
+    """La corrida llegó a su máximo de peticiones (`max_peticiones`).
+
+    Es un tope propio, no de la API: el ticket sigue teniendo cuota, así que no
+    se rota. Hereda de `CuotaAgotadaError` porque quien la recibe tiene que
+    hacer lo mismo, que es dejar de pedir sin cobrarle el intento a la licitación.
+    """
 
 
 @dataclass
@@ -175,6 +184,8 @@ class MercadoPublicoClient:
         espera_base: float = 1.0,
         *,
         api_keys: list[str] | None = None,
+        intentos_detalle: int = 4,
+        max_peticiones: int | None = None,
     ):
         tickets = [t for t in (api_keys or ([api_key] if api_key else [])) if t]
         if not tickets:
@@ -185,6 +196,22 @@ class MercadoPublicoClient:
         # los tests no duerman de verdad.
         self._espera_base = espera_base
         self.base_url = "https://api2.mercadopublico.cl/v2/compra-agil"
+        # Intentos por detalle. Público y mutable: la ingesta usa menos en la
+        # pasada de reintentos que al vaciar la cola, con el mismo cliente.
+        self.intentos_detalle = intentos_detalle
+        # Peticiones hechas, reintentos incluidos. Cada intento gasta cuota del
+        # ticket aunque responda 504.
+        self.peticiones = 0
+        # Tope de la corrida. `None` = sin tope.
+        self.max_peticiones = max_peticiones
+
+    def _contar_peticion(self) -> None:
+        """Descuenta una petición del presupuesto, o corta si ya no queda."""
+        if self.max_peticiones is not None and self.peticiones >= self.max_peticiones:
+            raise PresupuestoAgotadoError(
+                f"La corrida llegó a su máximo de {self.max_peticiones} peticiones."
+            )
+        self.peticiones += 1
 
     @property
     def api_key(self) -> str:
@@ -220,8 +247,14 @@ class MercadoPublicoClient:
         *,
         por_publicacion: bool = False,
         estado: str | None = None,
+        al_recibir_pagina: Callable[[list[dict[str, Any]]], Awaitable[None]]
+        | None = None,
     ) -> ListadoLicitaciones:
         """Lista licitaciones en una ventana de tiempo.
+
+        `al_recibir_pagina` recibe los ítems de cada página antes de pedir la
+        siguiente. Sirve para aplicar lo listado a medida que llega: si la
+        corrida se corta después, lo de las páginas anteriores ya quedó.
 
         Por defecto pregunta por lo que **cambió** (`ttl_cambio_ms`), que es lo
         que quiere la sincronización diaria. Con `por_publicacion=True` pregunta
@@ -302,6 +335,8 @@ class MercadoPublicoClient:
 
                     all_items.extend(items)
                     caidas_seguidas = 0
+                    if al_recibir_pagina is not None:
+                        await al_recibir_pagina(items)
 
                     paginacion = payload.get("paginacion", {}) or {}
                     total_pages = paginacion.get("total_paginas", 1)
@@ -313,6 +348,13 @@ class MercadoPublicoClient:
                     # Pequeño delay para no saturar la API entre páginas de listado
                     await asyncio.sleep(0.5)
 
+                except PresupuestoAgotadoError as e:
+                    print(
+                        f"[API MP] {e} Se detiene la paginación con "
+                        f"{len(all_items)} licitaciones listadas."
+                    )
+                    completo = False
+                    break
                 except httpx.HTTPStatusError as http_err:
                     print(
                         f"[HTTP Error MP] Error en página {current_page} al listar licitaciones: {http_err.response.status_code}"
@@ -422,6 +464,7 @@ class MercadoPublicoClient:
         fallas_servidor = 0
         while True:
             try:
+                self._contar_peticion()
                 respuesta = await client.get(
                     self.base_url,
                     headers=self._cabeceras(),
@@ -470,6 +513,9 @@ class MercadoPublicoClient:
         while True:
             try:
                 return await self._detalle_con_un_ticket(id)
+            except PresupuestoAgotadoError:
+                # El tope es de la corrida, no del ticket: rotar no lo arregla.
+                raise
             except CuotaAgotadaError:
                 if not self._rotar_ticket():
                     raise
@@ -495,12 +541,13 @@ class MercadoPublicoClient:
         respuesta lenta en un reintento innecesario.
         """
         detail_url = f"{self.base_url}/{id}"
-        intentos = 4
+        intentos = max(1, self.intentos_detalle)
 
         async with httpx.AsyncClient() as client:
             for intento in range(1, intentos + 1):
                 ultimo = intento == intentos
                 try:
+                    self._contar_peticion()
                     response = await client.get(
                         detail_url, headers=self._cabeceras(), timeout=30.0
                     )
