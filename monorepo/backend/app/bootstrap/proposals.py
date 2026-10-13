@@ -32,14 +32,19 @@ from app.application.use_cases.proposals.sync_proposal_answers import (
 )
 from app.bootstrap.capabilities import AnswerCapabilityUseCaseDep, CatalogUseCaseDep
 from app.bootstrap.repositories import (
+    AttachmentFileRepoDep,
     CapabilityAnswerRepoDep,
     CapabilityQuestionRepoDep,
     ProposalDraftRepoDep,
     SupplierRepoDep,
-    TenderChatRepoDep,
+    TenderAttachmentRepoDep,
     TenderRepoDep,
 )
-from app.bootstrap.services import DocumentValidatorDep, ProposalAIServiceDep
+from app.bootstrap.services import (
+    AttachmentStorageDep,
+    DocumentValidatorDep,
+    ProposalAIServiceDep,
+)
 from app.infrastructure.services.docx_proposal_exporter import DocxProposalExporter
 
 
@@ -61,7 +66,9 @@ def get_start_feasibility_use_case(
     question_repo: CapabilityQuestionRepoDep,
     answer_repo: CapabilityAnswerRepoDep,
     catalog_use_case: CatalogUseCaseDep,
-    chat_repo: TenderChatRepoDep,
+    files: AttachmentFileRepoDep,
+    attachments: TenderAttachmentRepoDep,
+    storage: AttachmentStorageDep,
     ai_service: ProposalAIServiceDep,
     validator: DocumentValidatorDep,
 ) -> StartFeasibilityUseCase:
@@ -72,7 +79,9 @@ def get_start_feasibility_use_case(
         question_repo=question_repo,
         answer_repo=answer_repo,
         catalog_use_case=catalog_use_case,
-        chat_repo=chat_repo,
+        files=files,
+        attachments=attachments,
+        storage=storage,
         ai_service=ai_service,
         validator_service=validator,
     )
@@ -119,7 +128,9 @@ def get_generate_proposal_use_case(
     tender_repo: TenderRepoDep,
     draft_repo: ProposalDraftRepoDep,
     catalog_use_case: CatalogUseCaseDep,
-    chat_repo: TenderChatRepoDep,
+    files: AttachmentFileRepoDep,
+    attachments: TenderAttachmentRepoDep,
+    storage: AttachmentStorageDep,
     ai_service: ProposalAIServiceDep,
     validator: DocumentValidatorDep,
 ) -> GenerateProposalUseCase:
@@ -128,7 +139,9 @@ def get_generate_proposal_use_case(
         tender_repo=tender_repo,
         draft_repo=draft_repo,
         catalog_use_case=catalog_use_case,
-        chat_repo=chat_repo,
+        files=files,
+        attachments=attachments,
+        storage=storage,
         ai_service=ai_service,
         validator_service=validator,
     )

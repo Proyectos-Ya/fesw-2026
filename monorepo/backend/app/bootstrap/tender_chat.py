@@ -25,10 +25,19 @@ from app.application.use_cases.list_tender_chat_documents_use_case import (
 from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
-from app.bootstrap.repositories import SupplierRepoDep, TenderChatRepoDep, TenderRepoDep
+from app.bootstrap.repositories import (
+    AttachmentExtractionRepoDep,
+    AttachmentFileRepoDep,
+    GeminiUsageRepoDep,
+    SupplierRepoDep,
+    TenderAttachmentRepoDep,
+    TenderChatRepoDep,
+    TenderDigestRepoDep,
+    TenderRepoDep,
+)
 from app.bootstrap.services import (
+    AttachmentStorageDep,
     DocumentValidatorDep,
-    MilestoneExtractionBackgroundDep,
     get_tender_assistant_ai_service,
 )
 
@@ -36,12 +45,11 @@ from app.bootstrap.services import (
 def get_upload_tender_chat_doc_use_case(
     chat_repo: TenderChatRepoDep,
     validator_service: DocumentValidatorDep,
-    milestone_extraction: MilestoneExtractionBackgroundDep,
 ) -> UploadTenderChatDocumentUseCase:
+    # Subir al chat ya no dispara hitos ni análisis: los disparan los anexos (plan 233).
     return UploadTenderChatDocumentUseCase(
         chat_repo=chat_repo,
         validator_service=validator_service,
-        milestone_extraction=milestone_extraction,
     )
 
 
@@ -65,6 +73,12 @@ def get_ask_tender_assistant_use_case(
     supplier_repo: SupplierRepoDep,
     tender_repo: TenderRepoDep,
     validator_service: DocumentValidatorDep,
+    digest_repo: TenderDigestRepoDep,
+    extraction_repo: AttachmentExtractionRepoDep,
+    attachment_file_repo: AttachmentFileRepoDep,
+    attachment_storage: AttachmentStorageDep,
+    usage_repo: GeminiUsageRepoDep,
+    tender_attachment_repo: TenderAttachmentRepoDep,
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
@@ -72,6 +86,12 @@ def get_ask_tender_assistant_use_case(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         validator_service=validator_service,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
+        attachment_file_repo=attachment_file_repo,
+        attachment_storage=attachment_storage,
+        usage_repo=usage_repo,
+        tender_attachment_repo=tender_attachment_repo,
     )
 
 

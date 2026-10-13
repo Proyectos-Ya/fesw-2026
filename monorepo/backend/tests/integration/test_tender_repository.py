@@ -87,6 +87,77 @@ async def test_get_by_id(db_session: AsyncSession):
     assert results[0].region == CHILE_REGIONS[13]
 
 
+async def _sembrar_comprador(session: AsyncSession) -> None:
+    """Región, estado y comprador mínimos para guardar una licitación."""
+    session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
+    session.add(TenderStatusModel(id=1, code="publicada", name="Publicada"))
+    session.add(
+        BuyerInstitutionModel(
+            rut="12.345.678-9",
+            name="Municipalidad de Santiago",
+            region_id=13,
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+        )
+    )
+    await session.commit()
+
+
+def _tender_model(tender_id, **extra) -> TenderModel:
+    return TenderModel(
+        id=tender_id,
+        code="1058078-836-COT26",
+        name="Insumos de medicina física",
+        status_id=1,
+        published_at=utc_now_naive(),
+        closing_at=datetime(2026, 9, 27, 20, 28),
+        last_change_at=utc_now_naive(),
+        buyer_rut="12.345.678-9",
+        buyer_unit="Operaciones",
+        created_at=utc_now_naive(),
+        updated_at=utc_now_naive(),
+        **extra,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_tenders_hidrata_el_llamado(db_session: AsyncSession):
+    repo = TenderRepository(db_session)
+    await _sembrar_comprador(db_session)
+    tender_id = uuid4()
+    db_session.add(
+        _tender_model(
+            tender_id,
+            call_number=2,
+            first_call_closing_at=datetime(2026, 9, 26, 20, 10),
+            second_call_closing_at=datetime(2026, 9, 27, 20, 28),
+        )
+    )
+    await db_session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert len(results) == 1
+    assert results[0].call_number == 2
+    assert results[0].first_call_closing_at == datetime(2026, 9, 26, 20, 10)
+    assert results[0].second_call_closing_at == datetime(2026, 9, 27, 20, 28)
+
+
+@pytest.mark.asyncio
+async def test_get_tenders_sin_llamado_queda_en_none(db_session: AsyncSession):
+    repo = TenderRepository(db_session)
+    await _sembrar_comprador(db_session)
+    tender_id = uuid4()
+    db_session.add(_tender_model(tender_id))
+    await db_session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert results[0].call_number is None
+    assert results[0].first_call_closing_at is None
+    assert results[0].second_call_closing_at is None
+
+
 @pytest.mark.asyncio
 async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     repo = TenderRepository(db_session)

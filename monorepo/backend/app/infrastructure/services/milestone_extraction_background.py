@@ -34,6 +34,8 @@ class AsyncioMilestoneExtractionBackground:
         self._tareas: dict[_Clave, asyncio.Task[None]] = {}
         self._repetir: set[_Clave] = set()
         self._fallidas: set[_Clave] = set()
+        # La empresa cuyos anexos se leen; la última agendada manda.
+        self._empresas: dict[_Clave, UUID | None] = {}
         # Uno por usuario y licitación, compartido con la extracción manual. No
         # se borran: son pocos, y quitar uno mientras alguien lo espera dejaría
         # pasar a dos extracciones a la vez.
@@ -43,8 +45,11 @@ class AsyncioMilestoneExtractionBackground:
     def pending(self) -> int:
         return len(self._tareas)
 
-    def schedule(self, user_id: UUID, tender_id: UUID) -> None:
+    def schedule(
+        self, user_id: UUID, tender_id: UUID, workspace_id: UUID | None = None
+    ) -> None:
         clave = (user_id, tender_id)
+        self._empresas[clave] = workspace_id
         if clave in self._tareas:
             # Ya hay una en curso: al terminar hace una pasada más, que lee
             # también lo recién subido. Varias subidas seguidas cuestan dos
@@ -62,11 +67,15 @@ class AsyncioMilestoneExtractionBackground:
         return MilestoneExtractionStatus.IDLE
 
     async def run_now(
-        self, user_id: UUID, tender_id: UUID, extraction: MilestoneExtraction
+        self,
+        user_id: UUID,
+        tender_id: UUID,
+        extraction: MilestoneExtraction,
+        workspace_id: UUID | None = None,
     ) -> TenderMilestonesResult:
         clave = (user_id, tender_id)
         async with self._candado(clave):
-            resultado = await extraction.execute(user_id, tender_id)
+            resultado = await extraction.execute(user_id, tender_id, workspace_id)
         self._fallidas.discard(clave)
         return resultado
 
@@ -88,7 +97,7 @@ class AsyncioMilestoneExtractionBackground:
         async with self._candado(clave):
             try:
                 async with self._open_extraction() as extraer:
-                    await extraer.execute(user_id, tender_id)
+                    await extraer.execute(user_id, tender_id, self._empresas.get(clave))
             except MilestoneExtractionUnavailable:
                 # El servicio de Gemini ya registró el motivo.
                 logger.warning("No se pudieron extraer los hitos de la licitación %s", tender_id)

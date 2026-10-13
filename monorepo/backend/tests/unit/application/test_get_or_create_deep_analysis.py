@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
@@ -24,11 +23,10 @@ from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForAnalysis, TenderNotFound
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 
 
@@ -148,11 +146,7 @@ async def armar(
             tender_repo=tender_repo,
             matching_result_repo=matching_result_repo,
             deep_analysis_service=ai_service,
-            scorer=CompatibilityScorer(
-                reranker_service=FakeRerankerService(),
-                weighting_service=FakeWeightingService(),
-                matching_result_repo=matching_result_repo,
-            ),
+            scorer=armar_scorer(matching_result_repo=matching_result_repo),
         ),
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,

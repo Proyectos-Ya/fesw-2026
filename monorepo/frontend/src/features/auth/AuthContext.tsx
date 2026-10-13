@@ -28,13 +28,28 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function sonUsuariosIguales(a: UserPublic | null, b: UserPublic | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.email === b.email &&
+    a.full_name === b.full_name &&
+    a.phone === b.phone &&
+    a.active === b.active &&
+    a.email_verified === b.email_verified &&
+    a.created_at === b.created_at
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPublic | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const cargarPerfil = useCallback(async () => {
     try {
-      setUser(await getMe());
+      const nuevo = await getMe();
+      setUser((prev) => (sonUsuariosIguales(prev, nuevo) ? prev : nuevo));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         // La sesión de Supabase existe pero el backend no la acepta: token

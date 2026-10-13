@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
@@ -19,16 +25,34 @@ from app.application.services.tender_ingestion_service import ITenderIngestionSe
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
 from app.domain.models.cambio_estado import CambioDeEstado
-from app.domain.models.tender_ingestion_dto import ItemLicitacionDTO, TenderIngestaDTO
+from app.domain.models.tender_ingestion_dto import (
+    DocumentoOficialDTO,
+    ItemLicitacionDTO,
+    TenderIngestaDTO,
+)
+from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+    QdrantLexicalTenderRepository,
+)
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
+)
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
+)
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
 )
 from app.infrastructure.repositories.tender_model import (
     IngestionRunModel,
     TenderMetadataModel,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
+from app.infrastructure.services.tenders.documentos_mp import (
+    documentos_desde_payload,
+    documentos_por_codigo,
+)
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
+from app.infrastructure.services.tenders.llamados import leer_llamado
 from app.infrastructure.services.tenders.mercado_publico_client import (
     CuotaAgotadaError,
     ErrorTransitorioMercadoPublico,
@@ -70,6 +94,10 @@ class ResultadoListado:
     nuevas: int = 0
     listadas: int = 0
     completo: bool = False
+    # La lista oficial de anexos de cada listada, por código. Se aplica al final
+    # de la corrida, cuando las nuevas ya existen en `tender` (clave foránea), y
+    # no cuesta peticiones: sale del mismo listado.
+    documentos: dict[str, list[DocumentoOficialDTO]] = field(default_factory=dict)
 
 
 @dataclass
@@ -153,12 +181,16 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         embedding_service: IEmbeddingService,
         qdrant_client: AsyncQdrantClient | None = None,
         tender_vector_repo: ITenderVectorRepository | None = None,
+        tender_item_vector_repo: ITenderItemVectorRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
     ):
         self.engine = engine
         self.client = client
         self.embedding_service = embedding_service
         self.qdrant_client = qdrant_client
         self._tender_vector_repo = tender_vector_repo
+        self._tender_item_vector_repo = tender_item_vector_repo
+        self._lexical_tender_repo = lexical_tender_repo
 
     # Obtiene listado de cambios recientes y guarda códigos en tender_metadata si no existen
     async def fetch_tenders_metadata(
@@ -193,6 +225,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     por_publicacion=por_publicacion,
                     estado=estado,
                 )
+                # De todos los ítems, también de los que se filtran más abajo:
+                # si ya tenemos la licitación, igual conviene refrescar su lista.
+                documentos = documentos_por_codigo(listado.items)
                 codigos_candidatos: list[str] = []
                 for item in listado.items:
                     code = item.get("codigo")
@@ -245,6 +280,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     nuevas=new_count,
                     listadas=len(listado.items),
                     completo=listado.completo,
+                    documentos=documentos,
                 )
             except Exception as e:
                 print(f"[IngestionService] Error al sincronizar metadatos: {e}")
@@ -637,11 +673,42 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                 client=self.qdrant_client,  # type: ignore[arg-type]
                 vector_size=settings.embedding_vector_size,
             )
+
+        # Mismo criterio que el de arriba, con una diferencia: sin repositorio
+        # inyectado ni cliente Qdrant no hay contra qué armarlo, así que se
+        # omite (la ingesta funciona igual, solo que sin vectores de partidas)
+        # en vez de fallar al primer upsert.
+        tender_item_vector_repo: ITenderItemVectorRepository | None
+        if self._tender_item_vector_repo is not None:
+            tender_item_vector_repo = self._tender_item_vector_repo
+        elif self.qdrant_client is not None:
+            tender_item_vector_repo = QdrantTenderItemVectorRepository(
+                client=self.qdrant_client,
+                vector_size=settings.embedding_vector_size,
+            )
+        else:
+            tender_item_vector_repo = None
+
+        lexical_tender_repo: ILexicalTenderRepository | None
+        if self._lexical_tender_repo is not None:
+            lexical_tender_repo = self._lexical_tender_repo
+        elif self.qdrant_client is not None:
+            lexical_tender_repo = QdrantLexicalTenderRepository(
+                client=self.qdrant_client,
+            )
+        else:
+            lexical_tender_repo = None
+
         return TenderIngestionUseCase(
             repository=TenderRepository(session),
             embedding_service=self.embedding_service,
             tender_vector_repo=tender_vector_repo,
             enable_comuna_generic_heuristic=settings.enable_comuna_generic_heuristic,
+            tender_item_vector_repo=tender_item_vector_repo,
+            # La misma sesión que `TenderRepository`: el rollback del caso de
+            # uso también cubre lo que se escribió en `tender_attachment`.
+            attachment_repo=SqlTenderAttachmentRepository(session),
+            lexical_tender_repo=lexical_tender_repo,
         )
 
     async def _marcar_procesada(
@@ -719,6 +786,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         fechas = detail.get("fechas", {}) or {}
         presupuesto = detail.get("presupuesto", {}) or {}
         estado = detail.get("estado", {}) or {}
+        llamado = leer_llamado(detail)
 
         def parse_date(date_str) -> datetime:
             # Naive en hora de Chile: el DTO la pasa a UTC (`normalize_to_utc`).
@@ -736,6 +804,10 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             EstadoCodigo=estado.get("codigo"),
             FechaPublicacion=parse_date(fechas.get("fecha_publicacion")),
             FechaCierre=parse_date(fechas.get("fecha_cierre")),
+            # Hora de Chile naive, como las dos de arriba: el DTO las pasa a UTC.
+            NumeroLlamado=llamado.numero,
+            FechaCierrePrimerLlamado=llamado.cierre_primer_llamado,
+            FechaCierreSegundoLlamado=llamado.cierre_segundo_llamado,
             RutComprador=str(institucion.get("rut", "Sin RUT")),
             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),
@@ -750,4 +822,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             # arma el texto del embedding con nombre + descripción + partidas, y
             # son las partidas las que dicen qué se está pidiendo de verdad.
             items=items_dto,
+            # `None` si el detalle no la trae: solo está confirmado en el
+            # listado (plan 233, fase 0), y la ausencia no es "sin anexos".
+            documentos=documentos_desde_payload(detail),
         )

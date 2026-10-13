@@ -45,7 +45,7 @@ async def test_generate_response_success_with_pdf(service):
     }
 
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     pdf_doc = DocumentContextDTO(
@@ -90,7 +90,7 @@ async def test_generate_response_insufficient_info(service):
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     response = await service.generate_response(
@@ -108,7 +108,7 @@ async def test_generate_response_insufficient_info(service):
 @respx.mock
 async def test_gemini_api_500_raises_unavailable_error(service):
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=500, text="Internal Server Error")
 
     with pytest.raises(TenderAssistantUnavailableError, match="El asistente virtual se encuentra temporalmente fuera de servicio"):
@@ -123,7 +123,7 @@ async def test_gemini_api_500_raises_unavailable_error(service):
 @respx.mock
 async def test_gemini_network_timeout_raises_unavailable_error(service):
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).mock(side_effect=httpx.ConnectTimeout("Connection timed out"))
 
     with pytest.raises(TenderAssistantUnavailableError, match="El asistente virtual se encuentra temporalmente fuera de servicio"):
@@ -162,7 +162,7 @@ async def test_generate_response_includes_multi_turn_history(service):
     }
 
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     tender_id = uuid4()
@@ -226,7 +226,7 @@ async def test_generate_response_applies_sliding_window_limit():
     }
 
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     tender_id = uuid4()
@@ -306,7 +306,7 @@ async def test_generate_response_parses_discrepancies_and_multi_doc_citations(se
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     response = await service.generate_response(
@@ -358,7 +358,7 @@ async def test_generate_response_parses_unbacked_aspects_and_insufficient_info(s
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     response = await service.generate_response(
@@ -403,7 +403,7 @@ async def test_generate_response_includes_tender_context_in_payload(service):
     }
 
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent"
     ).respond(status_code=200, json=mock_gemini_response)
 
     tender_context_sample = (

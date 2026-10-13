@@ -14,6 +14,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.datastructures import State
 
 from app.application.services.tender_refresher import ITenderRefresher
+from app.application.use_cases.attachment_processing.extract_attachment import (
+    ExtractAttachmentUseCase,
+)
+from app.application.use_cases.attachment_processing.process_next_job import (
+    ProcessNextAttachmentJobUseCase,
+)
+from app.application.use_cases.attachment_processing.sweep import (
+    SweepAttachmentProcessingUseCase,
+    SweepResult,
+)
 from app.application.use_cases.calendar.refresh_synced_tender_dates import (
     RefreshSyncedTenderDatesUseCase,
 )
@@ -40,12 +50,23 @@ from app.application.use_cases.notifications.dispatch_pending_deliveries import 
 from app.application.use_cases.notifications.scan_supplier_for_alerts import (
     ScanSupplierForAlertsUseCase,
 )
+from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle import (
+    RankingTelemetryCycleResult,
+)
+from app.application.use_cases.tender_attachments.analyze_tender_attachments import (
+    AnalyzeTenderAttachmentsUseCase,
+)
 from app.bootstrap.calendar import build_sync_milestones_use_case
 from app.bootstrap.matching import (
     build_compatibility_scorer,
     build_rank_tenders_use_case,
 )
-from app.bootstrap.services import build_supplier_vector_repo, build_tender_vector_repo
+from app.bootstrap.services import (
+    build_lexical_tender_repo,
+    build_supplier_vector_repo,
+    build_tender_item_vector_repo,
+    build_tender_vector_repo,
+)
 from app.config import settings
 from app.infrastructure.db import async_session_maker
 from app.infrastructure.repositories.calendar_repository import (
@@ -62,21 +83,34 @@ from app.infrastructure.repositories.notification_repository import (
     NotificationPreferenceRepository,
     NotificationRepository,
 )
-from app.infrastructure.repositories.sql_tender_chat_repository import (
-    SQLTenderChatRepository,
+from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.sql_attachment_file_repository import (
+    SqlAttachmentFileRepository,
+)
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
 )
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
-from app.infrastructure.repositories.tender_milestone_document_repository import (
-    TenderMilestoneDocumentRepository,
+from app.infrastructure.repositories.tender_milestone_attachment_repository import (
+    TenderMilestoneAttachmentRepository,
 )
 from app.infrastructure.repositories.tender_milestone_repository import (
     TenderMilestoneRepository,
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.infrastructure.services.attachment_processing_jobs import (
+    sql_processing_units,
+)
 from app.infrastructure.services.exports.background import AsyncioExportBackground
 from app.infrastructure.services.milestone_extraction_background import (
     AsyncioMilestoneExtractionBackground,
+)
+from app.infrastructure.services.ranking_telemetry_jobs import (
+    build_ranking_telemetry_cycle,
+)
+from app.infrastructure.services.tender_analysis_background import (
+    AsyncioTenderAnalysisBackground,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,12 +149,39 @@ def build_milestone_extraction_background(app: FastAPI) -> AsyncioMilestoneExtra
                 tenders=TenderRepository(session),
                 milestones=TenderMilestoneRepository(session),
                 event_links=CalendarEventLinkRepository(session),
-                chat=SQLTenderChatRepository(session),
+                files=SqlAttachmentFileRepository(session),
+                attachments=SqlTenderAttachmentRepository(session),
+                storage=app.state.attachment_storage,
                 ai=app.state.milestone_extraction_service,
-                processed=TenderMilestoneDocumentRepository(session),
+                processed=TenderMilestoneAttachmentRepository(session),
+                suppliers=SupplierRepository(session),
             )
 
     return AsyncioMilestoneExtractionBackground(open_extraction)
+
+
+def build_tender_analysis_background(app: FastAPI) -> AsyncioTenderAnalysisBackground:
+    """Análisis + cotización con los anexos, apenas se sube uno (plan 233).
+
+    Cada pasada abre su propia sesión: cuando Gemini termina, la sesión de la
+    subida que la originó ya se cerró.
+    """
+
+    @asynccontextmanager
+    async def open_analysis():
+        async with async_session_maker() as session:
+            yield AnalyzeTenderAttachmentsUseCase(
+                suppliers=SupplierRepository(session),
+                tenders=TenderRepository(session),
+                files=SqlAttachmentFileRepository(session),
+                attachments=SqlTenderAttachmentRepository(session),
+                storage=app.state.attachment_storage,
+                matching_results=MatchingResultRepository(session),
+                quotations=QuotationRepository(session),
+                service=app.state.document_analysis_quotation_service,
+            )
+
+    return AsyncioTenderAnalysisBackground(open_analysis)
 
 
 async def reconcile_export_jobs() -> tuple[int, int]:
@@ -182,6 +243,33 @@ def build_milestone_refresh_runner(
     return refresh
 
 
+def build_attachment_processing_runner(
+    app: FastAPI,
+) -> tuple[
+    Callable[[], Awaitable[bool]],
+    Callable[[], Awaitable[SweepResult]],
+]:
+    """El trabajo y el barrido del bucle del lifespan; cada fase abre y cierra su sesión."""
+    units = sql_processing_units(async_session_maker)
+    extract = ExtractAttachmentUseCase(
+        units=units,
+        storage=app.state.attachment_storage,
+        reader=app.state.attachment_content_reader,
+        ai=app.state.attachment_extraction_ai_service,
+        daily_budget=settings.attachment_gemini_daily_budget,
+    )
+    signal = app.state.attachment_processing_signal
+    return (
+        ProcessNextAttachmentJobUseCase(units=units, extract=extract, notifier=signal).execute,
+        SweepAttachmentProcessingUseCase(units=units, notifier=signal).execute,
+    )
+
+
+def build_ranking_telemetry_runner() -> Callable[[], Awaitable[RankingTelemetryCycleResult]]:
+    """El ciclo del bucle del lifespan: abre y cierra su propia sesión en cada trabajo."""
+    return build_ranking_telemetry_cycle(async_session_maker)
+
+
 def build_scan_rank_tenders_use_case(
     state: State, session: AsyncSession
 ) -> RankTendersUseCase:
@@ -191,6 +279,7 @@ def build_scan_rank_tenders_use_case(
     aparte y se quedó sin el servicio de embeddings cuando la API lo sumó.
     """
     matching_results = MatchingResultRepository(session)
+    item_vector_repo = build_tender_item_vector_repo(state)
     return build_rank_tenders_use_case(
         supplier_repo=SupplierRepository(session),
         supplier_vector_repo=build_supplier_vector_repo(state),
@@ -198,11 +287,15 @@ def build_scan_rank_tenders_use_case(
         tender_repo=TenderRepository(session),
         scorer=build_compatibility_scorer(
             reranker_service=state.reranker_service,
-            weighting_service=state.weighting_service,
             matching_result_repo=matching_results,
+            embedding_service=state.embedding_service,
+            item_vector_repo=item_vector_repo,
+            formula=state.compatibility_formula,
         ),
         matching_result_repo=matching_results,
         embedding_service=state.embedding_service,
+        item_vector_repo=item_vector_repo,
+        lexical_tender_repo=build_lexical_tender_repo(state),
     )
 
 

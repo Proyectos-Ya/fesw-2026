@@ -12,7 +12,7 @@ contra la API y no son obvias.
 """
 
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -23,6 +23,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.config import settings
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.db import crear_engine
 from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.services.tenders.mercado_publico_client import (
@@ -51,6 +52,9 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     colección `tenders` no existiría. Ambas operaciones son idempotentes, así que
     repetirlas en cada corrida no cuesta nada.
     """
+    from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+        QdrantTenderItemVectorRepository,
+    )
     from app.infrastructure.repositories.qdrant_tender_repository import (
         QdrantTenderRepository,
     )
@@ -63,7 +67,14 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     await QdrantTenderRepository(
         client=qdrant, vector_size=settings.embedding_vector_size
     ).ensure_collection()
-    print("Colección 'tenders' lista (con sus índices de payload).\n")
+    print("Colección 'tenders' lista (con sus índices de payload).")
+
+    # La ingesta también guarda un vector por partida; sin esta colección cada
+    # licitación fallaría al escribirlo y se daría por perdida tras tres intentos.
+    await QdrantTenderItemVectorRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tender_items' lista.\n")
 
 
 class _SinEmbeddings:
@@ -120,6 +131,26 @@ async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int
             ),
         )
         return await caso.execute()
+
+
+async def aplicar_documentos_oficiales(
+    engine: AsyncEngine, listas_por_codigo: Mapping[str, Sequence[DocumentoOficialDTO]]
+) -> int:
+    """Refresca la lista oficial de anexos de las licitaciones que ya tenemos.
+
+    La comparten los dos crons: los dos listan, y el listado ya trae
+    `documentos`, así que no cuesta peticiones a la API.
+    """
+    from app.application.use_cases.tender_attachments.sync_official_attachments import (
+        SyncOfficialAttachmentsUseCase,
+    )
+    from app.infrastructure.repositories.sql_tender_attachment_repository import (
+        SqlTenderAttachmentRepository,
+    )
+
+    async with AsyncSession(engine) as session:
+        caso = SyncOfficialAttachmentsUseCase(SqlTenderAttachmentRepository(session))
+        return await caso.execute(listas_por_codigo)
 
 
 async def contar_pendientes(engine: AsyncEngine) -> int:

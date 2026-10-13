@@ -8,18 +8,26 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.bootstrap import bootstrap
 from app.bootstrap.runners import (
+    build_attachment_processing_runner,
     build_kanban_archive_runner,
     build_milestone_refresh_runner,
     build_notification_runners,
+    build_ranking_telemetry_runner,
     reconcile_export_jobs,
 )
 from app.config import settings
 from app.infrastructure.db import engine, verificar_esquema_migrado
 from app.infrastructure.middleware import register_middleware
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
+)
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
 )
 from app.infrastructure.seeder import seed_database_metadata
+from app.infrastructure.services.attachment_processing_scheduler import (
+    AttachmentProcessingScheduler,
+)
 from app.infrastructure.services.kanban.archive_scheduler import (
     KanbanArchiveScheduler,
 )
@@ -28,6 +36,9 @@ from app.infrastructure.services.milestone_refresh_scheduler import (
 )
 from app.infrastructure.services.notifications.notification_scheduler import (
     NotificationScheduler,
+)
+from app.infrastructure.services.ranking_telemetry_scheduler import (
+    RankingTelemetryScheduler,
 )
 from app.infrastructure.services.tenders.mercado_publico_client import (
     MercadoPublicoClient,
@@ -94,6 +105,14 @@ async def lifespan(app: FastAPI):
     # payload que el pre-filtrado del buscador necesita. Creándola aquí a mano,
     # esos índices no existirían nunca en un entorno real.
     await QdrantTenderRepository(
+        client=app.state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    ).ensure_collection()
+
+    # Colección aparte con un multivector por licitación (un vector por partida),
+    # para el calce de keywords contra cada ítem. No se agrega a "tenders" porque
+    # un vector nombrado nuevo obligaría a recrear esa colección.
+    await QdrantTenderItemVectorRepository(
         client=app.state.qdrant_async_client,
         vector_size=settings.embedding_vector_size,
     ).ensure_collection()
@@ -166,6 +185,52 @@ async def lifespan(app: FastAPI):
         print("[Main] Iniciando revisión de cambios de fechas de hitos...")
         milestone_refresh_task = asyncio.create_task(milestone_scheduler.start_loop())
 
+    # Telemetría del ranking (plan 233, decisión 8). Mismo supuesto de una sola
+    # instancia; con dos, los upserts y la purga quedan idempotentes y solo se
+    # duplica algún snapshot.
+    ranking_telemetry_task = None
+    if settings.run_ranking_telemetry_jobs:
+        ranking_telemetry_scheduler = RankingTelemetryScheduler(
+            run_cycle=build_ranking_telemetry_runner(),
+            interval_seconds=settings.ranking_telemetry_interval_seconds,
+        )
+        print(
+            "[Main] Iniciando telemetría del ranking "
+            "(NDCG diario, prioridad en sombra, purga)..."
+        )
+        ranking_telemetry_task = asyncio.create_task(
+            ranking_telemetry_scheduler.start_loop()
+        )
+
+    # Extracción de anexos con Gemini y resumen (plan 233, decisión 4). Apagado por
+    # defecto porque cuesta: lo subido igual queda en cola y se procesa al encender.
+    attachment_processing_task = None
+    if settings.run_attachment_processing:
+        if app.state.attachment_storage is None:
+            print(
+                "[Main] Procesamiento de anexos sin almacenamiento configurado: no se inicia."
+            )
+        else:
+            process_next, sweep = build_attachment_processing_runner(app)
+            attachment_scheduler = AttachmentProcessingScheduler(
+                process_next=process_next,
+                sweep=sweep,
+                signal=app.state.attachment_processing_signal,
+                poll_interval_seconds=settings.attachment_processing_poll_seconds,
+                sweep_interval_seconds=settings.attachment_processing_sweep_seconds,
+            )
+            print(
+                "[Main] Iniciando el procesamiento de anexos (Gemini, "
+                f"tope {settings.attachment_gemini_daily_budget} llamadas/día)..."
+            )
+            attachment_processing_task = asyncio.create_task(
+                attachment_scheduler.start_loop()
+            )
+    else:
+        print(
+            "[Main] Procesamiento de anexos desactivado (RUN_ATTACHMENT_PROCESSING=false)"
+        )
+
     yield
 
     # `cancel()` solo *pide* la cancelación: marca la tarea y devuelve el control
@@ -183,6 +248,8 @@ async def lifespan(app: FastAPI):
             digest_task,
             reminder_task,
             milestone_refresh_task,
+            ranking_telemetry_task,
+            attachment_processing_task,
             kanban_archive_task,
         )
         if t
@@ -193,6 +260,7 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*tareas, return_exceptions=True)
     await app.state.export_background.shutdown()
     await app.state.milestone_extraction_background.shutdown()
+    await app.state.tender_analysis_background.shutdown()
 
     app.state.qdrant_client.close()
     await app.state.qdrant_async_client.close()

@@ -54,6 +54,7 @@ from app.shared.comunas import resolve_comuna  # noqa: E402
 from app.shared.regions import UNKNOWN_REGION_ID, normalize_region_name  # noqa: E402
 from tests.matching_evaluation.date_shift import (  # noqa: E402
     desplazar_licitaciones_vencidas,
+    fechas_de_registro,
 )
 
 EXCEL_PATH = BASE_DIR.parents[1] / "project-data" / "chiripa_tenders.xlsx"
@@ -142,7 +143,7 @@ async def main() -> None:
     vencidas = int(
         (pd.to_datetime(licitaciones["closing_at"]) <= pd.Timestamp.now()).sum()
     )
-    licitaciones = desplazar_licitaciones_vencidas(licitaciones)
+    licitaciones = fechas_de_registro(desplazar_licitaciones_vencidas(licitaciones))
     if vencidas:
         print(
             f"[DATASET] {vencidas} licitaciones cerradas revividas (+1 mes o los "
@@ -235,8 +236,8 @@ async def main() -> None:
                 _texto(t["buyer_rut"]),
                 _limpiar(t["buyer_unit"]),
                 _limpiar(t["available_amount_clp"]),
-                _limpiar(t["published_at"]),
-                _limpiar(t["last_change_at"]),
+                _limpiar(t["created_at"]),
+                _limpiar(t["updated_at"]),
             )
             insertadas += 1
         print(f"[OK] {insertadas} licitaciones", flush=True)

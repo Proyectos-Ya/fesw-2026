@@ -36,6 +36,72 @@ class TextBuilder:
             parts.append("Items: " + ". ".join(item_texts))
         return ". ".join(parts)
 
+    def build_from_tender_with_digest(
+        self,
+        tender: _TenderLike,
+        items: Sequence[_ItemLike],
+        digest: object | None,
+        max_tokens: int = 512,
+    ) -> str:
+        """Construye texto enriquecido con anexos para el reranker (plan 233, decisión 9).
+
+        Presupuesto estricto: la entrada al reranker nunca supera `max_tokens` (512 tokens,
+        ~2048 caracteres). Lo que se recorta es el texto de los anexos, preservando el
+        texto base de la licitación.
+        """
+        base_text = self.build_from_tender(tender, items)
+        max_chars = max_tokens * 4
+
+        if not digest or not hasattr(digest, "data") or not digest.data:
+            return base_text[:max_chars]
+
+        data = digest.data
+        digest_parts: list[str] = []
+
+        resumenes = getattr(data, "resumenes", []) or []
+        if resumenes:
+            resumen_text = " ".join(
+                r.texto.strip() for r in resumenes if getattr(r, "texto", None) and r.texto.strip()
+            )
+            if resumen_text:
+                digest_parts.append(f"Resumen: {resumen_text}")
+
+        requisitos = getattr(data, "requisitos", []) or []
+        if requisitos:
+            req_text = "; ".join(
+                r.descripcion.strip()
+                for r in requisitos
+                if getattr(r, "descripcion", None) and r.descripcion.strip()
+            )
+            if req_text:
+                digest_parts.append(f"Requisitos: {req_text}")
+
+        digest_items = getattr(data, "items", []) or []
+        if digest_items:
+            items_text = "; ".join(
+                i.descripcion.strip()
+                for i in digest_items
+                if getattr(i, "descripcion", None) and i.descripcion.strip()
+            )
+            if items_text:
+                digest_parts.append(f"Partidas anexos: {items_text}")
+
+        if not digest_parts:
+            return base_text[:max_chars]
+
+        digest_str = ". ".join(digest_parts)
+
+        if len(base_text) >= max_chars:
+            return base_text[:max_chars]
+
+        prefix = ". Anexos: "
+        remaining_budget = max_chars - len(base_text) - len(prefix)
+        if remaining_budget <= 0:
+            return base_text
+
+        truncated_digest = digest_str[:remaining_budget]
+        return f"{base_text}{prefix}{truncated_digest}"
+
     def build_from_supplier(self, supplier: Supplier) -> str:
         sections: list[str] = []
 
@@ -54,3 +120,67 @@ class TextBuilder:
             sections.append(f"Certificaciones: {', '.join(supplier.certifications)}")
 
         return ". ".join(sections) + "."
+
+    def build_item_texts(self, items: Sequence[_ItemLike]) -> list[str]:
+        """Construye textos de partidas en formato normalizado.
+
+        Retorna lista de strings: 'nombre: descripción[:200]' o solo 'nombre'.
+        Omite partidas con nombre vacío y deduplica conservando el orden.
+        """
+        seen = set()
+        result = []
+
+        for item in items:
+            if not item.name:
+                continue
+
+            if item.description:
+                desc_stripped = item.description.strip()
+                desc_truncated = desc_stripped[:200]
+                text = f"{item.name}: {desc_truncated}"
+            else:
+                text = item.name
+
+            if text not in seen:
+                seen.add(text)
+                result.append(text)
+
+        return result
+
+    def build_keyword_texts(self, supplier: Supplier) -> list[str]:
+        """Textos a embeber para representar lo que ofrece el proveedor, uno por keyword.
+
+        Los comparten el puntaje (`CompatibilityScorer`, que los cruza contra las
+        partidas de cada candidata) y la búsqueda por partidas del ranking (que
+        los cruza contra todo el corpus): si cada uno armara su lista, el canal
+        que trae candidatas y el que las puntúa podrían dejar de mirar lo mismo.
+
+        Un proveedor sin keywords se representa con su descripción y, si tampoco
+        la tiene, con su razón social: mejor un calce grueso que dejar el calce
+        en cero y hundirlo en el ranking por no haber llenado un campo.
+        """
+        texts = [k.strip() for k in supplier.keywords or [] if k and k.strip()]
+        if not texts:
+            texts = [(supplier.description or "").strip() or supplier.legal_name]
+        return texts
+
+    def build_reranker_query(self, supplier: Supplier) -> str:
+        """Construye el query para el reranker en formato calibrado.
+
+        Formato exacto: 'Rubro: <sectores o legal_name>. Productos: <keywords o descripción>.'
+        """
+        # Rubro: sectores o legal_name
+        if supplier.sectors:
+            rubro_part = ", ".join(supplier.sectors)
+        else:
+            rubro_part = supplier.legal_name
+
+        # Productos: keywords o descripción o legal_name
+        if supplier.keywords:
+            productos_part = ", ".join(supplier.keywords)
+        elif supplier.description:
+            productos_part = supplier.description
+        else:
+            productos_part = supplier.legal_name
+
+        return f"Rubro: {rubro_part}. Productos: {productos_part}."

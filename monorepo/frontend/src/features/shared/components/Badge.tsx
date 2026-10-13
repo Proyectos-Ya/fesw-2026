@@ -16,6 +16,7 @@ interface BadgeProps {
   dot?: boolean;
   iconLeft?: ReactNode;
   className?: string;
+  title?: string;
 }
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
@@ -35,9 +36,11 @@ export function Badge({
   dot = false,
   iconLeft,
   className = "",
+  title,
 }: BadgeProps) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold leading-none whitespace-nowrap ${TONE_CLASSES[tone]} ${className}`}
     >
       {dot && (

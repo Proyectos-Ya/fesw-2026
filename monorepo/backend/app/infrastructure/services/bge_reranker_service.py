@@ -81,6 +81,27 @@ class BgeRerankerService(IRerankerService):
             providers=["CPUExecutionProvider"],
         )
 
+    def _logit(self, query_text: str, doc_text: str) -> float:
+        """Logit crudo del cross-encoder para un solo par (query, documento)."""
+        inputs = self.tokenizer(
+            [[query_text, doc_text]],
+            padding=True,
+            truncation=True,
+            return_tensors="np",
+            max_length=512,
+        )
+        input_feed = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+        }
+        if "token_type_ids" in inputs:
+            input_feed["token_type_ids"] = inputs["token_type_ids"]
+
+        # `run` está tipado como una unión amplia (ndarray | SparseTensor | ...),
+        # pero al pedir la salida "logits" siempre es un ndarray denso.
+        salida = cast(np.ndarray, self.session.run(["logits"], input_feed)[0])
+        return float(np.asarray(salida).reshape(-1)[0])
+
     async def rerank(
         self,
         query_text: str,
@@ -94,43 +115,21 @@ class BgeRerankerService(IRerankerService):
         if not candidates:
             return []
 
-        # Formatear pares [query, document]
-        pairs = [[query_text, doc_text] for _, doc_text in candidates]
-
-        # Tokenizamos en un executor asíncrono para no bloquear el event loop principal
+        # Cada par se evalúa por separado, a propósito. El modelo INT8 usa
+        # cuantización dinámica: la escala de las activaciones se calcula sobre
+        # el lote entero, así que el logit de un par dependía de qué otros pares
+        # iban con él (medido: 0,35 solo, 0,44 en un lote de 50). El ranking
+        # puntúa ~50 candidatas juntas y el cálculo a pedido una sola, y la misma
+        # licitación mostraba porcentajes distintos en el dashboard y en la ficha.
+        # Sin relleno entre pares, además, el costo total no sube.
+        # Todo corre en un executor para no bloquear el event loop.
         loop = asyncio.get_running_loop()
-        inputs = await loop.run_in_executor(
-            None,
-            lambda: self.tokenizer(
-                pairs,
-                padding=True,
-                truncation=True,
-                return_tensors="np",
-                max_length=512,
-            ),
-        )
-
-        input_feed = {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
-        }
-
-        if "token_type_ids" in inputs:
-            input_feed["token_type_ids"] = inputs["token_type_ids"]
-
-        # Ejecutamos la inferencia ONNX en un executor asíncrono
-        # `run` está tipado como una unión amplia (ndarray | SparseTensor | ...),
-        # pero al pedir la salida "logits" siempre es un ndarray denso.
-        logits = cast(
-            np.ndarray,
+        logits = np.array(
             await loop.run_in_executor(
                 None,
-                lambda: self.session.run(["logits"], input_feed)[0],
-            ),
+                lambda: [self._logit(query_text, doc_text) for _, doc_text in candidates],
+            )
         )
-
-        if len(logits.shape) > 1 and logits.shape[1] > 0:
-            logits = logits[:, 0]
 
         # Sigmoide con calibración Platt Scaling (bias y temperatura)
         calibrated_logits = (logits + self.bias) / max(self.temperature, 0.1)

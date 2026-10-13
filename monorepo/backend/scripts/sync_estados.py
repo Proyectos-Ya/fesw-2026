@@ -18,6 +18,10 @@ Qué hace, en orden
    bajada de su detalle, para que el nocturno vea si cambió el texto.
 3. **Marca vencidas.** Después de aplicar, para que un plazo ampliado no se
    cierre con la fecha vieja. Antes lo hacía `sync_diaria`.
+4. **Refresca la lista oficial de anexos** con el mismo listado (plan 233,
+   decisión 1): el listado ya trae `documentos`, así que no cuesta peticiones.
+   Va al final y aislado: si falla, estados y cierres ya quedaron aplicados y
+   solo cambia el código de salida.
 
 Sobre la ventana
 ----------------
@@ -56,7 +60,9 @@ Railway manda un correo de "crashed" por cada salida distinta de 0, así que el
   igual.
 - **2**: se negó a correr contra una base no local o la ventana es inválida.
 
-La racha de incompletas se cuenta en la tabla `sync_estados_run`.
+La racha de incompletas se cuenta en la tabla `sync_estados_run`. Un fallo al
+refrescar la lista de anexos no cambia el código: queda en el log y la corrida
+siguiente lo reintenta.
 """
 
 import argparse
@@ -72,6 +78,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.use_cases.sync_tender_statuses import SyncTenderStatusesUseCase
+from app.application.use_cases.tender_attachments.sync_official_attachments import (
+    listas_desde_cambios,
+)
 from app.config import settings
 from app.domain.models.cambio_estado import CambioDeEstado, ResultadoSyncEstados
 from app.infrastructure.repositories.qdrant_tender_repository import (
@@ -86,6 +95,7 @@ from app.infrastructure.services.tenders.tender_ingestion_service import (
     TenderIngestionService,
 )
 from scripts.ingesta_compartida import (
+    aplicar_documentos_oficiales,
     construir_servicio,
     marcar_vencidas,
     preparar_destino,
@@ -138,6 +148,7 @@ async def sincronizar_estados(
     aplicar: Callable[[list[CambioDeEstado]], Awaitable[ResultadoSyncEstados]],
     marcar_vencidas: Callable[[], Awaitable[int]],
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
+    aplicar_anexos: Callable[[list[CambioDeEstado]], Awaitable[int]] | None = None,
     registrar_corrida: Callable[[bool, int], Awaitable[int]] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
@@ -163,12 +174,28 @@ async def sincronizar_estados(
     resultado = await aplicar(listado.cambios)
     print(
         f"{resultado.conocidas} conocidas: {resultado.actualizadas} actualizadas, "
+        f"{resultado.llamados_actualizados} con llamado actualizado, "
         f"{resultado.sacadas_del_indice} sacadas del índice, "
         f"{resultado.reabiertas} reabiertas, {resultado.reencoladas} reencoladas."
     )
 
     if not args.sin_marcar:
         print(f"Vencidas marcadas como cerradas: {await marcar_vencidas()}")
+
+    # Al final y aislado: estados y cierres ya están aplicados y vencidas ya está
+    # marcado. Un fallo acá no puede deshacer nada de eso ni impedirlo, y tampoco
+    # cambia el código de salida: la corrida siguiente lo reintenta.
+    if aplicar_anexos is not None:
+        try:
+            refrescadas = await aplicar_anexos(listado.cambios)
+            print(f"Listas de anexos refrescadas: {refrescadas}")
+        except Exception as error:
+            print(
+                "\nAVISO: no se pudo refrescar la lista de anexos "
+                f"({type(error).__name__}: {error}).\n"
+                "Estados y cierres ya quedaron aplicados; la corrida siguiente lo\n"
+                "reintenta."
+            )
 
     techo = listado.listadas >= args.limite
     seguidas = (
@@ -244,6 +271,9 @@ async def _correr(args: argparse.Namespace) -> int:
             aplicar=lambda cambios: _aplicar(engine, qdrant, servicio, cambios),
             marcar_vencidas=lambda: marcar_vencidas(engine, qdrant),
             preparar_destino=lambda: preparar_destino(engine, qdrant),
+            aplicar_anexos=lambda cambios: aplicar_documentos_oficiales(
+                engine, listas_desde_cambios(cambios)
+            ),
             registrar_corrida=lambda completo, listadas: _registrar(
                 engine, completo, listadas
             ),
