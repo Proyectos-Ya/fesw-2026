@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import func, text, update
+from sqlalchemy import case, func, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import col, select
@@ -22,7 +22,10 @@ from app.application.repositories.tender_vector_repository import (
 )
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
-from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.services.tender_ingestion_service import (
+    ITenderIngestionService,
+    ModoCola,
+)
 from app.application.use_cases.tender_ingestion_use_case import TenderIngestionUseCase
 from app.config import settings
 from app.domain.models.cambio_estado import (
@@ -87,6 +90,17 @@ LOTE_PROCESAMIENTO = 200
 # licitación que la API devuelve rota bloquearía la cola.
 MAX_INTENTOS_INGESTA = 3
 
+# Reintentos nocturnos antes de dar una licitación por perdida (plan 305). Medido
+# el 2026-10-12: 240 compras con 13 a 21 intentos que daban 504 siempre, también
+# en la página oficial. Cinco noches separan una falla del día de una que no se
+# va a arreglar.
+MAX_REINTENTOS_NOCTURNOS = 5
+
+# Errores transitorios seguidos que cortan la pasada. Con la API caída, cada
+# licitación que se pide igual gasta sus intentos y su cuota. Diez seguidos ya no
+# son una licitación rota sino el gateway.
+UMBRAL_CORTACIRCUITO = 10
+
 
 @dataclass
 class ResultadoListado:
@@ -132,6 +146,11 @@ class ResultadoProceso:
     procesadas: int = 0
     fallidas: int = 0
     cuota_agotada: bool = False
+    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    api_caida: bool = False
+    # El cron de estados vio un cambio posterior al pedido del detalle: no se
+    # escribió y la fila quedó pendiente para la corrida siguiente.
+    desactualizadas: int = 0
 
 
 def _en_utc_naive(momento: datetime) -> datetime:
@@ -177,6 +196,61 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
     """
     cierre = fecha_mp_a_utc(fecha_cierre)
     return cierre is not None and cierre <= ahora_utc_naive
+
+
+class _Cortacircuito:
+    """Cuenta errores transitorios seguidos entre las tareas de una pasada."""
+
+    def __init__(self) -> None:
+        self.seguidos = 0
+        self.abierto = asyncio.Event()
+
+    def fallo(self) -> None:
+        self.seguidos += 1
+        if self.seguidos >= UMBRAL_CORTACIRCUITO:
+            self.abierto.set()
+
+    def exito(self) -> None:
+        self.seguidos = 0
+
+
+def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
+    """Qué filas de la cola toma un modo. La comparten el SELECT y el conteo.
+
+    Si el conteo de `vaciar_cola` no filtrara igual que el SELECT, la cola nunca
+    se vería vacía y las rondas seguirían sin nada que hacer.
+    """
+    condiciones = [
+        # `is_(False)` y no `not ...`: la comparación tiene que generar SQL, no
+        # evaluarse en Python. La sugerencia de ruff (E712) rompe la query.
+        col(TenderMetadataModel.is_processed).is_(False),
+        col(TenderMetadataModel.discarded_at).is_(None),
+    ]
+    if modo is ModoCola.NUEVAS:
+        condiciones.append(col(TenderMetadataModel.attempts) == 0)
+    elif modo is ModoCola.REINTENTOS:
+        condiciones.append(col(TenderMetadataModel.attempts) >= 1)
+        if antes_de is not None:
+            condiciones.append(col(TenderMetadataModel.updated_at) < antes_de)
+    return condiciones
+
+
+def _orden_cola(modo: ModoCola) -> list:
+    if modo is ModoCola.NUEVAS:
+        # Primero lo que baja la latencia de entrada: lo que no tenemos.
+        nueva_primero = case(
+            (col(TenderMetadataModel.pending_reason) == "nueva", 0), else_=1
+        )
+        return [nueva_primero, col(TenderMetadataModel.created_at).asc()]
+    if modo is ModoCola.REINTENTOS:
+        return [
+            col(TenderMetadataModel.night_retries).asc(),
+            col(TenderMetadataModel.updated_at).asc(),
+        ]
+    return [
+        col(TenderMetadataModel.attempts).asc(),
+        col(TenderMetadataModel.created_at).asc(),
+    ]
 
 
 # Margen al comparar `fecha_ultimo_cambio` con la última bajada del detalle. La
@@ -684,7 +758,11 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             return (await session.exec(stmt)).first() is not None
 
     async def process_unprocessed_tenders(
-        self, limite: int | None = None
+        self,
+        limite: int | None = None,
+        *,
+        modo: ModoCola = ModoCola.TODAS,
+        antes_de: datetime | None = None,
     ) -> ResultadoProceso:
         """Baja el detalle de un lote de pendientes y lo ingesta.
 
@@ -698,7 +776,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         licitación es red y una pausa artificial, así que solaparlas es lo único
         que mueve la aguja; el modelo de embeddings es el 6%.
         """
-        pendientes = await self._pendientes(limite or LOTE_PROCESAMIENTO)
+        pendientes = await self._pendientes(
+            limite or LOTE_PROCESAMIENTO, modo, antes_de
+        )
         if not pendientes:
             return ResultadoProceso()
 
@@ -712,18 +792,32 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         # que salir, y lo que hace falta es que las que aún no empezaron no
         # gasten sus cuatro reintentos contra una cuota que ya no existe.
         cuota_agotada = asyncio.Event()
+        cortacircuito = _Cortacircuito()
         semaforo = asyncio.Semaphore(max(1, settings.mercadopublico_detail_concurrency))
 
         await asyncio.gather(
             *(
                 self._procesar_una(
-                    metadata_id, code, semaforo, cuota_agotada, resultado
+                    metadata_id,
+                    code,
+                    semaforo,
+                    cuota_agotada,
+                    resultado,
+                    cortacircuito=cortacircuito,
+                    nocturno=modo is ModoCola.REINTENTOS,
                 )
                 for metadata_id, code in pendientes
             )
         )
 
         resultado.cuota_agotada = cuota_agotada.is_set()
+        resultado.api_caida = cortacircuito.abierto.is_set()
+        if resultado.api_caida:
+            print(
+                f"[IngestionService] {UMBRAL_CORTACIRCUITO} errores transitorios "
+                "seguidos: se corta la pasada sin cobrar intentos a las que "
+                "faltaban."
+            )
         if resultado.cuota_agotada:
             print(
                 "[IngestionService] Cuota agotada. Quedan licitaciones "
@@ -731,24 +825,23 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             )
         return resultado
 
-    async def _pendientes(self, limite: int) -> list[tuple[uuid.UUID, str]]:
-        """Los siguientes códigos por procesar, los que menos han fallado primero.
+    async def _pendientes(
+        self,
+        limite: int,
+        modo: ModoCola = ModoCola.TODAS,
+        antes_de: datetime | None = None,
+    ) -> list[tuple[uuid.UUID, str]]:
+        """Los siguientes códigos por procesar, en el orden de su modo.
 
         El orden importa desde que hay LIMIT: sin él, una licitación que la API
         devuelve rota se quedaría al frente de todos los lotes y congelaría el
         avance de la cola entera.
         """
         async with AsyncSession(self.engine) as session:
-            # `is_(False)` y no `not ...`: la comparación tiene que generar
-            # SQL, no evaluarse en Python. La sugerencia de ruff (E712) rompe
-            # la query en silencio.
             stmt = (
                 select(TenderMetadataModel)
-                .where(col(TenderMetadataModel.is_processed).is_(False))
-                .order_by(
-                    col(TenderMetadataModel.attempts).asc(),
-                    col(TenderMetadataModel.created_at).asc(),
-                )
+                .where(*condiciones_cola(modo, antes_de))
+                .order_by(*_orden_cola(modo))
                 .limit(limite)
             )
             filas = (await session.exec(stmt)).all()
@@ -763,6 +856,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         semaforo: asyncio.Semaphore,
         cuota_agotada: asyncio.Event,
         resultado: ResultadoProceso,
+        *,
+        cortacircuito: _Cortacircuito | None = None,
+        nocturno: bool = False,
     ) -> None:
         """Una licitación de punta a punta, con su propia sesión.
 
@@ -770,14 +866,30 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         no es segura entre tareas concurrentes, y de paso ninguna transacción
         vive más que la licitación que la abrió.
         """
+        cortacircuito = cortacircuito or _Cortacircuito()
         async with semaforo:
-            if cuota_agotada.is_set():
+            if cuota_agotada.is_set() or cortacircuito.abierto.is_set():
                 return
 
             async with AsyncSession(self.engine) as session:
                 try:
                     print(f"[IngestionService] Ingestando detalles para {code}...")
+                    # El instante del pedido, no el de la escritura: un cambio
+                    # que llegó mientras se bajaba tiene que quedar pendiente.
+                    pedido_en = utc_now_naive()
                     detail_payload = await self.client.get_tender_detail(code)
+                    cortacircuito.exito()
+
+                    if await self._cambio_posterior(session, metadata_id, pedido_en):
+                        # El cron de estados ya aplicó algo más nuevo desde el
+                        # listado. Escribir este detalle lo pisaría.
+                        print(
+                            f"[IngestionService] {code} cambió después del pedido. "
+                            "Queda para la próxima corrida."
+                        )
+                        await self._dejar_pendiente(session, metadata_id)
+                        resultado.desactualizadas += 1
+                        return
 
                     if not detail_payload:
                         # Vacío significa que no hay nada que traer: reintentar
@@ -787,7 +899,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                             f"[IngestionService] Detalle de {code} vacío o "
                             "inválido. Marcando como procesado."
                         )
-                        await self._marcar_procesada(session, metadata_id)
+                        await self._marcar_procesada(session, metadata_id, pedido_en)
                         resultado.procesadas += 1
                         return
 
@@ -799,12 +911,12 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                             f"'{dto.region_name}' no coincide con TARGET_REGION "
                             f"'{settings.target_region}'."
                         )
-                        await self._marcar_procesada(session, metadata_id)
+                        await self._marcar_procesada(session, metadata_id, pedido_en)
                         resultado.procesadas += 1
                         return
 
                     await self._construir_use_case(session).execute(dto)
-                    await self._marcar_procesada(session, metadata_id)
+                    await self._marcar_procesada(session, metadata_id, pedido_en)
                     resultado.procesadas += 1
                     print(f"[IngestionService] Licitación {code} procesada con éxito.")
 
@@ -821,8 +933,13 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                 except ErrorTransitorioMercadoPublico as e:
                     # La licitación existe y el próximo intento la recupera.
                     # Nunca se marca procesada: eso la perdería para siempre.
+                    cortacircuito.fallo()
                     await self._registrar_fallo(
-                        session, metadata_id, _describir(e), rendirse=False
+                        session,
+                        metadata_id,
+                        _describir(e),
+                        rendirse=False,
+                        nocturno=nocturno,
                     )
                     resultado.fallidas += 1
                 except Exception as e:
@@ -830,7 +947,11 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                         f"[IngestionService] Error al procesar licitación {code}: {e}"
                     )
                     await self._registrar_fallo(
-                        session, metadata_id, _describir(e), rendirse=True
+                        session,
+                        metadata_id,
+                        _describir(e),
+                        rendirse=True,
+                        nocturno=nocturno,
                     )
                     resultado.fallidas += 1
 
@@ -914,17 +1035,58 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             lexical_tender_repo=lexical_tender_repo,
         )
 
-    async def _marcar_procesada(
+    async def _cambio_posterior(
+        self, session: AsyncSession, metadata_id: uuid.UUID, pedido_en: datetime
+    ) -> bool:
+        """Si el listado vio un cambio de la licitación después del pedido."""
+        fila = await session.get(
+            TenderMetadataModel, metadata_id, populate_existing=True
+        )
+        return bool(fila and fila.api_changed_at and fila.api_changed_at > pedido_en)
+
+    async def _dejar_pendiente(
         self, session: AsyncSession, metadata_id: uuid.UUID
     ) -> None:
-        metadata_item = await session.get(TenderMetadataModel, metadata_id)
-        if metadata_item:
-            metadata_item.is_processed = True
+        """Sin cobrar intento: la licitación no falló, el detalle quedó viejo."""
+        await session.rollback()
+        fila = await session.get(
+            TenderMetadataModel, metadata_id, populate_existing=True
+        )
+        if fila:
+            fila.pending_reason = "actualizar"
+            fila.updated_at = utc_now_naive()
+            session.add(fila)
+        await session.commit()
+
+    async def _marcar_procesada(
+        self,
+        session: AsyncSession,
+        metadata_id: uuid.UUID,
+        pedido_en: datetime | None = None,
+    ) -> None:
+        """Deja la fila procesada, salvo que haya un cambio que pudo no salir.
+
+        Si el listado reporta un cambio a menos de `MARGEN_CAMBIO` antes del
+        pedido, el detalle pudo no traerlo todavía: la fila queda como
+        `actualizar` para una bajada más. Cuesta a lo más una petición extra.
+        """
+        pedido_en = pedido_en or utc_now_naive()
+        fila = await session.get(
+            TenderMetadataModel, metadata_id, populate_existing=True
+        )
+        if fila:
             # Si falló antes y ahora entró, el error viejo haría que una
             # licitación ya ingerida pareciera fallida al revisar la cola.
-            metadata_item.last_error = None
-            metadata_item.updated_at = utc_now_naive()
-            session.add(metadata_item)
+            fila.last_error = None
+            fila.detail_fetched_at = pedido_en
+            fila.updated_at = utc_now_naive()
+            reciente = (
+                fila.api_changed_at is not None
+                and fila.api_changed_at > pedido_en - MARGEN_CAMBIO
+            )
+            fila.is_processed = not reciente
+            fila.pending_reason = "actualizar" if reciente else None
+            session.add(fila)
         await session.commit()
 
     async def _registrar_fallo(
@@ -934,33 +1096,50 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         motivo: str,
         *,
         rendirse: bool,
+        nocturno: bool = False,
     ) -> None:
-        """Anota el intento fallido y decide si se abandona la licitación.
+        """Anota el intento fallido y decide si la licitación pasa a terminal.
 
         Antes cualquier excepción marcaba `is_processed=True` "para no bloquear
         la cola". Como el listado deduplica por código, eso la perdía para
-        siempre: un error de parseo por un campo que la API cambió se llevaba la
-        corrida entera sin dejar rastro.
+        siempre y sin dejar rastro. Ahora el abandono queda explícito en
+        `discarded_at`, con su motivo:
 
-        Con `rendirse=False` la licitación vuelve a la cola indefinidamente —el
-        dato existe, fue la red la que falló—, pero cada fallo la manda más
-        atrás en el orden, así que no acapara los lotes.
+        - `abandono_por_error`: un error que no es de la API (`rendirse=True`)
+          al llegar a `MAX_INTENTOS_INGESTA`.
+        - `reintentos_agotados`: en la pasada nocturna (`nocturno=True`), al
+          gastar `MAX_REINTENTOS_NOCTURNOS`.
+
+        Con `rendirse=False` y de día, la licitación queda pendiente para la
+        noche: el dato existe, fue la red la que falló.
         """
         await session.rollback()
         try:
-            metadata_item = await session.get(TenderMetadataModel, metadata_id)
-            if not metadata_item:
+            fila = await session.get(
+                TenderMetadataModel, metadata_id, populate_existing=True
+            )
+            if not fila:
                 return
-            metadata_item.attempts += 1
-            metadata_item.last_error = motivo[:500]
-            metadata_item.updated_at = utc_now_naive()
-            if rendirse and metadata_item.attempts >= MAX_INTENTOS_INGESTA:
+            ahora = utc_now_naive()
+            fila.attempts += 1
+            fila.last_error = motivo[:500]
+            fila.updated_at = ahora
+            if nocturno:
+                fila.night_retries += 1
+            motivo_terminal = None
+            if rendirse and fila.attempts >= MAX_INTENTOS_INGESTA:
+                motivo_terminal = "abandono_por_error"
+            elif nocturno and fila.night_retries >= MAX_REINTENTOS_NOCTURNOS:
+                motivo_terminal = "reintentos_agotados"
+            if motivo_terminal:
                 print(
-                    f"[IngestionService] {metadata_item.code} falló "
-                    f"{metadata_item.attempts} veces. Se abandona."
+                    f"[IngestionService] {fila.code} falló {fila.attempts} veces "
+                    f"({motivo_terminal}). Pasa a terminal."
                 )
-                metadata_item.is_processed = True
-            session.add(metadata_item)
+                fila.discarded_at = ahora
+                fila.discard_reason = motivo_terminal
+                fila.pending_reason = None
+            session.add(fila)
             await session.commit()
         except Exception as e:
             print(f"[IngestionService] No se pudo registrar el fallo: {e}")

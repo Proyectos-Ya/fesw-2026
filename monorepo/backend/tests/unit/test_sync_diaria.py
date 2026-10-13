@@ -58,7 +58,7 @@ class ServicioFalso(ITenderIngestionService):
         return self.listado
 
     async def process_unprocessed_tenders(
-        self, limite: int | None = None
+        self, limite: int | None = None, **_
     ) -> ResultadoProceso:
         if self.cuota_agotada:
             return ResultadoProceso(cuota_agotada=True)
@@ -407,7 +407,9 @@ class TestListaOficialDeAnexos:
         assert "AVISO" in capsys.readouterr().out
 
     async def test_sin_documentos_no_se_llama(self):
-        servicio = ServicioFalso(ResultadoListado(listadas=1, completo=True, documentos={}))
+        servicio = ServicioFalso(
+            ResultadoListado(listadas=1, completo=True, documentos={})
+        )
         llamadas: list = []
 
         async def aplicar_anexos(listas) -> int:

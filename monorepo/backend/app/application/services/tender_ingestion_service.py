@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -8,6 +9,19 @@ if TYPE_CHECKING:
         ResultadoListado,
         ResultadoProceso,
     )
+
+
+class ModoCola(StrEnum):
+    """Qué parte de la cola de ingesta toma una pasada (plan 305)."""
+
+    # Todo lo pendiente, como antes de los modos. Lo usa la carga inicial.
+    TODAS = "todas"
+    # Lo que nunca falló, con las `nueva` antes que las `actualizar`. Lo que
+    # corre cada 2 h: una que falla queda para la noche.
+    NUEVAS = "nuevas"
+    # Lo que ya falló antes de que empezara la corrida. Lo que corre de noche,
+    # con un reintento nocturno por fila.
+    REINTENTOS = "reintentos"
 
 
 class ITenderIngestionService(ABC):
@@ -86,9 +100,16 @@ class ITenderIngestionService(ABC):
 
     @abstractmethod
     async def process_unprocessed_tenders(
-        self, limite: int | None = None
+        self,
+        limite: int | None = None,
+        *,
+        modo: ModoCola = ModoCola.TODAS,
+        antes_de: datetime | None = None,
     ) -> "ResultadoProceso":
         """Procesa un lote de licitaciones pendientes, bajando su detalle.
+
+        `modo` elige qué parte de la cola. `antes_de` acota `REINTENTOS` a lo
+        que falló antes de ese momento, normalmente el inicio de la corrida.
 
         Procesa a lo más `limite` y vuelve, en vez de vaciar la cola entera:
         quien llama decide si insiste. Devuelve qué pasó en la pasada, y en

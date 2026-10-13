@@ -14,14 +14,18 @@ contra la API y no son obvias.
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlmodel import col, func, select
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.services.tender_ingestion_service import (
+    ITenderIngestionService,
+    ModoCola,
+)
 from app.config import settings
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.db import crear_engine
@@ -31,6 +35,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
 )
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     TenderIngestionService,
+    condiciones_cola,
 )
 
 # Hosts que se consideran "esta máquina". Todo lo demás es una base compartida
@@ -153,13 +158,22 @@ async def aplicar_documentos_oficiales(
         return await caso.execute(listas_por_codigo)
 
 
-async def contar_pendientes(engine: AsyncEngine) -> int:
-    """Cuántas licitaciones quedan en la cola sin procesar."""
+async def contar_pendientes(
+    engine: AsyncEngine,
+    modo: ModoCola = ModoCola.TODAS,
+    antes_de: datetime | None = None,
+) -> int:
+    """Cuántas licitaciones quedan en la parte de la cola que toma `modo`.
+
+    Filtra igual que el SELECT de la pasada (`condiciones_cola`): si contara
+    también las terminales o las que esperan la noche, la cola nunca se vería
+    vacía.
+    """
     async with AsyncSession(engine) as s:
         stmt = (
             select(func.count())
             .select_from(TenderMetadataModel)
-            .where(col(TenderMetadataModel.is_processed).is_(False))
+            .where(*condiciones_cola(modo, antes_de))
         )
         return (await s.exec(stmt)).one()  # type: ignore[arg-type]
 
@@ -190,17 +204,26 @@ class ResultadoRondas:
     segundos: float = 0.0
     cuota_agotada: bool = False
     sin_avance: bool = False
+    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    api_caida: bool = False
 
     @property
     def completo(self) -> bool:
         """La cola quedó vacía, sin cortes."""
-        return self.pendientes == 0 and not self.cuota_agotada and not self.sin_avance
+        return (
+            self.pendientes == 0
+            and not self.cuota_agotada
+            and not self.sin_avance
+            and not self.api_caida
+        )
 
 
 async def vaciar_cola(
     servicio: ITenderIngestionService,
     contar_pendientes: Callable[[], Awaitable[int]],
     *,
+    modo: ModoCola = ModoCola.TODAS,
+    antes_de: datetime | None = None,
     verboso: bool = True,
 ) -> ResultadoRondas:
     """Insiste hasta vaciar la cola, o hasta que insistir deje de servir.
@@ -210,6 +233,8 @@ async def vaciar_cola(
     * **Cuota agotada.** Seguir gasta los cuatro reintentos del cliente contra
       una cuota que ya no existe. Se para y se retoma en la corrida siguiente:
       lo que está encolado no se pierde.
+    * **API caída.** El cortacircuito del servicio saltó con errores
+      transitorios seguidos. La ronda siguiente se los volvería a cobrar.
     * **Varias rondas sin avance.** Alguna licitación está fallando de forma
       reproducible, o la API está caída. Insistir para siempre bloquearía la
       cola. Una ronda que procesa menos de `EXITO_MINIMO_POR_PASADA` de lo que
@@ -225,15 +250,21 @@ async def vaciar_cola(
     sin_avance = 0
     while pendientes:
         resultado.rondas += 1
-        pasada = await servicio.process_unprocessed_tenders()
+        pasada = await servicio.process_unprocessed_tenders(
+            modo=modo, antes_de=antes_de
+        )
         restantes = await contar_pendientes()
 
-        if pasada.cuota_agotada:
-            resultado.cuota_agotada = True
+        if pasada.cuota_agotada or pasada.api_caida:
+            resultado.cuota_agotada = pasada.cuota_agotada
+            resultado.api_caida = pasada.api_caida
+            resultado.procesadas += pasada.procesadas
             resultado.pendientes = restantes
             break
 
-        hechas = pendientes - restantes
+        # Lo que esta pasada procesó, no la resta de la cola: el cron de estados
+        # encola en paralelo, y una ronda que avanzó podía verse sin avance.
+        hechas = pasada.procesadas
         resultado.procesadas += hechas
         pendientes = restantes
         resultado.pendientes = restantes

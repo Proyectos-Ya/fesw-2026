@@ -23,7 +23,9 @@ def _capturar_engine(monkeypatch) -> list[dict]:
         return original(url, **kwargs)
 
     monkeypatch.setattr(db, "create_async_engine", espia)
-    monkeypatch.setattr(app.bootstrap.builders, "build_embedding_service", lambda: object())
+    monkeypatch.setattr(
+        app.bootstrap.builders, "build_embedding_service", lambda: object()
+    )
     return llamadas
 
 
@@ -57,7 +59,7 @@ class _ColaFalsa:
         self.guion = list(guion)
         self.pasadas = 0
 
-    async def process_unprocessed_tenders(self, limite=None):
+    async def process_unprocessed_tenders(self, limite=None, **_):
         from app.infrastructure.services.tenders.tender_ingestion_service import (
             ResultadoProceso,
         )
