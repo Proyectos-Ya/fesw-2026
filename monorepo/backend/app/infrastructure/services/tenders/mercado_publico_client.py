@@ -621,11 +621,17 @@ class MercadoPublicoClient:
         respuesta lenta en un reintento innecesario.
         """
         detail_url = f"{self.base_url}/{id}"
-        intentos = max(1, self.intentos_detalle)
+        # Dos conteos, como en el listado. Los 5xx y timeouts usan
+        # `intentos_detalle`, que cada pasada ajusta para no gastar cuota contra
+        # un 504. El 429 tiene el suyo: con 1 o 2 intentos, una ráfaga corta del
+        # balde de tokens se tomaba por cuota agotada y cortaba la corrida entera
+        # (2026-10-14).
+        intentos_servidor = max(1, self.intentos_detalle)
+        fallas_servidor = 0
+        fallas_cuota = 0
 
         async with httpx.AsyncClient() as client:
-            for intento in range(1, intentos + 1):
-                ultimo = intento == intentos
+            while True:
                 try:
                     self._contar_peticion()
                     inicio = time.perf_counter()
@@ -639,27 +645,31 @@ class MercadoPublicoClient:
                     self._anotar("detalle", str(response.status_code), inicio)
                 except (httpx.TimeoutException, httpx.TransportError) as e:
                     # La licitación está: fue la conexión la que falló.
-                    if ultimo:
+                    fallas_servidor += 1
+                    if fallas_servidor >= intentos_servidor:
                         raise ErrorTransitorioMercadoPublico(
                             f"{type(e).__name__} al pedir el detalle de {id} "
-                            f"tras {intentos} intentos."
+                            f"tras {fallas_servidor} intentos."
                         ) from e
-                    motivo = type(e).__name__
+                    motivo, intento = type(e).__name__, fallas_servidor
                 else:
                     if response.status_code == 429:
-                        if ultimo:
+                        fallas_cuota += 1
+                        if fallas_cuota >= INTENTOS_CUOTA:
                             raise CuotaAgotadaError(
                                 f"Cuota agotada al pedir el detalle de {id} "
-                                f"tras {intentos} intentos."
+                                f"tras {fallas_cuota} intentos."
                             )
-                        motivo = "HTTP 429"
+                        motivo, intento = "HTTP 429", fallas_cuota
                     elif response.status_code >= 500:
-                        if ultimo:
+                        fallas_servidor += 1
+                        if fallas_servidor >= intentos_servidor:
                             raise ErrorTransitorioMercadoPublico(
                                 f"HTTP {response.status_code} al pedir el detalle "
-                                f"de {id} tras {intentos} intentos."
+                                f"de {id} tras {fallas_servidor} intentos."
                             )
                         motivo = f"HTTP {response.status_code}"
+                        intento = fallas_servidor
                     elif response.status_code >= 400:
                         print(
                             f"[HTTP Error MP] Error al obtener detalle de {id}: "
@@ -680,10 +690,7 @@ class MercadoPublicoClient:
                 espera = self._espera_base * (2**intento)
                 print(
                     f"[API MP] {motivo} en el detalle de {id}. "
-                    f"Reintento {intento}/{intentos - 1} en {espera}s..."
+                    f"Reintento {intento} en {espera}s..."
                 )
                 if espera:
                     await asyncio.sleep(espera)
-
-        # Inalcanzable: el último intento siempre devuelve o levanta.
-        raise ErrorTransitorioMercadoPublico(f"Sin respuesta para el detalle de {id}.")
