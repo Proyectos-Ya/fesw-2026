@@ -149,8 +149,10 @@ class Settings(BaseSettings):
     )
     # Páginas del listado que los crons piden a la vez (plan 305). Medido el
     # 2026-10-13: ~13 s por página de 10; de a una, una ventana de 2 h en hora
-    # punta (~210 páginas) rozaba el tope de 50 min de sync_estados.
-    mercadopublico_listing_concurrency: int = 3
+    # punta (~210 páginas) rozaba el tope de 50 min de sync_estados. Con 3, el
+    # 2026-10-14 la corrida más pesada (3.624 cambios) tardó 45 min; con 4
+    # baja a ~34 y el 504 del listado se mantuvo entre 3 y 7%.
+    mercadopublico_listing_concurrency: int = 4
     # Cron de estados (`scripts/sync_estados.py`). Por entorno para poder ajustar
     # la ventana sin un PR: el volumen de cambios varía mucho según la hora
     # (~1.600 por hora a mediodía, medido el 2026-09-29). El techo de la ventana
