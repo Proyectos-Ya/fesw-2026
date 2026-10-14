@@ -226,6 +226,44 @@ diferencia es de menos de un dólar al mes.
 - Este PR no debería salir en el mismo release que el spike 2 de matching, para
   poder medir por separado el consumo de cada uno.
 
+### 2.9 Prueba en producción y ajustes (2026-10-13 y 2026-10-14)
+
+Los crons de producción desplegaron desde esta rama desde el 2026-10-13 a las
+17:20 UTC. Cada corrida deja una línea `RESUMEN {json}` en el log.
+
+**Por qué fallaba el listado en hora punta.** Se midió en la API una petición
+por caso, sin reintentos, entre las 18:22 y las 20:38 UTC del 10-13:
+
+| Página | Éxito | Segundos si responde |
+|---|---|---|
+| 10 por página | 92 a 100% | ~15 |
+| 20 por página | 50 a 75% | ~22 a 25 |
+| 50 por página | 0% | — |
+
+Lo que decide el 504 es el tamaño de la página, no el de la ventana: una
+ventana de 15 min fallaba igual que una de 2 h. El listado pasó a 10 por
+página y se pide de a 4 páginas a la vez después de la primera
+(`MERCADOPUBLICO_LISTING_CONCURRENCY`).
+
+**Resultado del 10-14.** sync-estados completó las 22 corridas del día. La más
+pesada (15:02 UTC) listó 3.624 cambios en 45 min con 3 páginas a la vez; con 4
+debería bajar a ~34. El 504 del listado quedó entre 3 y 7%.
+
+**Ajustes que salieron de la prueba.**
+
+- El 429 del detalle usaba el mismo conteo que los 5xx (2 de día, 3 de noche),
+  y una ráfaga del balde de tokens se tomaba por cuota agotada: cortó la
+  nocturna con 1.585 pendientes y dos frecuentes. Ahora tiene 4 intentos
+  propios, como el listado. Con 2 tickets y ~12.350 peticiones en el día, la
+  cuota real alcanzaba.
+- Un intento de día era poco: con 17% de 504 en el detalle, ~1.100 nuevas
+  esperaron la noche. Ahora son hasta 3 intentos de día (`MAX_INTENTOS_DIURNOS`)
+  y después los 5 reintentos nocturnos.
+- La red de seguridad nocturna encola como `nueva`, y una corrida que vence el
+  tope registra lo que alcanzó a procesar.
+- `preparar_destino` crea también la colección `tender_lexical` del spike 2;
+  sin ella, la ingesta fallaba en cada licitación con texto nuevo.
+
 ---
 
 ## 3. Desglose de Tareas (Checklist)
