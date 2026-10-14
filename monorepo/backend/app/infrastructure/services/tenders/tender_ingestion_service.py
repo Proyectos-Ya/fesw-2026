@@ -96,6 +96,12 @@ MAX_INTENTOS_INGESTA = 3
 # va a arreglar.
 MAX_REINTENTOS_NOCTURNOS = 5
 
+# Intentos de día antes de dejar una licitación para la noche (plan 305). Con
+# uno solo, el 2026-10-14, ~1.100 nuevas que dieron un 504 (el 17% de los
+# detalles de día) esperaron hasta 24 h. Con tres, una por corrida frecuente,
+# una falla suelta se recupera dentro de unas horas.
+MAX_INTENTOS_DIURNOS = 3
+
 # Errores transitorios seguidos que cortan la pasada. Con la API caída, cada
 # licitación que se pide igual gasta sus intentos y su cuota. Diez seguidos ya no
 # son una licitación rota sino el gateway.
@@ -232,9 +238,9 @@ def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
         col(TenderMetadataModel.discarded_at).is_(None),
     ]
     if modo is ModoCola.NUEVAS:
-        condiciones.append(col(TenderMetadataModel.attempts) == 0)
+        condiciones.append(col(TenderMetadataModel.attempts) < MAX_INTENTOS_DIURNOS)
     elif modo is ModoCola.REINTENTOS:
-        condiciones.append(col(TenderMetadataModel.attempts) >= 1)
+        condiciones.append(col(TenderMetadataModel.attempts) >= MAX_INTENTOS_DIURNOS)
         if antes_de is not None:
             condiciones.append(col(TenderMetadataModel.updated_at) < antes_de)
     return condiciones
@@ -246,7 +252,11 @@ def _orden_cola(modo: ModoCola) -> list:
         nueva_primero = case(
             (col(TenderMetadataModel.pending_reason) == "nueva", 0), else_=1
         )
-        return [nueva_primero, col(TenderMetadataModel.created_at).asc()]
+        return [
+            nueva_primero,
+            col(TenderMetadataModel.attempts).asc(),
+            col(TenderMetadataModel.created_at).asc(),
+        ]
     if modo is ModoCola.REINTENTOS:
         return [
             col(TenderMetadataModel.night_retries).asc(),

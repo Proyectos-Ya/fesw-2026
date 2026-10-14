@@ -25,7 +25,8 @@ cola qué hay que bajar (`nueva` o `actualizar`). Esta ingesta baja los detalles
 1. Si hay otra corrida viva (la nocturna puede seguir vaciando la cola), sale
    con 0 sin hacer nada.
 2. Vacía la cola con lo que nunca falló, las `nueva` primero, con 2 intentos
-   HTTP por detalle. Una que falla queda para la noche.
+   HTTP por detalle. Una que falla se reintenta en las corridas siguientes,
+   hasta 3 intentos de día; después queda para la noche.
 
 **Nocturna** (tope de 6 h):
 

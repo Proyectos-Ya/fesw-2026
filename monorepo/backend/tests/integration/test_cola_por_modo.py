@@ -2,11 +2,13 @@
 
 Reglas que protege:
 
-- **`NUEVAS`** baja solo lo que nunca falló, con las `nueva` antes que las
-  `actualizar`. Es lo que corre cada 2 h: una que falla queda para la noche.
-- **`REINTENTOS`** es la pasada nocturna. Toma lo que falló antes de que
-  empezara la corrida y gasta un reintento nocturno por fila. Al quinto fallo,
-  la fila pasa a terminal.
+- **`NUEVAS`** baja lo que tiene intentos de día disponibles (menos de
+  `MAX_INTENTOS_DIURNOS`), con las `nueva` antes que las `actualizar`. Es lo que
+  corre cada 2 h. El 2026-10-14, con un solo intento de día, ~1.100 nuevas que
+  dieron un 504 quedaron esperando la noche.
+- **`REINTENTOS`** es la pasada nocturna. Toma lo que gastó sus intentos de día
+  antes de que empezara la corrida y gasta un reintento nocturno por fila. Al
+  quinto fallo, la fila pasa a terminal.
 - **Terminal** (`discarded_at`) no se vuelve a pedir en ningún modo. Un error
   que no es de la API, al tercer intento, también termina ahí.
 - **Cortacircuito.** Diez errores transitorios seguidos cortan la pasada sin
@@ -29,6 +31,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
 )
 from app.infrastructure.services.tenders.tender_ingestion_service import (
+    MAX_INTENTOS_DIURNOS,
     MAX_INTENTOS_INGESTA,
     MAX_REINTENTOS_NOCTURNOS,
     UMBRAL_CORTACIRCUITO,
@@ -68,16 +71,17 @@ async def _ajustar(engine, code: str, **campos) -> None:
 
 
 class TestModoNuevas:
-    async def test_solo_toma_las_que_nunca_fallaron(self, entorno):
-        await _encolar(entorno, ["OK-1", "FALLO-1"])
+    async def test_toma_las_que_tienen_intentos_de_dia(self, entorno):
+        await _encolar(entorno, ["OK-1", "FALLO-1", "AGOTADA-1"])
         await _ajustar(entorno, "FALLO-1", attempts=1)
+        await _ajustar(entorno, "AGOTADA-1", attempts=MAX_INTENTOS_DIURNOS)
         cliente = ClienteFalso()
 
         await _servicio(entorno, cliente).process_unprocessed_tenders(
             modo=ModoCola.NUEVAS
         )
 
-        assert cliente.pedidos == ["OK-1"]
+        assert sorted(cliente.pedidos) == ["FALLO-1", "OK-1"]
 
     async def test_las_nuevas_van_antes_que_las_de_actualizar(
         self, entorno, monkeypatch
@@ -96,22 +100,26 @@ class TestModoNuevas:
 
         assert cliente.pedidos == ["NUEVA-1", "ACT-1"]
 
-    async def test_una_que_falla_queda_para_la_noche(self, entorno):
+    async def test_una_que_falla_se_reintenta_de_dia_y_luego_espera_la_noche(
+        self, entorno
+    ):
         await _encolar(entorno, ["CAE-1"])
         servicio = _servicio(
             entorno, ClienteFalso({"CAE-1": ErrorTransitorioMercadoPublico("504")})
         )
 
-        await servicio.process_unprocessed_tenders(modo=ModoCola.NUEVAS)
-        segunda = await servicio.process_unprocessed_tenders(modo=ModoCola.NUEVAS)
+        for _ in range(MAX_INTENTOS_DIURNOS):
+            await servicio.process_unprocessed_tenders(modo=ModoCola.NUEVAS)
+        otra = await servicio.process_unprocessed_tenders(modo=ModoCola.NUEVAS)
 
         fila = await _metadata(entorno, "CAE-1")
-        assert fila.attempts == 1 and fila.night_retries == 0
-        assert segunda.procesadas == segunda.fallidas == 0
+        assert fila.attempts == MAX_INTENTOS_DIURNOS and fila.night_retries == 0
+        assert fila.discarded_at is None
+        assert otra.procesadas == otra.fallidas == 0
 
     async def test_contar_coincide_con_lo_que_toma(self, entorno):
         await _encolar(entorno, ["A", "B", "C"])
-        await _ajustar(entorno, "B", attempts=1)
+        await _ajustar(entorno, "B", attempts=MAX_INTENTOS_DIURNOS)
         await _ajustar(entorno, "C", discarded_at=utc_now_naive())
 
         assert await contar_pendientes(entorno, ModoCola.NUEVAS) == 1
@@ -121,7 +129,7 @@ class TestModoNuevas:
 class TestModoReintentos:
     async def test_un_fallo_gasta_un_reintento_nocturno(self, entorno):
         await _encolar(entorno, ["CAE-1"])
-        await _ajustar(entorno, "CAE-1", attempts=1)
+        await _ajustar(entorno, "CAE-1", attempts=MAX_INTENTOS_DIURNOS)
         servicio = _servicio(
             entorno, ClienteFalso({"CAE-1": ErrorTransitorioMercadoPublico("504")})
         )
@@ -139,7 +147,7 @@ class TestModoReintentos:
         await _ajustar(
             entorno,
             "CAE-1",
-            attempts=1,
+            attempts=MAX_INTENTOS_DIURNOS,
             night_retries=MAX_REINTENTOS_NOCTURNOS - 1,
         )
         servicio = _servicio(
@@ -157,7 +165,9 @@ class TestModoReintentos:
 
     async def test_un_reintento_que_entra_queda_procesado(self, entorno):
         await _encolar(entorno, ["VUELVE-1"])
-        await _ajustar(entorno, "VUELVE-1", attempts=2, night_retries=3)
+        await _ajustar(
+            entorno, "VUELVE-1", attempts=MAX_INTENTOS_DIURNOS, night_retries=3
+        )
 
         await _servicio(entorno, ClienteFalso()).process_unprocessed_tenders(
             modo=ModoCola.REINTENTOS, antes_de=utc_now_naive()
@@ -173,7 +183,7 @@ class TestModoReintentos:
         await _ajustar(
             entorno,
             "RECIEN-1",
-            attempts=1,
+            attempts=MAX_INTENTOS_DIURNOS,
             updated_at=inicio + timedelta(minutes=1),
         )
         cliente = ClienteFalso()
@@ -184,8 +194,10 @@ class TestModoReintentos:
 
         assert cliente.pedidos == []
 
-    async def test_no_toma_las_que_nunca_fallaron(self, entorno):
-        await _encolar(entorno, ["NUEVA-1"])
+    async def test_no_toma_las_que_tienen_intentos_de_dia(self, entorno):
+        """Esas las toma el vaciado de la misma corrida, en modo NUEVAS."""
+        await _encolar(entorno, ["NUEVA-1", "FALLO-1"])
+        await _ajustar(entorno, "FALLO-1", attempts=1)
         cliente = ClienteFalso()
 
         await _servicio(entorno, cliente).process_unprocessed_tenders(

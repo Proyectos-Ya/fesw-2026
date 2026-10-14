@@ -16,11 +16,12 @@ class ModoCola(StrEnum):
 
     # Todo lo pendiente, como antes de los modos. Lo usa la carga inicial.
     TODAS = "todas"
-    # Lo que nunca falló, con las `nueva` antes que las `actualizar`. Lo que
-    # corre cada 2 h: una que falla queda para la noche.
+    # Lo que todavía tiene intentos de día, con las `nueva` antes que las
+    # `actualizar`. Lo que corre cada 2 h; al gastar los intentos de día, la
+    # licitación queda para la noche.
     NUEVAS = "nuevas"
-    # Lo que ya falló antes de que empezara la corrida. Lo que corre de noche,
-    # con un reintento nocturno por fila.
+    # Lo que gastó sus intentos de día antes de que empezara la corrida. Lo
+    # que corre de noche, con un reintento nocturno por fila.
     REINTENTOS = "reintentos"
 
 
