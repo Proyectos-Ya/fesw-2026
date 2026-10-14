@@ -1,0 +1,17 @@
+{
+  "pares_comparados": 150,
+  "kappa_ponderado_cuadratico": 0.8153,
+  "kappa_binario_rel_ge1": 0.7467,
+  "acuerdo_exacto": 0.8,
+  "distribucion_juez_principal_en_muestra": [
+    75,
+    51,
+    24
+  ],
+  "distribucion_segundo_juez": [
+    88,
+    41,
+    21
+  ],
+  "nota": "Acuerdo entre dos jueces LLM independientes (subagentes de Claude), no contra humanos."
+}

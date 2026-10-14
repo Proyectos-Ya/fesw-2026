@@ -17,6 +17,12 @@ export interface Tender {
   status_code: string | null;
   published_at: string;
   closing_at: string;
+  /** Llamado vigente: 1 = primer llamado, 2 = segundo. Nulo o ausente en licitaciones antiguas. */
+  call_number?: number | null;
+  /** Cierre del primer llamado (ISO UTC con `Z`). */
+  first_call_closing_at?: string | null;
+  /** Cierre del segundo llamado. En el primero es solo una fecha posible: MP la publica aunque no se use. */
+  second_call_closing_at?: string | null;
   last_change_at: string;
   buyer_rut: string;
   buyer_name: string | null;
@@ -43,6 +49,14 @@ export interface MatchingResult {
   model_version: string;
   calculated_at: string;
   tender: Tender | null;
+}
+
+/** Lo que devuelve `/tenders/recommended`. Opcionales: un backend anterior no los manda. */
+export interface RecommendedMatch extends MatchingResult {
+  /** Nulo si se pidió con `track: false`. */
+  ranking_id?: string | null;
+  /** Posición servida, antes de los filtros del frontend. */
+  ranking_position?: number | null;
 }
 
 export interface DeepAnalysis {

@@ -70,12 +70,16 @@ from tests.e2e.api.test_empresa_activa_api import (
     _headers,
     _unir,
 )
+from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
+from tests.unit.application.attachment_file_fakes import (
+    FakeAttachmentStorage,
+    InMemoryAttachmentFileRepository,
+)
 from tests.unit.application.fakes import (
     InMemoryCapabilityAnswerRepository,
     InMemoryCapabilityEvidenceRepository,
     InMemoryCapabilityQuestionRepository,
     InMemoryProposalDraftRepository,
-    InMemoryTenderChatRepository,
     InMemoryTenderRepository,
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
@@ -147,7 +151,9 @@ def entorno(api: AsyncClient):
             catalog_use_case=BuildExperienceCatalogUseCase(
                 suppliers, questions, answers, evidences
             ),
-            chat_repo=InMemoryTenderChatRepository(),
+            files=InMemoryAttachmentFileRepository(),
+            attachments=InMemoryTenderAttachmentRepository(),
+            storage=FakeAttachmentStorage(),
             ai_service=ia["servicio"],
         )
     )
@@ -188,7 +194,9 @@ def entorno(api: AsyncClient):
             catalog_use_case=BuildExperienceCatalogUseCase(
                 suppliers, questions, answers, evidences
             ),
-            chat_repo=InMemoryTenderChatRepository(),
+            files=InMemoryAttachmentFileRepository(),
+            attachments=InMemoryTenderAttachmentRepository(),
+            storage=FakeAttachmentStorage(),
             ai_service=ia["servicio"],
         )
     )

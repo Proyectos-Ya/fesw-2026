@@ -9,8 +9,9 @@ import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
+import { cardRanking } from "@/features/ranking-telemetry/utils/rankingLink";
 import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult } from "../tenderTypes";
+import type { RecommendedMatch } from "../tenderTypes";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import {
@@ -38,7 +39,7 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; matches: MatchingResult[] }
+  | { kind: "ready"; matches: RecommendedMatch[] }
   | { kind: "no-supplier" }
   | { kind: "error"; message: string };
 
@@ -319,14 +320,18 @@ export function MatchesDashboard() {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4">
-            {paginatedVisible.map((m) => {
+            {paginatedVisible.map((m, index) => {
               const tenderId = m.tender?.id ?? m.id;
+              // La posición es la de `visible`, o sea después de filtros y paginación
+              // (la que ve el usuario), y no la servida: esa viaja en `ranking_position`.
+              const position = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
               return (
                 <TenderCard
                   key={m.id}
                   match={m}
                   isSaved={savedTenderIds.has(tenderId)}
                   onToggleSave={handleToggleSave}
+                  ranking={cardRanking(m.ranking_id, position, "matches")}
                 />
               );
             })}

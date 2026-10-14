@@ -209,11 +209,7 @@ def build_get_current_workspace_context(
             member.updated_at = now
             await member_repo.update(member)
 
-        perms = [
-            p
-            for p in ALL_PERMISSIONS
-            if member.has_permission(p)
-        ]
+        perms = [p for p in ALL_PERMISSIONS if member.has_permission(p)]
 
         return WorkspaceContext(
             user_id=current_user.id,

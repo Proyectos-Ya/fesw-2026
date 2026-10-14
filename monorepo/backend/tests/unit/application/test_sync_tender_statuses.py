@@ -10,6 +10,9 @@ Reglas que protege:
 - Qdrant antes que SQL, como en el resto de la ingesta.
 - Las publicadas que cambiaron después de la última bajada de su detalle se
   reencolan, para que `_actualizar` decida si cambió el texto.
+- El llamado vigente y el cierre de cada llamado se registran en toda
+  licitación conocida (también en una reapertura), en una escritura aparte que
+  no mueve `updated_at` y va después de Qdrant y del estado.
 """
 
 from datetime import datetime, timedelta
@@ -35,6 +38,7 @@ class RepoFalso(ITenderStatusSyncRepository):
         self.log = log
         self.estados_creados: list[tuple[int, str]] = []
         self.sobrescritos: list[CambioDeEstado] = []
+        self.llamados: list[CambioDeEstado] = []
 
     async def get_known_by_codes(
         self, codes: list[str]
@@ -48,6 +52,11 @@ class RepoFalso(ITenderStatusSyncRepository):
     async def overwrite_statuses(self, cambios: list[CambioDeEstado]) -> int:
         self.log.append("sql")
         self.sobrescritos.extend(cambios)
+        return len(cambios)
+
+    async def overwrite_call_info(self, cambios: list[CambioDeEstado]) -> int:
+        self.log.append("sql-llamado")
+        self.llamados.extend(cambios)
         return len(cambios)
 
 
@@ -89,6 +98,9 @@ def _cambio(
     *,
     closing_at: datetime = CIERRE,
     changed_at: datetime | None = None,
+    call_number: int | None = None,
+    first_call_closing_at: datetime | None = None,
+    second_call_closing_at: datetime | None = None,
 ) -> CambioDeEstado:
     return CambioDeEstado(
         code=code,
@@ -96,6 +108,9 @@ def _cambio(
         status_code=status_code,
         closing_at=closing_at,
         changed_at=changed_at,
+        call_number=call_number,
+        first_call_closing_at=first_call_closing_at,
+        second_call_closing_at=second_call_closing_at,
     )
 
 
@@ -253,3 +268,98 @@ class TestBordes:
         await caso.execute([nuevo, viejo])
 
         assert [c.status_id for c in repo.sobrescritos] == [DESIERTA]
+
+
+class TestLlamado:
+    """El llamado se registra aparte: no mueve `updated_at` y no toca Qdrant."""
+
+    async def test_registra_el_llamado_de_una_que_sigue_publicada(self):
+        k = _conocida("A", PUBLICADA)
+        caso, repo, vector, _, _ = _armar([k])
+        cambio = _cambio(
+            "A",
+            PUBLICADA,
+            "publicada",
+            call_number=2,
+            second_call_closing_at=CIERRE,
+        )
+
+        resultado = await caso.execute([cambio])
+
+        assert repo.llamados == [cambio]
+        assert resultado.llamados_actualizados == 1
+        # El payload de Qdrant no lleva el llamado: solo estado y cierre.
+        assert vector.payloads[k.id] == {
+            "status_code": "publicada",
+            "closing_at": to_utc_epoch(CIERRE),
+        }
+
+    async def test_una_reapertura_registra_el_llamado_sin_tocar_el_estado(self):
+        """La reapertura es el caso real del 2.º llamado: `marcar_vencidas` la cerró."""
+        k = _conocida("A", CERRADA)
+        caso, repo, _, cola, _ = _armar([k])
+        cambio = _cambio(
+            "A", PUBLICADA, "publicada", call_number=2, second_call_closing_at=CIERRE
+        )
+
+        await caso.execute([cambio])
+
+        assert repo.sobrescritos == []
+        assert repo.llamados == [cambio]
+        assert cola.reencolados == ["A"]
+
+    async def test_una_desierta_en_segundo_llamado_tambien_lo_registra(self):
+        k = _conocida("A", PUBLICADA)
+        caso, repo, _, _, _ = _armar([k])
+        cambio = _cambio(
+            "A",
+            DESIERTA,
+            "desierta",
+            call_number=2,
+            first_call_closing_at=CIERRE - timedelta(days=1),
+            second_call_closing_at=CIERRE,
+        )
+
+        await caso.execute([cambio])
+
+        assert repo.llamados == [cambio]
+        assert [c.status_id for c in repo.sobrescritos] == [DESIERTA]
+
+    async def test_sin_datos_de_llamado_no_llama_al_repositorio(self):
+        caso, repo, _, _, log = _armar([_conocida("A", PUBLICADA)])
+
+        resultado = await caso.execute([_cambio("A", PUBLICADA, "publicada")])
+
+        assert "sql-llamado" not in log
+        assert repo.llamados == []
+        assert resultado.llamados_actualizados == 0
+
+    async def test_las_desconocidas_no_registran_llamado(self):
+        caso, repo, _, _, log = _armar([])
+
+        await caso.execute(
+            [_cambio("NUEVA", PUBLICADA, "publicada", call_number=1)]
+        )
+
+        assert repo.llamados == []
+        assert "sql-llamado" not in log
+
+    async def test_el_llamado_se_escribe_despues_de_qdrant_y_del_estado(self):
+        caso, _, _, _, log = _armar([_conocida("A", PUBLICADA)])
+
+        await caso.execute(
+            [_cambio("A", CANCELADA, "cancelada", call_number=1)]
+        )
+
+        assert log == ["qdrant", "sql", "sql-llamado"]
+
+    async def test_solo_registra_las_que_traen_llamado(self):
+        caso, repo, _, _, _ = _armar(
+            [_conocida("A", PUBLICADA), _conocida("B", PUBLICADA)]
+        )
+        con_llamado = _cambio("A", PUBLICADA, "publicada", call_number=1)
+        sin_llamado = _cambio("B", PUBLICADA, "publicada")
+
+        await caso.execute([con_llamado, sin_llamado])
+
+        assert repo.llamados == [con_llamado]

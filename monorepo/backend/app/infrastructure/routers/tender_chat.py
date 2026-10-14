@@ -1,3 +1,4 @@
+import inspect
 from typing import Annotated, Callable, List, Optional
 from uuid import UUID
 from fastapi import (
@@ -9,6 +10,7 @@ from fastapi import (
     status,
 )
 
+from app.application.schemas.deep_analysis_schema import DeepAnalysisResponse
 from app.application.schemas.tender_chat_schema import (
     AskQuestionRequest,
     CreateChatSessionRequest,
@@ -69,6 +71,17 @@ def create_tender_chat_router(
         )
 
     def _to_doc_response(doc: TenderChatDocument) -> TenderChatDocumentResponse:
+        deep_analysis = getattr(doc, "deep_analysis", None)
+        deep_analysis_resp = None
+        if deep_analysis is not None:
+            if isinstance(deep_analysis, DeepAnalysisResponse):
+                deep_analysis_resp = deep_analysis
+            else:
+                deep_analysis_resp = DeepAnalysisResponse(
+                    **deep_analysis.model_dump(),
+                    is_outdated=False,
+                )
+
         return TenderChatDocumentResponse(
             id=doc.id,
             tender_id=doc.tender_id,
@@ -76,6 +89,8 @@ def create_tender_chat_router(
             file_type=doc.file_type,
             file_size_bytes=doc.file_size_bytes,
             created_at=doc.created_at,
+            deep_analysis=deep_analysis_resp,
+            quotation=getattr(doc, "quotation", None),
         )
 
     def _to_msg_response(msg: TenderChatMessage) -> TenderChatMessageResponse:
@@ -147,15 +162,27 @@ def create_tender_chat_router(
         file: UploadFile = File(...),
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_upload_doc_use_case),
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
     ):
         try:
             file_bytes = await file.read()
-            doc = await use_case.execute(
-                tender_id=tender_id,
-                user_id=current_user.id,
-                file_name=file.filename or "adjunto.pdf",
-                file_bytes=file_bytes,
-            )
+            kwargs = {
+                "tender_id": tender_id,
+                "user_id": current_user.id,
+                "file_name": file.filename or "adjunto.pdf",
+                "file_bytes": file_bytes,
+            }
+            sig = inspect.signature(use_case.execute)
+            if "supplier_id" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                kwargs["supplier_id"] = (
+                    workspace_context.active_supplier_id if workspace_context else None
+                )
+
+            doc = await use_case.execute(**kwargs)
             return _to_doc_response(doc)
         except (
             UnsupportedDocumentTypeError,

@@ -14,6 +14,7 @@ import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.domain.entities.matching_result import MatchingResult
+from app.domain.errors.matching_errors import RecommendationsSaveError
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -186,3 +187,50 @@ async def test_borrar_por_licitacion_saca_la_fila_sea_cual_sea_su_origen(
     filas = await repo.get_by_supplier_id(supplier_id)
     assert len(filas) == 1
     assert filas[0].source == "ranking"
+
+
+@pytest.mark.asyncio
+async def test_guardar_el_ranking_dos_veces_no_choca_con_la_restriccion_unica(
+    db_session: AsyncSession,
+):
+    """Dos recálculos simultáneos del mismo proveedor escriben los mismos pares.
+
+    Pasó al abrir el dashboard con un perfil recién creado: el frontend pide
+    `/tenders/recommended` dos veces casi a la vez, ambas corren el pipeline, y
+    la segunda inserción violaba `uq_matching_result_supplier_tender` → 500. El
+    guardado tiene que ser idempotente: gana el último cálculo, sin error.
+    """
+    supplier_id, tender_id = uuid4(), uuid4()
+    await sembrar(db_session, supplier_id, [tender_id])
+    repo = MatchingResultRepository(db_session)
+
+    await repo.save_bulk([fila_ranking(supplier_id, tender_id)])
+    segunda = fila_ranking(supplier_id, tender_id)
+    segunda.final_score = 0.91
+    await repo.save_bulk([segunda])
+
+    filas = await repo.get_by_supplier_id(supplier_id)
+    assert len(filas) == 1
+    assert filas[0].final_score == pytest.approx(0.91)
+
+
+@pytest.mark.asyncio
+async def test_un_fallo_al_guardar_el_ranking_se_traduce_a_error_de_dominio(
+    db_session: AsyncSession,
+):
+    """Si la base rechaza el guardado, sale un error con mensaje para el usuario.
+
+    Se provoca con una licitación inexistente (clave foránea). El error crudo de
+    SQLAlchemy terminaba en un 500 con "Internal Server Error"; el de dominio
+    lo traduce el router a un mensaje que se puede mostrar. La sesión además
+    tiene que quedar usable: sin rollback, la siguiente consulta también falla.
+    """
+    supplier_id, existente = uuid4(), uuid4()
+    await sembrar(db_session, supplier_id, [existente])
+    repo = MatchingResultRepository(db_session)
+
+    with pytest.raises(RecommendationsSaveError) as exc:
+        await repo.save_bulk([fila_ranking(supplier_id, uuid4())])
+
+    assert "Inténtalo nuevamente" in str(exc.value)
+    assert await repo.get_by_supplier_id(supplier_id) == []

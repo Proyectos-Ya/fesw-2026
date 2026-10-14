@@ -1,0 +1,45 @@
+"""Las dependencias de la lista oficial de anexos en el bootstrap resuelven bien
+y la ruta queda montada en la aplicación (sin NameError ni errores de importación)."""
+
+from unittest.mock import AsyncMock
+
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.bootstrap.attachments import get_tender_attachments_use_case
+from app.bootstrap.repositories import get_tender_attachment_repo
+from app.infrastructure.repositories.sql_attachment_file_repository import (
+    SqlAttachmentFileRepository,
+)
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
+)
+
+
+def test_get_tender_attachment_repo_usa_la_sesion_recibida():
+    session = AsyncMock(spec=AsyncSession)
+
+    repo = get_tender_attachment_repo(session)
+
+    assert isinstance(repo, SqlTenderAttachmentRepository)
+    assert repo.session is session
+
+
+def test_el_caso_de_uso_recibe_el_repositorio():
+    repo = SqlTenderAttachmentRepository(AsyncMock(spec=AsyncSession))
+    files_repo = SqlAttachmentFileRepository(AsyncMock(spec=AsyncSession))
+
+    use_case = get_tender_attachments_use_case(repo, files_repo, None)
+
+    assert use_case.attachments is repo
+    assert use_case.files is files_repo
+    # Sin almacenamiento configurado, la ficha no ofrece subir.
+    assert use_case.storage_available is False
+
+
+def test_la_ruta_aparece_en_la_aplicacion():
+    from app.main import app
+
+    operacion = app.openapi()["paths"]["/tenders/{tender_id}/attachments"]["get"]
+
+    assert operacion["summary"] == "Listar los anexos oficiales de una licitación"
+    assert operacion["tags"] == ["Tender attachments"]

@@ -17,21 +17,36 @@ que importan cada provider desde su módulo.
 
 from fastapi import FastAPI
 
+from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.bootstrap.builders import (
+    build_attachment_storage,
     build_calendar_providers,
     build_company_lookup_service,
     build_embedding_service,
     build_reranker_service,
 )
+from app.bootstrap.matching import build_compatibility_formula
 from app.bootstrap.routes import register_routes
 from app.bootstrap.runners import (
     build_export_background,
     build_milestone_extraction_background,
+    build_tender_analysis_background,
 )
 from app.config import settings
-from app.infrastructure.services.field_weighting_service import FieldWeightingService
+from app.infrastructure.services.attachment_processing_scheduler import (
+    AsyncioProcessingSignal,
+)
+from app.infrastructure.services.attachments.content_reader import (
+    StdlibAttachmentContentReader,
+)
+from app.infrastructure.services.attachments.gemini_attachment_extraction_service import (
+    GeminiAttachmentExtractionService,
+)
 from app.infrastructure.services.gemini_deep_analysis_service import (
     GeminiDeepAnalysisService,
+)
+from app.infrastructure.services.gemini_document_analysis_and_quotation_service import (
+    GeminiDocumentAnalysisAndQuotationService,
 )
 from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
@@ -82,6 +97,10 @@ def bootstrap(app: FastAPI) -> None:
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )
+    app.state.document_analysis_quotation_service = GeminiDocumentAnalysisAndQuotationService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
     # Una llave inválida corta el arranque acá, no al guardar el primer token.
     app.state.token_cipher = (
         FernetTokenCipher(settings.token_encryption_key)
@@ -108,17 +127,31 @@ def bootstrap(app: FastAPI) -> None:
 
     app.state.export_background = build_export_background(app)
     app.state.milestone_extraction_background = build_milestone_extraction_background(app)
+    app.state.tender_analysis_background = build_tender_analysis_background(app)
 
+    # Los coeficientes son inmutables y salen de la configuración, así que una
+    # sola instancia sirve a todas las peticiones. El repositorio de vectores de
+    # partidas no se registra acá: necesita el cliente Qdrant, que el lifespan
+    # crea después (ver `get_tender_item_vector_repo`).
+    #
     # La región no pondera: `RankTendersUseCase` ya descarta las licitaciones
     # fuera de las regiones del proveedor, así que un bono adicional se lo
     # llevarían todas las que sobreviven al filtro y no ordenaría nada.
-    # Estos son los pesos con que se calibró el reranker en
-    # tests/matching_evaluation.
-    app.state.weighting_service = FieldWeightingService(
-        reranker_weight=0.50,
-        sector_weight=0.25,
-        keyword_weight=0.25,
-        region_weight=0.0,
+    app.state.compatibility_formula = build_compatibility_formula()
+
+    # En memoria y por proceso (un solo worker): reusa el `ranking_id` cuando se
+    # sirve la misma lista al mismo usuario y empresa en 30 minutos.
+    app.state.ranking_registry = RecentRankingRegistry()
+
+    # R2, disco local (solo desarrollo) o nada. Antes de las rutas: ellas y los
+    # casos de uso lo leen de `app.state`.
+    app.state.attachment_storage = build_attachment_storage()
+    app.state.attachment_extraction_ai_service = GeminiAttachmentExtractionService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.attachment_extraction_model,
     )
+    app.state.attachment_content_reader = StdlibAttachmentContentReader()
+    # Un solo despertador por proceso: lo comparten el listener (peticiones) y el bucle.
+    app.state.attachment_processing_signal = AsyncioProcessingSignal()
 
     register_routes(app)

@@ -126,6 +126,24 @@ def test_user_workspace_summary():
     assert summary.is_active_context is True
 
 
+def test_subir_anexos_lo_tienen_admin_y_member_pero_no_viewer():
+    # Subir gasta cupo de la empresa: es una capacidad distinta de conversar con el asistente.
+    for role, esperado in (
+        (MemberRole.ADMIN, True),
+        (MemberRole.MEMBER, True),
+        (MemberRole.VIEWER, False),
+    ):
+        member = SupplierMember(user_id=uuid4(), supplier_id=uuid4(), role=role)
+        assert member.has_permission("upload_attachments") is esperado
+
+
+def test_all_permissions_es_exactamente_lo_que_puede_tener_un_admin():
+    admin = SupplierMember(user_id=uuid4(), supplier_id=uuid4(), role=MemberRole.ADMIN)
+
+    assert set(ALL_PERMISSIONS) == {p for p in ALL_PERMISSIONS if admin.has_permission(p)}
+    assert "upload_attachments" in ALL_PERMISSIONS
+
+
 class TestPermisoGenerarPostulacion:
     """HU-20: ADMIN y MEMBER pueden generar postulaciones; VIEWER solo mira."""
 

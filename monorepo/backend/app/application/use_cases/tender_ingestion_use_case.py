@@ -2,11 +2,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.lexical_tokenizer import LexicalTokenizer
 from app.application.services.text_builder import TextBuilder
 from app.domain.entities.tender import utc_now_naive
 from app.domain.models.tender_ingestion_dto import TenderIngestaDTO
@@ -44,10 +54,25 @@ class TenderIngestionUseCase:
         embedding_service: IEmbeddingService,
         tender_vector_repo: ITenderVectorRepository,
         enable_comuna_generic_heuristic: bool = False,
+        tender_item_vector_repo: ITenderItemVectorRepository | None = None,
+        attachment_repo: ITenderAttachmentRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
+        lexical_tokenizer: LexicalTokenizer | None = None,
     ):
         self.repo = repository
         self.embedding_service = embedding_service
         self.tender_vector_repo = tender_vector_repo
+        # Opcional: guarda un vector por partida para el calce keyword ↔ partida
+        # del puntaje de compatibilidad. Sin él la ingesta funciona igual; las
+        # licitaciones sin vectores de partidas las cubre el backfill.
+        self.tender_item_vector_repo = tender_item_vector_repo
+        # Opcional, como el de partidas: guarda la lista oficial de anexos que
+        # trae el detalle (plan 233, decisión 1). Sin él la ingesta funciona
+        # igual; la lista la refrescan los crons con lo que ya listan.
+        self.attachment_repo = attachment_repo
+        # Opcional: guarda el vector disperso (sparse BM25) para el canal léxico (plan 256).
+        self.lexical_tender_repo = lexical_tender_repo
+        self.lexical_tokenizer = lexical_tokenizer or LexicalTokenizer()
         self.text_builder = TextBuilder()
         # Ver settings.enable_comuna_generic_heuristic: apagado por defecto
         # hasta decidir si el riesgo de falso positivo de la heurística
@@ -59,7 +84,13 @@ class TenderIngestionUseCase:
         try:
             existente = await self.repo.get_by_code(dto.code)
             if existente:
-                return await self._actualizar(existente, dto)
+                # El id se toma ANTES de `_actualizar`: su commit expira el
+                # objeto y, con una sesión async, leer un atributo expirado
+                # revienta (MissingGreenlet).
+                tender_id = existente.id
+                resultado = await self._actualizar(existente, dto)
+                await self._sincronizar_anexos(tender_id, dto)
+                return resultado
 
             if (
                 not dto.buyer_rut
@@ -84,6 +115,9 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code,
                 published_at=dto.published_at,
                 closing_at=dto.closing_at,
+                call_number=dto.call_number,
+                first_call_closing_at=dto.first_call_closing_at,
+                second_call_closing_at=dto.second_call_closing_at,
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,
@@ -118,11 +152,18 @@ class TenderIngestionUseCase:
             if dto.status_semantic_code in ACTIVE_TENDER_STATUSES:
                 text = self.text_builder.build_from_tender(new_tender, tender_items)
                 vectors = await self.embedding_service.embed([text])
+                payload = self._payload(dto, ubicacion)
                 await self.tender_vector_repo.upsert(
                     tender_id=tender_id,
                     embedding=vectors[0],
-                    payload=self._payload(dto, ubicacion),
+                    payload=payload,
                 )
+                # Los vectores de partidas siguen la misma regla (solo activas) y
+                # el mismo orden: si SQL falla después, queda un punto sin fila,
+                # que el ranking limpia solo. Llevan el mismo payload que el punto
+                # de la licitación para pre-filtrar dentro de su propia colección.
+                await self._guardar_vectores_de_partidas(tender_id, tender_items, payload)
+                await self._guardar_vector_lexico(tender_id, text, payload)
 
             # Recién acá se abre la transacción SQL. Ambos get_or_create
             # hacen flush, así que dejarlos antes del embedding mantendría
@@ -139,6 +180,7 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code, code=dto.status_semantic_code
             )
             await self.repo.save_complex_tender(new_tender, tender_items)
+            await self._sincronizar_anexos(tender_id, dto)  # FK: después de la licitación
 
             return {"status": "success", "tender_code": dto.code}
 
@@ -148,6 +190,26 @@ class TenderIngestionUseCase:
             print(f"[Error Ingesta] Falló procesamiento de licitación {dto.code}: {e}")
             await self.repo.rollback()
             raise
+
+    async def _sincronizar_anexos(
+        self, tender_id: uuid.UUID, dto: TenderIngestaDTO
+    ) -> None:
+        """Deja la lista oficial como la informa este detalle.
+
+        `None` no toca nada (ver `TenderIngestaDTO.documentos`). Corre también en
+        "unchanged": escribe en `tender_attachment` y en `attachments_synced_at`,
+        no en `updated_at`, así que no rompe el contrato de no regenerar el
+        análisis.
+
+        Un error acá cae en el `except` de `execute` (rollback y relanzar): el
+        repositorio de anexos comparte la sesión, así que el rollback también lo
+        cubre. El reintento es idempotente: entra por `_actualizar`.
+        """
+        if self.attachment_repo is None or dto.documentos is None:
+            return
+        await self.attachment_repo.sync_official_lists(
+            {tender_id: dto.documentos}, visto_en=utc_now_naive()
+        )
 
     async def _actualizar(
         self, existente: TenderModel, dto: TenderIngestaDTO
@@ -172,6 +234,10 @@ class TenderIngestionUseCase:
         texto desde lo persistido y se compara con el que saldría del detalle
         nuevo.
 
+        Hay un tercer caso, que no toca Qdrant ni paga inferencia:
+
+        - **Cambio de llamado** — solo SQL, sin `updated_at`.
+
         Sobre eso manda el estado, porque Qdrant guarda solo activas: la que
         deja de estar activa pierde su punto, y la que vuelve a estarlo lo
         recupera entero (no hay punto al que aplicarle `set_payload`).
@@ -185,8 +251,22 @@ class TenderIngestionUseCase:
         )
         cambio_semantico = texto_actual != texto_nuevo
         cambio_metadatos = self._metadatos_cambiaron(existente, dto)
+        cambio_llamado = self._llamado_cambio(existente, dto)
 
         if not cambio_semantico and not cambio_metadatos:
+            if cambio_llamado:
+                # Solo cambió el llamado (o se completa en una licitación
+                # ingerida antes de guardarlo). No mueve `updated_at` ni toca
+                # Qdrant: no cambia lo que se pide, y mover `updated_at`
+                # regeneraría el análisis de Gemini (6.4). Un cambio de llamado
+                # de verdad trae otro `closing_at`, que sí es metadato.
+                self._aplicar_llamado(existente, dto)
+                await self.repo.update_tender(existente)
+                return {
+                    "status": "updated",
+                    "tender_code": dto.code,
+                    "semantico": False,
+                }
             # No escribir es parte del contrato, no una optimización: mover
             # `updated_at` sin motivo haría que el análisis de Gemini se
             # regenerara para cada proveedor todos los días (ver 6.4).
@@ -202,34 +282,51 @@ class TenderIngestionUseCase:
         # siguiente vuelve a ver la diferencia y se autocorrige.
         if not queda_activa:
             # Borrar un punto que ya no existe no es un error, así que no hace
-            # falta distinguir si la licitación estaba indexada.
+            # falta distinguir si la licitación estaba indexada. Sus vectores de
+            # partidas salen con él: el canal de keywords también busca solo
+            # entre activas.
             await self.tender_vector_repo.delete(existente.id)
+            if self.tender_item_vector_repo is not None:
+                await self.tender_item_vector_repo.delete(existente.id)
+            if self.lexical_tender_repo is not None:
+                await self.lexical_tender_repo.delete(existente.id)
         elif cambio_semantico or not estaba_activa:
             # `upsert` reemplaza el payload entero, así que lleva también la
             # ubicación: sin ella, el punto dejaba de calzar con los filtros de
             # comuna y provincia del buscador.
+            payload = self._payload(dto, await self._resolver_ubicacion(dto))
             vectors = await self.embedding_service.embed([texto_nuevo])
             await self.tender_vector_repo.upsert(
                 tender_id=existente.id,
                 embedding=vectors[0],
-                payload=self._payload(dto, await self._resolver_ubicacion(dto)),
+                payload=payload,
             )
+            # Cambió el texto (o vuelve a estar activa y no tenía puntos): los
+            # vectores por partida se rehacen con el mismo payload.
+            await self._guardar_vectores_de_partidas(existente.id, items_nuevos, payload)
+            await self._guardar_vector_lexico(existente.id, texto_nuevo, payload)
         else:
-            await self.tender_vector_repo.set_payload(
-                existente.id,
-                {
-                    "status_code": dto.status_semantic_code,
-                    "region_id": dto.region_id,
-                    "available_amount_clp": dto.available_amount_clp,
-                    "closing_at": to_utc_epoch(dto.closing_at),
-                    "published_at": to_utc_epoch(dto.published_at),
-                },
-            )
+            metadatos = {
+                "status_code": dto.status_semantic_code,
+                "region_id": dto.region_id,
+                "available_amount_clp": dto.available_amount_clp,
+                "closing_at": to_utc_epoch(dto.closing_at),
+                "published_at": to_utc_epoch(dto.published_at),
+            }
+            await self.tender_vector_repo.set_payload(existente.id, metadatos)
+            # El payload de las partidas se mantiene igual que el de la licitación:
+            # si no, el pre-filtro de su búsqueda por keywords vería el estado y
+            # los plazos de la última vez que cambió el texto, no los de hoy.
+            if self.tender_item_vector_repo is not None:
+                await self.tender_item_vector_repo.set_payload(existente.id, metadatos)
+            if self.lexical_tender_repo is not None:
+                await self.lexical_tender_repo.set_payload(existente.id, metadatos)
 
         if cambio_semantico:
             await self.repo.replace_tender_items(existente.id, items_nuevos)
 
         self._aplicar_cambios(existente, dto)
+        self._aplicar_llamado(existente, dto)
         await self.repo.update_tender(existente)
 
         return {
@@ -278,6 +375,40 @@ class TenderIngestionUseCase:
             "published_at": to_utc_epoch(dto.published_at),
         }
 
+    async def _guardar_vectores_de_partidas(
+        self, tender_id: uuid.UUID, items: list[TenderItemModel], payload: dict
+    ) -> None:
+        """Reemplaza los vectores por partida de la licitación, si hay repositorio.
+
+        Una sola llamada al modelo para todas las partidas. Sin partidas no hay
+        nada que inferir: se pasa la lista vacía, que el repositorio interpreta
+        como "esta licitación no tiene vectores" y borra los que hubiera.
+
+        El `payload` es el mismo que va al punto de la licitación: el `upsert`
+        reemplaza el punto entero, así que hay que entregarlo completo cada vez.
+        """
+        if self.tender_item_vector_repo is None:
+            return
+
+        textos = self.text_builder.build_item_texts(items)
+        vectores = await self.embedding_service.embed(textos) if textos else []
+        await self.tender_item_vector_repo.upsert(tender_id, vectores, payload)
+
+    async def _guardar_vector_lexico(
+        self, tender_id: uuid.UUID, text: str, payload: dict
+    ) -> None:
+        """Guarda el vector disperso (sparse BM25) de la licitación, si hay repositorio.
+
+        El texto codificado es el mismo texto completo de la licitación que TextBuilder
+        arma para el embedding denso (título, descripción, partidas). El payload es
+        el mismo que va al punto denso para permitir los mismos pre-filtros.
+        """
+        if self.lexical_tender_repo is None:
+            return
+
+        sparse_vector = self.lexical_tokenizer.encode_sparse(text)
+        await self.lexical_tender_repo.upsert(tender_id, sparse_vector, payload)
+
     def _construir_items(
         self, tender_id: uuid.UUID, dto: TenderIngestaDTO
     ) -> list[TenderItemModel]:
@@ -303,6 +434,33 @@ class TenderIngestionUseCase:
             or existente.available_amount_clp != dto.available_amount_clp
             or existente.buyer_unit != dto.buyer_unit
         )
+
+    @staticmethod
+    def _llamado_cambio(existente: TenderModel, dto: TenderIngestaDTO) -> bool:
+        """Si el detalle trae un dato del llamado distinto del guardado.
+
+        Un None no cuenta: que el detalle traiga estos campos no está
+        verificado (plan 233, fase 0), y tomarlo como "sin llamado" borraría lo
+        que escribió el cron de estados desde el listado, donde sí vienen.
+        """
+        return any(
+            nuevo is not None and nuevo != actual
+            for nuevo, actual in (
+                (dto.call_number, existente.call_number),
+                (dto.first_call_closing_at, existente.first_call_closing_at),
+                (dto.second_call_closing_at, existente.second_call_closing_at),
+            )
+        )
+
+    @staticmethod
+    def _aplicar_llamado(existente: TenderModel, dto: TenderIngestaDTO) -> None:
+        """Vuelca lo que el detalle trae del llamado, sin borrar lo que no trae."""
+        if dto.call_number is not None:
+            existente.call_number = dto.call_number
+        if dto.first_call_closing_at is not None:
+            existente.first_call_closing_at = dto.first_call_closing_at
+        if dto.second_call_closing_at is not None:
+            existente.second_call_closing_at = dto.second_call_closing_at
 
     @staticmethod
     def _aplicar_cambios(existente: TenderModel, dto: TenderIngestaDTO) -> None:

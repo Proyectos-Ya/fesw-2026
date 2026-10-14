@@ -38,15 +38,18 @@ from app.application.use_cases.milestones.set_milestone_reminder import (
     SetMilestoneReminderUseCase,
 )
 from app.bootstrap.repositories import (
+    AttachmentFileRepoDep,
     CalendarEventLinkRepoDep,
     CalendarOAuthStateRepoDep,
-    MilestoneDocumentRepoDep,
+    MilestoneAttachmentRepoDep,
     SessionDep,
-    TenderChatRepoDep,
+    SupplierRepoDep,
+    TenderAttachmentRepoDep,
     TenderMilestoneRepoDep,
     TenderRepoDep,
 )
 from app.bootstrap.services import (
+    AttachmentStorageDep,
     CalendarProvidersDep,
     MilestoneExtractionBackgroundDep,
     get_milestone_extraction_service,
@@ -151,16 +154,20 @@ def get_tender_milestones_use_case(
     tenders: TenderRepoDep,
     milestones: TenderMilestoneRepoDep,
     event_links: CalendarEventLinkRepoDep,
-    chat: TenderChatRepoDep,
-    processed: MilestoneDocumentRepoDep,
+    files: AttachmentFileRepoDep,
+    attachments: TenderAttachmentRepoDep,
+    processed: MilestoneAttachmentRepoDep,
+    suppliers: SupplierRepoDep,
     extraction: MilestoneExtractionBackgroundDep,
 ) -> GetTenderMilestonesUseCase:
     return GetTenderMilestonesUseCase(
         tenders=tenders,
         milestones=milestones,
         event_links=event_links,
-        chat=chat,
+        files=files,
+        attachments=attachments,
         processed=processed,
+        suppliers=suppliers,
         extraction=extraction,
     )
 
@@ -175,15 +182,21 @@ def get_extract_tender_milestones_use_case(
     tenders: TenderRepoDep,
     milestones: TenderMilestoneRepoDep,
     event_links: CalendarEventLinkRepoDep,
-    chat: TenderChatRepoDep,
-    processed: MilestoneDocumentRepoDep,
+    files: AttachmentFileRepoDep,
+    attachments: TenderAttachmentRepoDep,
+    storage: AttachmentStorageDep,
+    processed: MilestoneAttachmentRepoDep,
+    suppliers: SupplierRepoDep,
     ai: Annotated[IMilestoneExtractionAIService, Depends(get_milestone_extraction_service)],
 ) -> ExtractTenderMilestonesUseCase:
     return ExtractTenderMilestonesUseCase(
         tenders=tenders,
         milestones=milestones,
         event_links=event_links,
-        chat=chat,
+        files=files,
+        attachments=attachments,
+        storage=storage,
         ai=ai,
         processed=processed,
+        suppliers=suppliers,
     )

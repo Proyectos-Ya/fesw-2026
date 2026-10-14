@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     ResultadoListado,
     ResultadoProceso,
@@ -347,6 +348,85 @@ class TestTimeout:
             return 0
 
         assert await con_timeout(rapida(), segundos=5) == 0
+
+
+class TestListaOficialDeAnexos:
+    """La lista sale del mismo listado y se aplica **al final**.
+
+    Si el tope de tiempo cancelara este paso antes de `registrar_fin`, la corrida
+    quedaría en `running`, el cursor no avanzaría y la siguiente volvería a listar
+    la ventana gastando cuota. Por eso va después de cerrar la corrida y aislado:
+    si falla, el cursor avanza igual y solo cambia el código de salida.
+    """
+
+    DOC = DocumentoOficialDTO(mp_document_id=1, nombre="Bases.pdf")
+
+    async def _correr_con_anexos(self, servicio: ServicioFalso, aplicar_anexos) -> int:
+        async def contar() -> int:
+            return servicio.pendientes
+
+        return await sincronizar(
+            _args(), servicio, contar=contar, aplicar_anexos=aplicar_anexos
+        )
+
+    async def test_aplica_la_lista_del_listado_despues_de_registrar_el_fin(self):
+        servicio = ServicioFalso(
+            ResultadoListado(
+                nuevas=1, listadas=1, completo=True, documentos={"A": [self.DOC]}
+            )
+        )
+        recibido: list = []
+        cierre_al_llamar: list = []
+
+        async def aplicar_anexos(listas) -> int:
+            recibido.append(listas)
+            cierre_al_llamar.append(servicio.cierre)
+            return 1
+
+        codigo = await self._correr_con_anexos(servicio, aplicar_anexos)
+
+        assert recibido == [{"A": [self.DOC]}]
+        assert cierre_al_llamar[0] is not None  # `registrar_fin` ya corrió
+        assert codigo == 0
+
+    async def test_si_falla_el_cursor_avanza_igual_sale_con_1_y_avisa(self, capsys):
+        servicio = ServicioFalso(
+            ResultadoListado(
+                nuevas=1, listadas=1, completo=True, documentos={"A": [self.DOC]}
+            )
+        )
+
+        async def aplicar_anexos(listas) -> int:
+            raise RuntimeError("sin base")
+
+        codigo = await self._correr_con_anexos(servicio, aplicar_anexos)
+
+        assert servicio.cierre is not None
+        assert servicio.cierre["status"] == "ok"
+        assert codigo == 1
+        assert "AVISO" in capsys.readouterr().out
+
+    async def test_sin_documentos_no_se_llama(self):
+        servicio = ServicioFalso(ResultadoListado(listadas=1, completo=True, documentos={}))
+        llamadas: list = []
+
+        async def aplicar_anexos(listas) -> int:
+            llamadas.append(listas)
+            return 0
+
+        codigo = await self._correr_con_anexos(servicio, aplicar_anexos)
+
+        assert llamadas == []
+        assert codigo == 0
+
+    async def test_sin_el_colaborador_el_comportamiento_es_el_de_siempre(self):
+        servicio = ServicioFalso(
+            ResultadoListado(
+                nuevas=1, listadas=1, completo=True, documentos={"A": [self.DOC]}
+            )
+        )
+
+        assert await _correr(servicio) == 0
 
 
 class TestCodigoDeSalida:

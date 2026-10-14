@@ -1,0 +1,91 @@
+{
+  "metricas": {
+    "A_Denso": {
+      "ndcg10": 0.3786,
+      "p10_ge1": 0.49,
+      "p10_eq2": 0.2,
+      "succ1_ge1": 0.62,
+      "cobertura": 1.0
+    },
+    "B_Hibrido_BM25_RRF": {
+      "ndcg10": 0.5786,
+      "p10_ge1": 0.708,
+      "p10_eq2": 0.314,
+      "succ1_ge1": 0.9,
+      "cobertura": 1.0
+    },
+    "C_Hibrido_Estructural": {
+      "ndcg10": 0.6599,
+      "p10_ge1": 0.772,
+      "p10_eq2": 0.38,
+      "succ1_ge1": 0.94,
+      "cobertura": 1.0
+    },
+    "E_MultiConsulta": {
+      "ndcg10": 0.615,
+      "p10_ge1": 0.726,
+      "p10_eq2": 0.346,
+      "succ1_ge1": 0.88,
+      "cobertura": 1.0
+    },
+    "D_Reranker_Top100": {
+      "ndcg10": 0.5997,
+      "p10_ge1": 0.702,
+      "p10_eq2": 0.318,
+      "succ1_ge1": 0.94,
+      "cobertura": 1.0
+    }
+  },
+  "significancia": [
+    {
+      "comparacion": "B_Hibrido_BM25_RRF vs A_Denso",
+      "delta": 0.2,
+      "ci95": [
+        0.1666,
+        0.235
+      ],
+      "p": 0.0,
+      "p_holm": 0.0
+    },
+    {
+      "comparacion": "C_Hibrido_Estructural vs A_Denso",
+      "delta": 0.2814,
+      "ci95": [
+        0.2372,
+        0.3275
+      ],
+      "p": 0.0,
+      "p_holm": 0.0
+    },
+    {
+      "comparacion": "E_MultiConsulta vs A_Denso",
+      "delta": 0.2365,
+      "ci95": [
+        0.196,
+        0.2778
+      ],
+      "p": 0.0,
+      "p_holm": 0.0
+    },
+    {
+      "comparacion": "D_Reranker_Top100 vs A_Denso",
+      "delta": 0.2211,
+      "ci95": [
+        0.1718,
+        0.2726
+      ],
+      "p": 0.0,
+      "p_holm": 0.0
+    },
+    {
+      "comparacion": "C_Hibrido_Estructural vs B_Hibrido_BM25_RRF",
+      "delta": 0.0814,
+      "ci95": [
+        0.0502,
+        0.1134
+      ],
+      "p": 0.0,
+      "p_holm": 0.0
+    }
+  ]
+}

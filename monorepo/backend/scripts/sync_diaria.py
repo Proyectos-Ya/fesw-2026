@@ -23,6 +23,12 @@ Qué hace, en orden
 4. **Cierra la corrida** en `ingestion_run`. Solo `ok` mueve el cursor: una
    corrida que no alcanzó a listar su ventana entera queda `partial`, y la
    siguiente vuelve a pedir el tramo que faltó.
+5. **Refresca la lista oficial de anexos** con lo que ya trajo el listado (plan
+   233, decisión 1), sin peticiones extra. Va al final y aislado: si fallara o
+   el tope de tiempo lo cancelara antes de cerrar la corrida, ésta quedaría en
+   `running`, el cursor no avanzaría y la siguiente volvería a listar la
+   ventana gastando cuota. Si falla, el cursor avanza igual y solo cambia el
+   código de salida.
 
 Sobre `--limite`, que es la trampa de este script
 -------------------------------------------------
@@ -71,9 +77,11 @@ from urllib.parse import urlsplit
 
 from app.application.services.tender_ingestion_service import ITenderIngestionService
 from app.config import settings
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.shared.constants import TENDER_STATUSES
 from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import (
+    aplicar_documentos_oficiales,
     construir_servicio,
     contar_pendientes,
     es_local,
@@ -129,6 +137,8 @@ async def sincronizar(
     *,
     contar: Callable[[], Awaitable[int]],
     preparar_destino: Callable[[], Awaitable[None]] | None = None,
+    aplicar_anexos: Callable[[dict[str, list[DocumentoOficialDTO]]], Awaitable[int]]
+    | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
@@ -236,11 +246,31 @@ async def sincronizar(
         failed=resultado.pendientes,
     )
 
+    # La lista oficial de anexos va DESPUÉS de cerrar la corrida: si el tope de
+    # tiempo cancelara este paso antes de `registrar_fin`, la corrida quedaría en
+    # `running`, el cursor no avanzaría y la siguiente volvería a listar la
+    # ventana gastando cuota. Aislado en un try/except por lo mismo: un fallo acá
+    # no puede deshacer ni retrasar el cursor, solo cambia el código de salida.
+    anexos_fallaron = False
+    if aplicar_anexos is not None and listado.documentos:
+        try:
+            refrescadas = await aplicar_anexos(listado.documentos)
+            print(f"Listas de anexos refrescadas: {refrescadas}")
+        except Exception as error:
+            anexos_fallaron = True
+            print(
+                "\nAVISO: no se pudo refrescar la lista de anexos "
+                f"({type(error).__name__}: {error}).\n"
+                "La corrida y el cursor ya quedaron registrados; la lista se\n"
+                "actualiza igual en la próxima pasada de sync_estados."
+            )
+
     print(f"\nCorrida '{estado}' en {(time.perf_counter() - inicio) / 60:.1f} min.")
     # Pendientes por errores de red no cuentan como fallo: la cola las retoma. La
     # cuota agotada sí, aunque el cursor avance, porque si se repite el ticket no
     # alcanza para el volumen diario y alguien tiene que enterarse.
-    return 0 if estado == "ok" and not resultado.cuota_agotada else 1
+    ok = estado == "ok" and not resultado.cuota_agotada and not anexos_fallaron
+    return 0 if ok else 1
 
 
 async def _correr(args: argparse.Namespace) -> int:
@@ -257,6 +287,7 @@ async def _correr(args: argparse.Namespace) -> int:
             servicio,
             contar=lambda: contar_pendientes(engine),
             preparar_destino=lambda: preparar_destino(engine, qdrant),
+            aplicar_anexos=lambda listas: aplicar_documentos_oficiales(engine, listas),
         )
     finally:
         await engine.dispose()

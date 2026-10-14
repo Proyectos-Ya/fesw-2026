@@ -32,6 +32,7 @@ class TenderMilestoneRepository(ITenderMilestoneRepository):
             description=model.description,
             source=MilestoneSource(model.source),
             source_document_id=model.source_document_id,
+            source_file_id=model.source_file_id,
             source_excerpt=model.source_excerpt,
             due_at=model.due_at,
             has_time=model.has_time,

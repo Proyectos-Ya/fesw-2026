@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TenderDetailView } from "../TenderDetailView";
@@ -7,6 +7,7 @@ import * as tenderService from "../../services/tenderService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
+import { formatDateTime } from "../../utils/format";
 
 const mockRouter = {
   push: vi.fn(),
@@ -58,10 +59,58 @@ vi.mock("@/features/tender-milestones/components/MilestonesSection", () => ({
   ),
 }));
 
+// Sin este mock, el panel real llamaría a `apiFetch` en jsdom.
+vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () => ({
+  TenderAttachmentsPanel: ({
+    tenderId,
+    tenderCode,
+    onReadyKeyChange,
+    onUploadSuccess,
+    onAnalysisFinished,
+  }: {
+    tenderId: string;
+    tenderCode: string;
+    onReadyKeyChange?: (k: string) => void;
+    onUploadSuccess?: () => void;
+    onAnalysisFinished?: () => void;
+  }) => (
+    <div data-testid="tender-attachments-panel">
+      <span>{`${tenderId}|${tenderCode}`}</span>
+      <button
+        type="button"
+        data-testid="mock-simulate-attachment-upload"
+        onClick={() => {
+          onReadyKeyChange?.("anexo-1-ready");
+          onUploadSuccess?.();
+        }}
+      >
+        Simular subida
+      </button>
+      <button type="button" onClick={() => onAnalysisFinished?.()}>
+        Simular análisis terminado
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("@/features/tender-attachments/components/DigestCard", () => ({
+  DigestCard: ({ tenderId, refreshKey }: { tenderId: string; refreshKey?: string }) => (
+    <div data-testid="digest-card" data-refresh-key={refreshKey}>
+      {tenderId}
+    </div>
+  ),
+}));
+
 vi.mock("@/features/saved-tenders/services/savedTenders.service", () => ({
   fetchSavedTenders: vi.fn(),
   saveTenderApi: vi.fn(),
   unsaveTenderApi: vi.fn(),
+}));
+
+// La telemetría del ranking tiene sus propias pruebas (TenderDetailView.telemetry);
+// acá se aísla para que ninguna prueba salga a la red.
+vi.mock("@/features/ranking-telemetry/services/rankingTelemetryService", () => ({
+  reportTenderInteraction: vi.fn(),
 }));
 
 vi.mock("@/features/tender-export/components/ExportActions", () => ({
@@ -126,6 +175,15 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
   });
 
+  it("muestra el resumen de anexos en la sección de requisitos y descripción", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Requisitos y descripción")).toBeInTheDocument();
+    expect(screen.getByTestId("digest-card")).toHaveTextContent("tender-50");
+  });
+
   it("al subir bases en el asistente recarga la tabla de hitos (HU-16)", async () => {
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     render(<TenderDetailView tenderId="tender-50" />);
@@ -135,6 +193,29 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     await user.click(screen.getByRole("button", { name: "simular subida de bases" }));
 
     expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
+  });
+
+  it("al subir un anexo recarga la tabla de hitos (plan 233)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    render(<TenderDetailView tenderId="tender-50" />);
+    const seccion = await screen.findByTestId("milestones-section");
+    const antes = seccion.getAttribute("data-refresh-key");
+
+    await user.click(screen.getByTestId("mock-simulate-attachment-upload"));
+
+    expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
+  });
+
+  it("cuando termina el análisis de los anexos vuelve a leer el análisis (plan 233)", async () => {
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByTestId("milestones-section");
+    await waitFor(() => expect(tenderService.getDeepAnalysisOnly).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Simular análisis terminado" }));
+
+    await waitFor(() => expect(tenderService.getDeepAnalysisOnly).toHaveBeenCalledTimes(2));
   });
 
   it("monta la entrada a la postulación (HU-20)", async () => {
@@ -432,5 +513,151 @@ describe("TenderDetailView: volver", () => {
 
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
     expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("TenderDetailView: anexos oficiales", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+  });
+
+  it("muestra el panel de anexos justo bajo el encabezado, antes de la tarjeta de análisis IA", async () => {
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    const panel = await screen.findByTestId("tender-attachments-panel");
+    expect(panel).toHaveTextContent("tender-50|555-66-COT26");
+    const header = screen
+      .getByRole("heading", { level: 1, name: "Servicios de Seguridad y Redes" })
+      .closest("header") as HTMLElement;
+    // Inmediatamente después del encabezado: queda antes del editor de cotización.
+    expect(header.nextElementSibling).toBe(panel);
+    expect(
+      panel.compareDocumentPosition(
+        screen.getByRole("heading", { name: "Análisis de compatibilidad IA" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("ya no tiene la sección 'Documentos asociados'", async () => {
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    await screen.findByTestId("tender-attachments-panel");
+    expect(screen.queryByText("Documentos asociados")).not.toBeInTheDocument();
+    // El enlace vive ahora en el panel, que acá está mockeado.
+    expect(
+      screen.queryByRole("link", { name: /ver documentos en mercado público/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /ficha oficial en mercado público/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * `Intl` separa la hora del "p. m." con un espacio duro o uno fino según la
+ * versión de Node, y el matcher de Testing Library no normaliza el string
+ * esperado. Escritos como escapes: en el código fuente son indistinguibles.
+ */
+function conEspaciosNormales(valor: string): string {
+  return valor.replace(/[\u00a0\u202f]/g, " ");
+}
+
+describe("TenderDetailView: segundo llamado", () => {
+  // Octubre es UTC-3 en Chile: 13:30 y 13:40.
+  const PRIMER = "2026-10-06T16:30:00Z";
+  const SEGUNDO = "2026-10-07T16:40:00Z";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+  });
+
+  function conTender(cambios: Partial<Tender>) {
+    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
+      { ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } },
+    ]);
+  }
+
+  it("en segundo llamado etiqueta la ficha y muestra el cierre de cada llamado", async () => {
+    conTender({
+      call_number: 2,
+      first_call_closing_at: PRIMER,
+      second_call_closing_at: SEGUNDO,
+      closing_at: SEGUNDO,
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Segundo llamado")).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Cierre por llamado" });
+    expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(PRIMER)))).toBeInTheDocument();
+    expect(within(region).getByText("Cierre 2.º llamado")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(SEGUNDO)))).toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("en primer llamado la fecha del segundo se presenta como posible, sin etiqueta de segundo llamado", async () => {
+    conTender({
+      call_number: 1,
+      first_call_closing_at: PRIMER,
+      second_call_closing_at: SEGUNDO,
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    // Coincidencia exacta: "Segundo llamado posible" no cuenta como la etiqueta.
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Cierre por llamado" });
+    expect(within(region).getByText("Segundo llamado posible")).toBeInTheDocument();
+    expect(within(region).getByText(conEspaciosNormales(formatDateTime(SEGUNDO)))).toBeInTheDocument();
+  });
+
+  it("una licitación antigua, sin los campos, se ve como antes", async () => {
+    conTender({});
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("con los tres campos en null tampoco dibuja nada", async () => {
+    conTender({ call_number: null, first_call_closing_at: null, second_call_closing_at: null });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
+  });
+
+  it("recalcula automáticamente el puntaje de compatibilidad cuando se suben anexos", async () => {
+    conTender({});
+    vi.mocked(tenderService.calculateTenderScore).mockResolvedValueOnce({
+      score_pct: 88,
+      calculated_at: new Date().toISOString(),
+    });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+    await screen.findByTestId("tender-attachments-panel");
+
+    const btnSimular = screen.getByTestId("mock-simulate-attachment-upload");
+    await userEvent.setup().click(btnSimular);
+
+    await waitFor(() => {
+      expect(tenderService.calculateTenderScore).toHaveBeenCalledWith("tender-50");
+    });
+    expect(
+      await screen.findByRole("img", { name: "Compatibilidad 88%" }),
+    ).toBeInTheDocument();
   });
 });

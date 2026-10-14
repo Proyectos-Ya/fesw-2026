@@ -180,6 +180,23 @@ class Settings(BaseSettings):
     company_lookup_base_url: str | None = None
 
     # --- Matching ---
+    # Canal léxico sparse BM25 (plan 256): complementa el matching denso con
+    # recuperación exacta de términos y acrónimos sobre tender_lexical.
+    matching_lexical_channel_enabled: bool = False
+    matching_lexical_search_limit: int = Field(default=30, gt=0)
+
+    # Coeficientes de regresión logística calibrados sobre 1.146 pares juzgados
+    # (spikes/dataset_compra_agil/calibrar_multivector.py, AUC 0,75 vs 0,58).
+    # Modelos de P(relevancia >= 1) y P(relevancia == 2), validación cruzada por proveedor.
+    compatibility_relevant_intercept: float = -3.8878
+    compatibility_relevant_reranker: float = 0.3281
+    compatibility_relevant_best_match: float = 3.2548
+    compatibility_relevant_coverage: float = 6.0296
+    compatibility_exact_intercept: float = -5.0958
+    compatibility_exact_reranker: float = 0.4013
+    compatibility_exact_best_match: float = 3.5326
+    compatibility_exact_coverage: float = 5.0620
+
     # Escape para entornos sin RAM suficiente para el reranker ONNX.
     disable_reranker: bool = False
     # Variante ONNX del reranker a descargar y usar. El repositorio publica el
@@ -244,9 +261,63 @@ class Settings(BaseSettings):
     run_milestone_refresh: bool = True
     milestone_refresh_interval_seconds: int = 6 * 60 * 60
 
+    # --- Telemetría del ranking (plan 233, decisión 8) ---
+    # Bucle que calcula el NDCG@10 diario, la prioridad de anexos en sombra y la
+    # purga de 90 días. Apagado, las impresiones se siguen registrando: solo
+    # dejan de agregarse y purgarse.
+    run_ranking_telemetry_jobs: bool = True
+    ranking_telemetry_interval_seconds: int = Field(default=6 * 60 * 60, gt=0)
+
+    # --- Anexos: almacenamiento y subida manual (plan 233, decisión 2) ---
+    # Cloudflare R2, donde viven los archivos que suben las empresas. Las cuatro
+    # primeras van juntas (ver `_exigir_r2_completo`); sin ellas, la subida queda
+    # apagada, salvo en desarrollo, que usa el disco local.
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket: str | None = None
+    # Reservada: dominio público de lectura para `shared/` (visor o `fileUri` de
+    # Gemini). La decisión 2 no la usa.
+    r2_public_base_url: str | None = None
+    # Solo desarrollo y sin R2: dónde guarda el disco local y cómo lo alcanza el
+    # navegador. La URL es absoluta al backend y NO `/api`: el rewrite de Next
+    # corta los cuerpos a 10 MB, y un anexo puede pesar hasta 50.
+    attachment_local_storage_dir: str = "storage/attachments"
+    attachment_local_storage_public_url: str = "http://localhost:8000"
+    # Subidas nuevas por empresa y mes de calendario de Chile. Se cuenta al emitir
+    # la URL, no al confirmar: acota cuántos objetos puede escribir una empresa
+    # aunque nunca confirme. Los reintentos y los duplicados no cobran.
+    attachment_manual_uploads_per_month: int = Field(default=100, gt=0)
+
+    # --- Anexos: extracción con Gemini y resumen (plan 233, decisión 4) ---
+    # Apagado por defecto: cada archivo es una llamada pagada a Gemini. El
+    # docker-compose lo enciende en local; en producción hay que pedirlo.
+    run_attachment_processing: bool = False
+    # Llamadas a `generateContent` por día de Chile. Al agotarse, la cola espera al
+    # día siguiente sin llamar. 0 pausa la extracción sin apagar el bucle.
+    attachment_gemini_daily_budget: int = Field(default=100, ge=0)
+    # Modelo de la extracción; vacío usa GEMINI_MODEL.
+    gemini_extraction_model: str | None = None
+    attachment_processing_poll_seconds: int = Field(default=60, gt=0)
+    attachment_processing_sweep_seconds: int = Field(default=15 * 60, gt=0)
+
+    # --- Extensión de navegador (plan 233, decisión 7) ---
+    extension_enabled: bool = True
+    extension_min_version: str = "0.1.0"
+    extension_latest_version: str = "0.1.0"
+    extension_max_daily_fetches: int = Field(default=50, ge=0)
+    extension_polling_interval_seconds: int = Field(default=300, gt=0)
+
+    # --- Matching en sombra con anexos (plan 233, decisión 9) ---
+    matching_shadow_enabled: bool = False
+
     # Auto-archivado diario del tablero Kanban (HdU 10, CA4). Barrido que
     # mueve a historial las tarjetas con más de 90 días en el tablero.
     run_kanban_auto_archive: bool = True
+
+    @property
+    def attachment_extraction_model(self) -> str:
+        return self.gemini_extraction_model or self.gemini_model
 
     # Modo desarrollo: reduce el tamaño de página y el número de licitaciones
     # procesadas por ciclo. El valor por defecto es False para que un despliegue
@@ -389,6 +460,43 @@ class Settings(BaseSettings):
                 raise ValueError(f"Falta configurar para {nombre}: " + ", ".join(faltantes))
         return self
 
+    @property
+    def r2_enabled(self) -> bool:
+        """R2 está configurado (el validador garantiza que entonces está completo)."""
+        return all(
+            (
+                self.r2_account_id,
+                self.r2_access_key_id,
+                self.r2_secret_access_key,
+                self.r2_bucket,
+            )
+        )
+
+    @model_validator(mode="after")
+    def _exigir_r2_completo(self) -> "Settings":
+        """Con alguna variable de R2 puesta, tienen que estar las cuatro.
+
+        Una cuenta sin clave dejaría arrancar un despliegue que falla en la
+        primera subida de la primera empresa; mejor que no arranque.
+        """
+        pares = (
+            ("R2_ACCOUNT_ID", self.r2_account_id),
+            ("R2_ACCESS_KEY_ID", self.r2_access_key_id),
+            ("R2_SECRET_ACCESS_KEY", self.r2_secret_access_key),
+            ("R2_BUCKET", self.r2_bucket),
+        )
+        if not any(valor for _, valor in pares):
+            return self
+        faltantes = [nombre for nombre, valor in pares if not valor]
+        if faltantes:
+            raise ValueError("Falta configurar para Cloudflare R2: " + ", ".join(faltantes))
+        return self
+
+    @field_validator("attachment_local_storage_public_url", mode="after")
+    @classmethod
+    def _sin_barra_final(cls, valor: str) -> str:
+        return valor.rstrip("/")
+
     @field_validator(
         "embedding_api_key",
         "pinecone_api_key",
@@ -399,6 +507,11 @@ class Settings(BaseSettings):
         "microsoft_calendar_client_id",
         "microsoft_calendar_client_secret",
         "token_encryption_key",
+        "r2_account_id",
+        "r2_access_key_id",
+        "r2_secret_access_key",
+        "r2_bucket",
+        "r2_public_base_url",
         mode="after",
     )
     @classmethod
@@ -451,7 +564,12 @@ class Settings(BaseSettings):
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
 
-    @field_validator("qdrant_url_override", "qdrant_api_key", mode="after")
+    @field_validator(
+        "qdrant_url_override",
+        "qdrant_api_key",
+        "gemini_extraction_model",
+        mode="after",
+    )
     @classmethod
     def _vacio_es_ausente(cls, valor: str | None) -> str | None:
         """Una variable declarada pero vacía es ausencia, no un valor.

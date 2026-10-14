@@ -61,3 +61,28 @@ def _meses_para_revivir(cierre: pd.Timestamp, ahora: pd.Timestamp) -> int:
     while cierre + pd.DateOffset(months=meses) <= ahora:
         meses += 1
     return meses
+
+
+def fechas_de_registro(
+    licitaciones: pd.DataFrame, ahora: pd.Timestamp | None = None
+) -> pd.DataFrame:
+    """Devuelve una copia con `created_at` y `updated_at` listos para insertar.
+
+    Salen de `published_at` y `last_change_at`, pero nunca pasan de `ahora`. Esas
+    dos fechas ya vienen corridas hacia adelante, y una licitación revivida queda
+    "publicada" en el futuro. `created_at` dice cuándo llegó la fila a la base, así
+    que un valor futuro es falso, y además rompe el caché del ranking: este compara
+    la licitación más reciente contra la hora del último cálculo, y con una fecha
+    futura la caché queda obsoleta en cada visita.
+    """
+    ahora = ahora if ahora is not None else pd.Timestamp.now()
+    con_registro = licitaciones.copy()
+    con_registro["created_at"] = _acotar(licitaciones["published_at"], ahora)
+    con_registro["updated_at"] = _acotar(licitaciones["last_change_at"], ahora)
+    return con_registro
+
+
+def _acotar(fechas: pd.Series, ahora: pd.Timestamp) -> pd.Series:
+    """El menor entre cada fecha y `ahora`; las nulas siguen nulas."""
+    fechas = pd.to_datetime(fechas)
+    return fechas.where(fechas.isna() | (fechas <= ahora), ahora)
