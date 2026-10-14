@@ -533,6 +533,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
                     "id": uuid.uuid4(),
                     "code": code,
                     "is_processed": False,
+                    # Lo que encuentra la red de seguridad nocturna no está en
+                    # `tender`: es nueva (plan 305).
+                    "pending_reason": "nueva",
                     "created_at": ahora,
                     "updated_at": ahora,
                 }
