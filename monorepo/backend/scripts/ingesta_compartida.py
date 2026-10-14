@@ -272,6 +272,7 @@ async def vaciar_cola(
     modo: ModoCola = ModoCola.TODAS,
     antes_de: datetime | None = None,
     verboso: bool = True,
+    en: ResultadoRondas | None = None,
 ) -> ResultadoRondas:
     """Insiste hasta vaciar la cola, o hasta que insistir deje de servir.
 
@@ -288,7 +289,9 @@ async def vaciar_cola(
       intentó también cuenta como sin avance, aunque lo que sí entró se suma.
     """
     inicio = time.perf_counter()
-    resultado = ResultadoRondas()
+    # `en` deja que el llamador lea el avance aunque la corrida se cancele a
+    # mitad: sin él, una corrida que vencía el tope registraba 0 procesadas.
+    resultado = en if en is not None else ResultadoRondas()
     pendientes = await contar_pendientes()
     resultado.pendientes = pendientes
     if not pendientes:

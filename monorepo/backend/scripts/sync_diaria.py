@@ -401,10 +401,11 @@ async def sincronizar(
 
         if fijar_intentos is not None:
             fijar_intentos(INTENTOS_NOCTURNA)
-        resultado = await vaciar_cola(
+        await vaciar_cola(
             servicio,
             lambda: contar(ModoCola.NUEVAS, None),
             modo=ModoCola.NUEVAS,
+            en=resultado,
         )
         _avisos_del_vaciado(resultado)
 
@@ -412,12 +413,13 @@ async def sincronizar(
         if not resultado.cuota_agotada:
             if fijar_intentos is not None:
                 fijar_intentos(INTENTOS_REINTENTOS)
-            reintentos = await vaciar_cola(
+            await vaciar_cola(
                 servicio,
                 lambda: contar(ModoCola.REINTENTOS, corrida_inicio),
                 modo=ModoCola.REINTENTOS,
                 antes_de=corrida_inicio,
                 verboso=False,
+                en=reintentos,
             )
             print(
                 f"Reintentos nocturnos: {reintentos.procesadas} entraron, "
@@ -436,9 +438,13 @@ async def sincronizar(
             embedding_calls=embeddings() if embeddings else None,
         )
     except asyncio.CancelledError:
+        # Lo que se alcanzó a hacer queda registrado aunque venza el tope.
         await servicio.registrar_fin(
             run_id,
             status="failed",
+            listed=listadas,
+            processed=resultado.procesadas + reintentos.procesadas,
+            failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
             embedding_calls=embeddings() if embeddings else None,
         )
@@ -512,10 +518,11 @@ async def vaciar_frecuente(
     try:
         if fijar_intentos is not None:
             fijar_intentos(INTENTOS_FRECUENTE)
-        resultado = await vaciar_cola(
+        await vaciar_cola(
             servicio,
             lambda: contar(ModoCola.NUEVAS, None),
             modo=ModoCola.NUEVAS,
+            en=resultado,
         )
         _avisos_del_vaciado(resultado)
         # `vaciada` y no `ok`: la versión anterior de este script lee el cursor
@@ -530,9 +537,12 @@ async def vaciar_frecuente(
             embedding_calls=embeddings() if embeddings else None,
         )
     except asyncio.CancelledError:
+        # Lo que se alcanzó a hacer queda registrado aunque venza el tope.
         await servicio.registrar_fin(
             run_id,
             status="failed",
+            processed=resultado.procesadas,
+            failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
             embedding_calls=embeddings() if embeddings else None,
         )

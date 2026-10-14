@@ -869,3 +869,37 @@ class TestLineaDeResumen:
         )
 
         assert _resumen(capsys.readouterr().out)["cancelada"] is True
+
+
+class TestCuentaParcialAlVencerElTope:
+    """Si vence el tope, la corrida registra lo que alcanzó a procesar.
+
+    El 2026-10-14 la frecuente de las 16:06 procesó ~2.300 licitaciones antes
+    de vencer el tope, y tanto su fila como su RESUMEN decían 0.
+    """
+
+    async def test_la_frecuente_registra_lo_procesado_antes_del_tope(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True), pendientes=5)
+        llamadas = {"n": 0}
+
+        async def procesa_y_se_cuelga(*args, **kwargs):
+            llamadas["n"] += 1
+            if llamadas["n"] == 1:
+                servicio.pendientes = 2
+                return ResultadoProceso(procesadas=3)
+            await asyncio.sleep(10)
+
+        servicio.process_unprocessed_tenders = procesa_y_se_cuelga  # type: ignore[method-assign]
+
+        async def contar(*_) -> int:
+            return servicio.pendientes
+
+        await con_timeout(
+            vaciar_frecuente(_args(), servicio, contar=contar, metricas=lambda: {}),
+            segundos=0.1,
+            codigo_al_vencer=0,
+        )
+
+        assert servicio.cierre["status"] == "failed"
+        assert servicio.cierre["processed"] == 3
+        assert _resumen(capsys.readouterr().out)["procesadas"] == 3
