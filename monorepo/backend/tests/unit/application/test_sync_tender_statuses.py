@@ -23,6 +23,7 @@ from uuid import UUID, uuid4
 from app.application.repositories.tender_status_sync_repository import (
     ITenderStatusSyncRepository,
 )
+from app.application.services.lexical_tokenizer import SparseTermVector
 from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
 from app.application.use_cases.sync_tender_statuses import SyncTenderStatusesUseCase
 from app.domain.models.cambio_estado import (
@@ -33,7 +34,11 @@ from app.domain.models.cambio_estado import (
     ResultadoPunteros,
 )
 from app.shared.datetime_utils import to_utc_epoch
-from tests.unit.application.fakes import FakeTenderVectorRepository
+from tests.unit.application.fakes import (
+    FakeTenderVectorRepository,
+    InMemoryLexicalTenderRepository,
+    InMemoryTenderItemVectorRepository,
+)
 
 PUBLICADA, CERRADA, CANCELADA, DESIERTA = 2, 3, 5, 6
 BAJADA = datetime(2026, 9, 28, 10, 0)  # cuándo el ingest bajó el detalle
@@ -434,3 +439,30 @@ class TestLlamado:
         await caso.execute([con_llamado, sin_llamado])
 
         assert repo.llamados == [con_llamado]
+
+
+class TestLasTresColecciones:
+    """Plan 306: al dejar de estar activa, la licitación sale también de
+    `tender_items` y `tender_lexical`, no solo de `tenders`."""
+
+    async def test_desierta_sale_de_partidas_y_lexico(self):
+        k, otra = _conocida("A", PUBLICADA), _conocida("B", PUBLICADA)
+        partidas = InMemoryTenderItemVectorRepository()
+        lexico = InMemoryLexicalTenderRepository()
+        for i in (k.id, otra.id):
+            await partidas.upsert(i, [[1.0, 0.0]], {"status_code": "publicada"})
+            await lexico.upsert(i, SparseTermVector(indices=[1], values=[1.0]))
+        log: list[str] = []
+        caso = SyncTenderStatusesUseCase(
+            repository=RepoFalso([k, otra], log),
+            tender_vector_repo=VectorFalso(log),
+            cola=ColaFalsa(),
+            reloj=lambda: AHORA,
+            item_vector_repo=partidas,
+            lexical_tender_repo=lexico,
+        )
+
+        await caso.execute([_cambio("A", DESIERTA, "desierta")])
+
+        assert set(partidas.vectors) == {otra.id}
+        assert set(lexico.vectors) == {otra.id}

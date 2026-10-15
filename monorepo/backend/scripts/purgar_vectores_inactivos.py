@@ -45,6 +45,7 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.shared.constants import ACTIVE_TENDER_STATUSES
+from scripts.ingesta_compartida import indices_secundarios
 from scripts.sync_diaria import verificar_destino
 
 _COLLECTION = "tenders"
@@ -92,6 +93,7 @@ async def run(dry_run: bool) -> None:
                 tender_vector_repo=QdrantTenderRepository(
                     client=qdrant, vector_size=settings.embedding_vector_size
                 ),
+                **indices_secundarios(qdrant),
             )
             inactivas = await caso.execute()
 
