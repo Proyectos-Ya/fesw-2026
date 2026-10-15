@@ -207,6 +207,32 @@ async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int
         return await caso.execute()
 
 
+async def borrar_cerradas_sin_uso(
+    engine: AsyncEngine, qdrant: AsyncQdrantClient, dias: int | None
+) -> int:
+    """Borra de Postgres y de las tres colecciones las licitaciones no activas
+    que cerraron hace más de `dias` y que nadie usó (plan 306)."""
+    from app.application.use_cases.purgar_licitaciones_cerradas import (
+        PurgarLicitacionesCerradasUseCase,
+    )
+    from app.infrastructure.repositories.qdrant_tender_repository import (
+        QdrantTenderRepository,
+    )
+    from app.infrastructure.repositories.sql_tender_retention_repository import (
+        SqlTenderRetentionRepository,
+    )
+
+    caso = PurgarLicitacionesCerradasUseCase(
+        repository=SqlTenderRetentionRepository(engine),
+        tender_vector_repo=QdrantTenderRepository(
+            client=qdrant, vector_size=settings.embedding_vector_size
+        ),
+        retencion_dias=dias,
+        **indices_secundarios(qdrant),
+    )
+    return await caso.execute()
+
+
 async def aplicar_documentos_oficiales(
     engine: AsyncEngine, listas_por_codigo: Mapping[str, Sequence[DocumentoOficialDTO]]
 ) -> int:
