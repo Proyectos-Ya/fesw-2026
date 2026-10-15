@@ -1,7 +1,7 @@
 # Plan técnico: el asistente virtual lee solo los anexos
 
 **Issue asociada**: Refs #NNN (por crear)  
-**Estado**: Borrador  
+**Estado**: En curso (fase 1 implementada)  
 **Fecha**: 2026-10-13
 
 ---
@@ -100,24 +100,33 @@ llegue a `develop`, habrá dos cabezas: el PR que se mergee segundo repunta su
 ### Fase 1: PR 1, quitar la subida del chat
 
 Backend:
-- [ ] Red: en `tests/unit/infrastructure/test_tender_chat_router.py`, un test que espera
-  405 en `POST /tenders/{id}/assistant/documents`. Borrar los tests de subida que ya no
-  aplican (`test_upload_tender_chat_document_use_case.py`).
-- [ ] Green: quitar la ruta POST de `app/infrastructure/routers/tender_chat.py`, el
-  proveedor de `app/bootstrap/tender_chat.py` y
-  `upload_tender_chat_document_use_case.py`. Quitar de `tender_chat_errors.py` los
-  errores que queden sin uso.
-- [ ] Red: test de `ComputeAttachmentPriorityShadowUseCase` y del repositorio de
-  telemetría que cuenta como subida manual una fila de `attachment_file` con
-  `source in ('manual', 'extension')` de los últimos 7 días.
-- [ ] Green: cambiar la consulta en `ranking_telemetry_repository.py:226` para leer
-  `attachment_file` y actualizar el docstring del caso de uso.
+- [x] Red: en `tests/unit/infrastructure/test_tender_chat_router.py`, un test que espera
+  405 en `POST /tenders/{id}/assistant/documents`. Se borraron los tests que solo
+  probaban la subida: `test_upload_tender_chat_document_use_case.py`,
+  `tests/integration/test_tender_chat_real_document.py` y el del límite de 10 documentos.
+- [x] Green: quitar la ruta POST de `app/infrastructure/routers/tender_chat.py`, el
+  proveedor de `app/bootstrap/tender_chat.py`, su registro en `app/bootstrap/routes.py`
+  y `upload_tender_chat_document_use_case.py`. Se quitaron de `tender_chat_errors.py`
+  los cuatro errores que quedaron sin uso.
+- [x] `tests/integration/test_tender_chat_multidoc_integration.py` siembra los
+  documentos en el repositorio en vez de subirlos por HTTP. Su mock de Gemini esperaba
+  la clave en la query y ya fallaba en `develop`; ahora la espera en el header
+  `x-goog-api-key`.
+- [x] Red: test de integración del repositorio de telemetría. Cuenta como subida manual
+  una fila de `attachment_file` de una empresa (`workspace_id` no nulo) con `source` en
+  `manual` o `extension` de los últimos 7 días. No cuentan la copia compartida (es una
+  promoción) ni lo migrado desde el chat (`legacy_chat`, con la fecha de la migración).
+- [x] Green: la consulta de `ranking_telemetry_repository.py` lee `attachment_file` y el
+  docstring de `ComputeAttachmentPriorityShadowUseCase` describe la regla nueva.
 
 Frontend:
-- [ ] Red: actualizar `useTenderDocuments.test.ts` y `tenderAssistantService.test.ts`
-  para que no exista `uploadDocument`.
-- [ ] Green: quitar `uploadDocument` e `isUploading` del hook y la función de subida del
-  servicio.
+- [x] Red: `useTenderDocuments.test.ts` exige que el hook no exponga `uploadDocument` ni
+  `isUploading`; se quitó el test de subida de `tenderAssistantService.test.ts`.
+- [x] Green: se quitaron `uploadDocument`, `isUploading`, `canUpload` y `maxDocuments`
+  del hook, `uploadTenderDocument` del servicio, la constante `MAX_ATTACHED_DOCUMENTS`
+  y las props `onUpload` e `isUploading` de `DocumentAttachmentManager`.
+- [x] Se quitó `onDocumentsChanged` del drawer y de `TenderDetailView`: solo avisaba
+  tras subir al chat, y los hitos ya se recargan al subir un anexo.
 
 ### Fase 2: migrar y retirar el volumen (operación, después de desplegar la versión con anexos)
 
