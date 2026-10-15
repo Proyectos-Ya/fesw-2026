@@ -1,7 +1,7 @@
 # Plan Técnico: Retención de licitaciones cerradas
 
 **Issue asociada**: Refs #306  
-**Estado**: Aprobado, en implementación  
+**Estado**: Implementado, pendiente de PR  
 **Fecha**: 2026-10-13  
 **Depende de**: la rama 305 (corrida nocturna de `sync_diaria.py`, `purgar_cola`
 y la migración `2510718f486e`). Mientras la 305 no entre en `develop`, las dos
@@ -164,31 +164,27 @@ siguiente se repite. Al revés quedaría un punto que nadie volvería a señalar
 
 ### 2.5 El borrado en SQL
 
-Lotes de 1.000 ids, cada uno en su propia transacción:
+Lotes de 1.000 ids, cada uno en su propia transacción
+(`SqlTenderRetentionRepository.borrar`):
 
-```sql
-DELETE FROM tender_item         WHERE tender_id = ANY(:ids);
-DELETE FROM matching_result     WHERE tender_id = ANY(:ids);
-DELETE FROM notification        WHERE tender_id = ANY(:ids);
-DELETE FROM tender_ai_analysis  WHERE tender_id = ANY(:ids);
-DELETE FROM calendar_oauth_state WHERE tender_id = ANY(:ids);
-DELETE FROM tender t
- WHERE t.id = ANY(:ids)
-   AND <condiciones de 2.1 repetidas>;
-```
+1. `SELECT id FROM tender WHERE id = ANY(:ids) ORDER BY id FOR UPDATE`. Un
+   INSERT que referencie una de esas filas toma `FOR KEY SHARE` y queda
+   esperando hasta que el lote termine, así que desde ahí no aparece uso nuevo.
+2. Otra sentencia vuelve a revisar las condiciones de 2.1 sobre las filas
+   bloqueadas. En READ COMMITTED cada sentencia toma su propio snapshot y ve el
+   uso que alguien confirmó entre la selección y el bloqueo. Dentro de la
+   sentencia del bloqueo, la subconsulta seguiría viendo el snapshot viejo.
+3. Para las confirmadas: DELETE en `tender_item`, `matching_result`,
+   `notification`, `tender_ai_analysis` y `calendar_oauth_state`, y después en
+   `tender`. El resto cae por CASCADE.
 
-Las condiciones de uso se repiten en el último DELETE y no solo en la consulta
-que elige los ids. Si alguien guarda una licitación entre la selección y el
-borrado, el DELETE de `tender` la salta. Si la guarda justo dentro de la
-transacción, la clave foránea NO ACTION de `saved_tender` hace fallar el lote
-entero, que se revierte y se repite la noche siguiente. En ese caso las filas
-hijas borradas antes también vuelven, porque es la misma transacción.
+Una licitación que alguien usó entre medio se conserva entera, con sus
+partidas. Lo cubre `test_uso_entre_la_seleccion_y_el_borrado_conserva_todo`.
 
-El problema que queda es que una licitación saltada en el último DELETE ya
-perdió sus partidas y resultados en los DELETE anteriores. Para evitarlo, los
-DELETE de hijas usan `tender_id IN (SELECT id FROM tender WHERE id = ANY(:ids)
-AND <condiciones>)`, o se bloquean las filas con `SELECT ... FOR UPDATE` al
-empezar el lote. Se decide en la implementación con un test que lo cubra.
+Las tres listas de tablas (uso, sistema sin cascada, sistema en cascada) están
+en `sql_tender_retention_repository.py`.
+`test_toda_tabla_que_apunta_a_tender_esta_clasificada` falla si aparece una
+tabla nueva con clave foránea a `tender` que no esté en ninguna.
 
 **Índices.** En la base faltaban índices sobre la columna `tender_id` de
 `tender_item`, `matching_result`, `export_job` y `calendar_oauth_state`. Sin
@@ -207,16 +203,15 @@ que se mergea después de ella.
 En `app/config.py`, junto a la configuración de sync-estados:
 
 ```python
-# Días después del cierre en que se borra una licitación no activa que nadie
-# usó (plan 306). None desactiva el borrado.
 retencion_cerradas_dias: int | None = Field(default=7, ge=1)
 ```
 
-Se fija en Railway con `RETENCION_CERRADAS_DIAS`. Como la API comparte esta
-configuración, el valor no debe impedir que arranque: `ge=1` rechaza 0 o
-negativos, que borrarían licitaciones recién cerradas, y la ausencia de la
-variable usa el valor por defecto. El script acepta además
-`--retencion-dias` para probar localmente.
+Se fija en Railway con `RETENCION_CERRADAS_DIAS`. Sin la variable son 7. Vacía,
+`off`, `none` o `no` apagan el borrado: la API comparte esta configuración, y
+una variable vacía no debe impedir que arranque. `ge=1` rechaza 0 o negativos,
+que borrarían licitaciones recién cerradas; ahí sí falla el arranque, a
+propósito. El script acepta `--retencion-dias` (también mínimo 1) para una
+corrida local.
 
 ### 2.7 Efectos visibles
 
@@ -245,35 +240,36 @@ Antes de tocar el esquema o escribir SQL: invocar las skills `supabase` y
 - [x] Migración (rama `306-indices-tender-id`): índices sobre `tender_id` en `tender_item`, `matching_result`,
       `export_job` y `calendar_oauth_state`, con `CONCURRENTLY`. Ajustar los
       modelos. `python -m scripts.migraciones` con una sola cabeza.
-- [ ] Red: tests de `delete_many` en los repositorios de `tender_items` y
+- [x] Red: tests de `delete_many` en los repositorios de `tender_items` y
       `tender_lexical`.
-- [ ] Green: implementar `delete_many` en las dos interfaces y sus repositorios.
-- [ ] Red: sync-estados y `MarkExpiredTendersUseCase` borran de las tres
+- [x] Green: implementar `delete_many` en las dos interfaces y sus repositorios.
+- [x] Red: sync-estados y `MarkExpiredTendersUseCase` borran de las tres
       colecciones.
-- [ ] Green: inyectar los dos repositorios nuevos en esos casos de uso y en sus
+- [x] Green: inyectar los dos repositorios nuevos en esos casos de uso y en sus
       scripts.
-- [ ] Red: tests del repositorio de retención contra Postgres local. Casos:
+- [x] Red: tests del repositorio de retención contra Postgres local. Casos:
       cerrada vieja sin uso (se borra con sus partidas, resultados y
       notificaciones), cerrada vieja con cada tipo de uso de 2.2 (se conserva),
       cerrada reciente (se conserva), publicada con cierre vencido (se
       conserva, la cierra `MarkExpired` primero), uso agregado entre la
       selección y el borrado (no pierde partidas).
-- [ ] Green: `ids_borrables` y `borrar` por lotes.
-- [ ] Red: tests del caso de uso con dobles. Qdrant antes que SQL, las tres
+- [x] Green: `ids_borrables` y `borrar` por lotes.
+- [x] Red: tests del caso de uso con dobles. Qdrant antes que SQL, las tres
       colecciones, `None` en la configuración no borra nada.
-- [ ] Green: `PurgarLicitacionesCerradasUseCase`.
-- [ ] Agregar `retencion_cerradas_dias` a `app/config.py` y
+- [x] Green: `PurgarLicitacionesCerradasUseCase`.
+- [x] Agregar `retencion_cerradas_dias` a `app/config.py` y
       `--retencion-dias` al script.
-- [ ] Llamarlo al final de la corrida nocturna de `sync_diaria.py`, con aviso
-      en vez de fallo. Contar lo borrado en la fila de `ingestion_run` si ya
-      hay una columna adecuada, o en el log.
-- [ ] Extender `scripts/purgar_vectores_inactivos.py` a las tres colecciones,
+- [x] Llamarlo al final de la corrida nocturna de `sync_diaria.py`, con aviso
+      en vez de fallo. Lo borrado queda en el log de la corrida; no hay columna
+      en `ingestion_run` y agregarla sería otra migración.
+- [x] Extender `scripts/purgar_vectores_inactivos.py` a las tres colecciones,
       con `--dry-run` que cuente por colección.
 
 ### Frontend
 
-- [ ] Ninguna tarea. Revisar que nada asuma que una licitación cerrada existe
-      para siempre (enlaces guardados, notificaciones viejas).
+- [x] Ninguna tarea. Lo que podría apuntar a una licitación borrada se conserva
+      (guardadas, links compartidos) o se borra con ella (notificaciones,
+      resultados de matching).
 
 ### Después del merge (con confirmación)
 
