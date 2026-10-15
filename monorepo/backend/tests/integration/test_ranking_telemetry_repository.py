@@ -24,6 +24,8 @@ from app.domain.entities.ranking_telemetry import (
     TenderInteraction,
 )
 from app.domain.errors.tender_errors import TenderNotFound
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
+from app.infrastructure.repositories.attachment_file_model import AttachmentFileModel
 from app.infrastructure.repositories.ranking_telemetry_model import (
     AttachmentPriorityShadowModel,
     RankingImpressionModel,
@@ -33,8 +35,10 @@ from app.infrastructure.repositories.ranking_telemetry_model import (
 from app.infrastructure.repositories.ranking_telemetry_repository import (
     SqlRankingTelemetryRepository,
 )
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
+)
 from app.infrastructure.repositories.supplier_model import SupplierModel
-from app.infrastructure.repositories.tender_chat_model import TenderChatDocumentModel
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
     RegionModel,
@@ -350,29 +354,57 @@ async def test_el_upsert_de_la_metrica_deja_una_fila_con_los_valores_de_la_segun
 
 
 @pytest.mark.asyncio
-async def test_subida_manual_mira_los_documentos_del_chat_de_los_ultimos_dias(
+async def test_subida_manual_mira_los_anexos_subidos_por_empresas_en_los_ultimos_dias(
     db_session: AsyncSession,
 ):
     mundo = await sembrar(db_session)
     repo = SqlRankingTelemetryRepository(db_session)
-    for tender_id, dias in ((mundo.abierta, 2), (mundo.pronto, 10)):
-        db_session.add(
-            TenderChatDocumentModel(
-                id=uuid4(),
-                tender_id=tender_id,
-                user_id=mundo.user_id,
-                file_name="bases.pdf",
-                file_type="pdf",
-                file_size_bytes=1024,
-                storage_path="storage/bases.pdf",
-                created_at=mundo.ahora - timedelta(days=dias),
-            )
+    tenders = (mundo.abierta, mundo.pronto, mundo.cerrada)
+    attachments = SqlTenderAttachmentRepository(db_session)
+    await attachments.sync_official_lists(
+        {t: [DocumentoOficialDTO(mp_document_id=1, nombre="Bases.pdf")] for t in tenders},
+        visto_en=mundo.ahora,
+    )
+    anexo_de = {}
+    for t in tenders:
+        lista = await attachments.get_official_list(t)
+        assert lista is not None
+        anexo_de[t] = lista.attachments[0].id
+
+    def fila(tender_id: UUID, sha: str, dias: int, *, source: str, empresa: bool) -> AttachmentFileModel:
+        return AttachmentFileModel(
+            id=uuid4(),
+            tender_attachment_id=anexo_de[tender_id],
+            tender_id=tender_id,
+            sha256=sha * 64,
+            size_bytes=1024,
+            storage_key=f"x/{tender_id}/{sha}.pdf",
+            source=source,
+            uploader_user_id=mundo.user_id if empresa else None,
+            workspace_id=mundo.supplier_id if empresa else None,
+            visibility="private" if empresa else "shared",
+            trust="pending" if empresa else "corroborated",
+            status="stored",
+            created_at=mundo.ahora - timedelta(days=dias),
         )
+
+    db_session.add_all(
+        [
+            # Cuentan: subidas de una empresa, a mano o con la extensión, en la ventana.
+            fila(mundo.abierta, "a", 2, source="manual", empresa=True),
+            fila(mundo.cerrada, "b", 3, source="extension", empresa=True),
+            # No cuentan: fuera de la ventana, migradas desde el chat y la copia
+            # compartida, que es una promoción y no una subida.
+            fila(mundo.pronto, "c", 10, source="manual", empresa=True),
+            fila(mundo.pronto, "d", 1, source="legacy_chat", empresa=True),
+            fila(mundo.pronto, "e", 1, source="manual", empresa=False),
+        ]
+    )
     await db_session.commit()
 
     subidas = await repo.tenders_with_manual_upload(mundo.ahora - timedelta(days=7))
 
-    assert subidas == {mundo.abierta}
+    assert subidas == {mundo.abierta, mundo.cerrada}
 
 
 @pytest.mark.asyncio

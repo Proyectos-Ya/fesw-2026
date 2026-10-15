@@ -18,14 +18,15 @@ from app.domain.entities.ranking_telemetry import (
     RankingMetricDaily,
     TenderInteraction,
 )
+from app.domain.entities.attachment_file import AttachmentFileSource
 from app.domain.errors.tender_errors import TenderNotFound
+from app.infrastructure.repositories.attachment_file_model import AttachmentFileModel
 from app.infrastructure.repositories.ranking_telemetry_model import (
     AttachmentPriorityShadowModel,
     RankingImpressionModel,
     RankingMetricDailyModel,
     TenderInteractionModel,
 )
-from app.infrastructure.repositories.tender_chat_model import TenderChatDocumentModel
 from app.infrastructure.repositories.tender_model import TenderModel
 from app.shared.constants import PUBLICADA_STATUS_ID
 
@@ -220,11 +221,18 @@ class SqlRankingTelemetryRepository(IRankingTelemetryRepository):
         return {tender_id: total for tender_id, total in result.all()}
 
     async def tenders_with_manual_upload(self, since: datetime) -> set[UUID]:
-        # Hoy una subida manual es un documento del chat de la licitación; con la
-        # decisión 2 pasa a leer la tabla de anexos.
+        # Un anexo que subió una empresa, a mano o con la extensión. Quedan fuera
+        # la copia compartida (sin empresa: es una promoción, no una subida) y lo
+        # migrado desde el chat, cuya fecha es la de la migración.
         result = await self.session.exec(
-            select(TenderChatDocumentModel.tender_id)
-            .where(col(TenderChatDocumentModel.created_at) >= since)
+            select(AttachmentFileModel.tender_id)
+            .where(
+                col(AttachmentFileModel.created_at) >= since,
+                col(AttachmentFileModel.workspace_id).is_not(None),
+                col(AttachmentFileModel.source).in_(
+                    [AttachmentFileSource.MANUAL.value, AttachmentFileSource.EXTENSION.value]
+                ),
+            )
             .distinct()
         )
         return set(result.all())
