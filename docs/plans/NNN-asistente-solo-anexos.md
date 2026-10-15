@@ -113,8 +113,8 @@ Backend:
   la clave en la query y ya fallaba en `develop`; ahora la espera en el header
   `x-goog-api-key`.
 - [x] Red: test de integración del repositorio de telemetría. Cuenta como subida manual
-  una fila de `attachment_file` de una empresa (`workspace_id` no nulo) con `source` en
-  `manual` o `extension` de los últimos 7 días. No cuentan la copia compartida (es una
+  una fila de `attachment_file` de una empresa (`workspace_id` no nulo) con
+  `source = 'manual'` de los últimos 7 días. No cuentan la copia compartida (es una
   promoción) ni lo migrado desde el chat (`legacy_chat`, con la fecha de la migración).
 - [x] Green: la consulta de `ranking_telemetry_repository.py` lee `attachment_file` y el
   docstring de `ComputeAttachmentPriorityShadowUseCase` describe la regla nueva.

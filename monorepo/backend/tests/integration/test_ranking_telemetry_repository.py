@@ -390,9 +390,8 @@ async def test_subida_manual_mira_los_anexos_subidos_por_empresas_en_los_ultimos
 
     db_session.add_all(
         [
-            # Cuentan: subidas de una empresa, a mano o con la extensión, en la ventana.
+            # Cuenta: una subida a mano de una empresa dentro de la ventana.
             fila(mundo.abierta, "a", 2, source="manual", empresa=True),
-            fila(mundo.cerrada, "b", 3, source="extension", empresa=True),
             # No cuentan: fuera de la ventana, migradas desde el chat y la copia
             # compartida, que es una promoción y no una subida.
             fila(mundo.pronto, "c", 10, source="manual", empresa=True),
@@ -404,7 +403,7 @@ async def test_subida_manual_mira_los_anexos_subidos_por_empresas_en_los_ultimos
 
     subidas = await repo.tenders_with_manual_upload(mundo.ahora - timedelta(days=7))
 
-    assert subidas == {mundo.abierta, mundo.cerrada}
+    assert subidas == {mundo.abierta}
 
 
 @pytest.mark.asyncio

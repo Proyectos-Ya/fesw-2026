@@ -25,8 +25,7 @@ from app.shared.datetime_utils import utc_now_naive
 class ComputeAttachmentPriorityShadowUseCase:
     """Una prioridad por licitación publicada que cierra en más de 2 h y tiene alguna señal.
 
-    "Subida manual" es un anexo que una empresa subió en los últimos 7 días, a mano
-    o con la extensión.
+    "Subida manual" es un anexo que una empresa subió a mano en los últimos 7 días.
     """
 
     def __init__(

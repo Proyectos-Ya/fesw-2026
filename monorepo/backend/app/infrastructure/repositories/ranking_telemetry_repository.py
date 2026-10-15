@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.application.repositories.ranking_telemetry_repository import (
     IRankingTelemetryRepository,
 )
+from app.domain.entities.attachment_file import AttachmentFileSource
 from app.domain.entities.ranking_telemetry import (
     AttachmentPriorityShadow,
     InteractionKind,
@@ -18,7 +19,6 @@ from app.domain.entities.ranking_telemetry import (
     RankingMetricDaily,
     TenderInteraction,
 )
-from app.domain.entities.attachment_file import AttachmentFileSource
 from app.domain.errors.tender_errors import TenderNotFound
 from app.infrastructure.repositories.attachment_file_model import AttachmentFileModel
 from app.infrastructure.repositories.ranking_telemetry_model import (
@@ -221,17 +221,15 @@ class SqlRankingTelemetryRepository(IRankingTelemetryRepository):
         return {tender_id: total for tender_id, total in result.all()}
 
     async def tenders_with_manual_upload(self, since: datetime) -> set[UUID]:
-        # Un anexo que subió una empresa, a mano o con la extensión. Quedan fuera
-        # la copia compartida (sin empresa: es una promoción, no una subida) y lo
-        # migrado desde el chat, cuya fecha es la de la migración.
+        # Un anexo que una empresa subió a mano. Quedan fuera la copia compartida
+        # (sin empresa: es una promoción, no una subida) y lo migrado desde el
+        # chat, cuya fecha es la de la migración.
         result = await self.session.exec(
             select(AttachmentFileModel.tender_id)
             .where(
                 col(AttachmentFileModel.created_at) >= since,
                 col(AttachmentFileModel.workspace_id).is_not(None),
-                col(AttachmentFileModel.source).in_(
-                    [AttachmentFileSource.MANUAL.value, AttachmentFileSource.EXTENSION.value]
-                ),
+                col(AttachmentFileModel.source) == AttachmentFileSource.MANUAL.value,
             )
             .distinct()
         )
