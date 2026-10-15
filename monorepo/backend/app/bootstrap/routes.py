@@ -121,7 +121,6 @@ from app.bootstrap.tender_chat import (
     get_delete_tender_chat_doc_use_case,
     get_list_tender_chat_docs_use_case,
     get_tender_chat_history_use_case,
-    get_upload_tender_chat_doc_use_case,
 )
 from app.infrastructure.auth.dependencies import (
     build_get_current_user,
@@ -247,7 +246,6 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(
         create_tender_chat_router(
             get_current_user=get_current_user,
-            get_upload_doc_use_case=get_upload_tender_chat_doc_use_case,
             get_list_docs_use_case=get_list_tender_chat_docs_use_case,
             get_delete_doc_use_case=get_delete_tender_chat_doc_use_case,
             get_ask_assistant_use_case=get_ask_tender_assistant_use_case,

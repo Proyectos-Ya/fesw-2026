@@ -4,9 +4,7 @@ from uuid import UUID
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     HTTPException,
-    UploadFile,
     status,
 )
 
@@ -34,21 +32,16 @@ from app.domain.errors.tender_chat_errors import (
     TenderAssistantResponseError,
     TenderChatQueryInvalidError,
     TenderChatStorageError,
-    UnsupportedDocumentTypeError,
     DocumentNotFoundError,
-    MaxDocumentsExceededError,
     InvalidPromptInstruction,
     OutOfScopeQueryError,
     ChatSessionNotFoundError,
     ChatHistoryLoadError,
-    CorruptedDocumentError,
-    UnreadableDocumentError,
 )
 
 
 def create_tender_chat_router(
     get_current_user: Callable,
-    get_upload_doc_use_case: Callable,
     get_list_docs_use_case: Callable,
     get_delete_doc_use_case: Callable,
     get_ask_assistant_use_case: Callable,
@@ -153,51 +146,6 @@ def create_tender_chat_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="No se pudo iniciar una nueva sesión de conversación. Inténtalo nuevamente.",
-            )
-
-    # 2. Cargar archivo adjunto al chat
-    @router.post("/documents", status_code=status.HTTP_201_CREATED, response_model=TenderChatDocumentResponse)
-    async def upload_document(
-        tender_id: UUID,
-        file: UploadFile = File(...),
-        current_user: User = Depends(get_current_user),
-        use_case = Depends(get_upload_doc_use_case),
-        workspace_context: Annotated[
-            WorkspaceContext | None, Depends(workspace_context_dep)
-        ] = None,
-    ):
-        try:
-            file_bytes = await file.read()
-            kwargs = {
-                "tender_id": tender_id,
-                "user_id": current_user.id,
-                "file_name": file.filename or "adjunto.pdf",
-                "file_bytes": file_bytes,
-            }
-            sig = inspect.signature(use_case.execute)
-            if "supplier_id" in sig.parameters or any(
-                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-            ):
-                kwargs["supplier_id"] = (
-                    workspace_context.active_supplier_id if workspace_context else None
-                )
-
-            doc = await use_case.execute(**kwargs)
-            return _to_doc_response(doc)
-        except (
-            UnsupportedDocumentTypeError,
-            MaxDocumentsExceededError,
-            CorruptedDocumentError,
-            UnreadableDocumentError,
-            ValueError,
-        ) as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Error subiendo documento adjunto: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al subir o procesar el documento adjunto. Inténtalo nuevamente.",
             )
 
     # 3. Listar documentos adjuntos del chat

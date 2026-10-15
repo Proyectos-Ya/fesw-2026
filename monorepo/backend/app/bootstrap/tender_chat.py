@@ -22,9 +22,6 @@ from app.application.use_cases.get_tender_chat_history_use_case import (
 from app.application.use_cases.list_tender_chat_documents_use_case import (
     ListTenderChatDocumentsUseCase,
 )
-from app.application.use_cases.upload_tender_chat_document_use_case import (
-    UploadTenderChatDocumentUseCase,
-)
 from app.bootstrap.repositories import (
     AttachmentExtractionRepoDep,
     AttachmentFileRepoDep,
@@ -40,17 +37,6 @@ from app.bootstrap.services import (
     DocumentValidatorDep,
     get_tender_assistant_ai_service,
 )
-
-
-def get_upload_tender_chat_doc_use_case(
-    chat_repo: TenderChatRepoDep,
-    validator_service: DocumentValidatorDep,
-) -> UploadTenderChatDocumentUseCase:
-    # Subir al chat ya no dispara hitos ni análisis: los disparan los anexos (plan 233).
-    return UploadTenderChatDocumentUseCase(
-        chat_repo=chat_repo,
-        validator_service=validator_service,
-    )
 
 
 def get_list_tender_chat_docs_use_case(

@@ -13,9 +13,7 @@ from app.domain.entities.user import User
 from app.domain.errors.tender_chat_errors import (
     TenderChatQueryTooLongError,
     TenderAssistantUnavailableError,
-    UnsupportedDocumentTypeError,
     DocumentNotFoundError,
-    MaxDocumentsExceededError,
     InvalidPromptInstruction,
 )
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
@@ -37,7 +35,6 @@ def mock_user():
 @pytest.fixture
 def mock_use_cases():
     class MockUseCases:
-        upload_doc = None
         list_docs = None
         delete_doc = None
         ask_assistant = None
@@ -52,9 +49,6 @@ def app(mock_user, mock_use_cases):
 
     def get_current_user():
         return mock_user
-
-    def get_upload_use_case():
-        return mock_use_cases.upload_doc
 
     def get_list_use_case():
         return mock_use_cases.list_docs
@@ -73,7 +67,6 @@ def app(mock_user, mock_use_cases):
 
     router = create_tender_chat_router(
         get_current_user=get_current_user,
-        get_upload_doc_use_case=get_upload_use_case,
         get_list_docs_use_case=get_list_use_case,
         get_delete_doc_use_case=get_delete_use_case,
         get_ask_assistant_use_case=get_ask_use_case,
@@ -84,54 +77,16 @@ def app(mock_user, mock_use_cases):
     return app
 
 
-
 @pytest.mark.asyncio
-async def test_upload_document_endpoint_success(app, mock_use_cases, mock_user):
+async def test_upload_document_endpoint_no_longer_exists(app):
+    """El asistente lee solo los anexos: subir al chat ya no está permitido."""
     tender_id = uuid4()
-    doc_id = uuid4()
-
-    class FakeUploadUseCase:
-        async def execute(self, tender_id, user_id, file_name, file_bytes, file_type=None):
-            return TenderChatDocument(
-                id=doc_id,
-                tender_id=tender_id,
-                user_id=user_id,
-                file_name=file_name,
-                file_type="pdf",
-                file_size_bytes=len(file_bytes),
-                storage_path=f"uploads/{file_name}",
-            )
-
-    mock_use_cases.upload_doc = FakeUploadUseCase()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         files = {"file": ("bases.pdf", b"%PDF-1.4 sample", "application/pdf")}
         response = await client.post(f"/tenders/{tender_id}/assistant/documents", files=files)
 
-    assert response.status_code == status.HTTP_201_CREATED
-    data = response.json()
-    assert data["id"] == str(doc_id)
-    assert data["file_name"] == "bases.pdf"
-    assert data["file_type"] == "pdf"
-
-
-@pytest.mark.asyncio
-async def test_upload_unsupported_document_returns_400(app, mock_use_cases):
-    tender_id = uuid4()
-
-    class FailingUploadUseCase:
-        async def execute(self, **kwargs):
-            raise UnsupportedDocumentTypeError()
-
-    mock_use_cases.upload_doc = FailingUploadUseCase()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        files = {"file": ("malware.exe", b"exe data", "application/octet-stream")}
-        response = await client.post(f"/tenders/{tender_id}/assistant/documents", files=files)
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Solo se aceptan PDF, XLSX y PNG" in response.json()["detail"]
-
+    assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 @pytest.mark.asyncio
 async def test_list_documents_endpoint_success(app, mock_use_cases, mock_user):
@@ -400,26 +355,6 @@ async def test_ask_assistant_with_session_id_success(app, mock_use_cases, mock_u
     assert data["id"] == str(msg_id)
     assert data["session_id"] == str(session_id)
     assert data["content"] == "Respuesta en sesión"
-
-
-@pytest.mark.asyncio
-async def test_upload_corrupted_document_returns_400(app, mock_use_cases):
-    from app.domain.errors.tender_chat_errors import CorruptedDocumentError
-
-    tender_id = uuid4()
-
-    class CorruptUploadUseCase:
-        async def execute(self, **kwargs):
-            raise CorruptedDocumentError("El archivo 'bases_danadas.pdf' está dañado o no posee cabecera válida.")
-
-    mock_use_cases.upload_doc = CorruptUploadUseCase()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        files = {"file": ("bases_danadas.pdf", b"corrupted data", "application/pdf")}
-        response = await client.post(f"/tenders/{tender_id}/assistant/documents", files=files)
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "está dañado o no posee cabecera válida" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

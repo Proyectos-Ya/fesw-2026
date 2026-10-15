@@ -13,18 +13,8 @@ class TenderAssistantUnavailableError(TenderChatError):
         super().__init__(message)
 
 
-class UnsupportedDocumentTypeError(TenderChatError):
-    def __init__(self, message: str = "Tipo de archivo no permitido. Solo se aceptan PDF, XLSX y PNG."):
-        super().__init__(message)
-
-
 class DocumentNotFoundError(TenderChatError):
     def __init__(self, message: str = "El documento solicitado no existe o no pertenece a este chat."):
-        super().__init__(message)
-
-
-class MaxDocumentsExceededError(TenderChatError):
-    def __init__(self, message: str = "Se ha alcanzado el límite máximo de documentos adjuntos por chat."):
         super().__init__(message)
 
 
@@ -52,18 +42,6 @@ class ChatHistoryLoadError(TenderChatError):
         self,
         message: str = "No se pudo cargar el historial de la conversación. Por favor reintente más tarde o inicie un nuevo chat.",
     ):
-        super().__init__(message)
-
-
-class CorruptedDocumentError(TenderChatError):
-    """Excepción lanzada cuando el archivo subido está corrupto, dañado o truncado."""
-    def __init__(self, message: str = "El documento adjunto está dañado o corrupto y no puede ser procesado."):
-        super().__init__(message)
-
-
-class UnreadableDocumentError(TenderChatError):
-    """Excepción lanzada cuando el documento es ilegible o no se puede extraer su contenido."""
-    def __init__(self, message: str = "No fue posible leer o extraer el contenido del documento adjunto."):
         super().__init__(message)
 
 

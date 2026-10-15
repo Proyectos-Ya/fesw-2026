@@ -12,9 +12,7 @@ from app.domain.errors.tender_chat_errors import (
     TenderChatError,
     TenderChatQueryTooLongError,
     TenderAssistantUnavailableError,
-    UnsupportedDocumentTypeError,
     DocumentNotFoundError,
-    MaxDocumentsExceededError,
 )
 
 
@@ -177,15 +175,8 @@ def test_domain_errors_messages_and_hierarchy():
     assert isinstance(err_unavail, TenderChatError)
     assert "El asistente virtual se encuentra temporalmente fuera de servicio" in str(err_unavail)
 
-    err_type = UnsupportedDocumentTypeError()
-    assert isinstance(err_type, TenderChatError)
-    assert "PDF, XLSX y PNG" in str(err_type)
-
     err_not_found = DocumentNotFoundError()
     assert isinstance(err_not_found, TenderChatError)
-
-    err_max = MaxDocumentsExceededError()
-    assert isinstance(err_max, TenderChatError)
 
 
 def test_create_valid_document_discrepancy():
@@ -264,20 +255,3 @@ def test_assistant_chat_message_with_discrepancies_and_warnings():
     assert "anexo_3.pdf" in msg.warnings[0]
     assert msg.unbacked_aspects == ["Presupuesto disponible estimado"]
     assert msg.has_sufficient_info is False
-
-
-def test_corrupted_and_unreadable_document_errors():
-    """Verifica que CorruptedDocumentError y UnreadableDocumentError hereden de TenderChatError y tengan mensajes adecuados."""
-    from app.domain.errors.tender_chat_errors import (
-        CorruptedDocumentError,
-        UnreadableDocumentError,
-    )
-
-    err_corrupt = CorruptedDocumentError("El archivo anexo.pdf está dañado o no tiene formato válido.")
-    assert isinstance(err_corrupt, TenderChatError)
-    assert "dañado" in str(err_corrupt)
-
-    err_unreadable = UnreadableDocumentError("No fue posible extraer o leer el contenido del documento.")
-    assert isinstance(err_unreadable, TenderChatError)
-    assert "leer el contenido" in str(err_unreadable)
-
