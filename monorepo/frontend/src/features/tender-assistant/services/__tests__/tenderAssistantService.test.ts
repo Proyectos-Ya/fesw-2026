@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTenderChatSession,
-  uploadTenderDocument,
   listTenderDocuments,
   deleteTenderDocument,
   askTenderAssistant,
@@ -69,27 +68,6 @@ describe("tenderAssistantService", () => {
         title: "Nuevo Hilo",
       });
       expect(result).toEqual(mockSession);
-    });
-  });
-
-  describe("uploadTenderDocument", () => {
-    it("envía archivo vía FormData a /tenders/:tenderId/assistant/documents", async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 201,
-        json: async () => mockDoc,
-      });
-      vi.stubGlobal("fetch", fetchMock);
-
-      const file = new File(["dummy content"], "bases.pdf", { type: "application/pdf" });
-      const result = await uploadTenderDocument("tender-abc", file);
-
-      expect(fetchMock).toHaveBeenCalledOnce();
-      const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toContain("/tenders/tender-abc/assistant/documents");
-      expect(options.method).toBe("POST");
-      expect(options.body).toBeInstanceOf(FormData);
-      expect(result).toEqual(mockDoc);
     });
   });
 

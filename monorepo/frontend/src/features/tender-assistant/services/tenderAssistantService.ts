@@ -15,22 +15,6 @@ export function createTenderChatSession(
 }
 
 /**
- * Carga un documento adjunto para el asistente de la licitación (.pdf, .xlsx, .png).
- */
-export function uploadTenderDocument(
-  tenderId: string,
-  file: File,
-): Promise<TenderChatDocument> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  return apiFetch<TenderChatDocument>(`/tenders/${tenderId}/assistant/documents`, {
-    method: "POST",
-    body: formData,
-  });
-}
-
-/**
  * Obtiene la lista de documentos adjuntos asociados al chat de la licitación.
  */
 export function listTenderDocuments(tenderId: string): Promise<TenderChatDocument[]> {

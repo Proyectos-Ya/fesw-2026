@@ -53,13 +53,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
         },
       ],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -104,13 +100,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: docErrorMsg,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -170,13 +162,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -219,13 +207,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -262,13 +246,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -311,13 +291,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 
@@ -376,13 +352,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
       documents: [],
       isLoading: false,
-      isUploading: false,
       error: null,
-      canUpload: true,
-      maxDocuments: 10,
       clearError: vi.fn(),
       loadDocuments: vi.fn(),
-      uploadDocument: vi.fn(),
       removeDocument: vi.fn(),
     });
 

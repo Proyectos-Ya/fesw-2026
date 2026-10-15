@@ -893,7 +893,6 @@ export function TenderDetailView({
         tenderTitle={tender.name}
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
-        onDocumentsChanged={() => setMilestonesRefreshKey((k) => k + 1)}
       />
     </section>
   );

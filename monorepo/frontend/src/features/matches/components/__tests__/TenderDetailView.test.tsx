@@ -38,11 +38,7 @@ vi.mock("../../services/tenderService", () => ({
 }));
 
 vi.mock("@/features/tender-assistant/components/TenderAssistantDrawer", () => ({
-  TenderAssistantDrawer: ({ onDocumentsChanged }: { onDocumentsChanged?: () => void }) => (
-    <button type="button" onClick={onDocumentsChanged}>
-      simular subida de bases
-    </button>
-  ),
+  TenderAssistantDrawer: () => null,
 }));
 
 vi.mock("@/features/proposals/components/ProposalEntryCard", () => ({
@@ -182,17 +178,6 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
 
     expect(await screen.findByText("Requisitos y descripción")).toBeInTheDocument();
     expect(screen.getByTestId("digest-card")).toHaveTextContent("tender-50");
-  });
-
-  it("al subir bases en el asistente recarga la tabla de hitos (HU-16)", async () => {
-    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
-    render(<TenderDetailView tenderId="tender-50" />);
-    const seccion = await screen.findByTestId("milestones-section");
-    const antes = seccion.getAttribute("data-refresh-key");
-
-    await user.click(screen.getByRole("button", { name: "simular subida de bases" }));
-
-    expect(screen.getByTestId("milestones-section").getAttribute("data-refresh-key")).not.toBe(antes);
   });
 
   it("al subir un anexo recarga la tabla de hitos (plan 233)", async () => {

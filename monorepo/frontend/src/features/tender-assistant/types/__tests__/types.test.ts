@@ -3,14 +3,9 @@ import {
   TenderChatMessage,
   DocumentDiscrepancy,
   Citation,
-  MAX_ATTACHED_DOCUMENTS,
 } from "../index";
 
 describe("Tender Assistant Types and Contracts (HU-05.2)", () => {
-  it("should define MAX_ATTACHED_DOCUMENTS constant as 10", () => {
-    expect(MAX_ATTACHED_DOCUMENTS).toBe(10);
-  });
-
   it("should construct a valid DocumentDiscrepancy object with conflicting sources", () => {
     const citationA: Citation = {
       document_name: "Bases_Administrativas.pdf",

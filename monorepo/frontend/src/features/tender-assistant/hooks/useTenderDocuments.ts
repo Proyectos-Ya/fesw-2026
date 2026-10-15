@@ -3,25 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { TenderChatDocument } from "../types";
-import { MAX_ATTACHED_DOCUMENTS } from "../types";
 import {
   listTenderDocuments,
-  uploadTenderDocument,
   deleteTenderDocument,
 } from "../services/tenderAssistantService";
 import { formatTenderAssistantError } from "../services/tenderErrorUtils";
 
 /**
- * @param onDocumentsChanged Se llama tras subir un documento: la IA extrae sus
- *   hitos en segundo plano (HU-16) y la ficha tiene que recargar la tabla.
+ * Documentos que quedaron en el chat antes de retirar la subida. El asistente lee
+ * los anexos de la licitación; acá solo se listan y se pueden borrar.
  */
-export function useTenderDocuments(tenderId: string, onDocumentsChanged?: () => void) {
+export function useTenderDocuments(tenderId: string) {
   const [documents, setDocuments] = useState<TenderChatDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
-  const canUpload = documents.length < MAX_ATTACHED_DOCUMENTS;
 
   const loadDocuments = useCallback(async () => {
     if (!tenderId) {
@@ -44,32 +39,6 @@ export function useTenderDocuments(tenderId: string, onDocumentsChanged?: () => 
       setIsLoading(false);
     }
   }, [tenderId]);
-
-  const uploadDocument = async (file: File): Promise<TenderChatDocument> => {
-    if (documents.length >= MAX_ATTACHED_DOCUMENTS) {
-      const limitMsg = `Se ha alcanzado el límite máximo de ${MAX_ATTACHED_DOCUMENTS} documentos adjuntos por chat.`;
-      setError(limitMsg);
-      throw new Error(limitMsg);
-    }
-
-    setIsUploading(true);
-    setError(null);
-    try {
-      const newDoc = await uploadTenderDocument(tenderId, file);
-      setDocuments((prev) => [...prev, newDoc]);
-      onDocumentsChanged?.();
-      return newDoc;
-    } catch (err) {
-      const msg = formatTenderAssistantError(
-        err,
-        "Error al subir documento. Verifica el formato y tamaño.",
-      );
-      setError(msg);
-      throw new Error(msg);
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   const removeDocument = async (documentId: string): Promise<void> => {
     setError(null);
@@ -94,13 +63,9 @@ export function useTenderDocuments(tenderId: string, onDocumentsChanged?: () => 
   return {
     documents,
     isLoading,
-    isUploading,
     error,
-    canUpload,
-    maxDocuments: MAX_ATTACHED_DOCUMENTS,
     clearError,
     loadDocuments,
-    uploadDocument,
     removeDocument,
   };
 }

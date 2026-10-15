@@ -2,8 +2,6 @@ export type TenderChatRole = "user" | "assistant";
 
 export type SupportedDocumentType = "pdf" | "xlsx" | "png";
 
-export const MAX_ATTACHED_DOCUMENTS = 10;
-
 export interface Citation {
   document_name: string;
   page_or_sheet: string | null;

@@ -12,8 +12,6 @@ export interface DocumentAttachmentManagerProps {
   documents: TenderChatDocument[];
   onDelete: (documentId: string) => Promise<unknown> | void;
   onNavigateToPanel?: () => void;
-  onUpload?: (file: File) => Promise<unknown> | void;
-  isUploading?: boolean;
   externalError?: string | null;
 }
 
