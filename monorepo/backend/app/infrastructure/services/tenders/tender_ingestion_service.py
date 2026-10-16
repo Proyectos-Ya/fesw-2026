@@ -248,13 +248,16 @@ def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
 
 def _orden_cola(modo: ModoCola) -> list:
     if modo is ModoCola.NUEVAS:
-        # Primero lo que baja la latencia de entrada: lo que no tenemos.
+        # Primero lo que nunca falló: si una que ya dio 504 va al frente, el
+        # cortacircuito salta antes de llegar al resto. El 2026-10-15 pasó en
+        # las 12 corridas del día y 1.104 actualizar nunca se pidieron. Dentro
+        # de cada número de intentos, las nuevas antes que las actualizar.
         nueva_primero = case(
             (col(TenderMetadataModel.pending_reason) == "nueva", 0), else_=1
         )
         return [
-            nueva_primero,
             col(TenderMetadataModel.attempts).asc(),
+            nueva_primero,
             col(TenderMetadataModel.created_at).asc(),
         ]
     if modo is ModoCola.REINTENTOS:

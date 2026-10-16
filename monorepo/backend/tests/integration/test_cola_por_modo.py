@@ -100,6 +100,31 @@ class TestModoNuevas:
 
         assert cliente.pedidos == ["NUEVA-1", "ACT-1"]
 
+    async def test_lo_que_nunca_fallo_va_antes_que_lo_que_ya_fallo(
+        self, entorno, monkeypatch
+    ):
+        """Una nueva que ya dio 504 va después de una actualizar sin intentos.
+
+        El 2026-10-15 la cola ordenaba primero por etiqueta: 451 nuevas que ya
+        habían dado 504 (la mayoría con un 504 permanente) iban al frente, el
+        cortacircuito saltaba en las 12 corridas del día y 1.104 actualizar
+        sin intentos nunca se pidieron.
+        """
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "mercadopublico_detail_concurrency", 1)
+        await _encolar(entorno, ["NUEVA-FALLO", "ACT-0", "NUEVA-0"])
+        await _ajustar(entorno, "NUEVA-FALLO", pending_reason="nueva", attempts=2)
+        await _ajustar(entorno, "ACT-0", pending_reason="actualizar")
+        await _ajustar(entorno, "NUEVA-0", pending_reason="nueva")
+        cliente = ClienteFalso()
+
+        await _servicio(entorno, cliente).process_unprocessed_tenders(
+            modo=ModoCola.NUEVAS
+        )
+
+        assert cliente.pedidos == ["NUEVA-0", "ACT-0", "NUEVA-FALLO"]
+
     async def test_una_que_falla_se_reintenta_de_dia_y_luego_espera_la_noche(
         self, entorno
     ):
