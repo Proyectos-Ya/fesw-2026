@@ -29,7 +29,7 @@ class TestValoresPorDefecto:
         s = _construir()
         assert s.sync_estados_ventana_horas == 2.0
         assert s.sync_estados_limite == 9000
-        assert s.sync_estados_timeout_minutos == 50.0
+        assert s.sync_estados_timeout_minutos == 55.0
 
     def test_incompletas_toleradas(self):
         """3 seguidas = 3 h con la API fallando: ahí sí vale un correo."""

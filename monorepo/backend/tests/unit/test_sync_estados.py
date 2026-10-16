@@ -464,3 +464,50 @@ class TestLineaDeResumen:
         resumen = _resumen(capsys.readouterr().out)
         assert resumen["cancelada"] is True
         assert resumen["aplicadas"] == 1
+
+
+class TestVencerElTopeEsUnaIncompleta:
+    """Vencer el tope cuenta como corrida incompleta, no como error (plan 305).
+
+    Las páginas que llegaron ya se aplicaron, y la ventana de 2 h hace que la
+    corrida siguiente cubra el resto. El 2026-10-16 a las 14:02 una corrida
+    venció el tope con 3.330 cambios aplicados y Railway mandó un correo de
+    "crashed" por algo que la superposición resolvía sola. Sale con 1 solo si
+    se juntan `--incompletas-toleradas` seguidas, como los cortes por 504.
+    """
+
+    async def test_al_vencer_avisa_cuantas_incompletas_van_seguidas(self):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]], colgar_despues=1)
+        piezas.incompletas_antes = 1
+        avisadas: list[int] = []
+
+        async def correr() -> int:
+            return await sincronizar_estados(
+                _args(),
+                listar=piezas.listar,
+                aplicar=piezas.aplicar,
+                marcar_vencidas=piezas.marcar_vencidas,
+                abrir_corrida=piezas.abrir,
+                cerrar_corrida=piezas.cerrar,
+                al_vencer=avisadas.append,
+            )
+
+        await con_tope(correr(), segundos=0.05)
+
+        assert avisadas == [2]
+
+    async def test_el_codigo_al_vencer_sale_de_la_racha(self):
+        async def colgada() -> int:
+            await asyncio.sleep(10)
+            return 0
+
+        assert await con_tope(colgada(), segundos=0.01, codigo_al_vencer=lambda: 0) == 0
+
+    def test_codigo_por_racha(self):
+        from scripts.sync_estados import codigo_por_racha
+
+        assert codigo_por_racha(1, toleradas=3) == 0
+        assert codigo_por_racha(2, toleradas=3) == 0
+        assert codigo_por_racha(3, toleradas=3) == 1
+        # Sin saber cuántas van (la fila no se pudo cerrar), se avisa.
+        assert codigo_por_racha(None, toleradas=3) == 1

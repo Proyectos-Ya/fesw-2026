@@ -131,12 +131,12 @@ class TestEmbeddingsContados:
 
 
 class TestConcurrenciaDelListado:
-    """Los crons piden el listado de a 4 páginas (plan 305), configurable."""
+    """Los crons piden el listado de a 6 páginas (plan 305), configurable."""
 
-    def test_por_defecto_es_4(self):
+    def test_por_defecto_es_6(self):
         from app.config import Settings
 
-        assert Settings.model_fields["mercadopublico_listing_concurrency"].default == 4
+        assert Settings.model_fields["mercadopublico_listing_concurrency"].default == 6
 
     def test_construir_servicio_la_pasa_al_cliente(self, monkeypatch):
         from app.config import settings

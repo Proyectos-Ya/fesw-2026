@@ -151,8 +151,10 @@ class Settings(BaseSettings):
     # 2026-10-13: ~13 s por página de 10; de a una, una ventana de 2 h en hora
     # punta (~210 páginas) rozaba el tope de 50 min de sync_estados. Con 3, el
     # 2026-10-14 la corrida más pesada (3.624 cambios) tardó 45 min; con 4
-    # baja a ~34 y el 504 del listado se mantuvo entre 3 y 7%.
-    mercadopublico_listing_concurrency: int = 4
+    # baja a ~34 y el 504 del listado se mantuvo entre 3 y 7%. El 2026-10-16 a
+    # las 14:02 una corrida con 4 venció el tope de 50 min (504 al 15%, p50 de
+    # 19,7 s por página), así que se sube a 6.
+    mercadopublico_listing_concurrency: int = 6
     # Cron de estados (`scripts/sync_estados.py`). Por entorno para poder ajustar
     # la ventana sin un PR: el volumen de cambios varía mucho según la hora
     # (~1.600 por hora a mediodía, medido el 2026-09-29). El techo de la ventana
@@ -160,7 +162,9 @@ class Settings(BaseSettings):
     # impedir que arranque la API, que comparte esta configuración.
     sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
     sync_estados_limite: int = Field(default=9000, gt=0)
-    sync_estados_timeout_minutos: float = Field(default=50.0, gt=0)
+    # 55 min: queda bajo el intervalo de 1 h, para que la corrida siguiente no
+    # se omita, y vencerlo cuenta como incompleta (ver `con_tope`).
+    sync_estados_timeout_minutos: float = Field(default=55.0, gt=0)
     # Corridas incompletas seguidas (la API cortó el listado) que se toleran
     # saliendo con 0. Una suelta la cubre la ventana de la siguiente; recién al
     # juntar estas hay horas sin mirar y vale el correo de "crashed" de Railway.

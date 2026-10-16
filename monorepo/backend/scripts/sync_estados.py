@@ -39,7 +39,7 @@ El volumen manda sobre el tamaño. Medido el 2026-09-29 a mediodía: **1.620
 cambios en una hora** (661 publicadas, 535 cerradas, 64 desiertas, 24
 canceladas) y 3.090 en dos. Medido el 2026-10-13 en hora punta: ~2.100 cambios
 en 2 h, y a 10 por página y ~13,5 s por página son ~210 páginas y unos 47 min,
-justo bajo el tope de 50 min. Con 20 por página la mitad de las páginas daba 504
+justo bajo el tope de 50 min de entonces (hoy 55). Con 20 por página la mitad de las páginas daba 504
 y la corrida vencía el tope. El techo es 6 h porque la API
 corta el listado en 10.000 resultados y a ese ritmo 6 h ya rondan los 9.000.
 
@@ -116,8 +116,8 @@ from scripts.sync_diaria import verificar_destino
 # incompletas toleradas vienen de `SYNC_ESTADOS_VENTANA_HORAS`,
 # `SYNC_ESTADOS_LIMITE`, `SYNC_ESTADOS_TIMEOUT_MINUTOS` y
 # `SYNC_ESTADOS_INCOMPLETAS_TOLERADAS` (ver `app/config.py`): 2 h, 9.000 (bajo
-# los 10.000 en que corta la API), 50 min (en hora punta una corrida lista ~150
-# páginas, 15-30 min, y el tope tiene que quedar bajo el intervalo de 1 h) y 3.
+# los 10.000 en que corta la API), 55 min (el tope tiene que quedar bajo el intervalo
+# de 1 h; vencerlo cuenta como incompleta) y 3.
 MAX_VENTANA_HORAS = 6.0
 
 
@@ -134,22 +134,44 @@ def validar_ventana(horas: float) -> str | None:
     return None
 
 
-async def con_tope(corutina: Coroutine[Any, Any, int], segundos: float) -> int:
-    """Corre con un tope de tiempo y lo da por fallido al vencer.
+def codigo_por_racha(seguidas: int | None, *, toleradas: int) -> int:
+    """El código de salida de una corrida incompleta según la racha.
+
+    `seguidas` incluye a esta corrida. `None` es que no hay historial (la fila
+    no se pudo cerrar), y entonces se avisa con 1.
+    """
+    if seguidas is None or seguidas >= toleradas:
+        return 1
+    return 0
+
+
+async def con_tope(
+    corutina: Coroutine[Any, Any, int],
+    segundos: float,
+    codigo_al_vencer: Callable[[], int] | None = None,
+) -> int:
+    """Corre con un tope de tiempo y decide el código de salida al vencer.
 
     Railway no termina una corrida colgada y omite las siguientes: sin tope, un
     cron que espera una respuesta que no llega deja de correr para siempre.
+
+    Vencer el tope es una corrida incompleta más (plan 305): las páginas que
+    llegaron ya se aplicaron y la ventana de la siguiente cubre el resto.
+    `codigo_al_vencer()` devuelve 0 mientras la racha de incompletas esté
+    dentro de lo tolerado. Sin él, sale con 1.
     """
     try:
         return await asyncio.wait_for(corutina, timeout=segundos)
     except TimeoutError:
+        codigo = codigo_al_vencer() if codigo_al_vencer is not None else 1
+        nivel = "AVISO" if codigo == 0 else "ERROR"
         print(
-            f"\nERROR: la corrida superó el tope de {segundos / 60:.0f} min y se "
+            f"\n{nivel}: la corrida superó el tope de {segundos / 60:.0f} min y se "
             "canceló. Las páginas que alcanzaron a llegar ya se aplicaron y la "
             "corrida quedó registrada como incompleta; la siguiente vuelve a "
             "listar la ventana."
         )
-        return 1
+        return codigo
 
 
 AlRecibir = Callable[[list[CambioDeEstado]], Awaitable[None]]
@@ -168,6 +190,7 @@ async def sincronizar_estados(
     | None = None,
     peticiones: Callable[[], int] | None = None,
     metricas: Callable[[], dict[str, Any]] | None = None,
+    al_vencer: Callable[[int | None], None] | None = None,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
@@ -185,8 +208,9 @@ async def sincronizar_estados(
     `abrir_corrida` registra la corrida al empezar y `cerrar_corrida(id,
     completo, listadas, peticiones)` la cierra y devuelve cuántas incompletas van
     seguidas contándola. Si vence el tope, se cierra como incompleta con lo que
-    alcanzó a listar. Sin ellos no hay historial y cualquier incompleta sale
-    con 1.
+    alcanzó a listar, y `al_vencer` recibe cuántas incompletas van seguidas
+    (`None` sin historial) para que `con_tope` decida el código de salida. Sin
+    ellos no hay historial y cualquier incompleta sale con 1.
     """
     inicio = time.perf_counter()
     if preparar_destino is not None:
@@ -244,7 +268,10 @@ async def sincronizar_estados(
     except asyncio.CancelledError:
         # Venció el tope: la fila queda cerrada como incompleta y cuenta para la
         # racha, en vez de desaparecer como antes.
-        await cerrar(False, aplicadas)
+        seguidas = await cerrar(False, aplicadas)
+        if al_vencer is not None:
+            historial = corrida is not None and cerrar_corrida is not None
+            al_vencer(seguidas if historial else None)
         resumir(cancelada=True, completo=False)
         raise
 
@@ -356,7 +383,9 @@ async def _cerrar(
         )
 
 
-async def _correr(args: argparse.Namespace) -> int:
+async def _correr(
+    args: argparse.Namespace, al_vencer: Callable[[int | None], None]
+) -> int:
     """Arma las piezas reales y cierra lo que abrió.
 
     Railway omite la ejecución siguiente de un cron si la anterior sigue viva:
@@ -379,6 +408,7 @@ async def _correr(args: argparse.Namespace) -> int:
             ),
             peticiones=lambda: servicio.client.peticiones,
             metricas=servicio.client.resumen,
+            al_vencer=al_vencer,
         )
     finally:
         await engine.dispose()
@@ -450,7 +480,24 @@ def main() -> None:
         print(mensaje, file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(asyncio.run(con_tope(_correr(args), segundos=args.timeout_minutos * 60)))
+    # La racha la conoce `sincronizar_estados` al cerrar la fila cancelada; el
+    # código de salida lo decide `con_tope`, que es quien atrapa el tope.
+    racha: list[int | None] = [None]
+
+    def anotar(seguidas: int | None) -> None:
+        racha[0] = seguidas
+
+    sys.exit(
+        asyncio.run(
+            con_tope(
+                _correr(args, anotar),
+                segundos=args.timeout_minutos * 60,
+                codigo_al_vencer=lambda: codigo_por_racha(
+                    racha[0], toleradas=args.incompletas_toleradas
+                ),
+            )
+        )
+    )
 
 
 if __name__ == "__main__":

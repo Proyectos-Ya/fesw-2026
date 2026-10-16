@@ -133,8 +133,9 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
   - **Guarda de escritura:** solo escribe si cambió `api_changed_at` o
     `api_status_code`.
 - `sync_estados_run` se inserta al empezar y se cierra al terminar. Si vence el
-  tope, queda incompleta con lo listado hasta ahí. Se corrige el texto de
-  `con_tope`.
+  tope, queda incompleta con lo listado hasta ahí y cuenta para la racha de
+  incompletas: sale con 0 hasta juntar `--incompletas-toleradas` seguidas,
+  igual que un listado cortado por 504.
 
 ### 2.4 Ingesta
 
@@ -263,6 +264,12 @@ debería bajar a ~34. El 504 del listado quedó entre 3 y 7%.
   tope registra lo que alcanzó a procesar.
 - `preparar_destino` crea también la colección `tender_lexical` del spike 2;
   sin ella, la ingesta fallaba en cada licitación con texto nuevo.
+- El 10-16 a las 14:02 UTC sync-estados venció el tope de 50 min en la página
+  337, con 3.330 cambios aplicados, 504 al 15% y 19,7 s por página (p50).
+  Railway lo reportó como caída aunque la ventana de 2 h de la corrida
+  siguiente cubría lo que faltó. Se cambiaron tres cosas: el listado se pide de
+  a 6 páginas, el tope sube a 55 min y vencerlo cuenta como incompleta en vez
+  de salir siempre con 1.
 
 ---
 
