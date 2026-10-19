@@ -247,7 +247,7 @@ def _avisos_del_vaciado(resultado: ResultadoRondas) -> None:
         )
     elif resultado.api_caida:
         print(
-            "\nAVISO: la API devolvió errores seguidos y se cortó el vaciado sin\n"
+            "\nAVISO: casi todos los últimos detalles fallaron y se cortó el vaciado sin\n"
             "cobrar intentos a lo que faltaba. Lo retoma la corrida siguiente."
         )
     elif resultado.sin_avance:

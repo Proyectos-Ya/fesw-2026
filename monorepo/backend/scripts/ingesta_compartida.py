@@ -251,7 +251,8 @@ class ResultadoRondas:
     segundos: float = 0.0
     cuota_agotada: bool = False
     sin_avance: bool = False
-    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    # El cortacircuito saltó: casi todos los últimos detalles dieron un error
+    # transitorio.
     api_caida: bool = False
 
     @property
@@ -281,8 +282,8 @@ async def vaciar_cola(
     * **Cuota agotada.** Seguir gasta los cuatro reintentos del cliente contra
       una cuota que ya no existe. Se para y se retoma en la corrida siguiente:
       lo que está encolado no se pierde.
-    * **API caída.** El cortacircuito del servicio saltó con errores
-      transitorios seguidos. La ronda siguiente se los volvería a cobrar.
+    * **API caída.** El cortacircuito del servicio saltó: fallaron 27 de los
+      últimos 30 detalles. La ronda siguiente se los volvería a cobrar.
     * **Varias rondas sin avance.** Alguna licitación está fallando de forma
       reproducible, o la API está caída. Insistir para siempre bloquearía la
       cola. Una ronda que procesa menos de `EXITO_MINIMO_POR_PASADA` de lo que

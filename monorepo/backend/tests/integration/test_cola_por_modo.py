@@ -11,8 +11,8 @@ Reglas que protege:
   quinto fallo, la fila pasa a terminal.
 - **Terminal** (`discarded_at`) no se vuelve a pedir en ningún modo. Un error
   que no es de la API, al tercer intento, también termina ahí.
-- **Cortacircuito.** Diez errores transitorios seguidos cortan la pasada sin
-  cobrarle intentos a las filas que no se alcanzaron a pedir.
+- **Cortacircuito.** Cuando fallan 27 de los últimos 30 detalles, la pasada se
+  corta sin cobrarle intentos a las filas que no se alcanzaron a pedir.
 - **Carrera con el cron de estados.** Si el listado vio un cambio posterior al
   pedido del detalle, no se escribe ese detalle viejo: la fila queda pendiente.
 """
@@ -31,10 +31,10 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
 )
 from app.infrastructure.services.tenders.tender_ingestion_service import (
+    FALLAS_CORTACIRCUITO,
     MAX_INTENTOS_DIURNOS,
     MAX_INTENTOS_INGESTA,
     MAX_REINTENTOS_NOCTURNOS,
-    UMBRAL_CORTACIRCUITO,
 )
 from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import contar_pendientes
@@ -270,7 +270,7 @@ class TestCortacircuito:
         from app.config import settings
 
         monkeypatch.setattr(settings, "mercadopublico_detail_concurrency", 1)
-        codigos = [f"CAE-{i:02d}" for i in range(UMBRAL_CORTACIRCUITO + 5)]
+        codigos = [f"CAE-{i:02d}" for i in range(FALLAS_CORTACIRCUITO + 5)]
         await _encolar(entorno, codigos)
         cliente = ClienteFalso(
             {c: ErrorTransitorioMercadoPublico("504") for c in codigos}
@@ -281,26 +281,34 @@ class TestCortacircuito:
         )
 
         assert resultado.api_caida is True
-        assert len(cliente.pedidos) == UMBRAL_CORTACIRCUITO
+        assert len(cliente.pedidos) == FALLAS_CORTACIRCUITO
         sin_pedir = await _metadata(entorno, codigos[-1])
         assert sin_pedir.attempts == 0
 
-    async def test_un_exito_reinicia_la_cuenta(self, entorno, monkeypatch):
+    async def test_con_exitos_intercalados_no_corta(self, entorno, monkeypatch):
+        """Un tercio falla, como en la hora punta del 2026-10-19.
+
+        Con 15 fallas entre 45 no hay 27 en ninguna ventana de 30, sea cual sea
+        el orden en que la cola las entregue.
+        """
         from app.config import settings
 
         monkeypatch.setattr(settings, "mercadopublico_detail_concurrency", 1)
-        fallan = [f"CAE-{i:02d}" for i in range(UMBRAL_CORTACIRCUITO - 1)]
-        codigos = [*fallan, "OK-50", *[f"CAE-B{i}" for i in range(3)]]
+        codigos = [f"MIX-{i:02d}" for i in range(45)]
         await _encolar(entorno, codigos)
         comportamiento = {
-            c: ErrorTransitorioMercadoPublico("504") for c in codigos if c != "OK-50"
+            c: ErrorTransitorioMercadoPublico("504")
+            for i, c in enumerate(codigos)
+            if i % 3 == 0
         }
+        cliente = ClienteFalso(comportamiento)
 
-        resultado = await _servicio(
-            entorno, ClienteFalso(comportamiento)
-        ).process_unprocessed_tenders(modo=ModoCola.NUEVAS)
+        resultado = await _servicio(entorno, cliente).process_unprocessed_tenders(
+            modo=ModoCola.NUEVAS
+        )
 
         assert resultado.api_caida is False
+        assert len(cliente.pedidos) == len(codigos)
 
 
 class ClienteQueCambiaDuranteElPedido(ClienteFalso):

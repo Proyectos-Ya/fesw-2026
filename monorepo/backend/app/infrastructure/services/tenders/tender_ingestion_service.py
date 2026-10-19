@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -102,10 +103,14 @@ MAX_REINTENTOS_NOCTURNOS = 5
 # una falla suelta se recupera dentro de unas horas.
 MAX_INTENTOS_DIURNOS = 3
 
-# Errores transitorios seguidos que cortan la pasada. Con la API caída, cada
-# licitación que se pide igual gasta sus intentos y su cuota. Diez seguidos ya no
-# son una licitación rota sino el gateway.
-UMBRAL_CORTACIRCUITO = 10
+# El cortacircuito corta la pasada cuando fallan `FALLAS_CORTACIRCUITO` de los
+# últimos `VENTANA_CORTACIRCUITO` detalles. Con la API caída, cada licitación que
+# se pide igual gasta sus intentos y su cuota. Antes cortaba con 10 errores
+# seguidos, pero con 10 detalles a la vez y la API fallando entre el 30 y el 67%
+# en hora punta, esa racha salía sola: el 2026-10-19 a las 16:02 cortó una
+# corrida a los 2,8 min con 938 pendientes, cuando aún entraba una de cada tres.
+VENTANA_CORTACIRCUITO = 30
+FALLAS_CORTACIRCUITO = 27
 
 # Retención de la cola (plan 305). Sin poda, `tender_metadata` crecía ~5.600
 # filas por día hábil para siempre.
@@ -157,7 +162,8 @@ class ResultadoProceso:
     procesadas: int = 0
     fallidas: int = 0
     cuota_agotada: bool = False
-    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    # El cortacircuito saltó: casi todos los últimos detalles dieron un error
+    # transitorio.
     api_caida: bool = False
     # El cron de estados vio un cambio posterior al pedido del detalle: no se
     # escribió y la fila quedó pendiente para la corrida siguiente.
@@ -210,19 +216,19 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
 
 
 class _Cortacircuito:
-    """Cuenta errores transitorios seguidos entre las tareas de una pasada."""
+    """Mira los últimos resultados de detalle de una pasada, entre sus tareas."""
 
     def __init__(self) -> None:
-        self.seguidos = 0
+        self.ultimos: deque[bool] = deque(maxlen=VENTANA_CORTACIRCUITO)
         self.abierto = asyncio.Event()
 
     def fallo(self) -> None:
-        self.seguidos += 1
-        if self.seguidos >= UMBRAL_CORTACIRCUITO:
+        self.ultimos.append(False)
+        if self.ultimos.count(False) >= FALLAS_CORTACIRCUITO:
             self.abierto.set()
 
     def exito(self) -> None:
-        self.seguidos = 0
+        self.ultimos.append(True)
 
 
 def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
@@ -889,9 +895,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         resultado.api_caida = cortacircuito.abierto.is_set()
         if resultado.api_caida:
             print(
-                f"[IngestionService] {UMBRAL_CORTACIRCUITO} errores transitorios "
-                "seguidos: se corta la pasada sin cobrar intentos a las que "
-                "faltaban."
+                f"[IngestionService] {FALLAS_CORTACIRCUITO} de los últimos "
+                f"{VENTANA_CORTACIRCUITO} detalles fallaron: se corta la pasada "
+                "sin cobrar intentos a las que faltaban."
             )
         if resultado.cuota_agotada:
             print(

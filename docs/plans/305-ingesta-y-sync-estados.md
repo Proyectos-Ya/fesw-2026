@@ -157,8 +157,10 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
      `reintentos_agotados`.
   4. **Retención, una vez por semana.** Borra las procesadas de licitaciones
      inactivas de más de 30 días y las descartadas de más de 60.
-- **Cortacircuito.** 10 errores transitorios seguidos cortan la pasada, igual
-  que hoy `cuota_agotada`. Las filas que no se alcanzaron no gastan intento.
+- **Cortacircuito.** Cuando fallan 27 de los últimos 30 detalles con error
+  transitorio, se corta la pasada, igual que con `cuota_agotada`. Las filas que
+  no se alcanzaron no gastan intento. Hasta el 2026-10-19 cortaba con 10
+  errores seguidos (ver 2.9).
 - **Presupuesto.** El cliente cuenta sus peticiones. `--max-peticiones` corta la
   corrida al llegar al tope. El total se guarda en `requests`, junto con las
   llamadas a la API de embeddings.
