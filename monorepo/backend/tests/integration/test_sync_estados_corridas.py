@@ -106,3 +106,34 @@ class TestAbrirYCerrar:
         await repo.abrir()
 
         assert await repo.contar() == 1
+
+
+class TestInicioDeLaUltimaCompleta:
+    """Desde dónde lista la corrida siguiente (plan 305)."""
+
+    async def test_sin_completas_es_none(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        await repo.registrar(completo=False, listadas=1)
+
+        assert await repo.inicio_ultima_completa() is None
+
+    async def test_es_el_inicio_de_la_completa_mas_reciente(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        ahora = utc_now_naive()
+        await repo.registrar(
+            completo=True, listadas=1, momento=ahora - timedelta(hours=3)
+        )
+        await repo.registrar(
+            completo=True, listadas=1, momento=ahora - timedelta(hours=2)
+        )
+        await repo.registrar(
+            completo=False, listadas=1, momento=ahora - timedelta(hours=1)
+        )
+
+        assert await repo.inicio_ultima_completa() == ahora - timedelta(hours=2)
+
+    async def test_una_corrida_abierta_no_cuenta(self, db_session):
+        repo = SyncEstadosRunRepository(db_session)
+        await repo.abrir()
+
+        assert await repo.inicio_ultima_completa() is None

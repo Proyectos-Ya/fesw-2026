@@ -272,6 +272,18 @@ debería bajar a ~34. El 504 del listado quedó entre 3 y 7%.
   siguiente cubría lo que faltó. Se cambiaron tres cosas: el listado se pide de
   a 6 páginas, el tope sube a 55 min y vencerlo cuenta como incompleta en vez
   de salir siempre con 1.
+- El 10-19, primer día hábil con esos cambios, sync-estados completó todas las
+  corridas, pero la de las 15:03 tardó 53 min (3.868 cambios, 25% de 504 y 500
+  en el listado). Con la ventana fija de 2 h cada corrida volvía a listar la
+  hora anterior entera. Ahora la ventana va desde el inicio de la última
+  corrida completa más 15 min (~1 h 15 en lo normal) y crece sola después de
+  una incompleta, sin pasar de `SYNC_ESTADOS_VENTANA_HORAS` (2 h). Una corrida
+  que toca el techo de ítems se cierra como incompleta, para que la siguiente
+  no arranque desde ella.
+- El mismo día la ingesta de las 16:02 se cortó a los 2,8 min por el
+  cortacircuito, con 938 pendientes y procesando 1 de cada 3. Con 10 detalles
+  a la vez y la API fallando entre el 30 y el 67%, 10 errores seguidos salían
+  solos. Ahora corta cuando fallan 27 de los últimos 30.
 
 ---
 

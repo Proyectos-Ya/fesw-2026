@@ -11,8 +11,9 @@ Qué hace, en orden
 ------------------
 1. **Registra la corrida** en `sync_estados_run`, como incompleta. Si vence el
    tope o el proceso muere, la fila queda y cuenta para la racha.
-2. **Lista lo que cambió** en las últimas `--ventana-horas` (listado por
-   `ttl_cambio_ms`, sin filtro de estado). Cuesta una petición cada 10
+2. **Lista lo que cambió** desde la última corrida completa, con un margen y
+   sin pasar de `--ventana-horas` (listado por `ttl_cambio_ms`, sin filtro de
+   estado). Cuesta una petición cada 10
    licitaciones (ver `TAMANO_PAGINA`); no pide el detalle.
 3. **Aplica cada página apenas llega** (plan 305), con
    `SyncTenderStatusesUseCase`: borra del índice la que dejó de estar activa,
@@ -31,9 +32,12 @@ Qué hace, en orden
 Sobre la ventana
 ----------------
 `ttl_cambio_ms` se cuenta siempre hacia atrás desde ahora: **no admite cursor**.
-Por eso la ventana (2 h por defecto) es más ancha que el intervalo del cron
-(1 h): una corrida perdida la cubre la siguiente, y reaplicar un cambio es
-idempotente.
+Lo que sí se elige es cuánto hacia atrás. La ventana va desde el inicio de la
+última corrida completa más `MARGEN_VENTANA` (plan 305): en lo normal ~1 h 15,
+y después de una incompleta crece sola para cubrir lo que faltó. Nunca pasa de
+`--ventana-horas` (2 h por defecto), que es lo que se listaba siempre antes del
+2026-10-19: así una incompleta en hora punta no alarga la siguiente hasta que
+también venza el tope. Reaplicar un cambio es idempotente.
 
 El volumen manda sobre el tamaño. Medido el 2026-09-29 a mediodía: **1.620
 cambios en una hora** (661 publicadas, 535 cerradas, 64 desiertas, 24
@@ -78,7 +82,7 @@ import asyncio
 import sys
 import time
 from collections.abc import Awaitable, Callable, Coroutine
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -103,6 +107,7 @@ from app.infrastructure.services.tenders.tender_ingestion_service import (
     ListadoCambios,
     TenderIngestionService,
 )
+from app.shared.datetime_utils import utc_now_naive
 from scripts.ingesta_compartida import (
     aplicar_documentos_oficiales,
     construir_servicio,
@@ -119,6 +124,23 @@ from scripts.sync_diaria import verificar_destino
 # los 10.000 en que corta la API), 55 min (el tope tiene que quedar bajo el intervalo
 # de 1 h; vencerlo cuenta como incompleta) y 3.
 MAX_VENTANA_HORAS = 6.0
+
+# Lo que se lista antes del inicio de la última completa. Cubre el desfase entre
+# el `started_at` de la fila y el instante en que se pidió el listado, y el de
+# los relojes con la API.
+MARGEN_VENTANA = timedelta(minutes=15)
+
+
+def calcular_ventana(
+    ultima_completa: datetime | None, ahora: datetime, *, maximo: timedelta
+) -> timedelta:
+    """Cuánto hacia atrás listar: desde la última completa, sin pasar de `maximo`.
+
+    Sin historial lista el máximo, que es lo que se hacía siempre antes.
+    """
+    if ultima_completa is None:
+        return maximo
+    return min(ahora - ultima_completa + MARGEN_VENTANA, maximo)
 
 
 def validar_ventana(horas: float) -> str | None:
@@ -191,6 +213,8 @@ async def sincronizar_estados(
     peticiones: Callable[[], int] | None = None,
     metricas: Callable[[], dict[str, Any]] | None = None,
     al_vencer: Callable[[int | None], None] | None = None,
+    ultima_completa: Callable[[], Awaitable[datetime | None]] | None = None,
+    ahora: Callable[[], datetime] = utc_now_naive,
 ) -> int:
     """Orquesta la corrida y devuelve el código de salida.
 
@@ -211,10 +235,20 @@ async def sincronizar_estados(
     alcanzó a listar, y `al_vencer` recibe cuántas incompletas van seguidas
     (`None` sin historial) para que `con_tope` decida el código de salida. Sin
     ellos no hay historial y cualquier incompleta sale con 1.
+
+    `ultima_completa()` devuelve cuándo empezó la última corrida completa, y la
+    ventana se calcula con `calcular_ventana`. Sin ella se lista
+    `--ventana-horas` entero.
     """
     inicio = time.perf_counter()
     if preparar_destino is not None:
         await preparar_destino()
+
+    maximo = timedelta(hours=args.ventana_horas)
+    # Sale de las corridas anteriores: se consulta antes de abrir la nueva.
+    desde = await ultima_completa() if ultima_completa is not None else None
+    ventana = calcular_ventana(desde, ahora(), maximo=maximo)
+    ventana_h = round(ventana.total_seconds() / 3600, 2)
 
     corrida = await abrir_corrida() if abrir_corrida is not None else None
     resultado = ResultadoSyncEstados()
@@ -246,7 +280,7 @@ async def sincronizar_estados(
         imprimir_resumen(
             "sync_estados",
             {
-                "ventana_h": args.ventana_horas,
+                "ventana_h": ventana_h,
                 "aplicadas": aplicadas,
                 "conocidas": resultado.conocidas,
                 "actualizadas": resultado.actualizadas,
@@ -262,9 +296,7 @@ async def sincronizar_estados(
         )
 
     try:
-        listado = await listar(
-            timedelta(hours=args.ventana_horas), args.limite, al_recibir
-        )
+        listado = await listar(ventana, args.limite, al_recibir)
     except asyncio.CancelledError:
         # Venció el tope: la fila queda cerrada como incompleta y cuenta para la
         # racha, en vez de desaparecer como antes.
@@ -277,7 +309,7 @@ async def sincronizar_estados(
 
     print(
         f"{listado.listadas} cambios listados ({listado.ilegibles} ilegibles) en "
-        f"las últimas {args.ventana_horas:g} h."
+        f"las últimas {ventana_h:g} h."
     )
     print(
         f"{resultado.conocidas} conocidas: {resultado.actualizadas} actualizadas, "
@@ -306,7 +338,9 @@ async def sincronizar_estados(
             )
 
     techo = listado.listadas >= args.limite
-    seguidas = await cerrar(listado.completo, listado.listadas)
+    # Tocar el techo deja cambios sin mirar: la corrida no puede quedar como
+    # completa, o la siguiente listaría solo desde ella.
+    seguidas = await cerrar(listado.completo and not techo, listado.listadas)
     historial = corrida is not None and cerrar_corrida is not None
     if techo:
         print(
@@ -370,6 +404,11 @@ async def _abrir(engine: AsyncEngine) -> UUID:
         return await SyncEstadosRunRepository(session).abrir()
 
 
+async def _ultima_completa(engine: AsyncEngine) -> datetime | None:
+    async with AsyncSession(engine) as session:
+        return await SyncEstadosRunRepository(session).inicio_ultima_completa()
+
+
 async def _cerrar(
     engine: AsyncEngine,
     corrida: UUID,
@@ -409,6 +448,7 @@ async def _correr(
             peticiones=lambda: servicio.client.peticiones,
             metricas=servicio.client.resumen,
             al_vencer=al_vencer,
+            ultima_completa=lambda: _ultima_completa(engine),
         )
     finally:
         await engine.dispose()
@@ -423,7 +463,8 @@ def construir_parser() -> argparse.ArgumentParser:
         type=float,
         default=settings.sync_estados_ventana_horas,
         help=(
-            "cuántas horas hacia atrás mirar (SYNC_ESTADOS_VENTANA_HORAS, "
+            "máximo de horas hacia atrás; lo normal es desde la última corrida "
+            "completa (SYNC_ESTADOS_VENTANA_HORAS, "
             f"{settings.sync_estados_ventana_horas:g}; máx. {MAX_VENTANA_HORAS:g})"
         ),
     )

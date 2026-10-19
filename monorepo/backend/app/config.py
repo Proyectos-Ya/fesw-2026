@@ -159,7 +159,8 @@ class Settings(BaseSettings):
     # la ventana sin un PR: el volumen de cambios varía mucho según la hora
     # (~1.600 por hora a mediodía, medido el 2026-09-29). El techo de la ventana
     # (6 h) lo valida el script, no esto: un valor fuera de rango no debe
-    # impedir que arranque la API, que comparte esta configuración.
+    # impedir que arranque la API, que comparte esta configuración. Desde el
+    # 2026-10-19 es el máximo: cada corrida lista desde la última completa.
     sync_estados_ventana_horas: float = Field(default=2.0, gt=0)
     sync_estados_limite: int = Field(default=9000, gt=0)
     # 55 min: queda bajo el intervalo de 1 h, para que la corrida siguiente no
