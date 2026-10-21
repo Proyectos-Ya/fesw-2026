@@ -284,6 +284,16 @@ debería bajar a ~34. El 504 del listado quedó entre 3 y 7%.
   cortacircuito, con 938 pendientes y procesando 1 de cada 3. Con 10 detalles
   a la vez y la API fallando entre el 30 y el 67%, 10 errores seguidos salían
   solos. Ahora corta cuando fallan 27 de los últimos 30.
+- El 10-20 sync-estados tuvo dos incompletas seguidas en hora punta (18:00 y
+  19:03). Con el máximo de 2 h, la completa siguiente no podía mirar hasta la
+  última completa (17:01), y una hora quedó vista solo por corridas que no
+  terminaron. El máximo de la ventana pasa a 3 h.
+- El mismo día el cortacircuito cortó la pasada de reintentos nocturna con 94
+  de 147 detalles en 504, y 130 filas no gastaron su reintento. Esa pasada toma
+  justo lo que viene fallando, así que ya no se corta: cada fila tiene su
+  límite de 5 noches.
+- La frecuente que llega a su tope cierra como `tope` en vez de `failed`. Sale
+  con 0 y lo pendiente sigue en la cola.
 
 ---
 

@@ -35,9 +35,9 @@ Sobre la ventana
 Lo que sí se elige es cuánto hacia atrás. La ventana va desde el inicio de la
 última corrida completa más `MARGEN_VENTANA` (plan 305): en lo normal ~1 h 15,
 y después de una incompleta crece sola para cubrir lo que faltó. Nunca pasa de
-`--ventana-horas` (2 h por defecto), que es lo que se listaba siempre antes del
-2026-10-19: así una incompleta en hora punta no alarga la siguiente hasta que
-también venza el tope. Reaplicar un cambio es idempotente.
+`--ventana-horas` (3 h por defecto): así una incompleta en hora punta no alarga
+la siguiente hasta que también venza el tope. Con 2 h, dos incompletas seguidas
+dejaban una hora vista solo por corridas que no terminaron. Reaplicar un cambio es idempotente.
 
 El volumen manda sobre el tamaño. Medido el 2026-09-29 a mediodía: **1.620
 cambios en una hora** (661 publicadas, 535 cerradas, 64 desiertas, 24
@@ -64,8 +64,8 @@ Railway manda un correo de "crashed" por cada salida distinta de 0, así que el
 
 - **0**: el listado vino completo, o vino incompleto y es pasajero. En hora
   punta la API responde 504 casi cada hora (medido el 2026-10-05: once corridas
-  seguidas entre 10:00 y 18:00), y la ventana de 2 h hace que la corrida
-  siguiente vuelva a pedir lo que faltó. Lo avisa en el log con la cuenta.
+  seguidas entre 10:00 y 18:00), y la ventana desde la última completa hace
+  que la corrida siguiente vuelva a pedir lo que faltó. Lo avisa en el log con la cuenta.
 - **1**: se juntaron `--incompletas-toleradas` incompletas seguidas (horas sin
   mirar), se tocó el techo de `--limite` (la configuración se queda corta y
   esperar no lo arregla) o venció el tope de tiempo. Las páginas que llegaron
@@ -120,7 +120,7 @@ from scripts.sync_diaria import verificar_destino
 # Los valores por defecto de ventana, tope de ítems, tope de tiempo e
 # incompletas toleradas vienen de `SYNC_ESTADOS_VENTANA_HORAS`,
 # `SYNC_ESTADOS_LIMITE`, `SYNC_ESTADOS_TIMEOUT_MINUTOS` y
-# `SYNC_ESTADOS_INCOMPLETAS_TOLERADAS` (ver `app/config.py`): 2 h, 9.000 (bajo
+# `SYNC_ESTADOS_INCOMPLETAS_TOLERADAS` (ver `app/config.py`): 3 h, 9.000 (bajo
 # los 10.000 en que corta la API), 55 min (el tope tiene que quedar bajo el intervalo
 # de 1 h; vencerlo cuenta como incompleta) y 3.
 MAX_VENTANA_HORAS = 6.0

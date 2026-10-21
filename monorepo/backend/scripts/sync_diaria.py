@@ -538,9 +538,11 @@ async def vaciar_frecuente(
         )
     except asyncio.CancelledError:
         # Lo que se alcanzó a hacer queda registrado aunque venza el tope.
+        # `tope` y no `failed`: la corrida sale con 0 y lo pendiente sigue en la
+        # cola para la siguiente. Con `failed` parecía una falla en el historial.
         await servicio.registrar_fin(
             run_id,
-            status="failed",
+            status="tope",
             processed=resultado.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,

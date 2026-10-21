@@ -737,7 +737,8 @@ class TestModoFrecuente:
 
         assert codigo == 0
         assert servicio.cierre["kind"] == "frecuente"
-        assert servicio.cierre["status"] == "failed"
+        # `tope` y no `failed`: sale con 0 y lo pendiente sigue en la cola.
+        assert servicio.cierre["status"] == "tope"
 
 
 class TestElegirModo:
@@ -900,6 +901,6 @@ class TestCuentaParcialAlVencerElTope:
             codigo_al_vencer=0,
         )
 
-        assert servicio.cierre["status"] == "failed"
+        assert servicio.cierre["status"] == "tope"
         assert servicio.cierre["processed"] == 3
         assert _resumen(capsys.readouterr().out)["procesadas"] == 3

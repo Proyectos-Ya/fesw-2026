@@ -27,7 +27,7 @@ def _construir(**extra) -> Settings:
 class TestValoresPorDefecto:
     def test_ventana_limite_y_tope(self):
         s = _construir()
-        assert s.sync_estados_ventana_horas == 2.0
+        assert s.sync_estados_ventana_horas == 3.0
         assert s.sync_estados_limite == 9000
         assert s.sync_estados_timeout_minutos == 55.0
 

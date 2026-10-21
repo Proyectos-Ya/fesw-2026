@@ -311,6 +311,35 @@ class TestCortacircuito:
         assert len(cliente.pedidos) == len(codigos)
 
 
+class TestCortacircuitoEnReintentos:
+    async def test_la_pasada_nocturna_no_se_corta(self, entorno, monkeypatch):
+        """La pasada de reintentos toma justo lo que viene fallando.
+
+        El 2026-10-20 a las 06:28 el cortacircuito la cortó con 94 de 147
+        detalles en 504: solo ~40 filas gastaron su reintento y 130 quedaron
+        para otra noche. Ahí casi todo falla por diseño, y cada fila ya tiene
+        su propio límite de 5 noches.
+        """
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "mercadopublico_detail_concurrency", 1)
+        codigos = [f"NOCHE-{i:02d}" for i in range(FALLAS_CORTACIRCUITO + 10)]
+        await _encolar(entorno, codigos)
+        for c in codigos:
+            await _ajustar(entorno, c, attempts=MAX_INTENTOS_DIURNOS)
+        cliente = ClienteFalso(
+            {c: ErrorTransitorioMercadoPublico("504") for c in codigos}
+        )
+
+        resultado = await _servicio(entorno, cliente).process_unprocessed_tenders(
+            modo=ModoCola.REINTENTOS, antes_de=utc_now_naive()
+        )
+
+        assert resultado.api_caida is False
+        assert len(cliente.pedidos) == len(codigos)
+        assert (await _metadata(entorno, codigos[-1])).night_retries == 1
+
+
 class ClienteQueCambiaDuranteElPedido(ClienteFalso):
     """Simula que el cron de estados vio un cambio mientras se bajaba el detalle."""
 

@@ -216,15 +216,23 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
 
 
 class _Cortacircuito:
-    """Mira los últimos resultados de detalle de una pasada, entre sus tareas."""
+    """Mira los últimos resultados de detalle de una pasada, entre sus tareas.
 
-    def __init__(self) -> None:
+    `activo=False` lo deja mirando sin cortar nunca. Es lo que usa la pasada de
+    reintentos nocturna: toma justo lo que viene fallando, así que casi todo
+    falla por diseño, y cada fila ya tiene su límite de 5 noches. El 2026-10-20
+    el cortacircuito la cortó con 94 de 147 detalles en 504 y 130 filas no
+    gastaron su reintento.
+    """
+
+    def __init__(self, *, activo: bool = True) -> None:
+        self.activo = activo
         self.ultimos: deque[bool] = deque(maxlen=VENTANA_CORTACIRCUITO)
         self.abierto = asyncio.Event()
 
     def fallo(self) -> None:
         self.ultimos.append(False)
-        if self.ultimos.count(False) >= FALLAS_CORTACIRCUITO:
+        if self.activo and self.ultimos.count(False) >= FALLAS_CORTACIRCUITO:
             self.abierto.set()
 
     def exito(self) -> None:
@@ -873,7 +881,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         # que salir, y lo que hace falta es que las que aún no empezaron no
         # gasten sus cuatro reintentos contra una cuota que ya no existe.
         cuota_agotada = asyncio.Event()
-        cortacircuito = _Cortacircuito()
+        cortacircuito = _Cortacircuito(activo=modo is not ModoCola.REINTENTOS)
         semaforo = asyncio.Semaphore(max(1, settings.mercadopublico_detail_concurrency))
 
         await asyncio.gather(
