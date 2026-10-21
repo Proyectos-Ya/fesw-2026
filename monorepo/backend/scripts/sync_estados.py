@@ -114,6 +114,7 @@ from scripts.ingesta_compartida import (
     imprimir_resumen,
     marcar_vencidas,
     preparar_destino,
+    salir,
 )
 from scripts.sync_diaria import verificar_destino
 
@@ -528,7 +529,7 @@ def main() -> None:
     def anotar(seguidas: int | None) -> None:
         racha[0] = seguidas
 
-    sys.exit(
+    salir(
         asyncio.run(
             con_tope(
                 _correr(args, anotar),

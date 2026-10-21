@@ -150,3 +150,28 @@ class TestConcurrenciaDelListado:
         )
 
         assert servicio.client.concurrencia_listado == 4
+
+
+class TestSalir:
+    """Los crons terminan el proceso aunque quede un hilo vivo (plan 305).
+
+    El 2026-10-21 la corrida de sync-estados de las 12:03 imprimió su resumen a
+    las 12:33 y el contenedor siguió vivo, sin CPU. Railway no arranca un cron
+    mientras el anterior siga corriendo, así que se saltó la de las 13:00.
+    `sys.exit` espera a los hilos que no son daemon; `os._exit` no.
+    """
+
+    def test_vacia_la_salida_y_termina_con_el_codigo(self, monkeypatch):
+        import os
+        import sys
+
+        from scripts.ingesta_compartida import salir
+
+        llamadas: list[str | int] = []
+        monkeypatch.setattr(sys.stdout, "flush", lambda: llamadas.append("stdout"))
+        monkeypatch.setattr(sys.stderr, "flush", lambda: llamadas.append("stderr"))
+        monkeypatch.setattr(os, "_exit", lambda codigo: llamadas.append(codigo))
+
+        salir(3)
+
+        assert llamadas == ["stdout", "stderr", 3]

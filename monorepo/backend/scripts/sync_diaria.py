@@ -114,6 +114,7 @@ from scripts.ingesta_compartida import (
     es_local,
     imprimir_resumen,
     preparar_destino,
+    salir,
     vaciar_cola,
 )
 
@@ -689,7 +690,7 @@ def main() -> None:
     minutos = args.timeout_minutos or (
         TIMEOUT_FRECUENTE_MINUTOS if frecuente else DEFAULT_TIMEOUT_MINUTOS
     )
-    sys.exit(
+    salir(
         asyncio.run(
             con_timeout(
                 _correr(args, modo),
