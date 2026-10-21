@@ -174,4 +174,14 @@ y recetas de resolución de incidentes, consultar la
   verde contra un esquema viejo). El reemplazo es Infrastructure as Code
   (`.railway/railway.ts`). Mientras tanto, un servicio nuevo se configura por el panel,
   no por archivo.
+- **Crons de licitaciones** (Railway, misma imagen que la API; plan 305):
+  - `sync-estados` (`scripts/sync_estados.py`) corre cada hora. Lista los cambios,
+    aplica estado y cierre página por página y deja en `tender_metadata` qué hay
+    que bajar (`nueva` o `actualizar`).
+  - La ingesta (`scripts/sync_diaria.py`) corre cada 2 h. La corrida de las 06:00
+    UTC es la nocturna: lista por tramos (cada tramo mueve el cursor), vacía la
+    cola y reintenta. El resto solo vacía la cola.
+- **No mergear a `main` entre las 06:00 y las 12:00 UTC** (03:00 a 09:00 de
+  Chile). Railway corta los crons en curso al desplegar: el 2026-10-06 un merge
+  cortó la ingesta nocturna y el cursor quedó atrasado un día más.
 - **Vercel**: despliega el frontend.

@@ -179,6 +179,8 @@ async def test_ficha_muestra_el_puntaje_de_la_empresa_activa(
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["score_pct"] == 90
+    # La fila viene del ranking de la empresa activa y la licitación sigue abierta.
+    assert resp.json()["is_recommended"] is True
 
 
 @pytest.mark.asyncio

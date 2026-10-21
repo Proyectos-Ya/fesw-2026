@@ -78,4 +78,6 @@ export interface TenderDetail {
   tender: Tender;
   score_pct: number | null;
   is_closed: boolean;
+  /** Si está en el ranking cacheado de la empresa activa. */
+  is_recommended: boolean;
 }

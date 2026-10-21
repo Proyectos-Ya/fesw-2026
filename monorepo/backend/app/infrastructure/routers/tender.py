@@ -658,6 +658,7 @@ def create_tender_router(
                 else None
             ),
             is_closed=detalle.is_closed,
+            is_recommended=detalle.is_recommended,
         )
 
     return router

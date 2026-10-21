@@ -85,3 +85,20 @@ class TestFiltroDeEstado:
         params = await _pedir(estado="publicada,proveedor_seleccionado")
 
         assert params["estado"] == "publicada,proveedor_seleccionado"
+
+
+class TestTamanoDePagina:
+    """10 por página, el mínimo que acepta la API (plan 305).
+
+    Medido el 2026-10-13 en hora punta (18:22-18:43 UTC), una petición por caso
+    sin reintentos: con 10 por página respondieron 6 de 6 en 13,5 s de media;
+    con 20, entre la mitad y dos tercios en ~24 s, al borde del corte de ~29 s
+    del gateway; con 50, ninguna. El tamaño de la ventana no cambiaba nada.
+    """
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_pide_10_por_pagina(self):
+        params = await _pedir()
+
+        assert params["tamano_pagina"] == "10"
