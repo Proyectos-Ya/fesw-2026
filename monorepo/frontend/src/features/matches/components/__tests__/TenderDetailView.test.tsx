@@ -7,7 +7,8 @@ import * as tenderService from "../../services/tenderService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
-import { formatDateTime } from "../../utils/format";
+import { formatDateTime, normalizeScore } from "../../utils/format";
+import type { TenderDetail } from "@/features/notifications/notificationTypes";
 
 const mockRouter = {
   push: vi.fn(),
@@ -157,12 +158,26 @@ const mockMatch: MatchingResult = {
   },
 };
 
+/**
+ * Respuesta de `GET /tenders/{id}` para una licitación del ranking. La ficha ya
+ * no pide la lista de recomendadas: el detalle le dice si está en ella.
+ */
+function detalleDe(match: MatchingResult, isRecommended = true): TenderDetail {
+  return {
+    tender: match.tender as Tender,
+    score_pct:
+      match.final_score !== null ? Math.round(normalizeScore(match.final_score)) : null,
+    is_closed: false,
+    is_recommended: isRecommended,
+  };
+}
+
 describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", () => {
   const user = userEvent.setup();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
   });
 
@@ -330,14 +345,13 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Fuera de las recomendadas: la ficha cae al detalle directo.
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
       tender: tenderFueraDelTop,
       score_pct: null,
       is_closed: false,
+      is_recommended: false,
     });
   });
 
@@ -376,6 +390,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: 40,
       is_closed: false,
+      is_recommended: false,
     });
 
     render(<TenderDetailView tenderId="tender-77" />);
@@ -425,6 +440,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: 64,
       is_closed: false,
+      is_recommended: false,
     });
     vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({
       score_pct: 73,
@@ -447,6 +463,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: null,
       is_closed: true,
+      is_recommended: false,
     });
 
     render(<TenderDetailView tenderId="tender-77" />);
@@ -468,13 +485,13 @@ describe("TenderDetailView: puntaje de una recomendada", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
-      {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({
         ...mockMatch,
         tender: { ...(mockMatch.tender as Tender), closing_at: EN_UN_MES },
         final_score: 0.91,
-      },
-    ]);
+      }),
+    );
   });
 
   it("no ofrece recalcular: ese puntaje lo mantiene el ranking", async () => {
@@ -486,7 +503,9 @@ describe("TenderDetailView: puntaje de una recomendada", () => {
     expect(
       screen.queryByRole("button", { name: /recalcular/i })
     ).not.toBeInTheDocument();
-    expect(tenderService.getTenderDetail).not.toHaveBeenCalled();
+    // El detalle ya dice si es recomendada: pedir el ranking completo para
+    // buscarla en él podía disparar un re-ranking entero por abrir una ficha.
+    expect(tenderService.getRecommendedTenders).not.toHaveBeenCalled();
   });
 });
 
@@ -497,7 +516,7 @@ describe("TenderDetailView: volver", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
   });
 
   it("vuelve a la pantalla anterior, no siempre a los matches", async () => {
@@ -521,7 +540,7 @@ describe("TenderDetailView: anexos oficiales", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
   });
 
   it("muestra el panel de anexos justo bajo el encabezado, antes de la tarjeta de análisis IA", async () => {
@@ -577,9 +596,9 @@ describe("TenderDetailView: segundo llamado", () => {
   });
 
   function conTender(cambios: Partial<Tender>) {
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
-      { ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } },
-    ]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({ ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } }),
+    );
   }
 
   it("en segundo llamado etiqueta la ficha y muestra el cierre de cada llamado", async () => {

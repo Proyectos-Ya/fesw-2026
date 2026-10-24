@@ -74,6 +74,7 @@ describe("TenderAnalysisView", () => {
       tender,
       score_pct: null,
       is_closed: false,
+      is_recommended: false,
     });
     vi.mocked(tenderService.getDeepAnalysis).mockResolvedValue(analisis);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(analisis);
@@ -109,6 +110,7 @@ describe("TenderAnalysisView", () => {
       tender,
       score_pct: 68,
       is_closed: true,
+      is_recommended: false,
     });
 
     render(<TenderAnalysisView tenderId="tender-99" />);
@@ -129,6 +131,7 @@ describe("TenderAnalysisView", () => {
       tender,
       score_pct: null,
       is_closed: true,
+      is_recommended: false,
     });
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null);
 

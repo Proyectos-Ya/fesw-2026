@@ -2,6 +2,12 @@
 
 Decisiones que protege:
 
+- **Cada página se aplica apenas llega** (plan 305). Antes se aplicaba todo al
+  terminar el listado, y una corrida que vencía el tope en hora punta perdía lo
+  que ya había listado. Los anexos también van por página, aislados.
+- **La corrida se registra al empezar y se cierra al terminar.** Si vence el
+  tope, queda cerrada como incompleta con lo que alcanzó a listar, y cuenta
+  para la racha. Antes no quedaba ninguna fila.
 - **Marcar vencidas va después de aplicar.** Así una licitación con el plazo
   ampliado se cierra (o no) con la fecha nueva, no con la que había.
 - **Un listado incompleto sale con 0 mientras sea pasajero.** En hora punta la
@@ -12,7 +18,6 @@ Decisiones que protege:
   `--incompletas-toleradas` seguidas sale con 1: ahí sí hay horas sin mirar.
 - **Tocar el techo sí sale con 1 siempre**: no es la API fallando, es la
   configuración quedándose corta, y la corrida siguiente tampoco lo arregla.
-- Lo que sí llegó se aplica igual en todos los casos.
 - **La ventana no pasa de 6 h.** `ttl_cambio_ms` no admite cursor y la API corta
   el listado en 10.000; con ~1.600 cambios por hora en hora punta (medido el
   2026-09-29), una ventana más ancha se truncaría en silencio.
@@ -20,18 +25,25 @@ Decisiones que protege:
 
 import argparse
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
 from app.domain.models.cambio_estado import CambioDeEstado, ResultadoSyncEstados
 from app.infrastructure.services.tenders.tender_ingestion_service import ListadoCambios
 from scripts.sync_estados import con_tope, sincronizar_estados, validar_ventana
 
-CAMBIO = CambioDeEstado(
-    code="A",
-    status_id=6,
-    status_code="desierta",
-    closing_at=datetime(2026, 10, 1, 12, 0),
-)
+
+def _cambio(code: str) -> CambioDeEstado:
+    return CambioDeEstado(
+        code=code,
+        status_id=6,
+        status_code="desierta",
+        closing_at=datetime(2026, 10, 1, 12, 0),
+    )
+
+
+CAMBIO = _cambio("A")
 
 
 def _args(**extra) -> argparse.Namespace:
@@ -45,112 +57,193 @@ def _args(**extra) -> argparse.Namespace:
     return argparse.Namespace(**base)
 
 
+AlRecibir = Callable[[list[CambioDeEstado]], Awaitable[None]]
+
+
 class Piezas:
     """Dobles de las etapas, que anotan en qué orden se llamaron.
 
-    `incompletas_antes` son las corridas incompletas seguidas que ya había en el
-    historial antes de esta; `registrar` le suma esta si vino incompleta.
+    `paginas` son las páginas que entrega el listado, en orden. `colgar_despues`
+    hace que el listado se quede esperando después de entregar esa cantidad de
+    páginas, para probar el tope. `incompletas_antes` son las incompletas
+    seguidas que ya había en el historial; `cerrar` le suma esta si vino
+    incompleta.
     """
 
-    def __init__(self, listado: ListadoCambios, incompletas_antes: int = 0) -> None:
-        self.listado = listado
+    def __init__(
+        self,
+        paginas: list[list[CambioDeEstado]] | None = None,
+        *,
+        completo: bool = True,
+        listadas: int | None = None,
+        incompletas_antes: int = 0,
+        colgar_despues: int | None = None,
+        anexos_falla_con: Exception | None = None,
+    ) -> None:
+        self.paginas = [[CAMBIO]] if paginas is None else paginas
+        self.completo = completo
+        self.listadas = listadas
         self.incompletas_antes = incompletas_antes
+        self.colgar_despues = colgar_despues
+        self.anexos_falla_con = anexos_falla_con
         self.orden: list[str] = []
         self.listar_con: tuple[timedelta, int] | None = None
-        self.aplicados: list[CambioDeEstado] = []
-        self.registradas: list[tuple[bool, int]] = []
+        self.aplicados: list[list[CambioDeEstado]] = []
+        self.anexos_recibidos: list[list[CambioDeEstado]] = []
+        self.corrida = uuid4()
+        self.cerradas: list[tuple[UUID, bool, int, int | None]] = []
 
-    async def listar(self, ventana: timedelta, limite: int) -> ListadoCambios:
+    async def listar(
+        self, ventana: timedelta, limite: int, al_recibir: AlRecibir
+    ) -> ListadoCambios:
         self.orden.append("listar")
         self.listar_con = (ventana, limite)
-        return self.listado
+        for numero, pagina in enumerate(self.paginas):
+            if self.colgar_despues is not None and numero >= self.colgar_despues:
+                await asyncio.sleep(10)
+            await al_recibir(pagina)
+        todos = [c for pagina in self.paginas for c in pagina]
+        return ListadoCambios(
+            cambios=todos,
+            listadas=len(todos) if self.listadas is None else self.listadas,
+            ilegibles=0,
+            completo=self.completo,
+        )
 
     async def aplicar(self, cambios: list[CambioDeEstado]) -> ResultadoSyncEstados:
         self.orden.append("aplicar")
-        self.aplicados = cambios
+        self.aplicados.append(cambios)
         return ResultadoSyncEstados(
             conocidas=len(cambios),
             actualizadas=len(cambios),
             llamados_actualizados=2,
+            nuevas=1,
         )
+
+    async def aplicar_anexos(self, cambios: list[CambioDeEstado]) -> int:
+        self.orden.append("anexos")
+        self.anexos_recibidos.append(cambios)
+        if self.anexos_falla_con is not None:
+            raise self.anexos_falla_con
+        return 2
 
     async def marcar_vencidas(self) -> int:
         self.orden.append("marcar")
         return 3
 
-    async def registrar(self, completo: bool, listadas: int) -> int:
-        self.orden.append("registrar")
-        self.registradas.append((completo, listadas))
+    async def abrir(self) -> UUID:
+        self.orden.append("abrir")
+        return self.corrida
+
+    async def cerrar(
+        self, corrida: UUID, completo: bool, listadas: int, peticiones: int | None
+    ) -> int:
+        self.orden.append("cerrar")
+        self.cerradas.append((corrida, completo, listadas, peticiones))
         return 0 if completo else self.incompletas_antes + 1
 
-    async def correr(self, args: argparse.Namespace) -> int:
+    async def correr(self, args: argparse.Namespace, *, con_anexos: bool = False):
         return await sincronizar_estados(
             args,
             listar=self.listar,
             aplicar=self.aplicar,
             marcar_vencidas=self.marcar_vencidas,
-            registrar_corrida=self.registrar,
+            aplicar_anexos=self.aplicar_anexos if con_anexos else None,
+            abrir_corrida=self.abrir,
+            cerrar_corrida=self.cerrar,
+            peticiones=lambda: 42,
         )
-
-
-def _listado(completo: bool = True, listadas: int = 1) -> ListadoCambios:
-    return ListadoCambios(
-        cambios=[CAMBIO], listadas=listadas, ilegibles=0, completo=completo
-    )
 
 
 class TestCorridaBuena:
     async def test_aplica_lo_listado_y_sale_con_0(self):
-        piezas = Piezas(_listado())
+        piezas = Piezas()
 
         codigo = await piezas.correr(_args())
 
         assert codigo == 0
-        assert piezas.aplicados == [CAMBIO]
+        assert piezas.aplicados == [[CAMBIO]]
 
     async def test_pide_la_ventana_y_el_limite_de_los_argumentos(self):
-        piezas = Piezas(_listado())
+        piezas = Piezas()
 
         await piezas.correr(_args(ventana_horas=4.0, limite=500))
 
         assert piezas.listar_con == (timedelta(hours=4), 500)
 
-    async def test_marca_vencidas_despues_de_aplicar(self):
-        piezas = Piezas(_listado())
+    async def test_abre_la_corrida_antes_y_la_cierra_al_final(self):
+        piezas = Piezas()
 
         await piezas.correr(_args())
 
-        assert piezas.orden == ["listar", "aplicar", "marcar", "registrar"]
+        assert piezas.orden == ["abrir", "listar", "aplicar", "marcar", "cerrar"]
+
+    async def test_cierra_con_lo_listado_y_las_peticiones(self):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]])
+
+        await piezas.correr(_args())
+
+        assert piezas.cerradas == [(piezas.corrida, True, 2, 42)]
 
     async def test_sin_marcar_lo_omite(self):
-        piezas = Piezas(_listado())
+        piezas = Piezas()
 
         await piezas.correr(_args(sin_marcar=True))
 
         assert "marcar" not in piezas.orden
 
-    async def test_imprime_el_resumen(self, capsys):
-        await Piezas(_listado()).correr(_args())
+    async def test_imprime_el_resumen_de_todas_las_paginas(self, capsys):
+        await Piezas([[_cambio("A")], [_cambio("B")]]).correr(_args())
 
         salida = capsys.readouterr().out
-        assert "1 cambios listados" in salida
-        assert "2 con llamado actualizado" in salida
+        assert "2 cambios listados" in salida
+        assert "2 conocidas" in salida
+        assert "4 con llamado actualizado" in salida
+        assert "2 nuevas" in salida
         assert "Vencidas marcadas como cerradas: 3" in salida
+
+
+class TestPorPagina:
+    async def test_aplica_cada_pagina_por_separado_y_en_orden(self):
+        a, b = _cambio("A"), _cambio("B")
+        piezas = Piezas([[a], [b]])
+
+        await piezas.correr(_args())
+
+        assert piezas.aplicados == [[a], [b]]
+
+    async def test_una_pagina_vacia_no_se_aplica(self):
+        piezas = Piezas([[], [CAMBIO]])
+
+        await piezas.correr(_args())
+
+        assert piezas.aplicados == [[CAMBIO]]
+
+    async def test_si_vence_el_tope_lo_aplicado_queda_y_la_corrida_se_cierra(self):
+        """El caso de hora punta: el listado se arrastra con 504 y vence el tope."""
+        a, b = _cambio("A"), _cambio("B")
+        piezas = Piezas([[a], [b]], colgar_despues=1)
+
+        codigo = await con_tope(piezas.correr(_args()), segundos=0.05)
+
+        assert codigo == 1
+        assert piezas.aplicados == [[a]]
+        assert piezas.cerradas == [(piezas.corrida, False, 1, 42)]
 
 
 class TestCorridaIncompleta:
     async def test_una_incompleta_suelta_sale_con_0_y_aplica_lo_que_llego(self):
         """El caso de hora punta: la API cortó la paginación con un 504."""
-        piezas = Piezas(_listado(completo=False))
+        piezas = Piezas(completo=False)
 
         codigo = await piezas.correr(_args())
 
         assert codigo == 0
-        assert piezas.aplicados == [CAMBIO]
+        assert piezas.aplicados == [[CAMBIO]]
         assert "marcar" in piezas.orden
 
     async def test_avisa_cuantas_seguidas_van_de_las_toleradas(self, capsys):
-        piezas = Piezas(_listado(completo=False), incompletas_antes=1)
+        piezas = Piezas(completo=False, incompletas_antes=1)
 
         codigo = await piezas.correr(_args(incompletas_toleradas=3))
 
@@ -160,7 +253,7 @@ class TestCorridaIncompleta:
         assert "2 de 3" in salida
 
     async def test_al_llegar_a_las_toleradas_sale_con_1(self, capsys):
-        piezas = Piezas(_listado(completo=False), incompletas_antes=2)
+        piezas = Piezas(completo=False, incompletas_antes=2)
 
         codigo = await piezas.correr(_args(incompletas_toleradas=3))
 
@@ -169,23 +262,23 @@ class TestCorridaIncompleta:
 
     async def test_una_completa_corta_la_racha(self):
         """Con historial de incompletas, una completa vuelve a salir con 0."""
-        piezas = Piezas(_listado(), incompletas_antes=10)
+        piezas = Piezas(incompletas_antes=10)
 
         assert await piezas.correr(_args()) == 0
 
-    async def test_registra_si_vino_completa_y_cuantas_listo(self):
-        incompleta = Piezas(_listado(completo=False, listadas=7))
-        completa = Piezas(_listado(listadas=4))
+    async def test_cierra_si_vino_completa_y_cuantas_listo(self):
+        incompleta = Piezas(completo=False, listadas=7)
+        completa = Piezas(listadas=4)
 
         await incompleta.correr(_args())
         await completa.correr(_args())
 
-        assert incompleta.registradas == [(False, 7)]
-        assert completa.registradas == [(True, 4)]
+        assert incompleta.cerradas[0][1:3] == (False, 7)
+        assert completa.cerradas[0][1:3] == (True, 4)
 
     async def test_tocar_el_techo_sale_con_1_y_avisa(self, capsys):
         """No es la API fallando: esperar a la corrida siguiente no lo arregla."""
-        piezas = Piezas(_listado(listadas=500))
+        piezas = Piezas(listadas=500)
 
         codigo = await piezas.correr(_args(limite=500))
 
@@ -193,8 +286,8 @@ class TestCorridaIncompleta:
         assert "techo" in capsys.readouterr().out
 
     async def test_sin_historial_se_comporta_como_antes(self):
-        """`registrar_corrida` es opcional: sin él, incompleta sigue siendo 1."""
-        piezas = Piezas(_listado(completo=False))
+        """El historial es opcional: sin él, incompleta sigue siendo 1."""
+        piezas = Piezas(completo=False)
 
         codigo = await sincronizar_estados(
             _args(),
@@ -206,77 +299,58 @@ class TestCorridaIncompleta:
         assert codigo == 1
 
 
-class PiezasConAnexos(Piezas):
-    """Suma el cuarto paso: refrescar la lista oficial de anexos."""
-
-    def __init__(self, listado: ListadoCambios, falla_con: Exception | None = None) -> None:
-        super().__init__(listado)
-        self.falla_con = falla_con
-        self.anexos_recibidos: list[CambioDeEstado] = []
-
-    async def aplicar_anexos(self, cambios: list[CambioDeEstado]) -> int:
-        self.orden.append("anexos")
-        self.anexos_recibidos = cambios
-        if self.falla_con is not None:
-            raise self.falla_con
-        return 2
-
-    async def correr(self, args: argparse.Namespace) -> int:
-        return await sincronizar_estados(
-            args,
-            listar=self.listar,
-            aplicar=self.aplicar,
-            marcar_vencidas=self.marcar_vencidas,
-            aplicar_anexos=self.aplicar_anexos,
-        )
-
-
 class TestListaOficialDeAnexos:
-    """El cuarto paso reutiliza el listado: no cuesta peticiones a la API.
+    """Los anexos reutilizan el listado: no cuestan peticiones a la API.
 
-    Va al final y dentro de un try/except: si falla, estados y cierres ya
-    quedaron aplicados y la corrida siguiente lo reintenta. No cambia el código
-    de salida: Railway manda un correo por cada salida distinta de 0, y una falla
-    pasajera de Mercado Público no pide que alguien mire.
+    Van con cada página, después de aplicarla y dentro de un try/except: si
+    fallan, estados y cierres ya quedaron aplicados y la corrida siguiente lo
+    reintenta. No cambian el código de salida: Railway manda un correo por cada
+    salida distinta de 0, y una falla pasajera no pide que alguien mire.
     """
 
-    async def test_refresca_los_anexos_despues_de_marcar_vencidas(self):
-        piezas = PiezasConAnexos(_listado())
+    async def test_refresca_los_anexos_de_cada_pagina_despues_de_aplicarla(self):
+        a, b = _cambio("A"), _cambio("B")
+        piezas = Piezas([[a], [b]])
 
-        codigo = await piezas.correr(_args())
+        codigo = await piezas.correr(_args(), con_anexos=True)
 
-        assert piezas.orden == ["listar", "aplicar", "marcar", "anexos"]
-        assert piezas.anexos_recibidos == [CAMBIO]
+        assert piezas.orden == [
+            "abrir",
+            "listar",
+            "aplicar",
+            "anexos",
+            "aplicar",
+            "anexos",
+            "marcar",
+            "cerrar",
+        ]
+        assert piezas.anexos_recibidos == [[a], [b]]
         assert codigo == 0
-
-    async def test_con_sin_marcar_queda_listar_aplicar_anexos(self):
-        piezas = PiezasConAnexos(_listado())
-
-        await piezas.correr(_args(sin_marcar=True))
-
-        assert piezas.orden == ["listar", "aplicar", "anexos"]
 
     async def test_imprime_cuantas_listas_refresco(self, capsys):
-        await PiezasConAnexos(_listado()).correr(_args())
+        await Piezas([[_cambio("A")], [_cambio("B")]]).correr(_args(), con_anexos=True)
 
-        assert "Listas de anexos refrescadas: 2" in capsys.readouterr().out
+        assert "Listas de anexos refrescadas: 4" in capsys.readouterr().out
 
-    async def test_si_falla_marca_las_vencidas_sale_con_0_y_avisa(self, capsys):
-        piezas = PiezasConAnexos(_listado(), falla_con=RuntimeError("sin base"))
+    async def test_si_falla_sigue_con_las_paginas_sale_con_0_y_avisa(self, capsys):
+        piezas = Piezas(
+            [[_cambio("A")], [_cambio("B")]], anexos_falla_con=RuntimeError("sin base")
+        )
 
-        codigo = await piezas.correr(_args())
+        codigo = await piezas.correr(_args(), con_anexos=True)
 
         assert codigo == 0
+        assert len(piezas.aplicados) == 2
         assert "marcar" in piezas.orden
         salida = capsys.readouterr().out
         assert "AVISO" in salida
         assert "RuntimeError" in salida
 
-    async def test_sin_el_colaborador_el_comportamiento_es_el_de_siempre(self):
-        piezas = Piezas(_listado())
+    async def test_sin_el_colaborador_no_los_toca(self):
+        piezas = Piezas()
 
         assert await piezas.correr(_args()) == 0
-        assert piezas.orden == ["listar", "aplicar", "marcar", "registrar"]
+        assert "anexos" not in piezas.orden
 
 
 class TestValidarVentana:
@@ -336,3 +410,188 @@ class TestDefaultsDesdeElEntorno:
         args = construir_parser().parse_args(["--ventana-horas", "1"])
 
         assert args.ventana_horas == 1.0
+
+
+def _resumen(salida: str) -> dict:
+    import json
+
+    [linea] = [x for x in salida.splitlines() if x.startswith("RESUMEN ")]
+    return json.loads(linea.removeprefix("RESUMEN "))
+
+
+class TestLineaDeResumen:
+    """Una línea `RESUMEN` en JSON por corrida, para leer un día entero de logs
+    filtrando por esa palabra (plan 305)."""
+
+    async def test_resume_la_corrida(self, capsys):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]])
+
+        await sincronizar_estados(
+            _args(),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            abrir_corrida=piezas.abrir,
+            cerrar_corrida=piezas.cerrar,
+            peticiones=lambda: 42,
+            metricas=lambda: {"listado": {"peticiones": 42}},
+        )
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert resumen["cron"] == "sync_estados"
+        assert resumen["completo"] is True
+        assert resumen["listadas"] == 2
+        assert resumen["nuevas"] == 2
+        assert resumen["vencidas"] == 3
+        assert resumen["codigo"] == 0
+        assert resumen["api"] == {"listado": {"peticiones": 42}}
+        assert "duracion_min" in resumen
+
+    async def test_tambien_si_vence_el_tope(self, capsys):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]], colgar_despues=1)
+
+        async def correr() -> int:
+            return await sincronizar_estados(
+                _args(),
+                listar=piezas.listar,
+                aplicar=piezas.aplicar,
+                marcar_vencidas=piezas.marcar_vencidas,
+                metricas=lambda: {},
+            )
+
+        await con_tope(correr(), segundos=0.05)
+
+        resumen = _resumen(capsys.readouterr().out)
+        assert resumen["cancelada"] is True
+        assert resumen["aplicadas"] == 1
+
+
+class TestVencerElTopeEsUnaIncompleta:
+    """Vencer el tope cuenta como corrida incompleta, no como error (plan 305).
+
+    Las páginas que llegaron ya se aplicaron, y la ventana de 2 h hace que la
+    corrida siguiente cubra el resto. El 2026-10-16 a las 14:02 una corrida
+    venció el tope con 3.330 cambios aplicados y Railway mandó un correo de
+    "crashed" por algo que la superposición resolvía sola. Sale con 1 solo si
+    se juntan `--incompletas-toleradas` seguidas, como los cortes por 504.
+    """
+
+    async def test_al_vencer_avisa_cuantas_incompletas_van_seguidas(self):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]], colgar_despues=1)
+        piezas.incompletas_antes = 1
+        avisadas: list[int] = []
+
+        async def correr() -> int:
+            return await sincronizar_estados(
+                _args(),
+                listar=piezas.listar,
+                aplicar=piezas.aplicar,
+                marcar_vencidas=piezas.marcar_vencidas,
+                abrir_corrida=piezas.abrir,
+                cerrar_corrida=piezas.cerrar,
+                al_vencer=avisadas.append,
+            )
+
+        await con_tope(correr(), segundos=0.05)
+
+        assert avisadas == [2]
+
+    async def test_el_codigo_al_vencer_sale_de_la_racha(self):
+        async def colgada() -> int:
+            await asyncio.sleep(10)
+            return 0
+
+        assert await con_tope(colgada(), segundos=0.01, codigo_al_vencer=lambda: 0) == 0
+
+    def test_codigo_por_racha(self):
+        from scripts.sync_estados import codigo_por_racha
+
+        assert codigo_por_racha(1, toleradas=3) == 0
+        assert codigo_por_racha(2, toleradas=3) == 0
+        assert codigo_por_racha(3, toleradas=3) == 1
+        # Sin saber cuántas van (la fila no se pudo cerrar), se avisa.
+        assert codigo_por_racha(None, toleradas=3) == 1
+
+
+AHORA = datetime(2026, 10, 19, 16, 3)
+
+
+class TestVentanaDesdeLaUltimaCompleta:
+    """La ventana arranca en la última corrida completa (plan 305).
+
+    Con una ventana fija de 2 h, cada corrida volvía a listar la hora anterior
+    entera: el 2026-10-19 en hora punta eran ~4.000 cambios y hasta 53 min, a
+    1,7 min del tope. Desde la última completa más un margen, lo normal es
+    ~1 h 15. Si una corrida quedó incompleta, la siguiente crece sola para
+    cubrir lo que faltó, sin pasar de `--ventana-horas`. Sin ese máximo, una
+    incompleta en hora punta haría más larga la siguiente, que también vencería
+    el tope, y así sucesivamente.
+    """
+
+    def test_sin_historial_usa_el_maximo(self):
+        from scripts.sync_estados import calcular_ventana
+
+        assert calcular_ventana(None, AHORA, maximo=timedelta(hours=2)) == timedelta(
+            hours=2
+        )
+
+    def test_desde_la_ultima_completa_mas_el_margen(self):
+        from scripts.sync_estados import MARGEN_VENTANA, calcular_ventana
+
+        ventana = calcular_ventana(
+            AHORA - timedelta(hours=1), AHORA, maximo=timedelta(hours=2)
+        )
+
+        assert MARGEN_VENTANA == timedelta(minutes=15)
+        assert ventana == timedelta(hours=1, minutes=15)
+
+    def test_no_pasa_del_maximo(self):
+        from scripts.sync_estados import calcular_ventana
+
+        ventana = calcular_ventana(
+            AHORA - timedelta(hours=5), AHORA, maximo=timedelta(hours=2)
+        )
+
+        assert ventana == timedelta(hours=2)
+
+    async def test_lista_desde_la_ultima_completa(self):
+        piezas = Piezas()
+
+        async def ultima_completa() -> datetime | None:
+            return AHORA - timedelta(hours=1)
+
+        await sincronizar_estados(
+            _args(ventana_horas=2.0),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            ultima_completa=ultima_completa,
+            ahora=lambda: AHORA,
+        )
+
+        assert piezas.listar_con == (timedelta(hours=1, minutes=15), 9000)
+
+    async def test_el_resumen_dice_la_ventana_usada(self, capsys):
+        piezas = Piezas()
+
+        async def ultima_completa() -> datetime | None:
+            return AHORA - timedelta(hours=1)
+
+        await sincronizar_estados(
+            _args(ventana_horas=2.0),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            ultima_completa=ultima_completa,
+            ahora=lambda: AHORA,
+        )
+
+        assert _resumen(capsys.readouterr().out)["ventana_h"] == 1.25
+
+    async def test_tocar_el_techo_cierra_como_incompleta(self):
+        """Si no, la siguiente arrancaría desde una corrida que no vio todo."""
+        piezas = Piezas(listadas=500)
+
+        await piezas.correr(_args(limite=500))
+
+        assert piezas.cerradas[0][1] is False

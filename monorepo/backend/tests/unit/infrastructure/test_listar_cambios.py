@@ -115,3 +115,59 @@ class TestListarCambios:
         cambio = next(c for c in listado.cambios if c.code == "5052-431-COT26")
         assert cambio.documentos is not None
         assert len(cambio.documentos) == 2
+
+
+class ClienteConPaginas(ClienteFalso):
+    """Entrega los ítems en dos páginas por el callback, como el cliente real."""
+
+    async def get_tenders(  # type: ignore[override]
+        self,
+        from_date: datetime,
+        to_date: datetime,
+        quantity: int,
+        *,
+        por_publicacion: bool = False,
+        estado: str | None = None,
+        al_recibir_pagina=None,
+    ) -> ListadoLicitaciones:
+        mitad = len(self.items) // 2
+        if al_recibir_pagina is not None:
+            await al_recibir_pagina(self.items[:mitad])
+            await al_recibir_pagina(self.items[mitad:])
+        return ListadoLicitaciones(items=self.items, completo=self.completo)
+
+
+class TestPorPagina:
+    """Plan 305: el cron de estados aplica cada página apenas llega."""
+
+    async def test_entrega_cada_pagina_traducida(self):
+        items = _items()
+        recibidas: list[list[str]] = []
+
+        async def al_recibir(cambios):
+            recibidas.append([c.code for c in cambios])
+
+        listado = await _servicio(ClienteConPaginas(items)).listar_cambios(
+            timedelta(hours=2), 9000, al_recibir
+        )
+
+        mitad = len(items) // 2
+        assert recibidas == [
+            [i["codigo"] for i in items[:mitad]],
+            [i["codigo"] for i in items[mitad:]],
+        ]
+        assert [c.code for c in listado.cambios] == [i["codigo"] for i in items]
+
+    async def test_las_ilegibles_no_se_entregan(self):
+        items = [*_items(), {"codigo": "ROTA"}]
+        recibidos: list[str] = []
+
+        async def al_recibir(cambios):
+            recibidos.extend(c.code for c in cambios)
+
+        listado = await _servicio(ClienteConPaginas(items)).listar_cambios(
+            timedelta(hours=2), 9000, al_recibir
+        )
+
+        assert "ROTA" not in recibidos
+        assert listado.ilegibles == 1

@@ -16,7 +16,6 @@ import type { RankingContext } from "@/features/ranking-telemetry/types";
 import {
   calculateTenderScore,
   generateDeepAnalysis,
-  getRecommendedTenders,
   getDeepAnalysisOnly,
   getTenderDetail,
 } from "../services/tenderService";
@@ -43,7 +42,6 @@ import {
   formatCLP,
   formatClosingDate,
   formatDateTime,
-  normalizeScore,
   type ClosingTone,
 } from "../utils/format";
 
@@ -142,18 +140,17 @@ export function TenderDetailView({
 
     void (async () => {
       try {
-        const [matches, savedList] = await Promise.all([
-          // Esta llamada solo busca la licitación entre las recomendadas: no es una
-          // lista que se le haya mostrado a nadie. Sin `track: false` cada apertura
-          // de una ficha crearía un ranking fantasma con todas sus posiciones.
-          getRecommendedTenders(userId, { track: false }),
+        // Solo el detalle: dice si la licitación está entre las recomendadas y
+        // trae su puntaje, así que no hace falta pedir el ranking completo para
+        // buscarla. Ese ranking se recalcula entero si la caché quedó vieja, y
+        // abrir una ficha no debería dispararlo.
+        const [detalle, savedList] = await Promise.all([
+          getTenderDetail(tenderId),
           fetchSavedTenders().catch(() => []),
         ]);
 
         if (cancelled) return;
 
-        // Vale para los dos caminos de abajo: una licitación cerrada también
-        // puede estar guardada, así que esto no depende de las recomendaciones.
         setIsSaved(
           savedList.some(
             (item) =>
@@ -161,46 +158,26 @@ export function TenderDetailView({
           ),
         );
 
-        const found = matches.find((m) => m.tender?.id === tenderId);
-        if (found) {
-          setScore(
-            found.final_score !== null
-              ? normalizeScore(found.final_score)
-              : null,
-          );
-          setState({
-            kind: "ready",
-            match: found,
-            isClosed: false,
-            isRecommended: true,
-          });
-        } else {
-          // Las recomendaciones descartan lo que ya cerró, así que no encontrarla
-          // ahí no significa que no exista: puede ser una alerta de hace días.
-          // El detalle directo sí la devuelve, marcada como cerrada.
-          const detalle = await getTenderDetail(tenderId);
-          if (cancelled) return;
-          // `score_pct` en nulo significa "nadie lo ha calculado", no "cero":
-          // el ranking solo puntúa sus doce mejores.
-          setScore(detalle.score_pct ?? null);
-          setState({
-            kind: "ready",
-            isClosed: detalle.is_closed,
-            isRecommended: false,
-            match: {
-              id: detalle.tender.id,
-              supplier_id: "",
-              tender_id: detalle.tender.id,
-              similarity_score: null,
-              reranker_score: null,
-              final_score:
-                detalle.score_pct !== null ? detalle.score_pct / 100 : null,
-              model_version: "",
-              calculated_at: detalle.tender.updated_at,
-              tender: detalle.tender,
-            },
-          });
-        }
+        // `score_pct` en nulo significa "nadie lo ha calculado", no "cero":
+        // el ranking solo puntúa sus doce mejores.
+        setScore(detalle.score_pct ?? null);
+        setState({
+          kind: "ready",
+          isClosed: detalle.is_closed,
+          isRecommended: detalle.is_recommended,
+          match: {
+            id: detalle.tender.id,
+            supplier_id: "",
+            tender_id: detalle.tender.id,
+            similarity_score: null,
+            reranker_score: null,
+            final_score:
+              detalle.score_pct !== null ? detalle.score_pct / 100 : null,
+            model_version: "",
+            calculated_at: detalle.tender.updated_at,
+            tender: detalle.tender,
+          },
+        });
 
         // Cargar el análisis de compatibilidad si ya existe
         try {

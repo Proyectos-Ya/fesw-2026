@@ -381,3 +381,40 @@ class TestSegundoLlamado:
         assert segundo.due_at == CIERRE + timedelta(days=1)
         [aviso] = await escenario.avisos.list_by_user(user_id)
         assert [c.label for c in aviso.date_changes] == ["Cierre de recepción de ofertas"]
+
+
+class TestSinPedirLaApi:
+    """Plan 305: el refresco usa las fechas que sync-estados ya mantiene.
+
+    sync-estados escribe `closing_at` y `published_at` de cada licitación cada
+    hora desde el listado. Pedir el detalle de cada licitación sincronizada cada
+    6 h gastaba cuota en hora punta, con cuatro intentos ante cada 504, para
+    traer la misma fecha.
+    """
+
+    def _sin_refresher(self, escenario: Escenario) -> None:
+        escenario.use_case.refresher = None
+
+    async def test_detecta_el_cambio_con_la_fecha_guardada(self):
+        escenario = Escenario()
+        self._sin_refresher(escenario)
+        tender = escenario.licitacion()
+        _, evento_id = await escenario.usuario_sincronizado(tender)
+        escenario.tenders.tenders[tender.id] = tender.model_copy(
+            update={"closing_at": NUEVO_CIERRE}
+        )
+
+        cambiadas = await escenario.use_case.execute()
+
+        assert cambiadas == 1
+        assert escenario.google.eventos[evento_id].start == NUEVO_CIERRE
+        assert escenario.refresher.pedidos == []
+
+    async def test_sin_cambios_no_hace_nada(self):
+        escenario = Escenario()
+        self._sin_refresher(escenario)
+        tender = escenario.licitacion()
+        await escenario.usuario_sincronizado(tender)
+
+        assert await escenario.use_case.execute() == 0
+        assert escenario.refresher.pedidos == []

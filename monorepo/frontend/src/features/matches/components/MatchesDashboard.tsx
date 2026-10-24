@@ -51,6 +51,11 @@ export function MatchesDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const { workspaces, activeWorkspace } = useWorkspace();
+  // Los efectos dependen de ids y no de objetos: AuthContext y WorkspaceContext
+  // pueden entregar un objeto nuevo con los mismos datos, y eso no es motivo
+  // para volver a pedir las recomendaciones.
+  const userId = user?.id;
+  const activeSupplierId = activeWorkspace?.active_supplier_id ?? null;
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
@@ -63,7 +68,7 @@ export function MatchesDashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !userId) return;
       fetchSavedTenders()
         .then((saved) => {
           const ids = saved.map(
@@ -72,7 +77,7 @@ export function MatchesDashboard() {
           setSavedTenderIds(new Set(ids));
         })
         .catch((err) => console.error("Error al cargar guardadas:", err));
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, userId]);
 
   const handleRegionChange = (next: string | null) => {
     setRegion(next);
@@ -95,14 +100,14 @@ export function MatchesDashboard() {
       window.location.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
 
     const fetchMatches = async (isBackground = false) => {
       try {
-        const matches = await getRecommendedTenders(user.id);
+        const matches = await getRecommendedTenders(userId);
         if (cancelled) return;
         setState({ kind: "ready", matches });
       } catch (err) {
@@ -115,7 +120,7 @@ export function MatchesDashboard() {
         }
         if (!isBackground) {
           if (err instanceof ApiError && isSupplierMissing(err)) {
-            if (workspaces.length > 0 || activeWorkspace !== null) {
+            if (workspaces.length > 0 || activeSupplierId !== null) {
               setState({ kind: "ready", matches: [] });
               return;
             }
@@ -144,7 +149,7 @@ export function MatchesDashboard() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
+  }, [authLoading, isAuthenticated, userId, router, retryNonce, workspaces.length, activeSupplierId]);
 
   const handleToggleSave = async (tenderId: string) => {
     const isCurrentlySaved = savedTenderIds.has(tenderId);

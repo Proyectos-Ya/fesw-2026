@@ -36,6 +36,11 @@ export function HomeDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const { workspaces, activeWorkspace } = useWorkspace();
+  // Los efectos dependen de ids y no de objetos: AuthContext y WorkspaceContext
+  // pueden entregar un objeto nuevo con los mismos datos, y eso no es motivo
+  // para volver a pedir las recomendaciones.
+  const userId = user?.id;
+  const activeSupplierId = activeWorkspace?.active_supplier_id ?? null;
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -89,13 +94,13 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       router.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const all = await getRecommendedTenders(user.id);
+        const all = await getRecommendedTenders(userId);
         if (cancelled) return;
         // Las recomendadas siempre traen puntaje; el nulo existe para las
         // licitaciones que nadie ha medido, y esas no son recomendaciones.
@@ -112,7 +117,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
           return;
         }
         if (err instanceof ApiError && err.status === 404) {
-          if (workspaces.length > 0 || activeWorkspace !== null) {
+          if (workspaces.length > 0 || activeSupplierId !== null) {
             setState({ kind: "ready", matches: [] });
             return;
           }
@@ -130,7 +135,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
+  }, [authLoading, isAuthenticated, userId, router, retryNonce, workspaces.length, activeSupplierId]);
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
