@@ -347,7 +347,7 @@ Va después del bloque 4.
     la ficha devuelve la clave, también en `null`.
   - Green: el campo en `Tender` y en las dos conversiones de `TenderRepository`.
   - Commit: `feat(dominio): exponer cotizaciones del primer llamado`
-- [ ] **10.5 `offersSummary` en el frontend.**
+- [x] **10.5 `offersSummary` en el frontend.**
   - Red: en `src/features/matches/utils/__tests__/offers.test.ts`, las cuatro
     filas de la tabla de §4.5 del plan, más `received_offers_count` 0 en
     segundo llamado con 5 en el primero (da "5 cotizaciones").
