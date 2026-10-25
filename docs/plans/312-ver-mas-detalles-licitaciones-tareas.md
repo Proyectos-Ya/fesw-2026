@@ -274,7 +274,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
     `null` muestra "No disponible" dentro de la tarjeta "Llamado".
   - Green: tarjeta "Llamado" con el `Badge` de `callBadge`.
   - Commit: `feat(matches): tarjeta de primer y segundo llamado en la ficha`
-- [ ] **8.5 Quitar el badge del encabezado.**
+- [x] **8.5 Quitar el badge del encabezado.**
   - Red: ajustar las pruebas de las líneas 604-660 según §5.3 del plan, y
     exigir que el encabezado ya no tenga "Segundo llamado".
   - Green: borrar el badge de las líneas 494-496. Quitar los imports que

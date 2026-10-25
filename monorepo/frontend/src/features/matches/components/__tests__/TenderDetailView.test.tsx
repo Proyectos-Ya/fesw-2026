@@ -601,6 +601,16 @@ describe("TenderDetailView: segundo llamado", () => {
     );
   }
 
+  it("en segundo llamado el encabezado no repite la etiqueta", async () => {
+    conTender({ call_number: 2 });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    const encabezado = (await screen.findByRole("heading", { level: 1 })).closest("header");
+    expect(encabezado).not.toBeNull();
+    expect(within(encabezado as HTMLElement).queryByText("Segundo llamado")).not.toBeInTheDocument();
+  });
+
   it("en segundo llamado etiqueta la ficha y muestra el cierre de cada llamado", async () => {
     conTender({
       call_number: 2,
@@ -611,7 +621,8 @@ describe("TenderDetailView: segundo llamado", () => {
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    expect((await screen.findAllByText("Segundo llamado")).length).toBeGreaterThan(0);
+    const llamado = await screen.findByText("Llamado");
+    expect(within(llamado.parentElement as HTMLElement).getByText("Segundo llamado")).toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
     expect(within(region).getByText(conEspaciosNormales(formatDateTime(PRIMER)))).toBeInTheDocument();
@@ -631,6 +642,7 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     // Coincidencia exacta: "Segundo llamado posible" no cuenta como la etiqueta.
+    expect(screen.getByText("Primer llamado")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Segundo llamado posible")).toBeInTheDocument();
@@ -644,6 +656,9 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    // La tarjeta no afirma ningún llamado: dice que no hay dato.
+    const llamado = screen.getByText("Llamado").parentElement as HTMLElement;
+    expect(within(llamado).getByText("No disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
@@ -655,6 +670,9 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    // La tarjeta no afirma ningún llamado: dice que no hay dato.
+    const llamado = screen.getByText("Llamado").parentElement as HTMLElement;
+    expect(within(llamado).getByText("No disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });

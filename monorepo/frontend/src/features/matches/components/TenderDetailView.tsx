@@ -28,7 +28,7 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { formatOffersCount } from "../utils/offers";
-import { callBadge, isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
+import { callBadge } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
@@ -493,9 +493,6 @@ export function TenderDetailView({
             >
               {closing.label}
             </Badge>
-            {isSecondCall(tender) && (
-              <Badge tone="info">{SECOND_CALL_LABEL}</Badge>
-            )}
             <span className="font-mono text-xs text-text-subtle">
               ID {tender.code}
             </span>
