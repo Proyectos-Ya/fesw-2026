@@ -3,7 +3,7 @@
 **Issue asociada**: Refs #312  
 **Estado**: Aprobado el 2026-10-25, en implementación. Decisiones en §8  
 **Fecha**: 2026-10-24, revisado el 2026-10-25  
-**Tareas**: [312-ver-mas-detalles-licitaciones-tareas.md](./312-ver-mas-detalles-licitaciones-tareas.md)
+**Tareas**: [task.md](./task.md)
 
 ---
 
@@ -124,7 +124,7 @@ skills `supabase` y `supabase-postgres-best-practices`.
 
 Pendiente de la tarea 0.2 (decisión 3). Si el detalle de Compra Ágil trae
 `resumen.total_ofertas_recibidas`, se suman las tareas del bloque 4 de
-[312-ver-mas-detalles-licitaciones-tareas.md](./312-ver-mas-detalles-licitaciones-tareas.md):
+[task.md](./task.md):
 
 - `TenderIngestaDTO.received_offers_count`, que `_parse_to_dto` llena con
   `leer_total_ofertas(detail)`;
@@ -221,7 +221,7 @@ Todo queda montado y visible, así que los avisos `onReadyKeyChange` y
 
 ## 6. Plan de pruebas
 
-El detalle, tarea por tarea y en orden TDD, está en [312-ver-mas-detalles-licitaciones-tareas.md](./312-ver-mas-detalles-licitaciones-tareas.md).
+El detalle, tarea por tarea y en orden TDD, está en [task.md](./task.md).
 
 ```bash
 # Backend, desde monorepo/backend con .venv activo y `supabase start`

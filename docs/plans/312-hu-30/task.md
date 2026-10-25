@@ -1,7 +1,7 @@
 # Tareas: HU-30, ver más detalles de las licitaciones
 
 **Issue asociada**: Refs #312  
-**Plan**: [312-ver-mas-detalles-licitaciones.md](./312-ver-mas-detalles-licitaciones.md) (decisiones en §8)  
+**Plan**: [plan.md](./plan.md) (decisiones en §8)  
 **Fecha**: 2026-10-25
 
 ---
