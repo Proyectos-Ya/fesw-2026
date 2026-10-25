@@ -94,6 +94,11 @@ Sin código de producción.
 
 ## Bloque 3. sync-estados
 
+Orden: 3.1, 3.2, **3.7**, 3.3, 3.4, 3.5, 3.6, 3.8 y 3.9. La 3.3 vuelve abstracto
+`overwrite_received_offers_count`, y si `TenderRepository` no lo implementa
+antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
+3.7 el método se agrega solo en `TenderRepository`, sin tocar la interfaz.
+
 - [x] **3.1 El listado trae la cifra.**
   - Red: en `tests/unit/infrastructure/test_listado_cambios.py`, los cuatro
     ítems del fixture dan 0, 17, 1 y 0, y un ítem sin `resumen` sigue dando un
