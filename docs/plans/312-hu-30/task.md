@@ -36,10 +36,10 @@
 
 Sin código de producción.
 
-- [ ] **0.1 Rama desde `develop`.** `git fetch origin` y confirmar que
+- [x] **0.1 Rama desde `develop`.** `git fetch origin` y confirmar que
       `origin/develop` contiene la rama actual (`git log HEAD..origin/develop`).
       Si `develop` avanzó, rebasar sobre `origin/develop`.
-- [ ] **0.2 ¿El detalle trae las cotizaciones?** Con
+- [x] **0.2 ¿El detalle trae las cotizaciones?** Resuelto con la guía oficial de la API, sin petición real (§4.3 del plan). Con
       `MercadoPublicoClient.get_tender_detail`, pedir el detalle de 3 Compras
       Ágiles publicadas y buscar `resumen.total_ofertas_recibidas`. Anotar el
       resultado en §4.3 del plan. Si no lo trae, borrar el bloque 4 de este
