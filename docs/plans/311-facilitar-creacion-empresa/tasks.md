@@ -93,9 +93,9 @@ El paso 3 ya recibe `importedProfile.keywords` desde `ProfileWizard`. Falta el d
   - `monorepo/frontend/src/features/company-profile/services/supplierService.ts`
   - `monorepo/frontend/src/features/company-profile/services/__tests__/supplierService.test.ts`
   - `monorepo/frontend/src/features/company-profile/components/steps/Step3Specialization.tsx`
-- [ ] **[Red]** Tests de `suggestKeywordsFromDescription` y del botón (carga, resultado y
+- [x] **[Red]** Tests de `suggestKeywordsFromDescription` y del botón (carga, resultado y
   error).
-- [ ] **[Green]** Botón "Sugerir palabras clave desde la descripción". Las sugerencias se
+- [x] **[Green]** Botón "Sugerir palabras clave desde la descripción". Las sugerencias se
   muestran con `KeywordSuggestions` y las aceptadas van al `TagInput`.
 
 ---

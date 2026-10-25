@@ -101,6 +101,25 @@ export function importCompanyProfile(rut: string): Promise<CompanyProfileImport>
   );
 }
 
+/**
+ * Palabras clave sacadas de la descripción de la empresa. Extracción léxica en el
+ * backend, sin IA; `existingKeywords` son las que el usuario ya eligió y no se
+ * vuelven a sugerir.
+ */
+export async function suggestKeywordsFromDescription(
+  description: string,
+  existingKeywords: string[],
+): Promise<string[]> {
+  const { suggested_keywords } = await apiFetch<{ suggested_keywords: string[] }>(
+    "/suppliers/suggest-keywords-from-description",
+    {
+      method: "POST",
+      body: JSON.stringify({ description, existing_keywords: existingKeywords }),
+    },
+  );
+  return suggested_keywords;
+}
+
 /** Campos editables de la empresa; el RUT no se puede modificar. */
 export type UpdateSupplierData = Partial<Omit<ProfileData, "rut" | "trade_name">> & {
   trade_name?: string | null;
