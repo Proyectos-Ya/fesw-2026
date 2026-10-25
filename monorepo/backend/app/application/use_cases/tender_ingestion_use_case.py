@@ -123,6 +123,10 @@ class TenderIngestionUseCase:
                 call_number=dto.call_number,
                 first_call_closing_at=dto.first_call_closing_at,
                 second_call_closing_at=dto.second_call_closing_at,
+                received_offers_count=dto.received_offers_count,
+                offers_checked_at=(
+                    now if dto.received_offers_count is not None else None
+                ),
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,

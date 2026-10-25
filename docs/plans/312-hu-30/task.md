@@ -166,7 +166,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
   - Green: el campo en `TenderIngestaDTO` y
     `TotalOfertasRecibidas=leer_total_ofertas(detail)` en `_parse_to_dto`.
   - Commit: `feat(ingesta): pasar cotizaciones del detalle al dto`
-- [ ] **4.2 El alta guarda la cifra.**
+- [x] **4.2 El alta guarda la cifra.**
   - Red: en `tests/unit/application/test_tender_ingestion_use_case.py`, una
     licitación nueva con cifra 2 se guarda con 2 y con `offers_checked_at`. Con
     `None`, las dos quedan en `None`.
