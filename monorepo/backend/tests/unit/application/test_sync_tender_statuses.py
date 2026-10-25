@@ -504,3 +504,36 @@ class TestCotizaciones:
         await caso.execute([con_cifra, sin_cifra])
 
         assert repo.ofertas == [con_cifra]
+
+    async def test_se_escriben_despues_del_llamado_y_antes_de_los_punteros(self):
+        class ColaConLog(ColaFalsa):
+            def __init__(self, log: list[str]) -> None:
+                super().__init__()
+                self.log = log
+
+            async def registrar_punteros(self, punteros):
+                self.log.append("punteros")
+                return await super().registrar_punteros(punteros)
+
+        log: list[str] = []
+        repo, vector = RepoFalso([_conocida("A", PUBLICADA)], log), VectorFalso(log)
+        caso = SyncTenderStatusesUseCase(
+            repository=repo,
+            tender_vector_repo=vector,
+            cola=ColaConLog(log),
+            reloj=lambda: AHORA,
+        )
+
+        await caso.execute(
+            [
+                _cambio(
+                    "A",
+                    CANCELADA,
+                    "cancelada",
+                    call_number=1,
+                    received_offers_count=4,
+                )
+            ]
+        )
+
+        assert log == ["qdrant", "sql", "sql-llamado", "sql-ofertas", "punteros"]

@@ -124,7 +124,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
       `a_registrar_llamado`.
   - Verificar: `pytest tests/unit/application/test_sync_tender_statuses.py -q`
   - Commit: `feat(sync-estados): registrar cotizaciones de licitaciones conocidas`
-- [ ] **3.4 Orden de escritura.**
+- [x] **3.4 Orden de escritura.**
   - Red: con el `log` de `RepoFalso`, `sql-ofertas` va después de `sql-llamado`
     y antes de los punteros.
   - Green: mover la llamada si hace falta.
