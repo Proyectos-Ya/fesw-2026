@@ -112,7 +112,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
   - Prueba: un ítem que trae cotizaciones y no trae `convocatoria` tiene
     `trae_llamado` en falso.
   - Commit: `test(sync-estados): las cotizaciones no activan trae_llamado`
-- [ ] **3.3 El caso de uso elige qué registrar.**
+- [x] **3.3 El caso de uso elige qué registrar.**
   - Red: en `tests/unit/application/test_sync_tender_statuses.py`, a
     `overwrite_received_offers_count` llega una conocida con cifra 3 y una
     reabierta con cifra, y no llegan una conocida con `None` ni una desconocida.

@@ -15,6 +15,8 @@ Reglas que protege:
 - El llamado vigente y el cierre de cada llamado se registran en toda
   licitación conocida (también en una reapertura), en una escritura aparte que
   no mueve `updated_at` y va después de Qdrant y del estado.
+- Las cotizaciones recibidas se registran igual, en otra escritura aparte, solo
+  si el ítem trae la cifra (0 incluido): un `None` no es una revisión.
 """
 
 from datetime import datetime, timedelta
@@ -47,6 +49,7 @@ class RepoFalso(ITenderStatusSyncRepository):
         self.estados_creados: list[tuple[int, str]] = []
         self.sobrescritos: list[CambioDeEstado] = []
         self.llamados: list[CambioDeEstado] = []
+        self.ofertas: list[CambioDeEstado] = []
 
     async def get_known_by_codes(
         self, codes: list[str]
@@ -65,6 +68,13 @@ class RepoFalso(ITenderStatusSyncRepository):
     async def overwrite_call_info(self, cambios: list[CambioDeEstado]) -> int:
         self.log.append("sql-llamado")
         self.llamados.extend(cambios)
+        return len(cambios)
+
+    async def overwrite_received_offers_count(
+        self, cambios: list[CambioDeEstado]
+    ) -> int:
+        self.log.append("sql-ofertas")
+        self.ofertas.extend(cambios)
         return len(cambios)
 
 
@@ -129,6 +139,7 @@ def _cambio(
     call_number: int | None = None,
     first_call_closing_at: datetime | None = None,
     second_call_closing_at: datetime | None = None,
+    received_offers_count: int | None = None,
 ) -> CambioDeEstado:
     return CambioDeEstado(
         code=code,
@@ -139,6 +150,7 @@ def _cambio(
         call_number=call_number,
         first_call_closing_at=first_call_closing_at,
         second_call_closing_at=second_call_closing_at,
+        received_offers_count=received_offers_count,
     )
 
 
@@ -434,3 +446,61 @@ class TestLlamado:
         await caso.execute([con_llamado, sin_llamado])
 
         assert repo.llamados == [con_llamado]
+
+
+class TestCotizaciones:
+    """La cifra se registra aparte, en toda conocida que la traiga."""
+
+    async def test_registra_la_cifra_de_una_conocida(self):
+        caso, repo, _, _, _ = _armar([_conocida("A", PUBLICADA)])
+        cambio = _cambio("A", PUBLICADA, "publicada", received_offers_count=3)
+
+        await caso.execute([cambio])
+
+        assert repo.ofertas == [cambio]
+
+    async def test_una_reapertura_con_cifra_tambien_se_registra(self):
+        caso, repo, _, cola, _ = _armar([_conocida("A", CERRADA)])
+        cambio = _cambio("A", PUBLICADA, "publicada", received_offers_count=2)
+
+        await caso.execute([cambio])
+
+        assert repo.ofertas == [cambio]
+        assert cola.reencolados == ["A"]
+
+    async def test_un_cero_es_una_cifra_y_se_registra(self):
+        caso, repo, _, _, _ = _armar([_conocida("A", PUBLICADA)])
+        cambio = _cambio("A", PUBLICADA, "publicada", received_offers_count=0)
+
+        await caso.execute([cambio])
+
+        assert repo.ofertas == [cambio]
+
+    async def test_una_conocida_sin_cifra_no_se_registra(self):
+        caso, repo, _, _, log = _armar([_conocida("A", PUBLICADA)])
+
+        await caso.execute([_cambio("A", PUBLICADA, "publicada")])
+
+        assert repo.ofertas == []
+        assert "sql-ofertas" not in log
+
+    async def test_una_desconocida_no_se_registra(self):
+        caso, repo, _, _, log = _armar([])
+
+        await caso.execute(
+            [_cambio("N", PUBLICADA, "publicada", received_offers_count=5)]
+        )
+
+        assert repo.ofertas == []
+        assert "sql-ofertas" not in log
+
+    async def test_solo_llegan_las_que_traen_cifra(self):
+        caso, repo, _, _, _ = _armar(
+            [_conocida("A", PUBLICADA), _conocida("B", PUBLICADA)]
+        )
+        con_cifra = _cambio("A", PUBLICADA, "publicada", received_offers_count=3)
+        sin_cifra = _cambio("B", PUBLICADA, "publicada")
+
+        await caso.execute([con_cifra, sin_cifra])
+
+        assert repo.ofertas == [con_cifra]

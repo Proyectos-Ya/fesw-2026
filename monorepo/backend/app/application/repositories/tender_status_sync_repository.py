@@ -46,3 +46,16 @@ class ITenderStatusSyncRepository(ABC):
         pide. Devuelve cuántas filas cambiaron de verdad.
         """
         ...
+
+    @abstractmethod
+    async def overwrite_received_offers_count(
+        self, cambios: list[CambioDeEstado]
+    ) -> int:
+        """Escribe la cifra de cotizaciones recibidas y `offers_checked_at`, en lote.
+
+        Solo recibe cambios con cifra (nunca `None`). Escribe en todas las filas,
+        aunque la cifra no cambie, porque `offers_checked_at` registra la revisión
+        y no el cambio. No mueve `updated_at` ni `last_change_at`: una cotización
+        más no cambia lo que se le pide a Gemini. Devuelve cuántas filas revisó.
+        """
+        ...

@@ -99,6 +99,7 @@ class SyncTenderStatusesUseCase:
         payloads = {}
         a_sobrescribir: list[CambioDeEstado] = []
         a_registrar_llamado: list[CambioDeEstado] = []
+        a_registrar_ofertas: list[CambioDeEstado] = []
         punteros: list[PunteroDeCambio] = []
         ahora = self.reloj()
 
@@ -119,6 +120,10 @@ class SyncTenderStatusesUseCase:
             # que lo hace reindexar (ver la rama de abajo).
             if cambio.trae_llamado:
                 a_registrar_llamado.append(cambio)
+
+            # La cifra, igual: toda conocida que la traiga. El 0 es una cifra.
+            if cambio.received_offers_count is not None:
+                a_registrar_ofertas.append(cambio)
 
             estaba_activa = _esta_activa(conocida.status_id)
 
@@ -167,6 +172,9 @@ class SyncTenderStatusesUseCase:
             resultado.llamados_actualizados = await self.repo.overwrite_call_info(
                 a_registrar_llamado
             )
+        if a_registrar_ofertas:
+            # También aparte y sin mover `updated_at`.
+            await self.repo.overwrite_received_offers_count(a_registrar_ofertas)
         # Al final: el puntero de una conocida se compara con lo que el ingest
         # bajó, no con lo que se acaba de escribir arriba.
         if punteros:
