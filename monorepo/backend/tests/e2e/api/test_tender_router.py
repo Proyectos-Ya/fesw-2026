@@ -695,6 +695,7 @@ async def test_la_ficha_devuelve_las_cotizaciones_tambien_en_null(
     tender = _build_tender(tender_id).model_copy(
         update={
             "received_offers_count": cifra,
+            "first_call_offers_count": cifra,
             "offers_checked_at": (
                 datetime(2026, 10, 25, 14, 5) if cifra is not None else None
             ),
@@ -714,6 +715,8 @@ async def test_la_ficha_devuelve_las_cotizaciones_tambien_en_null(
     ficha = response.json()["tender"]
     assert "received_offers_count" in ficha
     assert ficha["received_offers_count"] == cifra
+    assert "first_call_offers_count" in ficha
+    assert ficha["first_call_offers_count"] == cifra
     assert "offers_checked_at" in ficha
     if cifra is None:
         assert ficha["offers_checked_at"] is None

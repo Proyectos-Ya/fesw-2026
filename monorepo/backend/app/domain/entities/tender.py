@@ -80,6 +80,9 @@ class Tender(BaseModel):
     # no la informó, no 0.
     received_offers_count: int | None = None
     offers_checked_at: UtcDateTime | None = None
+    # Última cifra vista del primer llamado: la API cuenta solo el llamado
+    # actual, y la ficha suma las dos.
+    first_call_offers_count: int | None = None
     last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora

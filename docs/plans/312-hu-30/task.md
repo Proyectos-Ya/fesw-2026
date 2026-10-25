@@ -341,7 +341,7 @@ Va después del bloque 4.
     en la actualización. Uno en segundo llamado no lo toca.
   - Green: `_aplicar_ofertas` y el alta.
   - Commit: `feat(ingesta): conservar cotizaciones del primer llamado`
-- [ ] **10.4 La entidad y la API exponen el campo.**
+- [x] **10.4 La entidad y la API exponen el campo.**
   - Red: en `tests/integration/test_tender_repository.py`, la fila con
     `first_call_offers_count=5` se lee con 5. En `tests/e2e/api/test_tender_router.py`,
     la ficha devuelve la clave, también en `null`.

@@ -170,6 +170,7 @@ async def test_get_tenders_hidrata_las_cotizaciones_y_su_revision(
             tender_id,
             received_offers_count=0,
             offers_checked_at=datetime(2026, 10, 25, 14, 5),
+            first_call_offers_count=5,
         )
     )
     await db_session.commit()
@@ -179,6 +180,7 @@ async def test_get_tenders_hidrata_las_cotizaciones_y_su_revision(
     # El 0 es una cifra real: no se confunde con "sin dato".
     assert results[0].received_offers_count == 0
     assert results[0].offers_checked_at == datetime(2026, 10, 25, 14, 5)
+    assert results[0].first_call_offers_count == 5
 
 
 @pytest.mark.asyncio
@@ -193,6 +195,7 @@ async def test_get_tenders_sin_cotizaciones_queda_en_none(db_session: AsyncSessi
 
     assert results[0].received_offers_count is None
     assert results[0].offers_checked_at is None
+    assert results[0].first_call_offers_count is None
 
 
 @pytest.mark.asyncio
