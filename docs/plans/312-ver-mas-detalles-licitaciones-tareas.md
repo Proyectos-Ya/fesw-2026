@@ -203,7 +203,13 @@ Sin código de producción.
 ## Bloque 6. Cierre del backend
 
 - [ ] **6.1 Suite y lint.**
-      `pytest && ruff check . && ruff format --check . && python -m scripts.migraciones`
+      `pytest && python -m scripts.migraciones`. Ruff solo sobre los archivos
+      de la rama: el backend completo arrastra cientos de hallazgos previos y el
+      CI no corre Ruff.
+      ```bash
+      ruff check $(git diff --name-only origin/develop -- '*.py')
+      ruff format --check $(git diff --name-only origin/develop -- '*.py')
+      ```
 - [ ] **6.2 Prueba manual de sync-estados.** `python -m scripts.sync_estados --ventana-horas 1`
       contra Supabase local. Con SQL, revisar que `received_offers_count` y
       `offers_checked_at` se llenan y que `updated_at` no cambia. Anotar el
