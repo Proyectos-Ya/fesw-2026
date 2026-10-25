@@ -45,7 +45,7 @@ describe("callBadge", () => {
   });
 
   it("nulo, ausente u otro valor no afirman un llamado", () => {
-    const sinDato = { label: "No disponible", tone: "neutral" };
+    const sinDato = { label: "Llamado no disponible", tone: "neutral" };
     expect(callBadge({ call_number: null })).toEqual(sinDato);
     expect(callBadge({})).toEqual(sinDato);
     expect(callBadge({ call_number: 3 })).toEqual(sinDato);

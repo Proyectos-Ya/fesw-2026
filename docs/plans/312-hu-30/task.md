@@ -364,6 +364,14 @@ Va después del bloque 4.
     junta el desglose y "Revisado el …".
   - Commit: `feat(matches): ficha suma cotizaciones de los dos llamados`
 
+- [x] **10.7 Llamado y cotizaciones en una sola tarjeta (decisión 13).**
+  - Red: las pruebas de la ficha buscan la tarjeta "Llamado y cotizaciones",
+    la grilla tiene tres tarjetas (`sm:grid-cols-3`) y el badge sin dato dice
+    "Llamado no disponible", también en `secondCall.test.ts`.
+  - Green: una sola `KeyValueCard` con el badge y la cifra, y la etiqueta nueva
+    en `callBadge`.
+  - Commit: `feat(matches): llamado y cotizaciones en una sola tarjeta`
+
 ---
 
 ## Bloque 9. Cierre y PR

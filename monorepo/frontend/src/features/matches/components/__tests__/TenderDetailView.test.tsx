@@ -619,7 +619,7 @@ describe("TenderDetailView: segundo llamado", () => {
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    const llamado = await screen.findByText("Llamado");
+    const llamado = await screen.findByText("Llamado y cotizaciones");
     expect(within(llamado.parentElement as HTMLElement).getByText("Segundo llamado")).toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
@@ -655,8 +655,8 @@ describe("TenderDetailView: segundo llamado", () => {
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
     // La tarjeta no afirma ningún llamado: dice que no hay dato.
-    const llamado = screen.getByText("Llamado").parentElement as HTMLElement;
-    expect(within(llamado).getByText("No disponible")).toBeInTheDocument();
+    const llamado = screen.getByText("Llamado y cotizaciones").parentElement as HTMLElement;
+    expect(within(llamado).getByText("Llamado no disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
@@ -669,8 +669,8 @@ describe("TenderDetailView: segundo llamado", () => {
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
     // La tarjeta no afirma ningún llamado: dice que no hay dato.
-    const llamado = screen.getByText("Llamado").parentElement as HTMLElement;
-    expect(within(llamado).getByText("No disponible")).toBeInTheDocument();
+    const llamado = screen.getByText("Llamado y cotizaciones").parentElement as HTMLElement;
+    expect(within(llamado).getByText("Llamado no disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
@@ -722,7 +722,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("0 cotizaciones")).toBeInTheDocument();
     });
 
@@ -731,7 +731,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("17 cotizaciones")).toBeInTheDocument();
     });
 
@@ -743,7 +743,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("No disponible")).toBeInTheDocument();
       expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
     });
@@ -826,15 +826,15 @@ describe("TenderDetailView: grilla de métricas", () => {
   });
 
   describe("composición de la grilla", () => {
-    it("tiene exactamente cuatro tarjetas y ninguna es la publicación", async () => {
+    it("tiene tres tarjetas, con el llamado y las cotizaciones juntos", async () => {
       conTender({});
 
       render(<TenderDetailView tenderId="tender-50" />);
 
       const grilla = (await tarjeta("Monto estimado")).parentElement as HTMLElement;
       const titulos = Array.from(grilla.children).map((c) => c.firstElementChild?.textContent);
-      expect(titulos).toEqual(["Monto estimado", "Cierre", "Llamado", "Cotizaciones recibidas"]);
-      expect(grilla).toHaveClass("lg:grid-cols-4");
+      expect(titulos).toEqual(["Monto estimado", "Cierre", "Llamado y cotizaciones"]);
+      expect(grilla).toHaveClass("sm:grid-cols-3");
       expect(screen.queryByText("Publicación")).not.toBeInTheDocument();
     });
 
@@ -857,7 +857,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Llamado");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("Primer llamado")).toHaveAttribute("data-tone", "info");
     });
 
@@ -866,7 +866,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Llamado");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("Segundo llamado")).toHaveAttribute("data-tone", "warning");
     });
 
@@ -878,8 +878,8 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Llamado");
-      expect(within(card).getByText("No disponible")).toHaveAttribute("data-tone", "neutral");
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("Llamado no disponible")).toHaveAttribute("data-tone", "neutral");
     });
   });
 
@@ -891,7 +891,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(conEspaciosNormales(card.textContent ?? "")).toContain(
         `Revisado el ${conEspaciosNormales(formatDateTime(REVISADO))}`,
       );
@@ -902,7 +902,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(card.textContent).toContain("Revisado el");
     });
 
@@ -915,7 +915,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      await tarjeta("Cotizaciones recibidas");
+      await tarjeta("Llamado y cotizaciones");
       expect(screen.queryByText(/Revisado el/)).not.toBeInTheDocument();
     });
   });
@@ -933,7 +933,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       const texto = conEspaciosNormales(card.textContent ?? "");
       expect(within(card).getByText("7 cotizaciones")).toBeInTheDocument();
       expect(texto).toContain("5 en el 1.er llamado y 2 en el 2.º");
@@ -945,7 +945,7 @@ describe("TenderDetailView: grilla de métricas", () => {
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const card = await tarjeta("Cotizaciones recibidas");
+      const card = await tarjeta("Llamado y cotizaciones");
       expect(within(card).getByText("2 en el 2.º llamado")).toBeInTheDocument();
       expect(card.textContent).toContain("1.er llamado: No disponible");
     });

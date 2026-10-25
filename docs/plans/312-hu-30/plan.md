@@ -48,9 +48,9 @@ postular y, debajo, secciones apiladas con el detalle.
 | CA  | Cómo se cumple |
 | --- | --- |
 | CA1 | Métrica "Cotizaciones recibidas" con `received_offers_count` y, debajo, "Revisado el {fecha}" con `offers_checked_at` |
-| CA2 | Tarjeta "Llamado" en la grilla superior. "Primer llamado" en tono `info` (azul) y "Segundo llamado" en tono `warning` (ámbar) |
+| CA2 | Badge en la tarjeta "Llamado y cotizaciones" de la grilla superior. "Primer llamado" en tono `info` (azul) y "Segundo llamado" en tono `warning` (ámbar) |
 | CA3 | `null` de punta a punta: columna nullable, `int \| None` en dominio y API, y la vista escribe "No disponible". Un 0 solo aparece si Mercado Público dijo 0 |
-| CA4 | Encabezado con título y organismo, y grilla de cuatro métricas: monto, cierre, llamado y cotizaciones. Debajo, las secciones "Entrega y requisitos", "Documentos" y "Descripción". La entrega propiamente tal llega con #294 |
+| CA4 | Encabezado con título y organismo, y grilla de tres métricas: monto, cierre, y llamado con sus cotizaciones. Debajo, las secciones "Entrega y requisitos", "Documentos" y "Descripción". La entrega propiamente tal llega con #294 |
 
 ---
 
@@ -204,7 +204,7 @@ tercera fila: no hay forma de recuperar la cifra de su primer llamado.
 | --- | --- | --- |
 | `1` | "Primer llamado" | `info` |
 | `2` | `SECOND_CALL_LABEL` ("Segundo llamado") | `warning` |
-| `null`, ausente u otro valor | "No disponible" | `neutral` |
+| `null`, ausente u otro valor | "Llamado no disponible" | `neutral` |
 
 - `Badge` suma `data-tone={tone}`, para que las pruebas comprueben el tono sin
   depender de las clases de Tailwind.
@@ -215,14 +215,13 @@ tercera fila: no hay forma de recuperar la cifra de su primer llamado.
 `region`), el puntaje y las acciones. Se quita el badge "Segundo llamado" del
 encabezado (líneas 494-496). El llamado pasa a la grilla.
 
-**Grilla de métricas.** Cuatro `KeyValueCard`, en `sm:grid-cols-2 lg:grid-cols-4`:
+**Grilla de métricas.** Tres `KeyValueCard`, en `sm:grid-cols-3` (decisión 13):
 
 | Tarjeta | Valor | Pista |
 | --- | --- | --- |
 | Monto estimado | `formatCLP(available_amount_clp)` | |
 | Cierre | `formatClosingDate(closing_at)` | `closing.label` |
-| Llamado | `Badge` de `callBadge` | |
-| Cotizaciones recibidas | `formatOffersCount(received_offers_count)` | "Revisado el {`formatDateTime(offers_checked_at)`}" solo si hay cifra y fecha |
+| Llamado y cotizaciones | `Badge` de `callBadge` y, debajo, `offersSummary(tender).value` | Desglose por llamado (§4.5) y "Revisado el {`formatDateTime(offers_checked_at)`}", unidos por " · " |
 
 `KeyValueCard` recibe hoy `value: string`. Pasa a `ReactNode` para aceptar el
 badge. La tarjeta "Publicación" sale de la grilla y su fecha pasa a "Hitos y
@@ -358,3 +357,7 @@ curso. No se mergea a `main` entre las 06:00 y las 12:00 UTC.
 12. **La cifra suma los dos llamados.** La API cuenta solo el llamado actual.
     Se guarda aparte la última cifra del primer llamado y la ficha muestra la
     suma, con el desglose en la pista (§4.5).
+13. **Llamado y cotizaciones en una sola tarjeta.** La cifra depende del
+    llamado, así que van juntos: el badge arriba y la cifra debajo. La grilla
+    queda en tres tarjetas. Para que "No disponible" no salga dos veces en la
+    misma tarjeta, el badge sin dato dice "Llamado no disponible".

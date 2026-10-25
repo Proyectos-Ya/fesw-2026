@@ -16,7 +16,7 @@ export function isSecondCall(tender: Pick<Tender, "call_number">): boolean {
 export function callBadge(tender: Pick<Tender, "call_number">): { label: string; tone: BadgeTone } {
   if (tender.call_number === 1) return { label: "Primer llamado", tone: "info" };
   if (isSecondCall(tender)) return { label: SECOND_CALL_LABEL, tone: "warning" };
-  return { label: "No disponible", tone: "neutral" };
+  return { label: "Llamado no disponible", tone: "neutral" };
 }
 
 export interface CallClosingLine {

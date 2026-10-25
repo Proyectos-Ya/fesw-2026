@@ -571,7 +571,7 @@ export function TenderDetailView({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-5">
         <KeyValueCard
           icon="wallet"
           eyebrow="Monto estimado"
@@ -583,15 +583,17 @@ export function TenderDetailView({
           value={formatClosingDate(tender.closing_at)}
           hint={closing.label}
         />
+        {/* El llamado y sus cotizaciones van juntos: en segundo llamado la cifra
+            suma los dos, y el desglose de la pista se lee junto al badge. */}
         <KeyValueCard
           icon="layers"
-          eyebrow="Llamado"
-          value={<Badge tone={llamado.tone}>{llamado.label}</Badge>}
-        />
-        <KeyValueCard
-          icon="file-text"
-          eyebrow="Cotizaciones recibidas"
-          value={cotizaciones.value}
+          eyebrow="Llamado y cotizaciones"
+          value={
+            <div className="flex flex-col items-start gap-2">
+              <Badge tone={llamado.tone}>{llamado.label}</Badge>
+              <span>{cotizaciones.value}</span>
+            </div>
+          }
           hint={
             [cotizaciones.detail, revisadoEl].filter(Boolean).join(" · ") ||
             undefined
