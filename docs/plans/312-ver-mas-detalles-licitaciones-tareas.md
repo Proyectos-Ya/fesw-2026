@@ -237,7 +237,7 @@ Sin código de producción.
     `utils/secondCall.ts`, que devuelve `{ label: string; tone: BadgeTone }`.
     Para el 2 reutiliza `SECOND_CALL_LABEL`.
   - Commit: `feat(matches): etiqueta y tono del llamado`
-- [ ] **7.3 `Badge` expone el tono.**
+- [x] **7.3 `Badge` expone el tono.**
   - Red: en `src/features/shared/components/__tests__/Badge.test.tsx`, un
     `Badge tone="warning"` tiene `data-tone="warning"`, y uno sin `tone` tiene
     `data-tone="neutral"`.
