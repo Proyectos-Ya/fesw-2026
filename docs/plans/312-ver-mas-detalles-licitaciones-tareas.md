@@ -280,7 +280,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
   - Green: borrar el badge de las líneas 494-496. Quitar los imports que
     queden sin uso.
   - Commit: `refactor(matches): el llamado se muestra solo en la grilla`
-- [ ] **8.6 Publicación pasa a hitos.**
+- [x] **8.6 Publicación pasa a hitos.**
   - Red: la grilla tiene exactamente cuatro tarjetas (Monto estimado, Cierre,
     Llamado y Cotizaciones recibidas), y la fecha de publicación aparece en
     "Hitos y fechas importantes".

@@ -581,7 +581,7 @@ export function TenderDetailView({
         onAnalysisFinished={handleAnalysisFinished}
       />
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-5">
         <KeyValueCard
           icon="wallet"
           eyebrow="Monto estimado"
@@ -607,11 +607,6 @@ export function TenderDetailView({
               ? `Revisado el ${formatDateTime(tender.offers_checked_at)}`
               : undefined
           }
-        />
-        <KeyValueCard
-          icon="clock"
-          eyebrow="Publicación"
-          value={formatClosingDate(tender.published_at)}
         />
       </div>
 
@@ -847,6 +842,9 @@ export function TenderDetailView({
       <Section title="Hitos y fechas importantes" icon="calendar">
         <MilestonesSection tenderId={tenderId} refreshKey={milestonesRefreshKey} />
         <p className="mt-4 text-xs text-text-subtle">
+          Publicada en Mercado Público: {formatDateTime(tender.published_at)}
+        </p>
+        <p className="mt-1 text-xs text-text-subtle">
           Última modificación en Mercado Público:{" "}
           {formatDateTime(tender.last_change_at)}
         </p>

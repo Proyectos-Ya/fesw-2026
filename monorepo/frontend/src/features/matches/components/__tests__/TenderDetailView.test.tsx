@@ -751,6 +751,32 @@ describe("TenderDetailView: grilla de métricas", () => {
     });
   });
 
+  describe("composición de la grilla", () => {
+    it("tiene exactamente cuatro tarjetas y ninguna es la publicación", async () => {
+      conTender({});
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const grilla = (await tarjeta("Monto estimado")).parentElement as HTMLElement;
+      const titulos = Array.from(grilla.children).map((c) => c.firstElementChild?.textContent);
+      expect(titulos).toEqual(["Monto estimado", "Cierre", "Llamado", "Cotizaciones recibidas"]);
+      expect(grilla).toHaveClass("lg:grid-cols-4");
+      expect(screen.queryByText("Publicación")).not.toBeInTheDocument();
+    });
+
+    it("la fecha de publicación aparece en hitos y fechas importantes", async () => {
+      const PUBLICADA = "2026-06-02T15:00:00Z";
+      conTender({ published_at: PUBLICADA, last_change_at: "2026-06-05T15:00:00Z" });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const seccion = (await screen.findByText("Hitos y fechas importantes")).parentElement as HTMLElement;
+      expect(conEspaciosNormales(seccion.textContent ?? "")).toContain(
+        `Publicada en Mercado Público: ${conEspaciosNormales(formatDateTime(PUBLICADA))}`,
+      );
+    });
+  });
+
   describe("tarjeta del llamado", () => {
     it("el primer llamado se muestra en tono informativo", async () => {
       conTender({ call_number: 1 });
