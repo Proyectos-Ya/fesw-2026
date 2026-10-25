@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
@@ -904,7 +904,7 @@ function KeyValueCard({
 }: {
   icon: string;
   eyebrow: string;
-  value: string;
+  value: ReactNode;
   hint?: string;
 }) {
   return (

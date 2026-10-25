@@ -252,7 +252,7 @@ Archivo: `src/features/matches/components/TenderDetailView.tsx`.
 Pruebas: `src/features/matches/components/__tests__/TenderDetailView.test.tsx`.
 Verificar cada tarea con `pnpm run test src/features/matches`.
 
-- [ ] **8.1 `KeyValueCard` acepta `ReactNode`.** Refactor sin cambio de
+- [x] **8.1 `KeyValueCard` acepta `ReactNode`.** Refactor sin cambio de
       comportamiento: `value: string` pasa a `value: ReactNode` (línea 899). Las
       pruebas actuales siguen en verde.
       Commit: `refactor(matches): keyvaluecard acepta contenido react`
