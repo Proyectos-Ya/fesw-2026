@@ -262,7 +262,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
   - Green: tarjeta "Cotizaciones recibidas" en la grilla con
     `formatOffersCount`.
   - Commit: `feat(matches): mostrar cotizaciones recibidas en la ficha`
-- [ ] **8.3 Fecha de revisión.**
+- [x] **8.3 Fecha de revisión.**
   - Red: con cifra y `offers_checked_at` muestra
     "Revisado el {formatDateTime(...)}". Sin cifra, o sin fecha, no muestra la
     pista.

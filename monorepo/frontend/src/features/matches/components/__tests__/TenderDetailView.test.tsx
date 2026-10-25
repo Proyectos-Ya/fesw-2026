@@ -732,4 +732,41 @@ describe("TenderDetailView: grilla de métricas", () => {
       expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
     });
   });
+
+  describe("fecha de revisión de las cotizaciones", () => {
+    const REVISADO = "2026-10-25T17:05:00Z";
+
+    it("con cifra y fecha dice cuándo se revisó", async () => {
+      conTender({ received_offers_count: 17, offers_checked_at: REVISADO });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(conEspaciosNormales(card.textContent ?? "")).toContain(
+        `Revisado el ${conEspaciosNormales(formatDateTime(REVISADO))}`,
+      );
+    });
+
+    it("con un 0 y fecha también lo dice: el 0 es una cifra real", async () => {
+      conTender({ received_offers_count: 0, offers_checked_at: REVISADO });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(card.textContent).toContain("Revisado el");
+    });
+
+    it.each([
+      ["sin cifra", { received_offers_count: null, offers_checked_at: REVISADO }],
+      ["sin fecha", { received_offers_count: 17, offers_checked_at: null }],
+      ["sin ninguna de las dos", {}],
+    ])("%s no muestra la pista", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      await tarjeta("Cotizaciones recibidas");
+      expect(screen.queryByText(/Revisado el/)).not.toBeInTheDocument();
+    });
+  });
 });

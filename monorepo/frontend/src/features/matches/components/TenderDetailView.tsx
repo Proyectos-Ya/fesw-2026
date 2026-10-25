@@ -599,6 +599,11 @@ export function TenderDetailView({
           icon="file-text"
           eyebrow="Cotizaciones recibidas"
           value={formatOffersCount(tender.received_offers_count)}
+          hint={
+            tender.received_offers_count != null && tender.offers_checked_at
+              ? `Revisado el ${formatDateTime(tender.offers_checked_at)}`
+              : undefined
+          }
         />
         <KeyValueCard
           icon="clock"
