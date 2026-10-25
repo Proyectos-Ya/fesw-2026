@@ -33,8 +33,20 @@ vi.mock("../steps/Step2Operations", () => ({
   ),
 }));
 vi.mock("../steps/Step3Specialization", () => ({
-  Step3Specialization: ({ onNext }: { onNext: (data: typeof STEP3) => void }) => (
-    <button onClick={() => onNext(STEP3)}>paso 3 listo</button>
+  Step3Specialization: ({
+    onNext,
+    dismissedKeywords = [],
+    onDismissKeyword,
+  }: {
+    onNext: (data: typeof STEP3) => void;
+    dismissedKeywords?: string[];
+    onDismissKeyword?: (keyword: string) => void;
+  }) => (
+    <div>
+      <button onClick={() => onNext(STEP3)}>paso 3 listo</button>
+      <button onClick={() => onDismissKeyword?.("pintura")}>descartar pintura</button>
+      <p>descartadas: {dismissedKeywords.join(",")}</p>
+    </div>
   ),
 }));
 
@@ -278,5 +290,19 @@ describe("ProfileWizard: la empresa encontrada tiene que ser la enviada", () => 
 
     expect(await screen.findByText(SUCCESS_TITLE)).toBeInTheDocument();
     expect(setSupplierMock).toHaveBeenCalled();
+  });
+});
+
+describe("ProfileWizard: sugerencias descartadas", () => {
+  it("una sugerencia descartada sigue descartada al salir del paso 3 y volver", () => {
+    render(<ProfileWizard />);
+    fireEvent.click(screen.getByText("paso 1 listo"));
+    fireEvent.click(screen.getByText("paso 2 listo"));
+    fireEvent.click(screen.getByText("descartar pintura"));
+    fireEvent.click(screen.getByText("paso 3 listo"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Volver/ }));
+
+    expect(screen.getByText("descartadas: pintura")).toBeInTheDocument();
   });
 });

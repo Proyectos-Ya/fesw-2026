@@ -68,10 +68,12 @@ export function ProfileWizard() {
     currentStep,
     formData,
     importedProfile,
+    dismissedKeywords,
     nextStep,
     prevStep,
     goToStep,
     applyImport,
+    dismissKeyword,
     totalSteps,
   } = useProfileWizard();
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -184,6 +186,8 @@ export function ProfileWizard() {
               description: formData.description,
             }}
             suggestedKeywords={importedProfile?.keywords}
+            dismissedKeywords={dismissedKeywords}
+            onDismissKeyword={dismissKeyword}
             onNext={(data: Step3Data) => nextStep(data)}
             onBack={prevStep}
           />

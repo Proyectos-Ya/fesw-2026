@@ -59,3 +59,57 @@ describe("Step3Specialization (certificaciones)", () => {
     expect(onNext.mock.calls[0][0].certifications).toEqual([]);
   });
 });
+
+describe("Step3Specialization (sugerencias de palabras clave)", () => {
+  it("las sugerencias aceptadas pasan a las palabras clave", async () => {
+    const onNext = vi.fn();
+    render(
+      <Step3Specialization
+        defaultValues={baseValues}
+        suggestedKeywords={["pintura", "revestimiento"]}
+        onNext={onNext}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Agregar pintura" }));
+    await userEvent.click(screen.getByRole("button", { name: /continuar|siguiente/i }));
+
+    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
+    expect(onNext.mock.calls[0][0].keywords).toEqual(["pintura"]);
+  });
+
+  it("avisa al wizard cuando el usuario descarta una sugerencia", async () => {
+    const onDismissKeyword = vi.fn();
+    render(
+      <Step3Specialization
+        defaultValues={baseValues}
+        suggestedKeywords={["pintura"]}
+        onDismissKeyword={onDismissKeyword}
+        onNext={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Descartar pintura" }));
+
+    expect(onDismissKeyword).toHaveBeenCalledWith("pintura");
+  });
+
+  it("no muestra las sugerencias que el wizard ya marcó como descartadas", () => {
+    render(
+      <Step3Specialization
+        defaultValues={baseValues}
+        suggestedKeywords={["pintura", "revestimiento"]}
+        dismissedKeywords={["pintura"]}
+        onDismissKeyword={vi.fn()}
+        onNext={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Agregar pintura" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar revestimiento" })).toBeInTheDocument();
+  });
+});
+

@@ -15,6 +15,9 @@ interface Step3Props {
   defaultValues: Partial<Step3Data>;
   /** Palabras clave importadas desde el RUT, ofrecidas como sugerencias. */
   suggestedKeywords?: string[];
+  /** Sugerencias descartadas; el wizard las guarda para que no vuelvan al regresar a este paso. */
+  dismissedKeywords?: string[];
+  onDismissKeyword?: (keyword: string) => void;
   onNext: (data: Step3Data) => void;
   onBack: () => void;
 }
@@ -22,6 +25,8 @@ interface Step3Props {
 export function Step3Specialization({
   defaultValues,
   suggestedKeywords = [],
+  dismissedKeywords = [],
+  onDismissKeyword,
   onNext,
   onBack,
 }: Step3Props) {
@@ -85,6 +90,8 @@ export function Step3Specialization({
               <KeywordSuggestions
                 suggestions={suggestedKeywords}
                 selected={field.value}
+                dismissed={dismissedKeywords}
+                onDismiss={onDismissKeyword}
                 onAdd={(keywords) => field.onChange([...field.value, ...keywords])}
               />
             </div>

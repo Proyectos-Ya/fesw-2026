@@ -61,11 +61,11 @@ El paso 3 ya recibe `importedProfile.keywords` desde `ProfileWizard`. Falta el d
 - **Archivos**:
   - `monorepo/frontend/src/features/company-profile/components/KeywordSuggestions.tsx`
   - `monorepo/frontend/src/features/company-profile/components/__tests__/KeywordSuggestions.test.tsx` (nuevo)
-- [ ] **[Red]** Tests: un clic agrega la palabra, un clic en `×` la descarta, "Agregar
+- [x] **[Red]** Tests: un clic agrega la palabra, un clic en `×` la descarta, "Agregar
   todas" omite las descartadas y una descartada no reaparece al volver al paso 3.
-- [ ] **[Green]** Botón de descarte por chip. Los descartados viven en el estado del
+- [x] **[Green]** Botón de descarte por chip. Los descartados viven en el estado del
   wizard para sobrevivir al cambio de paso.
-- [ ] **[Refactor]** `aria-label` "Agregar X" y "Descartar X".
+- [x] **[Refactor]** `aria-label` "Agregar X" y "Descartar X".
 
 ---
 
