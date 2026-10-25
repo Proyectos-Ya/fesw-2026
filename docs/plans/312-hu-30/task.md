@@ -173,7 +173,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
   - Green: los dos campos en el `TenderModel(...)` del alta
     (`tender_ingestion_use_case.py:123`).
   - Commit: `feat(ingesta): guardar cotizaciones al crear una licitación`
-- [ ] **4.3 La actualización no toca Qdrant.**
+- [x] **4.3 La actualización no toca Qdrant.**
   - Red: `tests/unit/application/test_ingesta_ofertas.py`, que sigue a
     `test_ingesta_segundo_llamado.py`. Si solo cambia la cifra, el resultado es
     `updated`, `updated_at` no se mueve y el doble de Qdrant no recibe llamadas.

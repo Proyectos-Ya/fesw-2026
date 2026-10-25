@@ -8,7 +8,7 @@ borra lo que dejó sync-estados desde el listado.
 import pytest
 
 from .fakes import FakeEmbeddingService, FakeTenderVectorRepository
-from .test_refresco_licitaciones import _caso, _dto
+from .test_refresco_licitaciones import AHORA, RepoConLicitacion, _caso, _dto
 from .test_tender_ingestion_use_case import FakeTenderRepository
 
 pytestmark = pytest.mark.asyncio
@@ -34,3 +34,43 @@ class TestAlta:
         modelo, _ = repo.saved[0]
         assert modelo.received_offers_count is None
         assert modelo.offers_checked_at is None
+
+
+class TestActualizacion:
+    async def test_solo_cambio_de_cifra_se_guarda_sin_mover_updated_at(self):
+        repo = RepoConLicitacion(_dto())
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        resultado = await _caso(repo, emb, vec).execute(_dto(TotalOfertasRecibidas=4))
+
+        assert resultado["status"] == "updated"
+        assert repo.actualizada is True
+        assert repo.existente.received_offers_count == 4
+        assert repo.existente.offers_checked_at is not None
+        # Mover `updated_at` regeneraría el análisis de Gemini (6.4).
+        assert repo.existente.updated_at == AHORA
+        assert repo.existente.last_change_at == AHORA
+        assert emb.calls == []
+        assert vec.upserts == []
+        assert vec.payloads == {}
+
+    async def test_la_misma_cifra_no_cuenta_como_cambio(self):
+        repo = RepoConLicitacion(_dto())
+        repo.existente.received_offers_count = 4
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        resultado = await _caso(repo, emb, vec).execute(_dto(TotalOfertasRecibidas=4))
+
+        assert resultado["status"] == "unchanged"
+        assert repo.actualizada is False
+
+    async def test_con_cambio_de_metadatos_la_cifra_tambien_se_aplica(self):
+        repo = RepoConLicitacion(_dto())
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(MontoEstimado=2_000_000.0, TotalOfertasRecibidas=6)
+        )
+
+        assert repo.existente.available_amount_clp == 2_000_000.0
+        assert repo.existente.received_offers_count == 6
