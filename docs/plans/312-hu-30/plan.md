@@ -146,7 +146,33 @@ deja intacta la cifra del listado.
 
 La guía también dice, en §6.1, que la cifra es el "total de cotizaciones
 recibidas en el llamado actual". En un segundo llamado cuenta solo las de ese
-llamado, así que puede bajar al pasar del primero al segundo.
+llamado, así que puede bajar al pasar del primero al segundo. La ficha muestra
+la suma de los dos llamados (decisión 12, §4.5).
+
+### 4.5 Suma de los dos llamados
+
+- Columna `tender.first_call_offers_count` (integer null, sin default), en la
+  misma migración de §3, que todavía no se aplicó en ningún entorno compartido.
+- Regla única, en sync-estados y en la ingesta: si el cambio trae
+  `call_number == 1` y una cifra, `first_call_offers_count` toma esa cifra. Con
+  cualquier otro llamado, o sin cifra, conserva la que tenía. Así, al abrirse
+  el segundo llamado, queda congelada la última cifra vista del primero.
+- En sync-estados va en el mismo `UPDATE` de `overwrite_received_offers_count`,
+  con `call_number` en el `VALUES` (con `cast`, porque puede venir todo `NULL`).
+  No puede depender del `call_number` guardado: `overwrite_call_info` corre
+  antes y ya lo cambió.
+- `Tender` y la API exponen `first_call_offers_count`. El frontend calcula el
+  total:
+
+| Llamado | `first_call_offers_count` | Valor de la tarjeta | Pista |
+| --- | --- | --- | --- |
+| 1, `null` u otro | cualquiera | `formatOffersCount(received_offers_count)` | "Revisado el …" |
+| 2 | conocida | `formatOffersCount(primero + received_offers_count)` | "N en el 1.er llamado y M en el 2.º · Revisado el …" |
+| 2 | `null` | "M en el 2.º llamado" | "1.er llamado: No disponible · Revisado el …" |
+| 2 | cualquiera, con `received_offers_count` `null` | "No disponible" | ninguna |
+
+Las licitaciones que ya estaban en segundo llamado al desplegar quedan en la
+tercera fila: no hay forma de recuperar la cifra de su primer llamado.
 
 ### 4.4 Dominio y API
 
@@ -329,3 +355,6 @@ curso. No se mergea a `main` entre las 06:00 y las 12:00 UTC.
     "Documentos", que sigue antes de la tarjeta de análisis IA. La prueba
     "muestra el panel de anexos justo bajo el encabezado" se reemplazó por una
     que exige esa posición nueva.
+12. **La cifra suma los dos llamados.** La API cuenta solo el llamado actual.
+    Se guarda aparte la última cifra del primer llamado y la ficha muestra la
+    suma, con el desglose en la pista (§4.5).
