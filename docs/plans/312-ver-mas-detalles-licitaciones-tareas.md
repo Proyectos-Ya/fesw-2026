@@ -94,7 +94,7 @@ Sin código de producción.
 
 ## Bloque 3. sync-estados
 
-- [ ] **3.1 El listado trae la cifra.**
+- [x] **3.1 El listado trae la cifra.**
   - Red: en `tests/unit/infrastructure/test_listado_cambios.py`, los cuatro
     ítems del fixture dan 0, 17, 1 y 0, y un ítem sin `resumen` sigue dando un
     `CambioDeEstado` con `received_offers_count is None`.

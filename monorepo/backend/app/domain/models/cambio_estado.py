@@ -36,6 +36,9 @@ class CambioDeEstado:
     call_number: int | None = None
     first_call_closing_at: datetime | None = None
     second_call_closing_at: datetime | None = None
+    # `resumen.total_ofertas_recibidas`. `None` es que el ítem no la trae: no se
+    # confunde con 0, que es una cifra real. No cuenta como llamado.
+    received_offers_count: int | None = None
 
     @property
     def trae_llamado(self) -> bool:

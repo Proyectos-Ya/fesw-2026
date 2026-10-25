@@ -95,6 +95,23 @@ class TestItemsReales:
         assert cancelada.second_call_closing_at == datetime(2026, 9, 30, 19, 39)
 
 
+class TestCotizaciones:
+    @pytest.mark.parametrize(
+        "codigo, esperado",
+        [("publicada", 0), ("cerrada", 17), ("desierta", 1), ("cancelada", 0)],
+    )
+    def test_la_cifra_del_resumen_se_lee_tal_cual(self, items, codigo, esperado):
+        cambio = cambio_desde_item(items[codigo])
+        assert cambio is not None
+        assert cambio.received_offers_count == esperado
+
+    def test_un_item_sin_resumen_sigue_siendo_un_cambio_valido(self, items):
+        item = {k: v for k, v in items["cerrada"].items() if k != "resumen"}
+        cambio = cambio_desde_item(item)
+        assert cambio is not None
+        assert cambio.received_offers_count is None
+
+
 class TestItemsIncompletos:
     """Lo que no se puede leer se ignora: escribir un estado inventado es peor."""
 
