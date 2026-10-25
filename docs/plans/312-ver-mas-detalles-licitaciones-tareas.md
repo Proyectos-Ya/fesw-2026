@@ -220,7 +220,7 @@ Sin código de producción.
 
 ## Bloque 7. Utilidades del frontend
 
-- [ ] **7.1 `formatOffersCount`.**
+- [x] **7.1 `formatOffersCount`.**
   - Red: `src/features/matches/utils/__tests__/offers.test.ts`. `null` y
     `undefined` dan "No disponible", 0 da "0 cotizaciones", 1 da
     "1 cotización" y 17 da "17 cotizaciones".
