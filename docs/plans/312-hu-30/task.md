@@ -191,7 +191,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
 
 ## Bloque 5. Dominio y API
 
-- [ ] **5.1 La entidad trae los campos.**
+- [x] **5.1 La entidad trae los campos.**
   - Red: en `tests/integration/test_tender_repository.py`, una fila con cifra 0
     y fecha se lee con 0 y esa fecha, y una fila en `NULL` se lee con `None`.
   - Green: los dos campos en `app/domain/entities/tender.py` y en las dos

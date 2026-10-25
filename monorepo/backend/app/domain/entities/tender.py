@@ -76,6 +76,10 @@ class Tender(BaseModel):
     call_number: int | None = None
     first_call_closing_at: UtcDateTime | None = None
     second_call_closing_at: UtcDateTime | None = None
+    # Cotizaciones recibidas y cuándo se revisó la cifra. `None` es que la fuente
+    # no la informó, no 0.
+    received_offers_count: int | None = None
+    offers_checked_at: UtcDateTime | None = None
     last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora
