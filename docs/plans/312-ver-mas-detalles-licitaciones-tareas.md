@@ -294,7 +294,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
   - Green: partir la sección actual en dos. Dejar un comentario en
     "Entrega y requisitos" que diga que #294 agrega allí la dirección y el plazo.
   - Commit: `feat(matches): secciones de entrega y requisitos y de descripción`
-- [ ] **8.8 Sección de documentos.**
+- [x] **8.8 Sección de documentos.**
   - Red: las secciones aparecen en este orden: "Entrega y requisitos",
     "Documentos", "Descripción". `TenderAttachmentsPanel` está dentro de
     "Documentos".

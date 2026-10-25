@@ -566,21 +566,6 @@ export function TenderDetailView({
         </div>
       </header>
 
-      {/* Anexos oficiales (plan 233, decisión 1): bajo el header, antes de la tarjeta de análisis IA */}
-      <TenderAttachmentsPanel
-        tenderId={tenderId}
-        tenderCode={tender.code}
-        onReadyKeyChange={handleReadyKeyChange}
-        onUploadSuccess={() => {
-          reportInteraction("anexo");
-          void triggerScoreRecalculation();
-          // Subir un anexo dispara la extracción de hitos (plan 233): la sección
-          // empieza a consultar mientras la IA lee.
-          setMilestonesRefreshKey((k) => k + 1);
-        }}
-        onAnalysisFinished={handleAnalysisFinished}
-      />
-
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-5">
         <KeyValueCard
           icon="wallet"
@@ -650,6 +635,22 @@ export function TenderDetailView({
 
           <DigestCard tenderId={tenderId} refreshKey={digestRefreshKey} />
         </div>
+      </Section>
+
+      <Section title="Documentos" icon="paperclip">
+        <TenderAttachmentsPanel
+          tenderId={tenderId}
+          tenderCode={tender.code}
+          onReadyKeyChange={handleReadyKeyChange}
+          onUploadSuccess={() => {
+            reportInteraction("anexo");
+            void triggerScoreRecalculation();
+            // Subir un anexo dispara la extracción de hitos (plan 233): la sección
+            // empieza a consultar mientras la IA lee.
+            setMilestonesRefreshKey((k) => k + 1);
+          }}
+          onAnalysisFinished={handleAnalysisFinished}
+        />
       </Section>
 
       <Section title="Descripción" icon="file-text">
