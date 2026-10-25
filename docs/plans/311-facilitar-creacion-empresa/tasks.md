@@ -75,10 +75,10 @@ El paso 3 ya recibe `importedProfile.keywords` desde `ProfileWizard`. Falta el d
 - **Archivos**:
   - `monorepo/backend/app/application/services/company_profiling/keyword_extractor.py` (nuevo)
   - `monorepo/backend/tests/unit/test_keyword_extractor.py` (nuevo)
-- [ ] **[Red]** Tests: extrae términos del texto, quita stopwords, no repite
+- [x] **[Red]** Tests: extrae términos del texto, quita stopwords, no repite
   `existing_keywords` (sin tildes ni mayúsculas), devuelve lista vacía con texto vacío
   y prioriza los términos que existen en `activity_dictionary`.
-- [ ] **[Green]** Función pura, sin llamadas externas.
+- [x] **[Green]** Función pura, sin llamadas externas.
 
 ### C2 (backend). Endpoint `POST /suppliers/suggest-keywords-from-description`
 - **Archivos**:
