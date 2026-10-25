@@ -610,16 +610,9 @@ export function TenderDetailView({
         />
       </div>
 
-      <Section title="Requisitos y descripción" icon="file-text">
-        {tender.description ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
-            {tender.description}
-          </p>
-        ) : (
-          <p className="text-sm italic text-text-subtle">
-            El organismo no incluyó una descripción detallada.
-          </p>
-        )}
+      {/* Aquí #294 agrega la dirección y el plazo de entrega. */}
+      <Section title="Entrega y requisitos" icon="package">
+        <CallClosingDates tender={tender} />
 
         {tender.items.length > 0 && (
           <div className="mt-5">
@@ -657,6 +650,18 @@ export function TenderDetailView({
 
           <DigestCard tenderId={tenderId} refreshKey={digestRefreshKey} />
         </div>
+      </Section>
+
+      <Section title="Descripción" icon="file-text">
+        {tender.description ? (
+          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
+            {tender.description}
+          </p>
+        ) : (
+          <p className="text-sm italic text-text-subtle">
+            El organismo no incluyó una descripción detallada.
+          </p>
+        )}
       </Section>
 
       <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
@@ -758,8 +763,6 @@ export function TenderDetailView({
           </Button>
         </div>
       )}
-
-      <CallClosingDates tender={tender} />
 
       {/* Análisis de compatibilidad IA si ya existe */}
       {analysis && (

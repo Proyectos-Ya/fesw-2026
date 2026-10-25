@@ -190,12 +190,12 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
   });
 
-  it("muestra el resumen de anexos en la sección de requisitos y descripción", async () => {
+  it("muestra el resumen de anexos en la sección de entrega y requisitos", async () => {
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    expect(await screen.findByText("Requisitos y descripción")).toBeInTheDocument();
+    expect(await screen.findByText("Entrega y requisitos")).toBeInTheDocument();
     expect(screen.getByTestId("digest-card")).toHaveTextContent("tender-50");
   });
 
@@ -748,6 +748,44 @@ describe("TenderDetailView: grilla de métricas", () => {
       const card = await tarjeta("Cotizaciones recibidas");
       expect(within(card).getByText("No disponible")).toBeInTheDocument();
       expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("secciones de entrega y de descripción", () => {
+    const ITEM = {
+      id: "item-1",
+      name: "Firewall perimetral",
+      description: null,
+      quantity: 2,
+      unit_of_measure: "unidad",
+    } as unknown as Tender["items"][number];
+
+    it("entrega y requisitos agrupa los cierres por llamado, los ítems y el resumen de anexos", async () => {
+      conTender({
+        call_number: 1,
+        first_call_closing_at: "2026-10-06T16:30:00Z",
+        second_call_closing_at: "2026-10-07T16:40:00Z",
+        items: [ITEM],
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const entrega = (await screen.findByText("Entrega y requisitos")).parentElement as HTMLElement;
+      expect(within(entrega).getByRole("region", { name: "Cierre por llamado" })).toBeInTheDocument();
+      expect(within(entrega).getByText("Firewall perimetral")).toBeInTheDocument();
+      expect(within(entrega).getByTestId("digest-card")).toBeInTheDocument();
+      expect(within(entrega).queryByText("Ciberseguridad integral")).not.toBeInTheDocument();
+    });
+
+    it("descripción lleva solo el texto de la licitación", async () => {
+      conTender({ items: [ITEM] });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const descripcion = (await screen.findByText("Descripción")).parentElement as HTMLElement;
+      expect(within(descripcion).getByText("Ciberseguridad integral")).toBeInTheDocument();
+      expect(within(descripcion).queryByText("Firewall perimetral")).not.toBeInTheDocument();
+      expect(within(descripcion).queryByTestId("digest-card")).not.toBeInTheDocument();
     });
   });
 

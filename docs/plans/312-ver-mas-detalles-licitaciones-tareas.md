@@ -287,7 +287,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
   - Green: sacar la tarjeta "Publicación", sumar la fecha a la sección de
     hitos y pasar la grilla a `sm:grid-cols-2 lg:grid-cols-4`.
   - Commit: `feat(matches): grilla de cuatro métricas en la ficha`
-- [ ] **8.7 Separar requisitos y descripción.**
+- [x] **8.7 Separar requisitos y descripción.**
   - Red: hay una sección "Entrega y requisitos" con los cierres por llamado,
     los ítems y el resumen de anexos, y otra "Descripción" con el texto.
     Ajustar la prueba de la línea 198, que busca "Requisitos y descripción".
