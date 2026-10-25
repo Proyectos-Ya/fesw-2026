@@ -303,3 +303,9 @@ curso. No se mergea a `main` entre las 06:00 y las 12:00 UTC.
 9. **Orden de las secciones:** entrega y requisitos, documentos, descripción,
    análisis IA, hitos y enlaces.
 10. **Primero se verifica la frescura** (riesgo 1, tarea 0.3).
+11. **El panel de anexos baja a "Documentos".** El plan 233 (decisión 2) lo
+    puso bajo el encabezado para que la subida manual quede a la vista. CA4
+    pide los documentos debajo de las métricas, así que pasa a la sección
+    "Documentos", que sigue antes de la tarjeta de análisis IA. La prueba
+    "muestra el panel de anexos justo bajo el encabezado" se reemplazó por una
+    que exige esa posición nueva.

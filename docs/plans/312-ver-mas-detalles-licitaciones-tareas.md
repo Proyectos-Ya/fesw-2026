@@ -301,7 +301,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
   - Green: mover `TenderAttachmentsPanel` (línea 571) a una sección
     "Documentos" entre las otras dos.
   - Commit: `feat(matches): sección de documentos en la ficha`
-- [ ] **8.9 (invariante) Los avisos de anexos siguen llegando.** Correr
+- [x] **8.9 (invariante) Los avisos de anexos siguen llegando.** Correr
       `TenderDetailView.telemetry.test.tsx` y las pruebas de las líneas 205-221
       sin cambios. Si alguna falla, el movimiento de 8.8 rompió algo y se
       arregla ahí.
