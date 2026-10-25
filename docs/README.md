@@ -30,6 +30,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [instrucciones-decision-7.md](./plans/instrucciones-decision-7.md): Instrucciones técnicas de implementación para la Extensión de Navegador (Fase 3, Decisión 7).
   * [292-postulacion-preguntas-y-feedback.md](./plans/292-postulacion-preguntas-y-feedback.md): Preguntas basadas en las bases y feedback de carga en la postulación (mejoras a HU-20).
   * [305-ingesta-y-sync-estados.md](./plans/305-ingesta-y-sync-estados.md): Ingesta cada 2 h y sync-estados que etiqueta pendientes, aplica por página y no pierde lo listado.
+  * [312-ver-mas-detalles-licitaciones.md](./plans/312-ver-mas-detalles-licitaciones.md): Cotizaciones recibidas, llamado y ficha ordenada por secciones (HU-30). Tareas en [312-ver-mas-detalles-licitaciones-tareas.md](./plans/312-ver-mas-detalles-licitaciones-tareas.md).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
