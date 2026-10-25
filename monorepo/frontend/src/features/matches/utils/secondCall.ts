@@ -1,3 +1,4 @@
+import type { BadgeTone } from "@/features/shared/components/Badge";
 import type { Tender } from "../tenderTypes";
 import { formatDateTime, parseApiDate } from "./format";
 
@@ -9,6 +10,13 @@ type CallFields = Pick<Tender, "call_number" | "first_call_closing_at" | "second
 /** Solo lo afirma un `2` explícito: `null` (licitación antigua) no es ni primero ni segundo. */
 export function isSecondCall(tender: Pick<Tender, "call_number">): boolean {
   return tender.call_number === 2;
+}
+
+/** Etiqueta y tono del llamado vigente. Sin un 1 o un 2 explícito no se afirma ninguno. */
+export function callBadge(tender: Pick<Tender, "call_number">): { label: string; tone: BadgeTone } {
+  if (tender.call_number === 1) return { label: "Primer llamado", tone: "info" };
+  if (isSecondCall(tender)) return { label: SECOND_CALL_LABEL, tone: "warning" };
+  return { label: "No disponible", tone: "neutral" };
 }
 
 export interface CallClosingLine {

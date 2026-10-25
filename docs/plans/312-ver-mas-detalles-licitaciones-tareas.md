@@ -229,7 +229,7 @@ Sin código de producción.
     con `count == null`.
   - Verificar: `pnpm run test src/features/matches/utils`
   - Commit: `feat(matches): formatear cotizaciones recibidas`
-- [ ] **7.2 `callBadge`.**
+- [x] **7.2 `callBadge`.**
   - Red: en `src/features/matches/utils/__tests__/secondCall.test.ts`, 1 da
     "Primer llamado" e `info`, 2 da "Segundo llamado" y `warning`, y `null`,
     ausente y 3 dan "No disponible" y `neutral`.

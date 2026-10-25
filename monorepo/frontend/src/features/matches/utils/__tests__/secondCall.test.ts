@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { callClosingLines, isSecondCall, SECOND_CALL_LABEL } from "../secondCall";
+import { callBadge, callClosingLines, isSecondCall, SECOND_CALL_LABEL } from "../secondCall";
 
 /**
  * Octubre es UTC-3 en Chile: 16:30 UTC son las 13:30 y 16:40 UTC las 13:40.
@@ -32,6 +32,23 @@ describe("isSecondCall", () => {
 describe("SECOND_CALL_LABEL", () => {
   it("es el texto de la etiqueta", () => {
     expect(SECOND_CALL_LABEL).toBe("Segundo llamado");
+  });
+});
+
+describe("callBadge", () => {
+  it("el primer llamado es informativo", () => {
+    expect(callBadge({ call_number: 1 })).toEqual({ label: "Primer llamado", tone: "info" });
+  });
+
+  it("el segundo llamado avisa con tono de advertencia", () => {
+    expect(callBadge({ call_number: 2 })).toEqual({ label: SECOND_CALL_LABEL, tone: "warning" });
+  });
+
+  it("nulo, ausente u otro valor no afirman un llamado", () => {
+    const sinDato = { label: "No disponible", tone: "neutral" };
+    expect(callBadge({ call_number: null })).toEqual(sinDato);
+    expect(callBadge({})).toEqual(sinDato);
+    expect(callBadge({ call_number: 3 })).toEqual(sinDato);
   });
 });
 
