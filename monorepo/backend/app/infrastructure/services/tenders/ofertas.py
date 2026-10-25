@@ -6,8 +6,11 @@ Forma verificada en el listado real del 2026-09-28
     resumen: {"total_ofertas_recibidas": 0}
 
 Lo usan el listado (cron de estados) y el detalle (ingesta): si cada ruta leyera
-distinto, una sobrescribiría a la otra en cada pasada. Un 0 es un dato real
-(nadie ha cotizado); None significa que la cifra no vino o no es creíble.
+distinto, una sobrescribiría a la otra en cada pasada. La guía oficial de la API
+(versión 3.0, mayo de 2026) documenta el mismo campo en el detalle, §6.6. No se
+confirmó con una petición real: si el detalle no lo trae, el resultado es None.
+Un 0 es un dato real (nadie ha cotizado); None significa que la cifra no vino o
+no es creíble.
 """
 
 from typing import Any

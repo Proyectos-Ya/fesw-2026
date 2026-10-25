@@ -160,7 +160,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
 
 ## Bloque 4. Ingesta (solo si la tarea 0.2 dice que el detalle trae la cifra)
 
-- [ ] **4.1 El DTO trae la cifra.**
+- [x] **4.1 El DTO trae la cifra.**
   - Red: `tests/unit/infrastructure/test_detalle_ofertas.py`. Un detalle con 4,
     con 0 y sin `resumen` da `dto.received_offers_count` igual a 4, 0 y `None`.
   - Green: el campo en `TenderIngestaDTO` y

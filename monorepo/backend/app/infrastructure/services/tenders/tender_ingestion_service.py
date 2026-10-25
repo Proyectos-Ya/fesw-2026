@@ -68,6 +68,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.infrastructure.services.tenders.ofertas import leer_total_ofertas
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import fecha_mp_a_utc, leer_fecha_mp, utc_now_naive
 from app.shared.ingestion_window import calcular_ventana
@@ -1290,6 +1291,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             NumeroLlamado=llamado.numero,
             FechaCierrePrimerLlamado=llamado.cierre_primer_llamado,
             FechaCierreSegundoLlamado=llamado.cierre_segundo_llamado,
+            TotalOfertasRecibidas=leer_total_ofertas(detail),
             RutComprador=str(institucion.get("rut", "Sin RUT")),
             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),
