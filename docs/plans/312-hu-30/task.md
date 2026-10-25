@@ -129,7 +129,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
     y antes de los punteros.
   - Green: mover la llamada si hace falta.
   - Commit: `test(sync-estados): cotizaciones se escriben antes de los punteros`
-- [ ] **3.5 Contador `ofertas_revisadas`.**
+- [x] **3.5 Contador `ofertas_revisadas`.**
   - Red: el resultado trae lo que devuelve `RepoFalso`, y `sumar` lo acumula
     entre dos páginas.
   - Green: `ofertas_revisadas: int = 0` en `ResultadoSyncEstados`.

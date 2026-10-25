@@ -75,6 +75,9 @@ class ResultadoSyncEstados:
     actualizadas: int = 0
     # Filas cuyo llamado o cierre por llamado cambió. No mueven `updated_at`.
     llamados_actualizados: int = 0
+    # Filas cuya cifra de cotizaciones se revisó, cambie o no. Mueven
+    # `offers_checked_at`, no `updated_at`.
+    ofertas_revisadas: int = 0
     # Dejaron de estar activas: su punto se borra del índice vectorial.
     sacadas_del_indice: int = 0
     # Volvieron a estar activas: no tienen punto, así que las reindexa el ingest.

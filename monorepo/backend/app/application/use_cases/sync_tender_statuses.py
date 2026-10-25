@@ -174,7 +174,9 @@ class SyncTenderStatusesUseCase:
             )
         if a_registrar_ofertas:
             # También aparte y sin mover `updated_at`.
-            await self.repo.overwrite_received_offers_count(a_registrar_ofertas)
+            resultado.ofertas_revisadas = (
+                await self.repo.overwrite_received_offers_count(a_registrar_ofertas)
+            )
         # Al final: el puntero de una conocida se compara con lo que el ingest
         # bajó, no con lo que se acaba de escribir arriba.
         if punteros:

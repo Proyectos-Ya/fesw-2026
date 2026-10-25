@@ -33,6 +33,7 @@ from app.domain.models.cambio_estado import (
     LicitacionConocida,
     PunteroDeCambio,
     ResultadoPunteros,
+    ResultadoSyncEstados,
 )
 from app.shared.datetime_utils import to_utc_epoch
 from tests.unit.application.fakes import FakeTenderVectorRepository
@@ -493,6 +494,27 @@ class TestCotizaciones:
 
         assert repo.ofertas == []
         assert "sql-ofertas" not in log
+
+    async def test_el_resultado_cuenta_las_filas_revisadas(self):
+        caso, _, _, _, _ = _armar(
+            [_conocida("A", PUBLICADA), _conocida("B", PUBLICADA)]
+        )
+
+        resultado = await caso.execute(
+            [
+                _cambio("A", PUBLICADA, "publicada", received_offers_count=3),
+                _cambio("B", PUBLICADA, "publicada", received_offers_count=0),
+            ]
+        )
+
+        assert resultado.ofertas_revisadas == 2
+
+    async def test_sumar_acumula_las_revisadas_de_dos_paginas(self):
+        total = ResultadoSyncEstados(ofertas_revisadas=2)
+
+        total.sumar(ResultadoSyncEstados(ofertas_revisadas=5))
+
+        assert total.ofertas_revisadas == 7
 
     async def test_solo_llegan_las_que_traen_cifra(self):
         caso, repo, _, _, _ = _armar(
