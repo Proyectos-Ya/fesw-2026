@@ -268,7 +268,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
     pista.
   - Green: `hint` de la tarjeta de cotizaciones.
   - Commit: `feat(matches): fecha de revisión de las cotizaciones`
-- [ ] **8.4 Tarjeta del llamado.**
+- [x] **8.4 Tarjeta del llamado.**
   - Red: `call_number: 1` muestra "Primer llamado" con `data-tone="info"`,
     `call_number: 2` muestra "Segundo llamado" con `data-tone="warning"`, y
     `null` muestra "No disponible" dentro de la tarjeta "Llamado".

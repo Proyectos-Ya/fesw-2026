@@ -611,7 +611,7 @@ describe("TenderDetailView: segundo llamado", () => {
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    expect(await screen.findByText("Segundo llamado")).toBeInTheDocument();
+    expect((await screen.findAllByText("Segundo llamado")).length).toBeGreaterThan(0);
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
     expect(within(region).getByText(conEspaciosNormales(formatDateTime(PRIMER)))).toBeInTheDocument();
@@ -730,6 +730,38 @@ describe("TenderDetailView: grilla de métricas", () => {
       const card = await tarjeta("Cotizaciones recibidas");
       expect(within(card).getByText("No disponible")).toBeInTheDocument();
       expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("tarjeta del llamado", () => {
+    it("el primer llamado se muestra en tono informativo", async () => {
+      conTender({ call_number: 1 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado");
+      expect(within(card).getByText("Primer llamado")).toHaveAttribute("data-tone", "info");
+    });
+
+    it("el segundo llamado se muestra como advertencia", async () => {
+      conTender({ call_number: 2 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado");
+      expect(within(card).getByText("Segundo llamado")).toHaveAttribute("data-tone", "warning");
+    });
+
+    it.each([
+      ["null", { call_number: null }],
+      ["ausente", {}],
+    ])("con el llamado %s dice que no está disponible", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado");
+      expect(within(card).getByText("No disponible")).toHaveAttribute("data-tone", "neutral");
     });
   });
 

@@ -28,7 +28,7 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
 import { formatOffersCount } from "../utils/offers";
-import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
+import { callBadge, isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
@@ -381,6 +381,7 @@ export function TenderDetailView({
   const { match } = state;
   const tender = match.tender as Tender;
   const closing = daysUntilClosing(tender.closing_at, tender.status_code);
+  const llamado = callBadge(tender);
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
   // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
@@ -594,6 +595,11 @@ export function TenderDetailView({
           eyebrow="Cierre"
           value={formatClosingDate(tender.closing_at)}
           hint={closing.label}
+        />
+        <KeyValueCard
+          icon="layers"
+          eyebrow="Llamado"
+          value={<Badge tone={llamado.tone}>{llamado.label}</Badge>}
         />
         <KeyValueCard
           icon="file-text"
