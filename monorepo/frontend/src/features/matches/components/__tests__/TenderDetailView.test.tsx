@@ -680,3 +680,56 @@ describe("TenderDetailView: segundo llamado", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("TenderDetailView: grilla de métricas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+  });
+
+  function conTender(cambios: Partial<Tender>) {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({ ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } }),
+    );
+  }
+
+  /** La tarjeta que lleva ese título (el título está en el primer hijo), para no confundirla con otro texto de la ficha. */
+  async function tarjeta(titulo: string): Promise<HTMLElement> {
+    const eyebrow = await screen.findByText(titulo);
+    return eyebrow.parentElement as HTMLElement;
+  }
+
+  describe("cotizaciones recibidas", () => {
+    it("una cifra de 0 se muestra como 0", async () => {
+      conTender({ received_offers_count: 0 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(within(card).getByText("0 cotizaciones")).toBeInTheDocument();
+    });
+
+    it("una cifra mayor a 0 se muestra tal cual", async () => {
+      conTender({ received_offers_count: 17 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(within(card).getByText("17 cotizaciones")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["null", { received_offers_count: null }],
+      ["ausente", {}],
+    ])("con la cifra %s dice que no está disponible y no muestra un 0", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(within(card).getByText("No disponible")).toBeInTheDocument();
+      expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
+    });
+  });
+});

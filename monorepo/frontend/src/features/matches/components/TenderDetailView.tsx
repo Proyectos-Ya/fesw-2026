@@ -27,6 +27,7 @@ import {
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
+import { formatOffersCount } from "../utils/offers";
 import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
@@ -593,6 +594,11 @@ export function TenderDetailView({
           eyebrow="Cierre"
           value={formatClosingDate(tender.closing_at)}
           hint={closing.label}
+        />
+        <KeyValueCard
+          icon="file-text"
+          eyebrow="Cotizaciones recibidas"
+          value={formatOffersCount(tender.received_offers_count)}
         />
         <KeyValueCard
           icon="clock"

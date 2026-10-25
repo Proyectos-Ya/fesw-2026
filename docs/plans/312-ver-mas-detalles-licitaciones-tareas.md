@@ -256,7 +256,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
       comportamiento: `value: string` pasa a `value: ReactNode` (línea 899). Las
       pruebas actuales siguen en verde.
       Commit: `refactor(matches): keyvaluecard acepta contenido react`
-- [ ] **8.2 Tarjeta de cotizaciones.**
+- [x] **8.2 Tarjeta de cotizaciones.**
   - Red: con cifra 0 muestra "0 cotizaciones". Con `null` y con el campo
     ausente muestra "No disponible" y ningún "0 cotizaciones".
   - Green: tarjeta "Cotizaciones recibidas" en la grilla con
