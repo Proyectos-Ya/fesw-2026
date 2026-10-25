@@ -74,3 +74,17 @@ class TestActualizacion:
 
         assert repo.existente.available_amount_clp == 2_000_000.0
         assert repo.existente.received_offers_count == 6
+
+    async def test_un_detalle_sin_cifra_no_borra_la_que_escribio_el_cron(self):
+        repo = RepoConLicitacion(_dto())
+        repo.existente.received_offers_count = 5
+        repo.existente.offers_checked_at = AHORA
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        identico = await _caso(repo, emb, vec).execute(_dto())
+        # Con un cambio de metadatos, `_aplicar_ofertas` también corre.
+        await _caso(repo, emb, vec).execute(_dto(MontoEstimado=2_000_000.0))
+
+        assert identico["status"] == "unchanged"
+        assert repo.existente.received_offers_count == 5
+        assert repo.existente.offers_checked_at == AHORA

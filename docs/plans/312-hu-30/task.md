@@ -181,7 +181,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
     ramas, y la condición de la rama sin cambio semántico pasa a
     `cambio_llamado or cambio_ofertas`.
   - Commit: `feat(ingesta): actualizar cotizaciones sin mover updated_at`
-- [ ] **4.4 Un `None` no borra.**
+- [x] **4.4 Un `None` no borra.**
   - Red: un detalle sin cifra no borra la que dejó sync-estados y devuelve
     `unchanged`.
   - Green: `_aplicar_ofertas` no escribe si la cifra es `None`.
