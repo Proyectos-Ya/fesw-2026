@@ -85,8 +85,8 @@ El paso 3 ya recibe `importedProfile.keywords` desde `ProfileWizard`. Falta el d
   - `monorepo/backend/app/application/schemas/supplier_schema.py`
   - `monorepo/backend/app/infrastructure/routers/supplier.py`
   - `monorepo/backend/tests/e2e/api/test_supplier_endpoints.py`
-- [ ] **[Red]** Test HTTP: con sesión devuelve 200 y las sugerencias; sin sesión, 401.
-- [ ] **[Green]** Ruta con `summary`, `tags` y `response_model`.
+- [x] **[Red]** Test HTTP: con sesión devuelve 200 y las sugerencias; sin sesión, 401.
+- [x] **[Green]** Ruta con `summary`, `tags` y `response_model`.
 
 ### C3 (frontend). Botón en el paso 3
 - **Archivos**:

@@ -65,3 +65,16 @@ class RutExistsResponse(BaseModel):
     """Respuesta de la verificación temprana de RUT duplicado."""
 
     exists: bool
+
+
+class SuggestKeywordsRequest(BaseModel):
+    """Descripción de la empresa de la que se sacan palabras clave."""
+
+    # Mismo largo máximo que la descripción de la empresa en `CreateSupplierSchema`.
+    description: str = Field(max_length=1000)
+    # Las que el usuario ya eligió; no se vuelven a sugerir.
+    existing_keywords: list[str] = Field(default_factory=list, max_length=200)
+
+
+class SuggestKeywordsResponse(BaseModel):
+    suggested_keywords: list[str]

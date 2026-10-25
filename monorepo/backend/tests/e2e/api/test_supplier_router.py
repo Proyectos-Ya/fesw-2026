@@ -230,6 +230,75 @@ async def test_profile_import_without_provider_returns_503(api: AsyncClient):
     assert resp.status_code == 503
 
 
+SUGGEST_URL = "/suppliers/suggest-keywords-from-description"
+
+
+@pytest.mark.asyncio
+async def test_suggest_keywords_without_session_returns_401(api: AsyncClient):
+    resp = await api.post(
+        SUGGEST_URL, json={"description": "Servicio de pintura de muros."}
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_suggest_keywords_returns_terms_from_description(api: AsyncClient):
+    await _login(api)
+
+    resp = await api.post(
+        SUGGEST_URL,
+        json={
+            "description": "Instalación de luminarias LED y servicio técnico de pintura."
+        },
+    )
+
+    assert resp.status_code == 200
+    suggested = resp.json()["suggested_keywords"]
+    assert "luminarias LED" in suggested
+    assert "pintura" in suggested
+
+
+@pytest.mark.asyncio
+async def test_suggest_keywords_skips_existing_keywords(api: AsyncClient):
+    await _login(api)
+
+    resp = await api.post(
+        SUGGEST_URL,
+        json={
+            "description": "Pintura y revestimiento de muros.",
+            "existing_keywords": ["PINTURA"],
+        },
+    )
+
+    assert resp.status_code == 200
+    suggested = resp.json()["suggested_keywords"]
+    assert "pintura" not in suggested
+    assert "revestimiento" in suggested
+
+
+@pytest.mark.asyncio
+async def test_suggest_keywords_with_empty_description_returns_empty_list(
+    api: AsyncClient,
+):
+    await _login(api)
+
+    resp = await api.post(SUGGEST_URL, json={"description": ""})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"suggested_keywords": []}
+
+
+@pytest.mark.asyncio
+async def test_suggest_keywords_with_description_over_1000_chars_returns_422(
+    api: AsyncClient,
+):
+    await _login(api)
+
+    resp = await api.post(SUGGEST_URL, json={"description": "pintura " * 126})
+
+    assert resp.status_code == 422
+
+
 @pytest.mark.asyncio
 async def test_get_supplier_me_returns_own_company(api: AsyncClient):
     await _login(api)
