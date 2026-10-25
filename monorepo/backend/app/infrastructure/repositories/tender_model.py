@@ -87,6 +87,12 @@ class TenderModel(SQLModel, table=True):
     call_number: int | None = Field(default=None)
     first_call_closing_at: datetime | None = Field(default=None)
     second_call_closing_at: datetime | None = Field(default=None)
+    # Cotizaciones recibidas (HU-30) y cuándo se revisó la cifra por última vez
+    # (UTC naive). Nulo = la fuente no la informó, que no es lo mismo que 0.
+    # Nullable y sin default por la misma razón que el llamado: la versión
+    # anterior de la app convive con este esquema durante el deploy.
+    received_offers_count: int | None = Field(default=None)
+    offers_checked_at: datetime | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,

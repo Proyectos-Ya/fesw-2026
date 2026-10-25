@@ -60,10 +60,10 @@ Sin código de producción.
 
 ## Bloque 1. Esquema
 
-- [ ] **1.1 Cargar skills y anotar la cabeza.** Invocar `supabase` y
+- [x] **1.1 Cargar skills y anotar la cabeza.** Invocar `supabase` y
       `supabase-postgres-best-practices`. `alembic heads` devuelve una línea
       (hoy `2510718f486e`).
-- [ ] **1.2 Migración con las dos columnas.**
+- [x] **1.2 Migración con las dos columnas.**
   - Red: en `tests/integration/test_migraciones.py`, una prueba que inspecciona
     `tender` en `engine_migrado` y exige `received_offers_count` integer nullable
     y `offers_checked_at` timestamp nullable, las dos sin default.

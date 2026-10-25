@@ -23,7 +23,7 @@ import pytest
 import pytest_asyncio
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import text
+from sqlalchemy import DateTime, Integer, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -109,3 +109,26 @@ async def test_el_esquema_migrado_coincide_con_los_modelos(engine_migrado):
         "aplicada, ajusta el modelo a lo que creó.\n"
         f"Diferencias: {diferencias}"
     )
+
+
+async def test_tender_guarda_las_cotizaciones_y_su_fecha_de_revision(engine_migrado):
+    """Plan HU-30: dos columnas nullable y sin default.
+
+    Sin default, para que agregarlas no reescriba la tabla y la versión anterior
+    de la app, que no las conoce, siga insertando filas durante el deploy.
+    """
+
+    def _columnas(connection):
+        return {c["name"]: c for c in inspect(connection).get_columns("tender")}
+
+    async with engine_migrado.connect() as conn:
+        columnas = await conn.run_sync(_columnas)
+
+    ofertas = columnas["received_offers_count"]
+    revision = columnas["offers_checked_at"]
+    assert isinstance(ofertas["type"], Integer)
+    # Naive, como el resto de las fechas de `tender`.
+    assert isinstance(revision["type"], DateTime) and not revision["type"].timezone
+    for columna in (ofertas, revision):
+        assert columna["nullable"] is True
+        assert columna["default"] is None
