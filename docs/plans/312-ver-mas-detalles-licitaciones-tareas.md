@@ -79,7 +79,7 @@ Sin código de producción.
 
 ## Bloque 2. Lectura del dato
 
-- [ ] **2.1 `leer_total_ofertas`.**
+- [x] **2.1 `leer_total_ofertas`.**
   - Red: `tests/unit/infrastructure/test_ofertas_mp.py`, con `parametrize`
     sobre cada fila de §4.1 del plan: `0`, `17`, `None`, clave ausente,
     `resumen` ausente, `resumen` como lista, `True`, `False`, `-1`, `"17"` y
