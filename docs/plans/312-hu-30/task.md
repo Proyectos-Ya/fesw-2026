@@ -207,7 +207,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
 
 ## Bloque 6. Cierre del backend
 
-- [ ] **6.1 Suite y lint.**
+- [x] **6.1 Suite y lint.**
       `pytest && python -m scripts.migraciones`. Ruff solo sobre los archivos
       de la rama: el backend completo arrastra cientos de hallazgos previos y el
       CI no corre Ruff.

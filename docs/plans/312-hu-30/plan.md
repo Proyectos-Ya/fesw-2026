@@ -234,6 +234,16 @@ pnpm run lint
 pnpm run build
 ```
 
+Resultado de la tarea 6.1 (2026-10-25, Supabase local, sin `.env`): 3630
+pruebas pasan y 7 fallan. Las 7 fallan igual en `origin/develop` y no tocan
+esta HU: 3 de `test_gemini_guardrails_live.py` y 3 de
+`test_tender_chat_multidoc_integration.py` llaman a Gemini real, y
+`test_un_admin_pide_la_url_y_la_lista_refleja_el_cupo` responde 503 sin
+configuración de storage. `python -m scripts.migraciones` da una sola cabeza
+(`2868884ba7ee`). La migración se autogeneró contra una base recién migrada,
+porque la base local de desarrollo está marcada en `2510718f486e` sin la tabla
+`tender_milestone_document`.
+
 ### Prueba manual
 
 Resultado: _pendiente_ (tareas 6.2 y 9.2 de la lista de tareas).
