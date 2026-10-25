@@ -317,7 +317,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
 
 Va después del bloque 4.
 
-- [ ] **10.1 Columna `first_call_offers_count`.**
+- [x] **10.1 Columna `first_call_offers_count`.**
   - Red: la prueba de 1.2 en `tests/integration/test_migraciones.py` también
     exige `first_call_offers_count` integer nullable, sin default.
   - Green: el campo en `TenderModel` y un `op.add_column` / `op.drop_column`

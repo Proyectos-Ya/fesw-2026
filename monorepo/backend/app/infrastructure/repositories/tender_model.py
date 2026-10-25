@@ -93,6 +93,9 @@ class TenderModel(SQLModel, table=True):
     # anterior de la app convive con este esquema durante el deploy.
     received_offers_count: int | None = Field(default=None)
     offers_checked_at: datetime | None = Field(default=None)
+    # Última cifra vista del primer llamado. La API cuenta solo el llamado
+    # actual, así que al abrirse el segundo esta queda congelada para sumarla.
+    first_call_offers_count: int | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,

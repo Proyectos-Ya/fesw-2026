@@ -112,7 +112,7 @@ async def test_el_esquema_migrado_coincide_con_los_modelos(engine_migrado):
 
 
 async def test_tender_guarda_las_cotizaciones_y_su_fecha_de_revision(engine_migrado):
-    """Plan HU-30: dos columnas nullable y sin default.
+    """Plan HU-30: tres columnas nullable y sin default.
 
     Sin default, para que agregarlas no reescriba la tabla y la versión anterior
     de la app, que no las conoce, siga insertando filas durante el deploy.
@@ -126,9 +126,11 @@ async def test_tender_guarda_las_cotizaciones_y_su_fecha_de_revision(engine_migr
 
     ofertas = columnas["received_offers_count"]
     revision = columnas["offers_checked_at"]
+    primer_llamado = columnas["first_call_offers_count"]
     assert isinstance(ofertas["type"], Integer)
+    assert isinstance(primer_llamado["type"], Integer)
     # Naive, como el resto de las fechas de `tender`.
     assert isinstance(revision["type"], DateTime) and not revision["type"].timezone
-    for columna in (ofertas, revision):
+    for columna in (ofertas, revision, primer_llamado):
         assert columna["nullable"] is True
         assert columna["default"] is None
