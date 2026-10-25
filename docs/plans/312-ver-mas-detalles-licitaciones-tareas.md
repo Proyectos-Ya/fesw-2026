@@ -103,7 +103,7 @@ Sin código de producción.
     `cambio_desde_item`. Sumar `resumen` al docstring de `listado_cambios.py`.
   - Verificar: `pytest tests/unit/infrastructure/test_listado_cambios.py -q`
   - Commit: `feat(sync-estados): leer cotizaciones del listado de cambios`
-- [ ] **3.2 (invariante) La cifra no cuenta como llamado.**
+- [x] **3.2 (invariante) La cifra no cuenta como llamado.**
   - Prueba: un ítem que trae cotizaciones y no trae `convocatoria` tiene
     `trae_llamado` en falso.
   - Commit: `test(sync-estados): las cotizaciones no activan trae_llamado`

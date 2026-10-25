@@ -111,6 +111,16 @@ class TestCotizaciones:
         assert cambio is not None
         assert cambio.received_offers_count is None
 
+    def test_las_cotizaciones_no_activan_trae_llamado(self, items):
+        # Si la cifra contara como llamado, el cron reescribiría el llamado
+        # de toda licitación que solo trae cotizaciones.
+        item = {k: v for k, v in items["cerrada"].items() if k != "convocatoria"}
+        item["fechas"] = {k: v for k, v in item["fechas"].items() if "llamado" not in k}
+        cambio = cambio_desde_item(item)
+        assert cambio is not None
+        assert cambio.received_offers_count == 17
+        assert cambio.trae_llamado is False
+
 
 class TestItemsIncompletos:
     """Lo que no se puede leer se ignora: escribir un estado inventado es peor."""
