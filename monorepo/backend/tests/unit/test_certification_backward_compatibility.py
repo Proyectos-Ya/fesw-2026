@@ -1,5 +1,8 @@
 from datetime import date
 
+import pytest
+from pydantic import ValidationError
+
 from app.application.schemas.supplier_schema import (
     CreateSupplierSchema,
     UpdateSupplierSchema,
@@ -55,6 +58,41 @@ class TestSupplierCertifications:
         assert _supplier(None).certification_names == []
 
 
+class TestValidacion:
+    @pytest.mark.parametrize("nombre", ["", "   "])
+    def test_rechaza_nombre_vacio(self, nombre):
+        with pytest.raises(ValidationError):
+            _supplier([{"name": nombre}])
+
+    def test_descarta_strings_sueltos_vacios_de_registros_antiguos(self):
+        # Rechazarlos haría fallar la lectura de la empresa entera.
+        assert _supplier(["", "  ", "SEC"]).certification_names == ["SEC"]
+
+    def test_recorta_el_nombre(self):
+        assert _supplier(["  ISO 9001 "]).certification_names == ["ISO 9001"]
+
+    def test_quita_duplicados_sin_mayusculas_ni_tildes_y_conserva_el_primero(self):
+        supplier = _supplier(
+            [
+                {"name": "Certificación SEC", "expires_at": "2026-12-31"},
+                "certificacion sec",
+                " ISO 9001",
+                "iso 9001 ",
+            ]
+        )
+
+        assert supplier.certification_names == ["Certificación SEC", "ISO 9001"]
+        assert supplier.certifications is not None
+        assert supplier.certifications[0].expires_at == date(2026, 12, 31)
+
+    def test_el_esquema_de_edicion_tambien_valida(self):
+        with pytest.raises(ValidationError):
+            UpdateSupplierSchema.model_validate({"certifications": [{"name": ""}]})
+
+        schema = UpdateSupplierSchema.model_validate({"certifications": ["SEC", "sec"]})
+        assert schema.certifications == [CertificationItem(name="SEC")]
+
+
 class TestSchemas:
     def test_create_schema_acepta_strings_y_dicts(self):
         schema = CreateSupplierSchema.model_validate(
@@ -103,7 +141,7 @@ class TestPersistencia:
     def test_to_entity_lee_registros_antiguos_con_strings(self):
         supplier = _supplier(["ISO 9001"])
         model = SupplierModel(**supplier.model_dump())
-        model.certifications = ["ISO 9001"]  # type: ignore[list-item]
+        model.certifications = ["ISO 9001"]
 
         entity = SupplierRepository(session=None)._to_entity(model)  # type: ignore[arg-type]
 

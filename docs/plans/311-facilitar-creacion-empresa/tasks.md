@@ -128,12 +128,12 @@ El paso 3 ya recibe `importedProfile.keywords` desde `ProfileWizard`. Falta el d
   - `monorepo/backend/app/domain/entities/supplier.py`
   - `monorepo/backend/app/infrastructure/repositories/supplier_model.py`
   - `monorepo/backend/tests/unit/test_certification_backward_compatibility.py`
-- [ ] **[Red]** Tests: nombre vacío o con solo espacios da error de validación, el nombre
+- [x] **[Red]** Tests: nombre vacío o con solo espacios da error de validación, el nombre
   se recorta y los duplicados (sin tildes ni mayúsculas) se eliminan conservando el
   primero.
-- [ ] **[Green]** `min_length=1` y recorte en `CertificationItem.name`; deduplicación en
+- [x] **[Green]** `min_length=1` y recorte en `CertificationItem.name`; deduplicación en
   `normalize_certifications`.
-- [ ] **[Refactor]** Tipar `SupplierModel.certifications` como lo que guarda la columna
+- [x] **[Refactor]** Tipar `SupplierModel.certifications` como lo que guarda la columna
   (dicts, o strings en registros antiguos).
 
 ---

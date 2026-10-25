@@ -1,6 +1,10 @@
 from pydantic import BaseModel, Field, field_validator
 
-from app.domain.entities.supplier import CertificationItem, normalize_certifications
+from app.domain.entities.supplier import (
+    CertificationItem,
+    dedupe_certifications,
+    normalize_certifications,
+)
 
 
 class CreateSupplierSchema(BaseModel):
@@ -19,6 +23,13 @@ class CreateSupplierSchema(BaseModel):
     @classmethod
     def coerce_certifications(cls, value: object) -> object:
         return normalize_certifications(value)
+
+    @field_validator("certifications")
+    @classmethod
+    def unique_certifications(
+        cls, value: list[CertificationItem] | None
+    ) -> list[CertificationItem] | None:
+        return dedupe_certifications(value)
 
 
 class UpdateSupplierSchema(BaseModel):
@@ -41,6 +52,13 @@ class UpdateSupplierSchema(BaseModel):
     @classmethod
     def coerce_certifications(cls, value: object) -> object:
         return normalize_certifications(value)
+
+    @field_validator("certifications")
+    @classmethod
+    def unique_certifications(
+        cls, value: list[CertificationItem] | None
+    ) -> list[CertificationItem] | None:
+        return dedupe_certifications(value)
 
 
 class RutExistsResponse(BaseModel):

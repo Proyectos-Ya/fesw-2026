@@ -27,10 +27,7 @@ class SupplierRepository(ISupplierRepository):
         # que la fecha de vencimiento se guarda como texto ISO.
         data = entity.model_dump()
         data["certifications"] = (
-            [
-                item.model_dump(mode="json")
-                for item in entity.certifications
-            ]
+            [item.model_dump(mode="json") for item in entity.certifications]
             if entity.certifications is not None
             else None
         )

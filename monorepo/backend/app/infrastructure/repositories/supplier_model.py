@@ -30,7 +30,11 @@ class SupplierModel(SQLModel, table=True):
     description: str | None = None
     regions: list[str] | None = Field(default=None, sa_column=Column(JSON))
     sectors: list[str] | None = Field(default=None, sa_column=Column(JSON))
-    certifications: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    # {"name", "expires_at"} por certificación; los registros antiguos guardan
+    # solo el nombre como string.
+    certifications: list[dict[str, str | None] | str] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
     keywords: list[str] | None = Field(default=None, sa_column=Column(JSON))
     years_experience: int | None = None
     num_employees: int | None = None
