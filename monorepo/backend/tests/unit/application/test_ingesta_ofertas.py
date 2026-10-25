@@ -88,3 +88,53 @@ class TestActualizacion:
         assert identico["status"] == "unchanged"
         assert repo.existente.received_offers_count == 5
         assert repo.existente.offers_checked_at == AHORA
+
+
+class TestPrimerLlamado:
+    """La API cuenta solo el llamado actual: la cifra del primero se congela."""
+
+    async def test_el_alta_en_primer_llamado_copia_la_cifra(self):
+        repo = FakeTenderRepository()
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(NumeroLlamado=1, TotalOfertasRecibidas=3)
+        )
+
+        modelo, _ = repo.saved[0]
+        assert modelo.first_call_offers_count == 3
+
+    async def test_el_alta_en_segundo_llamado_no_la_inventa(self):
+        repo = FakeTenderRepository()
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(NumeroLlamado=2, TotalOfertasRecibidas=3)
+        )
+
+        modelo, _ = repo.saved[0]
+        assert modelo.first_call_offers_count is None
+
+    async def test_la_actualizacion_en_primer_llamado_la_copia(self):
+        repo = RepoConLicitacion(_dto())
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(NumeroLlamado=1, TotalOfertasRecibidas=4)
+        )
+
+        assert repo.existente.first_call_offers_count == 4
+
+    async def test_la_actualizacion_en_segundo_llamado_la_conserva(self):
+        repo = RepoConLicitacion(_dto())
+        repo.existente.call_number = 1
+        repo.existente.received_offers_count = 5
+        repo.existente.first_call_offers_count = 5
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(
+            _dto(NumeroLlamado=2, TotalOfertasRecibidas=1)
+        )
+
+        assert repo.existente.received_offers_count == 1
+        assert repo.existente.first_call_offers_count == 5

@@ -335,7 +335,7 @@ Va después del bloque 4.
     nuevos.call_number = 1 THEN nuevos.received_offers_count ELSE
     tender.first_call_offers_count END`.
   - Commit: `feat(repositorio): conservar cotizaciones del primer llamado`
-- [ ] **10.3 La ingesta aplica la misma regla.**
+- [x] **10.3 La ingesta aplica la misma regla.**
   - Red: en `tests/unit/application/test_ingesta_ofertas.py`, un detalle en
     primer llamado con cifra 3 deja `first_call_offers_count=3`, en el alta y
     en la actualización. Uno en segundo llamado no lo toca.

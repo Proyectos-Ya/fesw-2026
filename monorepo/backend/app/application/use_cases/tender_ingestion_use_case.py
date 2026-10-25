@@ -127,6 +127,9 @@ class TenderIngestionUseCase:
                 offers_checked_at=(
                     now if dto.received_offers_count is not None else None
                 ),
+                first_call_offers_count=(
+                    dto.received_offers_count if dto.call_number == 1 else None
+                ),
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,
@@ -500,10 +503,17 @@ class TenderIngestionUseCase:
 
     @staticmethod
     def _aplicar_ofertas(existente: TenderModel, dto: TenderIngestaDTO) -> None:
-        """Vuelca la cifra del detalle y la hora de esta revisión, si la trae."""
+        """Vuelca la cifra del detalle y la hora de esta revisión, si la trae.
+
+        En primer llamado la copia también en `first_call_offers_count`: la API
+        cuenta solo el llamado actual, y al abrirse el segundo esa columna
+        conserva la última cifra del primero.
+        """
         if dto.received_offers_count is not None:
             existente.received_offers_count = dto.received_offers_count
             existente.offers_checked_at = utc_now_naive()
+            if dto.call_number == 1:
+                existente.first_call_offers_count = dto.received_offers_count
 
     @staticmethod
     def _aplicar_cambios(existente: TenderModel, dto: TenderIngestaDTO) -> None:
