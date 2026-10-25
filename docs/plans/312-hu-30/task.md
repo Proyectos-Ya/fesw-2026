@@ -139,7 +139,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
     "con cotizaciones revisadas".
   - Green: una línea en el `print` de `scripts/sync_estados.py:317`.
   - Commit: `feat(sync-estados): imprimir cotizaciones revisadas`
-- [ ] **3.7 El repositorio escribe la cifra y la fecha.**
+- [x] **3.7 El repositorio escribe la cifra y la fecha.**
   - Red: en `tests/integration/test_sync_estados_repository.py`, un lote con
     0 y 17 deja esas cifras y `offers_checked_at` con la hora de la corrida.
     Devuelve 2.

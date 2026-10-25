@@ -534,6 +534,40 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
         await self.session.commit()
         return cambiadas
 
+    async def overwrite_received_offers_count(
+        self, cambios: list[CambioDeEstado]
+    ) -> int:
+        """Cifra de cotizaciones y hora de la revisión, en lote, sin mover `updated_at`.
+
+        Escribe en todas las filas del lote, aunque la cifra no cambie: lo que
+        registra `offers_checked_at` es la revisión, no el cambio. El caso de uso
+        solo pasa cambios con cifra, así que no hace falta `COALESCE` ni el
+        `cast` de `overwrite_call_info`. `updated_at` dispara la regeneración del
+        análisis de Gemini y una cotización más no cambia lo que se le pide.
+        """
+        revisadas = 0
+        ahora = utc_now_naive()
+        for inicio in range(0, len(cambios), _LOTE_ESTADOS):
+            lote = cambios[inicio : inicio + _LOTE_ESTADOS]
+            nuevos = sql_values(
+                column("code", String),
+                column("received_offers_count", Integer),
+                name="ofertas",
+            ).data([(c.code, c.received_offers_count) for c in lote])
+            statement = (
+                update(TenderModel)
+                .where(col(TenderModel.code) == nuevos.c.code)
+                .values(
+                    received_offers_count=nuevos.c.received_offers_count,
+                    offers_checked_at=ahora,
+                )
+                .returning(TenderModel.id)
+            )
+            result = await self.session.exec(statement)  # type: ignore[call-overload]
+            revisadas += len(result.all())
+        await self.session.commit()
+        return revisadas
+
     async def get_or_create_buyer(
         self,
         rut: str,

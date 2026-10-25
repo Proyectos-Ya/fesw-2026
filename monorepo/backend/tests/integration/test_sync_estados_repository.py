@@ -6,6 +6,9 @@ porque `updated_at` dispara la regeneración del análisis de Gemini.
 
 `overwrite_call_info` hace lo mismo con el llamado vigente y el cierre de cada
 llamado, pero **nunca** mueve `updated_at` y un `None` no borra lo guardado.
+
+`overwrite_received_offers_count` escribe la cifra de cotizaciones y la hora de
+la revisión en toda fila que reciba, y tampoco mueve `updated_at`.
 """
 
 from datetime import datetime, timedelta
@@ -14,6 +17,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.domain.entities.tender import utc_now_naive
 from app.domain.models.cambio_estado import CambioDeEstado
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
@@ -93,6 +97,16 @@ def _llamado(
         call_number=call_number,
         first_call_closing_at=first,
         second_call_closing_at=second,
+    )
+
+
+def _ofertas(code: str, cantidad: int) -> CambioDeEstado:
+    return CambioDeEstado(
+        code=code,
+        status_id=PUBLICADA,
+        status_code="publicada",
+        closing_at=CIERRE,
+        received_offers_count=cantidad,
     )
 
 
@@ -313,3 +327,39 @@ class TestOverwriteCallInfo:
 
     async def test_lista_vacia(self, db_session: AsyncSession):
         assert await TenderRepository(db_session).overwrite_call_info([]) == 0
+
+
+class TestOverwriteReceivedOffersCount:
+    async def test_un_lote_con_cero_y_diecisiete_deja_esas_cifras_y_la_hora(
+        self, db_session: AsyncSession
+    ):
+        await _base(db_session)
+        a = await _tender(db_session, "A")
+        b = await _tender(db_session, "B")
+        antes = utc_now_naive()
+
+        revisadas = await TenderRepository(db_session).overwrite_received_offers_count(
+            [_ofertas("A", 0), _ofertas("B", 17)]
+        )
+
+        despues = utc_now_naive()
+        assert revisadas == 2
+        # `_fila` expira la sesión: cada fila se lee antes de pedir la siguiente.
+        for tender_id, cifra in ((a, 0), (b, 17)):
+            fila = await _fila(db_session, tender_id)
+            assert fila.received_offers_count == cifra
+            assert fila.offers_checked_at is not None
+            assert antes <= fila.offers_checked_at <= despues
+
+    async def test_no_toca_las_filas_ajenas_al_lote(self, db_session: AsyncSession):
+        await _base(db_session)
+        await _tender(db_session, "A")
+        otra = await _tender(db_session, "OTRA")
+
+        await TenderRepository(db_session).overwrite_received_offers_count(
+            [_ofertas("A", 3)]
+        )
+
+        fila = await _fila(db_session, otra)
+        assert fila.received_offers_count is None
+        assert fila.offers_checked_at is None
