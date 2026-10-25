@@ -2,6 +2,7 @@
 
 **Issue asociada**: Refs #312  
 **Plan**: [plan.md](./plan.md) (decisiones en §8)  
+**Dependencia**: Para que esta HU esté 100% funcional, primero hay que hacer #294  
 **Fecha**: 2026-10-25
 
 ---
@@ -29,6 +30,11 @@
   Si el commit lo hace una persona, se omite la línea `[AI Generated]`.
 
 - No se hace `git push` sin confirmación explícita (SKILL.md §4).
+- **Nota de alcance:** la dirección y el plazo de entrega, y la verificación
+  con detalles reales de que el detalle trae `resumen.total_ofertas_recibidas`,
+  corresponden al issue **#294**. Para que esta HU esté 100% funcional, primero
+  debe realizarse #294. La lectura de la cifra en sync-estados y en la ingesta
+  sí es parte de esta HU (bloques 2, 3 y 4).
 
 ---
 
@@ -313,7 +319,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
 
 ---
 
-## Bloque 10. Suma de los dos llamados (decisión 12, §4.5 del plan)
+## Bloque 10. Suma de los dos llamados (decisión 10, §4.5 del plan)
 
 Va después del bloque 4.
 
@@ -364,7 +370,7 @@ Va después del bloque 4.
     junta el desglose y "Revisado el …".
   - Commit: `feat(matches): ficha suma cotizaciones de los dos llamados`
 
-- [x] **10.7 Llamado y cotizaciones en una sola tarjeta (decisión 13).**
+- [x] **10.7 Llamado y cotizaciones en una sola tarjeta (decisión 11).**
   - Red: las pruebas de la ficha buscan la tarjeta "Llamado y cotizaciones",
     la grilla tiene tres tarjetas (`sm:grid-cols-3`) y el badge sin dato dice
     "Llamado no disponible", también en `secondCall.test.ts`.
@@ -391,9 +397,9 @@ Va después del bloque 4.
       salida de `alembic heads`, capturas de la ficha y la nota de que dev test
       comparte base con producción. Pedir confirmación antes de `git push`.
 - [ ] **9.6 Avisar en las issues** (pedir confirmación antes de publicar):
-  - en #312, que CA4 queda parcial hasta #294 y por qué;
-  - en #294, que la sección "Entrega y requisitos" ya existe y dónde agregar
-    los campos;
+  - en #312, que para que la HU esté 100% funcional primero hay que hacer #294;
+  - en #294, que la sección "Entrega y requisitos" y las columnas de
+    cotizaciones ya existen y dónde agregar los campos;
   - si la tarea 0.3 confirmó el riesgo 1, una issue nueva para refrescar la
     cifra de las licitaciones que no cambian de estado.
 
