@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     Integer,
     String,
+    case,
     cast,
     column,
     delete,
@@ -545,9 +546,15 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
 
         Escribe en todas las filas del lote, aunque la cifra no cambie: lo que
         registra `offers_checked_at` es la revisión, no el cambio. El caso de uso
-        solo pasa cambios con cifra, así que no hace falta `COALESCE` ni el
-        `cast` de `overwrite_call_info`. `updated_at` dispara la regeneración del
-        análisis de Gemini y una cotización más no cambia lo que se le pide.
+        solo pasa cambios con cifra, así que la cifra no necesita `COALESCE`.
+        `updated_at` dispara la regeneración del análisis de Gemini y una
+        cotización más no cambia lo que se le pide.
+
+        La API cuenta solo el llamado actual. Mientras el cambio dice primer
+        llamado, la cifra se copia también en `first_call_offers_count`; con otro
+        llamado, o sin llamado, esa columna conserva lo que tenía. Se mira el
+        `call_number` del cambio y no el guardado, porque `overwrite_call_info`
+        corre antes y ya lo cambió.
         """
         revisadas = 0
         ahora = utc_now_naive()
@@ -556,13 +563,24 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             nuevos = sql_values(
                 column("code", String),
                 column("received_offers_count", Integer),
+                column("call_number", Integer),
                 name="ofertas",
-            ).data([(c.code, c.received_offers_count) for c in lote])
+            ).data([(c.code, c.received_offers_count, c.call_number) for c in lote])
+            # El `cast` cubre el lote sin ningún `call_number`, que Postgres
+            # resolvería como `text` (ver `overwrite_call_info`).
+            primer_llamado = case(
+                (
+                    cast(nuevos.c.call_number, Integer) == 1,
+                    nuevos.c.received_offers_count,
+                ),
+                else_=col(TenderModel.first_call_offers_count),
+            )
             statement = (
                 update(TenderModel)
                 .where(col(TenderModel.code) == nuevos.c.code)
                 .values(
                     received_offers_count=nuevos.c.received_offers_count,
+                    first_call_offers_count=primer_llamado,
                     offers_checked_at=ahora,
                 )
                 .returning(TenderModel.id)

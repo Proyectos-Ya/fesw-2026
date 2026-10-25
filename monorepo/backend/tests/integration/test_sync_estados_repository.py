@@ -100,12 +100,15 @@ def _llamado(
     )
 
 
-def _ofertas(code: str, cantidad: int) -> CambioDeEstado:
+def _ofertas(
+    code: str, cantidad: int, *, call_number: int | None = None
+) -> CambioDeEstado:
     return CambioDeEstado(
         code=code,
         status_id=PUBLICADA,
         status_code="publicada",
         closing_at=CIERRE,
+        call_number=call_number,
         received_offers_count=cantidad,
     )
 
@@ -397,3 +400,46 @@ class TestOverwriteReceivedOffersCount:
         fila = await _fila(db_session, tender_id)
         assert fila.updated_at == ANTES
         assert fila.last_change_at == ANTES
+
+
+class TestCotizacionesDelPrimerLlamado:
+    """La API cuenta solo el llamado actual: la cifra del primero se congela."""
+
+    async def test_en_primer_llamado_copia_la_cifra(self, db_session: AsyncSession):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+
+        await TenderRepository(db_session).overwrite_received_offers_count(
+            [_ofertas("A", 5, call_number=1)]
+        )
+
+        fila = await _fila(db_session, tender_id)
+        assert fila.received_offers_count == 5
+        assert fila.first_call_offers_count == 5
+
+    async def test_en_segundo_llamado_la_del_primero_queda_congelada(
+        self, db_session: AsyncSession
+    ):
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+        repo = TenderRepository(db_session)
+
+        await repo.overwrite_received_offers_count([_ofertas("A", 5, call_number=1)])
+        await repo.overwrite_received_offers_count([_ofertas("A", 1, call_number=2)])
+
+        fila = await _fila(db_session, tender_id)
+        assert fila.received_offers_count == 1
+        assert fila.first_call_offers_count == 5
+
+    async def test_sin_llamado_no_toca_la_del_primero(self, db_session: AsyncSession):
+        """Un lote entero sin `call_number` es el caso del `cast`."""
+        await _base(db_session)
+        tender_id = await _tender(db_session, "A")
+        repo = TenderRepository(db_session)
+
+        await repo.overwrite_received_offers_count([_ofertas("A", 5, call_number=1)])
+        await repo.overwrite_received_offers_count([_ofertas("A", 8)])
+
+        fila = await _fila(db_session, tender_id)
+        assert fila.received_offers_count == 8
+        assert fila.first_call_offers_count == 5

@@ -325,7 +325,7 @@ Va después del bloque 4.
     compartido. Probar `upgrade`, `downgrade -1` y `upgrade` sobre una base
     fresca, y `python -m scripts.migraciones`.
   - Commit: `feat(db): cotizaciones del primer llamado en tender`
-- [ ] **10.2 sync-estados congela la cifra del primer llamado.**
+- [x] **10.2 sync-estados congela la cifra del primer llamado.**
   - Red: en `tests/integration/test_sync_estados_repository.py`, un cambio con
     `call_number=1` y cifra 5 deja `first_call_offers_count=5`. Uno posterior
     con `call_number=2` y cifra 1 deja `received_offers_count=1` y
