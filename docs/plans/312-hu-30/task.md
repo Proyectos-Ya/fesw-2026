@@ -151,7 +151,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
 - [x] **3.8 (invariante) La misma cifra igual mueve la fecha.**
   - Prueba: escribir 5 sobre 5 cuenta como revisada y mueve `offers_checked_at`.
   - Commit: `test(repositorio): revisar la misma cifra mueve offers_checked_at`
-- [ ] **3.9 (invariante) No mueve `updated_at` ni `last_change_at`.**
+- [x] **3.9 (invariante) No mueve `updated_at` ni `last_change_at`.**
   - Prueba: siguiendo a `test_no_toca_last_change_at`, las dos fechas quedan
     iguales después de `overwrite_received_offers_count`.
   - Commit: `test(repositorio): cotizaciones no mueven updated_at ni last_change_at`
