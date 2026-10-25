@@ -148,7 +148,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
     `offers_checked_at=utc_now_naive()`.
   - Verificar: `pytest tests/integration/test_sync_estados_repository.py -q`
   - Commit: `feat(repositorio): guardar cotizaciones y fecha de revisión en lote`
-- [ ] **3.8 (invariante) La misma cifra igual mueve la fecha.**
+- [x] **3.8 (invariante) La misma cifra igual mueve la fecha.**
   - Prueba: escribir 5 sobre 5 cuenta como revisada y mueve `offers_checked_at`.
   - Commit: `test(repositorio): revisar la misma cifra mueve offers_checked_at`
 - [ ] **3.9 (invariante) No mueve `updated_at` ni `last_change_at`.**
