@@ -4,22 +4,40 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { formatRut, step1Schema, type Step1Data } from "../../profileSchema";
-import { checkRutExists } from "../../services/supplierService";
+import { checkRutExists, type CompanyProfileImport } from "../../services/supplierService";
 import { Input } from "@/features/shared/components/Input";
 import { WizardNavigation } from "../WizardNavigation";
+import { CompanyImportCard } from "../CompanyImportCard";
+import { ImportedFieldReview, isFieldLocked, type FieldReview } from "../ImportedFieldReview";
 
 interface Step1Props {
   defaultValues: Partial<Step1Data>;
   adminName: string;
+  importedProfile: CompanyProfileImport | null;
+  onImported: (profile: CompanyProfileImport) => void;
+  legalNameReview: FieldReview;
+  /** "Siguiente" queda bloqueado mientras la razón social importada no se confirma. */
+  nextBlocked: boolean;
   onNext: (data: Step1Data) => void;
   onBack: () => void;
 }
 
-export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step1Props) {
+export function Step1Identity({
+  defaultValues,
+  adminName,
+  importedProfile,
+  onImported,
+  legalNameReview,
+  nextBlocked,
+  onNext,
+  onBack,
+}: Step1Props) {
   const {
     register,
     handleSubmit,
     setError,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
@@ -31,6 +49,25 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
   });
   const [isCheckingRut, setIsCheckingRut] = useState(false);
   const rutField = register("rut");
+  const rut = watch("rut");
+
+  const setLegalName = (value: string) =>
+    setValue("legal_name", value, { shouldDirty: true, shouldValidate: value !== "" });
+
+  const handleImported = (profile: CompanyProfileImport) => {
+    onImported(profile);
+    const legalName = profile.legal_name.trim();
+    const isOtherRut =
+      importedProfile !== null && formatRut(importedProfile.rut) !== formatRut(profile.rut);
+    // Con otro RUT el wizard vacía la razón social anterior; el campo vivo hace lo mismo.
+    if (legalName) setLegalName(legalName);
+    else if (isOtherRut) setLegalName("");
+  };
+
+  const handleClearLegalName = () => {
+    legalNameReview.onClear();
+    setLegalName("");
+  };
 
   const handleNext = async (data: Step1Data) => {
     setIsCheckingRut(true);
@@ -71,12 +108,20 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
       </div>
 
       <div className="flex flex-col gap-6">
-        <Input
-          label="Nombre de la empresa"
-          placeholder="Ej: Constructora Pérez y Asociados Ltda."
-          error={errors.legal_name?.message}
-          {...register("legal_name")}
-        />
+        <div className="flex flex-col gap-2">
+          <Input
+            label="Nombre de la empresa"
+            placeholder="Ej: Constructora Pérez y Asociados Ltda."
+            error={errors.legal_name?.message}
+            readOnly={isFieldLocked(legalNameReview.status)}
+            {...register("legal_name")}
+          />
+          <ImportedFieldReview
+            fieldLabel="razón social"
+            {...legalNameReview}
+            onClear={handleClearLegalName}
+          />
+        </div>
         <Input
           label="Nombre de fantasía (opcional)"
           placeholder="Ej: Constructora Pérez"
@@ -96,6 +141,12 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
             return rutField.onChange(e);
           }}
         />
+        <CompanyImportCard
+          rut={rut ?? ""}
+          imported={importedProfile}
+          onImported={handleImported}
+          onInvalidRut={(message) => setError("rut", { type: "manual", message })}
+        />
       </div>
 
       <WizardNavigation
@@ -104,6 +155,7 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
         isFirstStep
         isLastStep={false}
         isLoading={isCheckingRut}
+        nextDisabled={nextBlocked}
       />
     </div>
   );

@@ -4,10 +4,12 @@ import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/features/shared/components/Button";
 import { Badge } from "@/features/shared/components/Badge";
-import { ApiError, TimeoutError } from "@/features/shared/api/client";
+import { step1Schema } from "../profileSchema";
 import {
+  describeImportError,
   importCompanyProfile,
   type CompanyProfileImport,
+  type ImportErrorDescription,
 } from "../services/supplierService";
 
 const SOURCE_NAMES: Record<string, string> = {
@@ -19,29 +21,38 @@ interface CompanyImportCardProps {
   rut: string;
   imported: CompanyProfileImport | null;
   onImported: (profile: CompanyProfileImport) => void;
+  /** El RUT no pasa la validación local; no se consultó la fuente. */
+  onInvalidRut: (message: string) => void;
 }
 
 /**
- * Ofrece importar regiones, rubros y palabras clave desde el RUT validado en el
- * paso anterior. No importa nada por su cuenta: consultar la fuente tiene costo
- * y el usuario decide si quiere la sugerencia.
+ * Ofrece importar razón social, regiones, rubros y palabras clave desde el RUT
+ * escrito en el paso 1. No importa nada por su cuenta: consultar la fuente tiene
+ * costo y el usuario decide si quiere la sugerencia. Un RUT inválido no sale del
+ * navegador, y ningún error de la fuente bloquea el wizard.
  */
-export function CompanyImportCard({ rut, imported, onImported }: CompanyImportCardProps) {
+export function CompanyImportCard({
+  rut,
+  imported,
+  onImported,
+  onInvalidRut,
+}: CompanyImportCardProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<ImportErrorDescription | null>(null);
 
   const handleImport = async () => {
+    setNotice(null);
+    const validation = step1Schema.shape.rut.safeParse(rut);
+    if (!validation.success) {
+      onInvalidRut(validation.error.issues[0].message);
+      return;
+    }
     setIsLoading(true);
-    setError(null);
     try {
       onImported(await importCompanyProfile(rut));
     } catch (err) {
       console.error("[CompanyImportCard] Error al importar datos:", err);
-      setError(
-        err instanceof ApiError || err instanceof TimeoutError
-          ? err.message
-          : "No pudimos importar los datos de tu empresa. Inténtalo nuevamente o complétalos a mano.",
-      );
+      setNotice(describeImportError(err));
     } finally {
       setIsLoading(false);
     }
@@ -72,8 +83,8 @@ export function CompanyImportCard({ rut, imported, onImported }: CompanyImportCa
                 </div>
                 <p className="text-sm text-text-body">
                   Encontramos a <span className="font-semibold">{imported.legal_name}</span>.
-                  Marcamos sus regiones y rubros, y en el siguiente paso verás palabras clave
-                  sugeridas.
+                  Precargamos la razón social, las regiones y los rubros. Revisa y confirma
+                  cada uno antes de avanzar; en el paso 3 verás palabras clave sugeridas.
                 </p>
               </>
             ) : (
@@ -82,9 +93,9 @@ export function CompanyImportCard({ rut, imported, onImported }: CompanyImportCa
                   Importa los datos de tu empresa
                 </h3>
                 <p className="text-sm text-text-muted">
-                  Con el RUT <span className="font-mono text-text-body">{rut}</span> buscamos tus
-                  actividades económicas en el SII para sugerirte regiones, rubros y palabras
-                  clave. Podrás revisarlos antes de guardar.
+                  Con el RUT que escribiste buscamos tu empresa en el SII para precargar la razón
+                  social, las regiones, los rubros y algunas palabras clave. Podrás revisar cada
+                  dato antes de guardar.
                 </p>
               </>
             )}
@@ -109,12 +120,16 @@ export function CompanyImportCard({ rut, imported, onImported }: CompanyImportCa
         </ul>
       )}
 
-      {error && (
+      {notice && (
         <div
-          role="alert"
-          className="mt-3 rounded-md border border-danger/20 bg-danger-soft/30 p-3 text-sm font-medium text-danger"
+          role={notice.kind === "info" ? "status" : "alert"}
+          className={`mt-3 rounded-md border p-3 text-sm font-medium ${
+            notice.kind === "info"
+              ? "border-info/20 bg-info-soft/30 text-text-body"
+              : "border-danger/20 bg-danger-soft/30 text-danger"
+          }`}
         >
-          {error}
+          {notice.message}
         </div>
       )}
     </section>

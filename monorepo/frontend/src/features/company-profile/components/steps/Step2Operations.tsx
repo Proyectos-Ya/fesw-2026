@@ -6,25 +6,25 @@ import { step2Schema, type Step2Data } from "../../profileSchema";
 import { Input } from "@/features/shared/components/Input";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { WizardNavigation } from "../WizardNavigation";
-import { CompanyImportCard } from "../CompanyImportCard";
+import { ImportedFieldReview, isFieldLocked, type FieldReview } from "../ImportedFieldReview";
 import { REGIONS } from "../../data/regions";
-import type { CompanyProfileImport } from "../../services/supplierService";
 
 interface Step2Props {
   defaultValues: Partial<Step2Data>;
-  /** RUT ya validado en el paso 1; sin él no se ofrece importar. */
-  rut?: string;
-  importedProfile: CompanyProfileImport | null;
-  onImported: (profile: CompanyProfileImport) => void;
+  regionsReview: FieldReview;
+  /** Regiones que sumó la importación; "Borrar" quita solo estas. */
+  addedRegions: string[];
+  /** "Siguiente" queda bloqueado mientras las regiones importadas no se confirman. */
+  nextBlocked: boolean;
   onNext: (data: Step2Data) => void;
   onBack: () => void;
 }
 
 export function Step2Operations({
   defaultValues,
-  rut,
-  importedProfile,
-  onImported,
+  regionsReview,
+  addedRegions,
+  nextBlocked,
   onNext,
   onBack,
 }: Step2Props) {
@@ -32,8 +32,8 @@ export function Step2Operations({
     register,
     handleSubmit,
     control,
-    setValue,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<Step2Data>({
     resolver: zodResolver(step2Schema),
@@ -43,15 +43,10 @@ export function Step2Operations({
     },
   });
 
-  const handleImported = (profile: CompanyProfileImport) => {
-    onImported(profile);
-    const imported = profile.regions.filter((region) => REGIONS.includes(region));
-    if (imported.length === 0) return;
-    const current = getValues("regions") ?? [];
-    setValue("regions", [...current, ...imported.filter((r) => !current.includes(r))], {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
+  const handleClearRegions = () => {
+    regionsReview.onClear();
+    const remaining = (getValues("regions") ?? []).filter((r) => !addedRegions.includes(r));
+    setValue("regions", remaining, { shouldDirty: true });
   };
 
   return (
@@ -64,22 +59,26 @@ export function Step2Operations({
       </div>
 
       <div className="flex flex-col gap-8">
-        {rut && (
-          <CompanyImportCard rut={rut} imported={importedProfile} onImported={handleImported} />
-        )}
-
         <Controller
           name="regions"
           control={control}
           render={({ field }) => (
-            <ChipSelect
-              label="Regiones donde opera"
-              options={REGIONS}
-              selected={field.value}
-              onChange={field.onChange}
-              error={errors.regions?.message}
-              hint="Selecciona todas las regiones donde puedes ejecutar proyectos."
-            />
+            <div className="flex flex-col gap-3">
+              <ChipSelect
+                label="Regiones donde opera"
+                options={REGIONS}
+                selected={field.value}
+                onChange={field.onChange}
+                error={errors.regions?.message}
+                hint="Selecciona todas las regiones donde puedes ejecutar proyectos."
+                disabled={isFieldLocked(regionsReview.status)}
+              />
+              <ImportedFieldReview
+                fieldLabel="regiones"
+                {...regionsReview}
+                onClear={handleClearRegions}
+              />
+            </div>
           )}
         />
 
@@ -108,6 +107,7 @@ export function Step2Operations({
         onNext={handleSubmit(onNext)}
         isFirstStep={false}
         isLastStep={false}
+        nextDisabled={nextBlocked}
       />
     </div>
   );

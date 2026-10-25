@@ -68,6 +68,11 @@ export function ProfileWizard() {
     currentStep,
     formData,
     importedProfile,
+    importReview,
+    confirmField,
+    editField,
+    clearField,
+    isStepBlocked,
     dismissedKeywords,
     nextStep,
     prevStep,
@@ -96,6 +101,12 @@ export function ProfileWizard() {
 
   const handleSubmit = async () => {
     setError(null);
+
+    // Los pasos ya bloquean "Siguiente"; esto cubre cualquier otro camino al resumen.
+    if (([1, 2, 3] as const).some(isStepBlocked)) {
+      setError("Hay datos importados sin confirmar. Revisa los pasos anteriores.");
+      return;
+    }
 
     // Se valida antes de mostrar la espera: con datos inválidos la petición ni
     // siquiera sale, y la pantalla de carga solo parpadearía.
@@ -159,6 +170,15 @@ export function ProfileWizard() {
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
             adminName={adminName}
+            importedProfile={importedProfile}
+            onImported={applyImport}
+            legalNameReview={{
+              status: importReview.status.legal_name,
+              onConfirm: () => confirmField("legal_name"),
+              onEdit: () => editField("legal_name"),
+              onClear: () => clearField("legal_name"),
+            }}
+            nextBlocked={isStepBlocked(1)}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
           />
@@ -170,9 +190,14 @@ export function ProfileWizard() {
               years_experience: formData.years_experience,
               num_employees: formData.num_employees,
             }}
-            rut={formData.rut}
-            importedProfile={importedProfile}
-            onImported={applyImport}
+            regionsReview={{
+              status: importReview.status.regions,
+              onConfirm: () => confirmField("regions"),
+              onEdit: () => editField("regions"),
+              onClear: () => clearField("regions"),
+            }}
+            addedRegions={importReview.added.regions}
+            nextBlocked={isStepBlocked(2)}
             onNext={(data: Step2Data) => nextStep(data)}
             onBack={prevStep}
           />
@@ -186,6 +211,14 @@ export function ProfileWizard() {
               description: formData.description,
             }}
             suggestedKeywords={importedProfile?.keywords}
+            sectorsReview={{
+              status: importReview.status.sectors,
+              onConfirm: () => confirmField("sectors"),
+              onEdit: () => editField("sectors"),
+              onClear: () => clearField("sectors"),
+            }}
+            addedSectors={importReview.added.sectors}
+            nextBlocked={isStepBlocked(3)}
             dismissedKeywords={dismissedKeywords}
             onDismissKeyword={dismissKeyword}
             onNext={(data: Step3Data) => nextStep(data)}

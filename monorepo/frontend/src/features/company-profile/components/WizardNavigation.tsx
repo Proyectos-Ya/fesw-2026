@@ -7,6 +7,8 @@ interface WizardNavigationProps {
   isLastStep: boolean;
   nextLabel?: string;
   isLoading?: boolean;
+  /** Bloquea "Siguiente", p. ej. mientras hay datos importados sin confirmar. */
+  nextDisabled?: boolean;
 }
 
 export function WizardNavigation({
@@ -16,6 +18,7 @@ export function WizardNavigation({
   isLastStep,
   nextLabel,
   isLoading = false,
+  nextDisabled = false,
 }: WizardNavigationProps) {
   const label = nextLabel ?? (isLastStep ? "Guardar perfil y comenzar" : "Siguiente");
   return (
@@ -34,6 +37,7 @@ export function WizardNavigation({
         variant={isLastStep ? "accent" : "primary"} 
         onClick={onNext} 
         isLoading={isLoading}
+        disabled={nextDisabled || isLoading}
         className="px-8 font-bold"
       >
         {label} {!isLastStep && "→"}

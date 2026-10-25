@@ -160,4 +160,16 @@ describe("SectorSelect", () => {
 
     expect(onChange).toHaveBeenCalledWith([FOOD]);
   });
+
+  it("disabled bloquea los chips pero deja abrir los grupos", async () => {
+    const onChange = vi.fn();
+    render(<SectorSelect selected={[CLEANING_SERVICE]} onChange={onChange} disabled />);
+
+    await userEvent.click(groupHeader("Servicios"));
+    const chip = screen.getByRole("button", { name: CLEANING_SERVICE });
+    await userEvent.click(chip);
+
+    expect(chip).toBeDisabled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

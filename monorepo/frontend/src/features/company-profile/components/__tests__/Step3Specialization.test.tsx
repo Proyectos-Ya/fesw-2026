@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Step3Specialization } from "../steps/Step3Specialization";
+import type { ReviewStatus } from "../../hooks/useProfileWizard";
 import type { Step3Data } from "../../profileSchema";
 
 const suggestMock = vi.hoisted(() => vi.fn());
@@ -17,10 +18,20 @@ const baseValues: Partial<Step3Data> = {
   description: "Constructora especializada en obras civiles menores.",
 };
 
+// Sin importación: los rubros no están en revisión.
+const NO_REVIEW = { status: undefined, onConfirm: vi.fn(), onEdit: vi.fn(), onClear: vi.fn() };
+
 function renderStep(defaultValues: Partial<Step3Data> = baseValues) {
   const onNext = vi.fn();
   render(
-    <Step3Specialization defaultValues={defaultValues} onNext={onNext} onBack={vi.fn()} />,
+    <Step3Specialization
+      defaultValues={defaultValues}
+      sectorsReview={NO_REVIEW}
+      addedSectors={[]}
+      nextBlocked={false}
+      onNext={onNext}
+      onBack={vi.fn()}
+    />,
   );
   return { onNext };
 }
@@ -70,6 +81,9 @@ describe("Step3Specialization (sugerencias de palabras clave)", () => {
     const onNext = vi.fn();
     render(
       <Step3Specialization
+        sectorsReview={NO_REVIEW}
+        addedSectors={[]}
+        nextBlocked={false}
         defaultValues={baseValues}
         suggestedKeywords={["pintura", "revestimiento"]}
         onNext={onNext}
@@ -88,6 +102,9 @@ describe("Step3Specialization (sugerencias de palabras clave)", () => {
     const onDismissKeyword = vi.fn();
     render(
       <Step3Specialization
+        sectorsReview={NO_REVIEW}
+        addedSectors={[]}
+        nextBlocked={false}
         defaultValues={baseValues}
         suggestedKeywords={["pintura"]}
         onDismissKeyword={onDismissKeyword}
@@ -104,6 +121,9 @@ describe("Step3Specialization (sugerencias de palabras clave)", () => {
   it("no muestra las sugerencias que el wizard ya marcó como descartadas", () => {
     render(
       <Step3Specialization
+        sectorsReview={NO_REVIEW}
+        addedSectors={[]}
+        nextBlocked={false}
         defaultValues={baseValues}
         suggestedKeywords={["pintura", "revestimiento"]}
         dismissedKeywords={["pintura"]}
@@ -187,6 +207,9 @@ describe("Step3Specialization (sugerir desde la descripción)", () => {
     const onDismissKeyword = vi.fn();
     render(
       <Step3Specialization
+        sectorsReview={NO_REVIEW}
+        addedSectors={[]}
+        nextBlocked={false}
         defaultValues={baseValues}
         onDismissKeyword={onDismissKeyword}
         onNext={vi.fn()}
@@ -206,6 +229,9 @@ describe("Step3Specialization (sugerir desde la descripción)", () => {
     suggestMock.mockResolvedValue(["obras civiles", "infraestructura municipal"]);
     render(
       <Step3Specialization
+        sectorsReview={NO_REVIEW}
+        addedSectors={[]}
+        nextBlocked={false}
         defaultValues={baseValues}
         dismissedKeywords={["Obras Civiles"]}
         onDismissKeyword={vi.fn()}
@@ -241,5 +267,116 @@ describe("Step3Specialization (sugerir desde la descripción)", () => {
       "No pudimos sugerir palabras clave. Inténtalo nuevamente o agrégalas a mano.",
     );
     expect(screen.getByRole("button", BUTTON)).toBeEnabled();
+  });
+});
+
+const REVIEW_DESCRIPTION = "Empresa con amplia experiencia en obras civiles y edificación.";
+
+// Rubros de grupos distintos: el selector arranca con los grupos plegados.
+const IMPORTED = "Artículos para estructuras, obras y construcciones";
+const MANUAL = "Productos químicos industriales";
+
+async function openSectorGroups() {
+  await userEvent.click(screen.getByRole("button", { name: /Componentes y suministros/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Materias primas/ }));
+}
+
+const chip = (name: string) => screen.getByRole("button", { name });
+
+interface ReviewRenderOptions {
+  status?: ReviewStatus;
+  blocked?: boolean;
+  sectors?: string[];
+  added?: string[];
+}
+
+function renderReviewStep({
+  status,
+  blocked = false,
+  sectors = [MANUAL, IMPORTED],
+  added = [IMPORTED],
+}: ReviewRenderOptions = {}) {
+  const handlers = {
+    onNext: vi.fn(),
+    onConfirm: vi.fn(),
+    onEdit: vi.fn(),
+    onClear: vi.fn(),
+  };
+  render(
+    <Step3Specialization
+      defaultValues={{ sectors, description: REVIEW_DESCRIPTION }}
+      sectorsReview={{
+        status,
+        onConfirm: handlers.onConfirm,
+        onEdit: handlers.onEdit,
+        onClear: handlers.onClear,
+      }}
+      addedSectors={added}
+      nextBlocked={blocked}
+      onNext={handlers.onNext}
+      onBack={vi.fn()}
+    />,
+  );
+  return handlers;
+}
+
+
+describe("Step3Specialization (revisión de rubros)", () => {
+  it("sin importación los rubros se eligen con normalidad y no hay insignia", async () => {
+    renderReviewStep({ status: undefined });
+    await openSectorGroups();
+
+    expect(chip(IMPORTED)).toBeEnabled();
+    expect(screen.queryByText("Pendiente de revisión")).not.toBeInTheDocument();
+  });
+
+  it("pendiente: chips deshabilitados, insignia visible y Siguiente bloqueado", async () => {
+    renderReviewStep({ status: "pending", blocked: true });
+    await openSectorGroups();
+
+    expect(chip(IMPORTED)).toBeDisabled();
+    expect(chip(IMPORTED)).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Pendiente de revisión")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeDisabled();
+  });
+
+  it("editando: los chips se pueden cambiar", async () => {
+    renderReviewStep({ status: "editing", blocked: true });
+    await openSectorGroups();
+
+    await userEvent.click(chip(IMPORTED));
+
+    expect(chip(IMPORTED)).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("confirmar y editar avisan al wizard", async () => {
+    const { onConfirm, onEdit } = renderReviewStep({ status: "pending", blocked: true });
+    await openSectorGroups();
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar rubros" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editar rubros" }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("borrar quita solo los rubros que trajo la importación", async () => {
+    const { onClear } = renderReviewStep({ status: "pending", blocked: true });
+    await openSectorGroups();
+
+    await userEvent.click(screen.getByRole("button", { name: "Borrar rubros" }));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(chip(IMPORTED)).toHaveAttribute("aria-pressed", "false");
+    expect(chip(MANUAL)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("confirmados los rubros, Siguiente avanza", async () => {
+    const { onNext } = renderReviewStep({ status: "confirmed" });
+    await openSectorGroups();
+
+    await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    await vi.waitFor(() => expect(onNext).toHaveBeenCalled());
   });
 });
