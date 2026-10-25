@@ -313,6 +313,59 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
 
 ---
 
+## Bloque 10. Suma de los dos llamados (decisión 12, §4.5 del plan)
+
+Va después del bloque 4.
+
+- [ ] **10.1 Columna `first_call_offers_count`.**
+  - Red: la prueba de 1.2 en `tests/integration/test_migraciones.py` también
+    exige `first_call_offers_count` integer nullable, sin default.
+  - Green: el campo en `TenderModel` y un `op.add_column` / `op.drop_column`
+    más en la migración `2868884ba7ee`, que no se aplicó en ningún entorno
+    compartido. Probar `upgrade`, `downgrade -1` y `upgrade` sobre una base
+    fresca, y `python -m scripts.migraciones`.
+  - Commit: `feat(db): cotizaciones del primer llamado en tender`
+- [ ] **10.2 sync-estados congela la cifra del primer llamado.**
+  - Red: en `tests/integration/test_sync_estados_repository.py`, un cambio con
+    `call_number=1` y cifra 5 deja `first_call_offers_count=5`. Uno posterior
+    con `call_number=2` y cifra 1 deja `received_offers_count=1` y
+    `first_call_offers_count=5`. Uno con `call_number=None` no lo toca.
+  - Green: `call_number` en el `VALUES` de `overwrite_received_offers_count`
+    (con `cast(..., Integer)`) y `first_call_offers_count = CASE WHEN
+    nuevos.call_number = 1 THEN nuevos.received_offers_count ELSE
+    tender.first_call_offers_count END`.
+  - Commit: `feat(repositorio): conservar cotizaciones del primer llamado`
+- [ ] **10.3 La ingesta aplica la misma regla.**
+  - Red: en `tests/unit/application/test_ingesta_ofertas.py`, un detalle en
+    primer llamado con cifra 3 deja `first_call_offers_count=3`, en el alta y
+    en la actualización. Uno en segundo llamado no lo toca.
+  - Green: `_aplicar_ofertas` y el alta.
+  - Commit: `feat(ingesta): conservar cotizaciones del primer llamado`
+- [ ] **10.4 La entidad y la API exponen el campo.**
+  - Red: en `tests/integration/test_tender_repository.py`, la fila con
+    `first_call_offers_count=5` se lee con 5. En `tests/e2e/api/test_tender_router.py`,
+    la ficha devuelve la clave, también en `null`.
+  - Green: el campo en `Tender` y en las dos conversiones de `TenderRepository`.
+  - Commit: `feat(dominio): exponer cotizaciones del primer llamado`
+- [ ] **10.5 `offersSummary` en el frontend.**
+  - Red: en `src/features/matches/utils/__tests__/offers.test.ts`, las cuatro
+    filas de la tabla de §4.5 del plan, más `received_offers_count` 0 en
+    segundo llamado con 5 en el primero (da "5 cotizaciones").
+  - Green: `first_call_offers_count?: number | null` en `tenderTypes.ts` y
+    `offersSummary(tender): { value: string; detail?: string }` en
+    `utils/offers.ts`, que reutiliza `formatOffersCount`.
+  - Commit: `feat(matches): total de cotizaciones de los dos llamados`
+- [ ] **10.6 La tarjeta usa el total.**
+  - Red: en `TenderDetailView.test.tsx`, segundo llamado con 5 y 2 muestra
+    "7 cotizaciones" y "5 en el 1.er llamado y 2 en el 2.º"; con el primero en
+    `null` muestra "2 en el 2.º llamado" y "1.er llamado: No disponible". Las
+    pruebas de 8.2 y 8.3 siguen igual.
+  - Green: la tarjeta "Cotizaciones recibidas" usa `offersSummary`. La pista
+    junta el desglose y "Revisado el …".
+  - Commit: `feat(matches): ficha suma cotizaciones de los dos llamados`
+
+---
+
 ## Bloque 9. Cierre y PR
 
 - [ ] **9.1 Suite, lint y build del frontend.**
@@ -351,6 +404,7 @@ Verificar cada tarea con `pnpm run test src/features/matches`.
 | 6 | 3, 4 y 5 |
 | 7 | nada |
 | 8 | 7 |
-| 9 | 6 y 8 |
+| 10 | 4, 5 y 8 |
+| 9 | 6, 8 y 10 |
 
 Los bloques 2 y 7 se pueden empezar en paralelo con el bloque 1.
