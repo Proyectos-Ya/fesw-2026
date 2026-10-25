@@ -134,7 +134,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
     entre dos páginas.
   - Green: `ofertas_revisadas: int = 0` en `ResultadoSyncEstados`.
   - Commit: `feat(sync-estados): contar cotizaciones revisadas por corrida`
-- [ ] **3.6 El resumen del cron muestra el contador.**
+- [x] **3.6 El resumen del cron muestra el contador.**
   - Red: en `tests/unit/test_sync_estados.py`, el resumen impreso incluye
     "con cotizaciones revisadas".
   - Green: una línea en el `print` de `scripts/sync_estados.py:317`.

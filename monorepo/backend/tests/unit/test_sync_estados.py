@@ -117,6 +117,7 @@ class Piezas:
             conocidas=len(cambios),
             actualizadas=len(cambios),
             llamados_actualizados=2,
+            ofertas_revisadas=3,
             nuevas=1,
         )
 
@@ -199,6 +200,7 @@ class TestCorridaBuena:
         assert "2 cambios listados" in salida
         assert "2 conocidas" in salida
         assert "4 con llamado actualizado" in salida
+        assert "6 con cotizaciones revisadas" in salida
         assert "2 nuevas" in salida
         assert "Vencidas marcadas como cerradas: 3" in salida
 
