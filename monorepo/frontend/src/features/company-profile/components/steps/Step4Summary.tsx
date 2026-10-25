@@ -1,8 +1,18 @@
 "use client";
 
-import type { ProfileData } from "../../profileSchema";
+import {
+  formatCertificationDate,
+  normalizeCertification,
+  type CertificationEntry,
+  type ProfileData,
+} from "../../profileSchema";
 import type { WizardStep } from "../../hooks/useProfileWizard";
 import { WizardNavigation } from "../WizardNavigation";
+
+function certificationLabel(entry: CertificationEntry): string {
+  const { name, expires_at } = normalizeCertification(entry);
+  return expires_at ? `${name} (Vence: ${formatCertificationDate(expires_at)})` : name;
+}
 
 interface Step4Props {
   data: Partial<ProfileData>;
@@ -129,7 +139,7 @@ export function Step4Summary({
             {(data.certifications?.length ?? 0) > 0 && (
               <div>
                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Certificaciones</span>
-                <TagList tags={data.certifications ?? []} />
+                <TagList tags={(data.certifications ?? []).map(certificationLabel)} />
               </div>
             )}
             <div className="border-t border-border-subtle pt-4">

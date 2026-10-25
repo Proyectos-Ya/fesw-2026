@@ -19,11 +19,22 @@ class SupplierRepository(ISupplierRepository):
 
     def _to_entity(self, model: SupplierModel) -> Supplier:
         # Convierte el modelo de BD a entidad de dominio
+        # Los registros antiguos guardan strings sueltos; la entidad los normaliza
         return Supplier(**model.model_dump())
 
     def _to_model(self, entity: Supplier) -> SupplierModel:
-        # Convierte la entidad de dominio a modelo de BD
-        return SupplierModel(**entity.model_dump())
+        # Convierte la entidad de dominio a modelo de BD. La columna es JSON, así
+        # que la fecha de vencimiento se guarda como texto ISO.
+        data = entity.model_dump()
+        data["certifications"] = (
+            [
+                item.model_dump(mode="json")
+                for item in entity.certifications
+            ]
+            if entity.certifications is not None
+            else None
+        )
+        return SupplierModel(**data)
 
     async def get_by_rut(self, rut: str) -> Supplier | None:
         # Busca un proveedor por RUT para verificar duplicados

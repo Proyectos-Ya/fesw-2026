@@ -8,6 +8,7 @@ import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { WizardNavigation } from "../WizardNavigation";
 import { KeywordSuggestions } from "../KeywordSuggestions";
+import { CertificationListInput } from "../CertificationListInput";
 import { SECTORS } from "../../data/sectors";
 
 interface Step3Props {
@@ -94,12 +95,11 @@ export function Step3Specialization({
           name="certifications"
           control={control}
           render={({ field }) => (
-            <TagInput
+            <CertificationListInput
               label="Certificaciones relevantes"
-              tags={field.value}
+              value={field.value}
               onChange={field.onChange}
-              placeholder="Ej: ISO 9001, OHSAS 18001, SEC..."
-              hint="Presiona Enter o coma para añadir."
+              hint="Presiona Enter en el nombre o el botón Agregar. La fecha de vencimiento es opcional."
               error={errors.certifications?.message}
               optional
             />

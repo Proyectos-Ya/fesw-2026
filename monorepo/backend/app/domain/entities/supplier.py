@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -46,6 +47,23 @@ def format_rut(rut: str) -> str:
     return f"{int(body):,}".replace(",", ".") + f"-{check_digit}"
 
 
+class CertificationItem(BaseModel):
+    name: str
+    expires_at: date | None = None
+
+
+def normalize_certifications(value: object) -> object:
+    """Convierte los strings sueltos de registros antiguos en CertificationItem.
+
+    Lo demás (dicts, instancias, None) pasa tal cual para que Pydantic lo valide.
+    """
+    if not isinstance(value, list):
+        return value
+    return [
+        {"name": item} if isinstance(item, str) else item for item in value
+    ]
+
+
 class Supplier(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID | None = None  # ID del usuario propietario de esta cuenta proveedor
@@ -55,7 +73,7 @@ class Supplier(BaseModel):
     description: str | None = None
     regions: list[str] | None = None
     sectors: list[str] | None = None
-    certifications: list[str] | None = None
+    certifications: list[CertificationItem] | None = None
     keywords: list[str] | None = None
     years_experience: int | None = None
     num_employees: int | None = None
@@ -63,6 +81,16 @@ class Supplier(BaseModel):
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     # Última vez que cambió el contenido que alimenta el matching (embedding)
     profile_changed_at: UtcDateTime | None = None
+
+    @field_validator("certifications", mode="before")
+    @classmethod
+    def coerce_certifications(cls, value: object) -> object:
+        return normalize_certifications(value)
+
+    @property
+    def certification_names(self) -> list[str]:
+        """Nombres de las certificaciones, para prompts, texto y catálogos."""
+        return [item.name for item in self.certifications or []]
 
     @field_validator("rut")
     @classmethod
