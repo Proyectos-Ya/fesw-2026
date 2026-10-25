@@ -136,7 +136,17 @@ Pendiente de la tarea 0.2 (decisión 3). Si el detalle de Compra Ágil trae
 Si no lo trae, se borra este apartado y el bloque 4. Una licitación nueva queda
 en "No disponible" hasta que sync-estados la liste.
 
-Resultado de la tarea 0.2: _pendiente_.
+Resultado de la tarea 0.2 (2026-10-25): la guía oficial de la API, versión 3.0
+de mayo de 2026 (`Documentacion_API_Compra_Agil.pdf`, enlazada desde
+chilecompra.cl/api), documenta `resumen.total_ofertas_recibidas` (int) en el
+detalle, §6.6, además de en el listado, §6.1. No se confirmó con una petición
+real porque no había ticket. Se hace el bloque 4: si el detalle real no trae el
+campo, `leer_total_ofertas` devuelve `None` y la regla "un `None` no borra"
+deja intacta la cifra del listado.
+
+La guía también dice, en §6.1, que la cifra es el "total de cotizaciones
+recibidas en el llamado actual". En un segundo llamado cuenta solo las de ese
+llamado, así que puede bajar al pasar del primero al segundo.
 
 ### 4.4 Dominio y API
 
