@@ -919,4 +919,35 @@ describe("TenderDetailView: grilla de métricas", () => {
       expect(screen.queryByText(/Revisado el/)).not.toBeInTheDocument();
     });
   });
+
+  describe("cotizaciones de los dos llamados", () => {
+    const REVISADO = "2026-10-25T17:05:00Z";
+
+    it("en segundo llamado suma los dos y desglosa junto a la revisión", async () => {
+      conTender({
+        call_number: 2,
+        received_offers_count: 2,
+        first_call_offers_count: 5,
+        offers_checked_at: REVISADO,
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      const texto = conEspaciosNormales(card.textContent ?? "");
+      expect(within(card).getByText("7 cotizaciones")).toBeInTheDocument();
+      expect(texto).toContain("5 en el 1.er llamado y 2 en el 2.º");
+      expect(texto).toContain(`Revisado el ${conEspaciosNormales(formatDateTime(REVISADO))}`);
+    });
+
+    it("sin la cifra del primer llamado muestra solo la del segundo", async () => {
+      conTender({ call_number: 2, received_offers_count: 2, first_call_offers_count: null });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Cotizaciones recibidas");
+      expect(within(card).getByText("2 en el 2.º llamado")).toBeInTheDocument();
+      expect(card.textContent).toContain("1.er llamado: No disponible");
+    });
+  });
 });

@@ -355,7 +355,7 @@ Va después del bloque 4.
     `offersSummary(tender): { value: string; detail?: string }` en
     `utils/offers.ts`, que reutiliza `formatOffersCount`.
   - Commit: `feat(matches): total de cotizaciones de los dos llamados`
-- [ ] **10.6 La tarjeta usa el total.**
+- [x] **10.6 La tarjeta usa el total.**
   - Red: en `TenderDetailView.test.tsx`, segundo llamado con 5 y 2 muestra
     "7 cotizaciones" y "5 en el 1.er llamado y 2 en el 2.º"; con el primero en
     `null` muestra "2 en el 2.º llamado" y "1.er llamado: No disponible". Las

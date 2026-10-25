@@ -27,7 +27,7 @@ import {
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
-import { formatOffersCount } from "../utils/offers";
+import { offersSummary } from "../utils/offers";
 import { callBadge } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
@@ -382,6 +382,11 @@ export function TenderDetailView({
   const tender = match.tender as Tender;
   const closing = daysUntilClosing(tender.closing_at, tender.status_code);
   const llamado = callBadge(tender);
+  const cotizaciones = offersSummary(tender);
+  const revisadoEl =
+    tender.received_offers_count != null && tender.offers_checked_at
+      ? `Revisado el ${formatDateTime(tender.offers_checked_at)}`
+      : undefined;
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
   // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
@@ -586,11 +591,10 @@ export function TenderDetailView({
         <KeyValueCard
           icon="file-text"
           eyebrow="Cotizaciones recibidas"
-          value={formatOffersCount(tender.received_offers_count)}
+          value={cotizaciones.value}
           hint={
-            tender.received_offers_count != null && tender.offers_checked_at
-              ? `Revisado el ${formatDateTime(tender.offers_checked_at)}`
-              : undefined
+            [cotizaciones.detail, revisadoEl].filter(Boolean).join(" · ") ||
+            undefined
           }
         />
       </div>
