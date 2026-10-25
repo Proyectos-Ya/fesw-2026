@@ -368,15 +368,15 @@ Va después del bloque 4.
 
 ## Bloque 9. Cierre y PR
 
-- [ ] **9.1 Suite, lint y build del frontend.**
+- [x] **9.1 Suite, lint y build del frontend.**
       `pnpm run test && pnpm run lint && pnpm run build`
 - [ ] **9.2 Prueba manual en el navegador.** Abrir fichas con 0 cotizaciones,
       con varias, en `NULL`, en primer llamado y en segundo. Subir un anexo y
       ver que el puntaje y los hitos se recalculan. Anotar el resultado en §6
       del plan y marcar las tareas hechas en este archivo.
       Commit: `docs(plans): prueba manual de la ficha en plan hu-30`
-- [ ] **9.3 `graphify update .`** desde la raíz del repo.
-- [ ] **9.4 Backend otra vez.** `pytest && python -m scripts.migraciones`, por si
+- [x] **9.3 `graphify update .`** desde la raíz del repo. No aplica: `graphify` no está instalado y el worktree no tiene `graphify-out/`.
+- [x] **9.4 Backend otra vez.** `pytest && python -m scripts.migraciones`, por si
       `develop` avanzó. Si hay dos cabezas, repuntar el `down_revision` de la
       migración de 1.2 (todavía no se aplicó en ningún entorno compartido).
 - [ ] **9.5 Abrir el PR hacia `develop`.** Con `Refs #312`, el enlace al plan, la
