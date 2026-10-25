@@ -197,7 +197,7 @@ antes (3.7), no se puede instanciar: fallan 6 pruebas unitarias y el cron. En
   - Green: los dos campos en `app/domain/entities/tender.py` y en las dos
     conversiones de `tender_repository.py` (líneas 78 y 121).
   - Commit: `feat(dominio): exponer cotizaciones recibidas en tender`
-- [ ] **5.2 (invariante) La ficha devuelve los campos.**
+- [x] **5.2 (invariante) La ficha devuelve los campos.**
   - Prueba: en `tests/e2e/api/test_tender_router.py`, el `GET` del detalle trae
     `received_offers_count` como 4, como 0 y como `null`, y la clave existe en
     los tres casos.
