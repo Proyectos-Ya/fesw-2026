@@ -8,10 +8,17 @@ Forma verificada en el listado real del 2026-09-28
              "fecha_cierre_primer_llamado": "2026-09-26T17:10:00Z",
              "fecha_cierre_segundo_llamado": "2026-09-27T17:28:48.093Z", ...}
 
+El detalle real (`tests/fixtures/mp_detalle_compra_agil.json`, 2026-10-26)
+trae los dos cierres dentro de `convocatoria`, sin zona horaria:
+
+    convocatoria: {"estado_convocatoria": 1, "descripcion": "Primer llamado",
+                   "fecha_cierre_primer_llamado": "2026-10-27 11:00",
+                   "fecha_cierre_segundo_llamado": "2026-10-28 11:05"}
+
 Lo usan el listado (cron de estados) y el detalle (ingesta): si cada ruta leyera
-distinto, una sobrescribiría a la otra en cada pasada. Que el detalle traiga
-estos campos no está verificado (plan 233, fase 0): si no vienen, todo queda en
-None y nadie borra lo que escribió el listado.
+distinto, una sobrescribiría a la otra en cada pasada. Por eso cada cierre se
+busca primero en `fechas` y, si ahí no hay uno legible, en `convocatoria`. Si
+no viene en ninguno, queda en None y nadie borra lo que escribió la otra ruta.
 """
 
 from dataclasses import dataclass
@@ -39,10 +46,16 @@ class LlamadoMp:
 def leer_llamado(item: dict[str, Any]) -> LlamadoMp:
     fechas = item.get("fechas")
     fechas = fechas if isinstance(fechas, dict) else {}
+    convocatoria = item.get("convocatoria")
+    convocatoria = convocatoria if isinstance(convocatoria, dict) else {}
+
+    def _cierre(clave: str) -> datetime | None:
+        return _al_minuto(_leer(fechas.get(clave)) or _leer(convocatoria.get(clave)))
+
     return LlamadoMp(
         numero=_numero(item.get("convocatoria")),
-        cierre_primer_llamado=_al_minuto(_leer(fechas.get("fecha_cierre_primer_llamado"))),
-        cierre_segundo_llamado=_al_minuto(_leer(fechas.get("fecha_cierre_segundo_llamado"))),
+        cierre_primer_llamado=_cierre("fecha_cierre_primer_llamado"),
+        cierre_segundo_llamado=_cierre("fecha_cierre_segundo_llamado"),
     )
 
 

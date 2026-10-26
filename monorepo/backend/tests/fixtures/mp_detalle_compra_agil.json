@@ -1,0 +1,77 @@
+{
+  "success": "OK",
+  "trace": null,
+  "payload": {
+    "codigo": "1224953-521-COT26",
+    "nombre": "CABLE DE ALIMENTACIÓN ELÉCTRICA PARA AUTOCLAVE - MODULO DENTAL",
+    "descripcion": "Adquisición de 1 cable de alimentación eléctrica original u homologado/certificado para autoclave Tuttnauer 2540MK SN:17090690, se adjuntan especificaciones técnicas.\nValor debe incluir IVA y despacho.",
+    "estado": {
+      "id_estado": 2,
+      "codigo": "publicada",
+      "glosa": "Publicada"
+    },
+    "convocatoria": {
+      "estado_convocatoria": 1,
+      "descripcion": "Primer llamado",
+      "fecha_cierre_primer_llamado": "2026-10-27 11:00",
+      "fecha_cierre_segundo_llamado": "2026-10-28 11:05"
+    },
+    "fechas": {
+      "fecha_publicacion": "2026-10-26 10:54",
+      "fecha_cierre": "2026-10-27 11:00",
+      "fecha_ultimo_cambio": "2026-10-26 10:55",
+      "fecha_cancelacion": null
+    },
+    "entrega": {
+      "direccion_entrega": "Yerbas Buenas #915",
+      "plazo_entrega_dias": 2
+    },
+    "documentos": [
+      {
+        "id": 2035646,
+        "nombre": "ET CABLE DE ALIMENTACIÓN AUTOCLAVE .pdf"
+      }
+    ],
+    "presupuesto": {
+      "tipo_presupuesto": "Estimado",
+      "moneda": "CLP",
+      "presupuesto_estimado": 100000,
+      "monto_disponible": 100000,
+      "monto_disponible_clp": 100000,
+      "valor_cambio_moneda": null,
+      "fecha_cambio_moneda": null
+    },
+    "id_orden_compra": null,
+    "institucion": {
+      "organismo_comprador": "CORP MUNICIP ANCUD PARA LA EDUCAC SALUD",
+      "rut": "71.420.700-8",
+      "unidad_compra": "Unidad de Compras Públicas",
+      "region": 10,
+      "nombre_region": "Región de los Lagos "
+    },
+    "productos_solicitados": [
+      {
+        "codigo_producto": 26121629,
+        "nombre": "Cable de alimentación",
+        "descripcion": "Adquisición de 1 cable de alimentación eléctrica original u homologado/certificado para autoclave Tuttnauer 2540MK SN: 17090690, se adjuntan especificaciones técnicas.\nValor debe incluir IVA y despacho.\n",
+        "cantidad": 1,
+        "unidad_medida": "EA"
+      }
+    ],
+    "proveedores_cotizando": [],
+    "resumen": {
+      "multa_sancion": 0,
+      "total_ofertas_recibidas": 0,
+      "total_demandas": 0
+    },
+    "motivos": {
+      "motivo_cancelacion": null,
+      "motivo_desierta": null
+    },
+    "flags": {
+      "considera_requisitos_medioambientales": false,
+      "considera_requisitos_impacto_social_economico": false
+    }
+  },
+  "errors": null
+}
