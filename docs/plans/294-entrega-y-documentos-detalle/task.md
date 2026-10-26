@@ -53,7 +53,7 @@
   - Red: `tests/unit/application/test_ingesta_entrega.py`, clase `TestAlta`.
   - Green: los campos en el `TenderModel(...)` del alta.
   - Commit: `feat(ingesta): guardar entrega al crear una licitación`
-- [ ] **3.2 Una actualización solo de entrega no toca Qdrant.**
+- [x] **3.2 Una actualización solo de entrega no toca Qdrant.**
   - Red: resultado `updated`, `updated_at` igual, sin llamadas a embeddings ni
     a Qdrant. El mismo valor da `unchanged`. Con cambio de metadatos también
     se aplica.
