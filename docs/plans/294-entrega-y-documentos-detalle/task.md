@@ -76,7 +76,7 @@
 
 ## Bloque 5. Frontend (criterios 2 y 4)
 
-- [ ] **5.1 `formatDeliveryAddress` y `formatDeliveryTerm`.**
+- [x] **5.1 `formatDeliveryAddress` y `formatDeliveryTerm`.**
   - Red: `src/features/matches/utils/__tests__/entrega.test.ts`.
   - Green: campos opcionales en `tenderTypes.ts` y `utils/entrega.ts`.
   - Commit: `feat(matches): formatear dirección y plazo de entrega`
