@@ -267,6 +267,20 @@ describe("basesNotice", () => {
     expect(basesNotice(v, [])).toMatch(/la ficha menciona bases o anexos que no se subieron/);
   });
 
+  it("con documentos oficiales sin subir, los nombra", () => {
+    const v = vista({ analysis_documents: [], mentions_attachments: false });
+    expect(basesNotice(v, [], ["Bases.pdf", "Anexo 1.docx"])).toBe(
+      "Este análisis se hizo solo con la ficha. La Compra Ágil publica Bases.pdf y Anexo 1.docx: súbelos y vuelve a analizar.",
+    );
+  });
+
+  it("los documentos oficiales tienen prioridad sobre lo que menciona la ficha", () => {
+    const v = vista({ content: CONTENIDO, analysis_documents: [], mentions_attachments: true });
+    expect(basesNotice(v, [], ["Bases.pdf"])).toBe(
+      "Este borrador se hizo solo con la ficha. La Compra Ágil publica Bases.pdf: súbelos y vuelve a analizar.",
+    );
+  });
+
   it("con archivos subidos después del análisis pide volver a analizar", () => {
     const v = vista({
       analysis_documents: [{ name: "bases.pdf", corrupted: false }],

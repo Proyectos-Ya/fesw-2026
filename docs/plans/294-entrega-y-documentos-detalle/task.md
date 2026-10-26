@@ -88,7 +88,7 @@
   - Red: `src/features/proposals/utils/__tests__/proposal.test.ts`.
   - Green: la función en `proposals/utils/proposal.ts`.
   - Commit: `feat(proposals): nombrar documentos en una frase`
-- [ ] **5.4 `basesNotice` nombra los documentos pendientes.**
+- [x] **5.4 `basesNotice` nombra los documentos pendientes.**
   - Red: análisis sin adjuntos, sin subidas nuevas y con pendientes nombra los
     documentos, también con `mentions_attachments`. Sin pendientes, igual que
     hoy.

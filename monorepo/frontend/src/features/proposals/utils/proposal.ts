@@ -247,10 +247,16 @@ export function nombrarDocumentos(nombres: string[]): string {
 /**
  * Recomendación sobre las bases según con qué se analizó, en tono informativo.
  * `uploaded` son los nombres de los adjuntos que hay ahora en la licitación;
- * se comparan por nombre con `analysis_documents`. `null` si no hay nada que
- * decir o si el borrador es anterior a guardar ese dato.
+ * se comparan por nombre con `analysis_documents`. `pendientes` son los
+ * documentos oficiales de la Compra Ágil que nadie subió (#294): si hay, se
+ * nombran. `null` si no hay nada que decir o si el borrador es anterior a
+ * guardar ese dato.
  */
-export function basesNotice(view: ProposalView, uploaded: string[]): string | null {
+export function basesNotice(
+  view: ProposalView,
+  uploaded: string[],
+  pendientes: string[] = [],
+): string | null {
   const usados = view.analysis_documents;
   if (usados === null) return null;
 
@@ -262,6 +268,10 @@ export function basesNotice(view: ProposalView, uploaded: string[]): string | nu
     const sujeto = view.content ? "Este borrador" : "Este análisis";
     if (nuevos.length > 0) {
       frases.push(`${sujeto} se hizo solo con la ficha.`);
+    } else if (pendientes.length > 0) {
+      frases.push(
+        `${sujeto} se hizo solo con la ficha. La Compra Ágil publica ${nombrarDocumentos(pendientes)}: súbelos y vuelve a analizar.`,
+      );
     } else if (view.mentions_attachments) {
       frases.push(
         `${sujeto} se hizo solo con la ficha, pero la ficha menciona bases o anexos que no se subieron. Súbelos y vuelve a analizar.`,

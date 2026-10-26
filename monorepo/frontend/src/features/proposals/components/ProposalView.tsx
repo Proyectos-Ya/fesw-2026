@@ -86,7 +86,12 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
     anexos.state.status === "ready"
       ? anexos.state.data.official.filter((a) => a.file !== null).map((a) => a.name)
       : [];
-  const avisoBases = view ? basesNotice(view, anexosSubidos) : null;
+  // Documentos oficiales que nadie subió: el aviso los nombra (#294).
+  const anexosPendientes =
+    anexos.state.status === "ready"
+      ? anexos.state.data.official.filter((a) => a.file === null).map((a) => a.name)
+      : [];
+  const avisoBases = view ? basesNotice(view, anexosSubidos, anexosPendientes) : null;
   const sinBases = anexos.state.status === "ready" && anexosSubidos.length === 0;
   // Proyectos de experiencia: se ofrecen en el análisis, plegado o no.
   const evidencia = {
