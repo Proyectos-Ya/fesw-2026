@@ -33,7 +33,7 @@
 
 ## Bloque 2. Lectura del detalle (criterio 1)
 
-- [ ] **2.1 `leer_entrega` y `leer_requisitos`.**
+- [x] **2.1 `leer_entrega` y `leer_requisitos`.**
   - Red: `tests/unit/infrastructure/test_entrega_mp.py`, con `parametrize`
     sobre valores normales y raros.
   - Green: `app/infrastructure/services/tenders/entrega.py`.
