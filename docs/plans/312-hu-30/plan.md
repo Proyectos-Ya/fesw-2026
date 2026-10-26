@@ -131,10 +131,13 @@ skills `supabase` y `supabase-postgres-best-practices`.
   toca Qdrant.
 
 Que el detalle traiga el campo lo documenta la guía oficial de la API (versión
-3.0 de mayo de 2026, §6.6, enlazada desde chilecompra.cl/api), pero no se
-confirmó con una petición real. Esa verificación es un criterio de #294. Si un
-detalle real no lo trae, `leer_total_ofertas` devuelve `None` y la cifra del
-listado queda intacta.
+3.0 de mayo de 2026, §6.6, enlazada desde chilecompra.cl/api). Se confirmó con
+peticiones reales el 2026-10-26 (#294): los detalles de 1224953-521-COT26,
+557639-3334-COT26 y 1078886-157-COT26 traen
+`resumen: {"multa_sancion": 0, "total_ofertas_recibidas": 0, "total_demandas": 0}`,
+y `_parse_to_dto` lee la cifra. El primero quedó como fixture en
+`tests/fixtures/mp_detalle_compra_agil.json`. Si un detalle no trae el campo,
+`leer_total_ofertas` devuelve `None` y la cifra del listado queda intacta.
 
 ### 4.4 Dominio y API
 
