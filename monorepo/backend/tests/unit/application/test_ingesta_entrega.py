@@ -102,3 +102,19 @@ class TestActualizacion:
 
         assert repo.existente.available_amount_clp == 2_000_000.0
         assert repo.existente.delivery_term_days == 10
+
+    async def test_un_detalle_sin_entrega_no_borra_lo_guardado(self):
+        repo = RepoConLicitacion(_dto())
+        repo.existente.delivery_address = ENTREGA["DireccionEntrega"]
+        repo.existente.delivery_term_days = 5
+        repo.existente.requires_environmental_criteria = False
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        identico = await _caso(repo, emb, vec).execute(_dto())
+        # Con un cambio de metadatos, `_aplicar_entrega` también corre.
+        await _caso(repo, emb, vec).execute(_dto(MontoEstimado=2_000_000.0))
+
+        assert identico["status"] == "unchanged"
+        assert repo.existente.delivery_address == ENTREGA["DireccionEntrega"]
+        assert repo.existente.delivery_term_days == 5
+        assert repo.existente.requires_environmental_criteria is False

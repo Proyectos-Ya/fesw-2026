@@ -59,7 +59,7 @@
     se aplica.
   - Green: `_entrega_cambio` y `_aplicar_entrega`, en las dos ramas.
   - Commit: `feat(ingesta): actualizar entrega sin mover updated_at`
-- [ ] **3.3 (invariante) Un `None` no borra.**
+- [x] **3.3 (invariante) Un `None` no borra.**
   - Prueba: un detalle sin entrega ni flags conserva lo guardado.
   - Commit: `test(ingesta): un detalle sin entrega no borra lo guardado`
 
