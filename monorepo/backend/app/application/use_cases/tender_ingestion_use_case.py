@@ -130,6 +130,10 @@ class TenderIngestionUseCase:
                 first_call_offers_count=(
                     dto.received_offers_count if dto.call_number == 1 else None
                 ),
+                delivery_address=dto.delivery_address,
+                delivery_term_days=dto.delivery_term_days,
+                requires_environmental_criteria=dto.requires_environmental_criteria,
+                requires_social_impact_criteria=dto.requires_social_impact_criteria,
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,

@@ -43,13 +43,13 @@
     `test_detalle_ofertas.py`.
   - Green: los campos en `TenderIngestaDTO` y en `_parse_to_dto`.
   - Commit: `feat(ingesta): pasar entrega y requisitos del detalle al dto`
-- [ ] **2.3 (invariante) Los nombres de los documentos llegan al DTO.**
+- [x] **2.3 (invariante) Los nombres de los documentos llegan al DTO.** Ya cubierto por `test_detalle_documentos.py::test_con_documentos_los_lee`.
   - Prueba: si `test_detalle_documentos.py` ya cubre los nombres, solo se cita
     en el PR. Si no, se agrega.
 
 ## Bloque 3. Ingesta (criterio 1)
 
-- [ ] **3.1 El alta guarda los cuatro campos.**
+- [x] **3.1 El alta guarda los cuatro campos.**
   - Red: `tests/unit/application/test_ingesta_entrega.py`, clase `TestAlta`.
   - Green: los campos en el `TenderModel(...)` del alta.
   - Commit: `feat(ingesta): guardar entrega al crear una licitación`
