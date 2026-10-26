@@ -775,6 +775,47 @@ describe("TenderDetailView: grilla de métricas", () => {
       expect(within(entrega).queryByText("Ciberseguridad integral")).not.toBeInTheDocument();
     });
 
+    it("entrega y requisitos muestra la dirección y el plazo de entrega", async () => {
+      conTender({
+        delivery_address: "SERVIU REGION DE AYSEN RAMON FREIRE 5",
+        delivery_term_days: 5,
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const entrega = (await screen.findByText("Entrega y requisitos")).parentElement as HTMLElement;
+      const datos = within(entrega).getByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText("Dirección de entrega")).toBeInTheDocument();
+      expect(within(datos).getByText("SERVIU REGION DE AYSEN RAMON FREIRE 5")).toBeInTheDocument();
+      expect(within(datos).getByText("Plazo de entrega")).toBeInTheDocument();
+      expect(within(datos).getByText("5 días")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["null", { delivery_address: null, delivery_term_days: null }],
+      ["ausentes", {}],
+    ])("con la entrega %s usa los textos de no disponible", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const datos = await screen.findByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText("Dirección de entrega no disponible")).toBeInTheDocument();
+      expect(within(datos).getByText("Plazo de entrega no disponible")).toBeInTheDocument();
+    });
+
+    it.each([
+      [0, "0 días"],
+      [1, "1 día"],
+    ])("un plazo de %i se muestra como %s", async (dias, texto) => {
+      conTender({ delivery_term_days: dias });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const datos = await screen.findByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText(texto)).toBeInTheDocument();
+    });
+
     it("descripción lleva solo el texto de la licitación", async () => {
       conTender({ items: [ITEM] });
 

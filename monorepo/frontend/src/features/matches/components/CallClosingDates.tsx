@@ -4,6 +4,8 @@ import { callClosingLines } from "../utils/secondCall";
 
 interface CallClosingDatesProps {
   tender: Pick<Tender, "call_number" | "first_call_closing_at" | "second_call_closing_at">;
+  /** Clases extra para el contenedor, por ejemplo un margen superior. */
+  className?: string;
 }
 
 /**
@@ -11,13 +13,13 @@ interface CallClosingDatesProps {
  * "Cierre", que sigue mostrando el del llamado vigente. Sin fechas por
  * llamado no dibuja nada: una licitación antigua se ve igual que antes.
  */
-export function CallClosingDates({ tender }: CallClosingDatesProps) {
+export function CallClosingDates({ tender, className = "" }: CallClosingDatesProps) {
   const lines = callClosingLines(tender);
   if (lines.length === 0) return null;
   return (
     <section
       aria-label="Cierre por llamado"
-      className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs"
+      className={`rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs ${className}`}
     >
       <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
         <Icon name="calendar-clock" size={12} color="var(--text-subtle)" />

@@ -80,7 +80,7 @@
   - Red: `src/features/matches/utils/__tests__/entrega.test.ts`.
   - Green: campos opcionales en `tenderTypes.ts` y `utils/entrega.ts`.
   - Commit: `feat(matches): formatear dirección y plazo de entrega`
-- [ ] **5.2 La ficha muestra la dirección y el plazo.**
+- [x] **5.2 La ficha muestra la dirección y el plazo.**
   - Red: `TenderDetailView.test.tsx`, con datos, sin datos, plazo 0 y 1.
   - Green: bloque en "Entrega y requisitos", sin el comentario de #294.
   - Commit: `feat(matches): dirección y plazo de entrega en la ficha`
