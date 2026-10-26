@@ -4,19 +4,20 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getTenderDetail } from "@/features/matches/services/tenderService";
 import type { Tender } from "@/features/matches/tenderTypes";
 import { QuotationEditor } from "@/features/quotations/QuotationEditor";
+import { useTenderInteractionReporter } from "@/features/ranking-telemetry/hooks/useTenderInteractionReporter";
 import { BackLink } from "@/features/shared/components/BackLink";
 import { Button } from "@/features/shared/components/Button";
 import { Dialog } from "@/features/shared/components/Dialog";
 import { Icon } from "@/features/shared/components/Icon";
 import { Toast } from "@/features/shared/components/Toast";
-import { useTenderDocuments } from "@/features/tender-assistant/hooks/useTenderDocuments";
+import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
+import { useTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
 import { useProposal } from "../hooks/useProposal";
-import { basesNotice, proposalStatus } from "../utils/proposal";
+import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
 import { FeasibilityStep } from "./FeasibilityStep";
-import { ProposalAttachments } from "./ProposalAttachments";
 import { ProposalDraftViewer } from "./ProposalDraftViewer";
 import { ProposalStatusBanner } from "./ProposalStatusBanner";
 import { StageNotice } from "./StageNotice";
@@ -52,8 +53,11 @@ function Seccion({
  */
 export function ProposalView({ tenderId }: ProposalViewProps) {
   const proposal = useProposal(tenderId);
-  const documentos = useTenderDocuments(tenderId);
+  // Los mismos anexos de la ficha que leen los hitos y el análisis (plan 233).
+  const anexos = useTenderAttachments(tenderId);
   const canWrite = useCanWriteProposal();
+  // Sin ranking del que venga la licitación: la interacción queda sin atribuir.
+  const reportInteraction = useTenderInteractionReporter(tenderId, null);
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
   const [confirmarAnalisis, setConfirmarAnalisis] = useState(false);
@@ -77,13 +81,18 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
   const cerrada = view?.is_expired ?? tender?.isClosed ?? false;
   const puedeAvanzar = canWrite && !cerrada;
   const estado = view ? proposalStatus(view) : null;
-  const avisoBases = view
-    ? basesNotice(
-        view,
-        documentos.documents.map((d) => d.file_name),
-      )
-    : null;
-  const sinBases = !documentos.isLoading && documentos.documents.length === 0;
+  // Con el nombre oficial: es el que el análisis guarda en `analysis_documents`.
+  const anexosSubidos =
+    anexos.state.status === "ready"
+      ? anexos.state.data.official.filter((a) => a.file !== null).map((a) => a.name)
+      : [];
+  // Documentos oficiales que nadie subió: el aviso los nombra (#294).
+  const anexosPendientes =
+    anexos.state.status === "ready"
+      ? anexos.state.data.official.filter((a) => a.file === null).map((a) => a.name)
+      : [];
+  const avisoBases = view ? basesNotice(view, anexosSubidos, anexosPendientes) : null;
+  const sinBases = anexos.state.status === "ready" && anexosSubidos.length === 0;
   // Proyectos de experiencia: se ofrecen en el análisis, plegado o no.
   const evidencia = {
     onAddEvidence: proposal.addEvidence,
@@ -232,8 +241,9 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                   // Informativo y sin diálogo: iniciar sin bases es válido.
                   <p className="flex basis-full items-start gap-2 text-xs text-teal-700">
                     <Icon name="info" size={14} className="mt-px shrink-0" />
-                    No has subido bases. Puedes iniciar igual, pero si la Compra Ágil las
-                    tiene, súbelas antes: el análisis sale más preciso.
+                    {anexosPendientes.length > 0
+                      ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
+                      : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
                   </p>
                 )}
                 {!canWrite && !view && (
@@ -274,7 +284,13 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                   />
                 ))}
             </div>
-            <ProposalAttachments documentos={documentos} />
+            {tender && (
+              <TenderAttachmentsPanel
+                tenderId={tenderId}
+                tenderCode={tender.data.code}
+                onUploadSuccess={() => void anexos.refresh()}
+              />
+            )}
           </div>
         </Seccion>
       )}
@@ -312,6 +328,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             tenderId={tenderId}
             tenderCode={tender.data.code}
             tenderItems={tender.data.items}
+            onSaved={() => reportInteraction("cotizacion")}
           />
         </Seccion>
       )}

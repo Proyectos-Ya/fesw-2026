@@ -21,19 +21,21 @@ export function tenderMatchesBudget(tender: Tender, range: BudgetRange): boolean
   return true;
 }
 
-export function filterMatchesByBudget(
-  matches: MatchingResult[],
+// Genéricas en `T`: devuelven el mismo tipo que reciben, así un `RecommendedMatch`
+// conserva su `ranking_id` después de filtrar.
+export function filterMatchesByBudget<T extends MatchingResult>(
+  matches: T[],
   range: BudgetRange,
-): MatchingResult[] {
+): T[] {
   if (!isBudgetFilterActive(range)) return matches;
   return matches.filter((m) => m.tender != null && tenderMatchesBudget(m.tender, range));
 }
 
 /** Tenders without region (or without tender) are rejected while the filter is active. */
-export function filterMatchesByRegion(
-  matches: MatchingResult[],
+export function filterMatchesByRegion<T extends MatchingResult>(
+  matches: T[],
   region: string | null,
-): MatchingResult[] {
+): T[] {
   if (region === null) return matches;
   const wanted = region.trim().toLowerCase();
   return matches.filter(
@@ -88,10 +90,10 @@ export function listCommunes(
 }
 
 /** Tenders without province (or without tender) are rejected while the filter is active. */
-export function filterMatchesByProvince(
-  matches: MatchingResult[],
+export function filterMatchesByProvince<T extends MatchingResult>(
+  matches: T[],
   province: string | null,
-): MatchingResult[] {
+): T[] {
   if (province === null) return matches;
   const wanted = province.trim().toLowerCase();
   return matches.filter(
@@ -100,10 +102,10 @@ export function filterMatchesByProvince(
 }
 
 /** Tenders without commune (or without tender) are rejected while the filter is active. */
-export function filterMatchesByCommune(
-  matches: MatchingResult[],
+export function filterMatchesByCommune<T extends MatchingResult>(
+  matches: T[],
   commune: string | null,
-): MatchingResult[] {
+): T[] {
   if (commune === null) return matches;
   const wanted = commune.trim().toLowerCase();
   return matches.filter(

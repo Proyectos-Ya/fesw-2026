@@ -20,10 +20,11 @@ from app.infrastructure.services.bge_reranker_service import (  # noqa: E402
 def mock_tokenizer() -> MagicMock:
     tokenizer = MagicMock()
     # Mockea el retorno de la tokenización
+    # Un par por llamada: el servicio puntúa cada candidato por separado.
     tokenizer.return_value = {
-        "input_ids": np.array([[1, 2, 3], [4, 5, 6]]),
-        "attention_mask": np.array([[1, 1, 1], [1, 1, 1]]),
-        "token_type_ids": np.array([[0, 0, 0], [0, 0, 0]]),
+        "input_ids": np.array([[1, 2, 3]]),
+        "attention_mask": np.array([[1, 1, 1]]),
+        "token_type_ids": np.array([[0, 0, 0]]),
     }
     return tokenizer
 
@@ -31,8 +32,8 @@ def mock_tokenizer() -> MagicMock:
 @pytest.fixture
 def mock_session() -> MagicMock:
     session = MagicMock()
-    # Mockea la salida de la sesión de inferencia de ONNX (logits de coincidencia)
-    session.run.return_value = [np.array([[2.0], [-1.0]])]
+    # Logit de cada candidato, en el orden en que se evalúan (uno por llamada)
+    session.run.side_effect = [[np.array([[2.0]])], [np.array([[-1.0]])]]
     return session
 
 
@@ -82,14 +83,18 @@ async def test_bge_reranker_initialization_and_rerank(
 
         results = await service.rerank("query text", candidates, limit=1)
 
-        # Valida que se tokenice el query contra cada documento candidato
-        mock_tokenizer.assert_called_once_with(
-            [["query text", "doc 1"], ["query text", "doc 2"]],
-            padding=True,
-            truncation=True,
-            return_tensors="np",
-            max_length=512,
-        )
+        # Valida que se tokenice el query contra cada documento candidato, un par
+        # por llamada (ver test_el_puntaje_de_un_par_no_depende_de_los_demas_candidatos)
+        assert [c.args[0] for c in mock_tokenizer.call_args_list] == [
+            [["query text", "doc 1"]],
+            [["query text", "doc 2"]],
+        ]
+        assert mock_tokenizer.call_args.kwargs == {
+            "padding": True,
+            "truncation": True,
+            "return_tensors": "np",
+            "max_length": 512,
+        }
 
         # Valida que los logits se conviertan a probabilidades con Sigmoide Platt Scaling y se ordene/recorte
         # Sigmoide((2.0 + 1.5) / 1.0) = Sigmoide(3.5) = 0.97067
@@ -97,3 +102,51 @@ async def test_bge_reranker_initialization_and_rerank(
         assert len(results) == 1
         assert results[0][0] == c1
         assert pytest.approx(results[0][1], rel=1e-3) == 0.97067
+
+
+class _TokenizadorFalso:
+    """Devuelve una fila por par, con el largo del documento como único token útil."""
+
+    def __call__(self, pairs, **_kwargs):
+        ids = np.array([[len(doc)] for _query, doc in pairs])
+        return {"input_ids": ids, "attention_mask": np.ones_like(ids)}
+
+
+class _SesionDependienteDelLote:
+    """Imita la cuantización INT8 dinámica del ONNX real.
+
+    La escala de las activaciones se calcula sobre el lote completo, así que el
+    logit de un par cambia según qué otros pares se evalúan con él. Aquí se
+    simula restando la media del lote: mismo par, distinto lote, distinto logit.
+    """
+
+    def run(self, _outputs, feed):
+        base = feed["input_ids"][:, 0].astype(float)
+        return [(base - base.mean() / 2.0).reshape(-1, 1)]
+
+
+def _servicio_con(tokenizer, session) -> BgeRerankerService:
+    service = BgeRerankerService.__new__(BgeRerankerService)
+    service.tokenizer = tokenizer
+    service.session = session
+    service.temperature = 1.0
+    service.bias = 0.0
+    return service
+
+
+@pytest.mark.anyio
+async def test_el_puntaje_de_un_par_no_depende_de_los_demas_candidatos() -> None:
+    """El ranking puntúa ~50 candidatas juntas y el cálculo a pedido una sola.
+
+    Con el modelo cuantizado, el mismo par salía 0,35 solo y 0,44 dentro de un
+    lote de 50: la ficha y el dashboard mostraban porcentajes distintos para la
+    misma licitación. Cada par tiene que puntuarse por separado.
+    """
+    service = _servicio_con(_TokenizadorFalso(), _SesionDependienteDelLote())
+    objetivo = uuid4()
+    otros = [(uuid4(), "x" * n) for n in (5, 40, 90)]
+
+    solo = dict(await service.rerank("q", [(objetivo, "abc")], limit=1))
+    en_lote = dict(await service.rerank("q", [(objetivo, "abc"), *otros], limit=4))
+
+    assert en_lote[objetivo] == pytest.approx(solo[objetivo])

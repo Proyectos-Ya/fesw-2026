@@ -463,6 +463,166 @@ recordatorios.
 
 ---
 
+## Telemetría del ranking (plan 233, decisión 8)
+
+Mide si el orden de `GET /tenders/recommended` sirve, con datos de producción: el
+NDCG@10 por versión del modelo, y una prioridad de anexos que se calcula y se guarda
+pero **nadie consume todavía** (en sombra; un test de arquitectura lo asegura).
+
+Un bucle `asyncio` más, con la misma premisa de **una sola instancia** que los
+anteriores:
+
+| Bucle | Cada cuánto | Qué hace |
+|---|---|---|
+| Telemetría del ranking | `RANKING_TELEMETRY_INTERVAL_SECONDS` (6 h), primera vuelta a los 5 min de arrancar | Recalcula el NDCG@10 de los últimos 7 días completos de Chile, toma el snapshot de prioridad y purga lo crudo de más de 90 días |
+
+`RUN_RANKING_TELEMETRY_JOBS=false` lo apaga. Las impresiones se siguen registrando: solo
+dejan de agregarse y purgarse. Todo es idempotente, así que reiniciar o correrlo dos veces
+no duplica nada (salvo un snapshot de prioridad).
+
+### Qué guarda cada tabla
+
+| Tabla | Qué es | Retención |
+|---|---|---|
+| `ranking_impression` | Cada posición que sirvió `/tenders/recommended`, en el orden del modelo | 90 días |
+| `tender_interaction` | Impresiones vistas (≥ 50 % durante 1 s) y acciones del usuario: detalle, guardar, ficha de Mercado Público, asistente, análisis, cotización. Con `ranking_id` y la posición mostrada solo si se pudo atribuir | 90 días |
+| `ranking_metric_daily` | NDCG@10 por día de Chile y `model_version`, con intervalo de confianza bootstrap | se conserva (agregado, sin datos personales) |
+| `attachment_priority_shadow` | Foto de la prioridad de anexos por licitación | 90 días |
+
+No se guarda IP, user agent, texto de búsqueda ni URL: solo ids, tipo, posición, origen y
+fechas. Las claves foráneas a `users`, `supplier` y `tender` son `ON DELETE CASCADE`, así
+que borrar una cuenta (o `scripts/reset_cuentas.py`) limpia la telemetría sola.
+
+Una interacción se atribuye a un ranking si existe la impresión de esa licitación en él,
+es del mismo usuario y empresa, y el ranking tiene menos de 7 días. Si no, se guarda sin
+`ranking_id` y no cuenta para el NDCG. Un ranking sin ninguna interacción con ganancia
+queda fuera del promedio (`rankings_served` los cuenta; `rankings_evaluated`, no).
+
+### Cómo se lee la métrica
+
+```sql
+select day, model_version, ndcg_at_10, ci_low, ci_high, rankings_evaluated, rankings_served
+from ranking_metric_daily
+order by day desc;
+```
+
+La métrica de hoy no existe hasta mañana (solo se calculan días completos de Chile).
+
+### Correrlo a mano
+
+Hace lo mismo que el bucle, para un backfill o para probar sin esperar:
+
+```bash
+python -m scripts.ranking_telemetry --dias 7 --incluir-hoy      # base local
+python -m scripts.ranking_telemetry --confirmar-produccion      # base compartida
+```
+
+`--dias` va de 1 a 90 (más atrás la purga ya borró lo crudo). Sale con 0 si todo terminó,
+1 si algún trabajo falló (los demás corren igual) y 2 si se negó a correr.
+
+---
+
+## Anexos: subida manual (plan 233, decisión 2)
+
+La empresa descarga los anexos de Mercado Público y los sube a Chiripa, arrastrándolos al
+panel "Anexos de la licitación" o con el botón de cada fila. El backend comprueba que el
+archivo **se llame como el anexo oficial** (se toleran mayúsculas, tildes y el " (1)" que
+agrega el navegador) y no lo guarda si no calza.
+
+### El flujo, en tres pasos
+
+1. `POST /tenders/{id}/attachments/{anexo}/upload-url` con `{file_name, size_bytes, mime, sha256}`.
+   Valida el nombre, el tamaño (máx. 50 MB) y el cupo, crea la fila `uploading` y devuelve una
+   URL firmada (201). Si la empresa ya tiene ese archivo, responde 200 con `deduplicated: true`
+   y no hay nada que subir. `upload_id` es el id del archivo.
+2. El navegador hace `PUT` **directo al almacenamiento** con exactamente los `headers` devueltos
+   y sin credenciales. El backend no ve los bytes.
+3. `POST /tenders/{id}/attachments/uploads/{upload_id}/complete` hace un `HEAD` y verifica el
+   tamaño (siempre) y la huella SHA-256 (cuando el almacenamiento la informa). Si no coinciden,
+   borra el objeto y deja el archivo `rejected` (422).
+
+`DELETE /tenders/{id}/attachments/files/{file_id}` borra un archivo propio. Subir y borrar
+requieren el permiso `upload_attachments` (admin y miembro; no el lector). Los errores llevan
+un `code` estable (`quota_exceeded`, `attachment_name_mismatch`…) además del `detail`.
+
+### Tablas
+
+| Tabla | Qué guarda |
+|---|---|
+| `attachment_file` | Un archivo por (anexo, contenido, empresa): `sha256`, tamaño, `storage_key`, `status` (`uploading`, `stored`, `unsupported`, `rejected`, `purged`), `visibility` (`private`), `trust` (`pending`) y `purge_after`. Pertenece a la empresa: borrar al usuario deja `uploader_user_id` nulo |
+| `attachment_upload_quota` | Subidas nuevas por empresa y mes de calendario de Chile (tope `ATTACHMENT_MANUAL_UPLOADS_PER_MONTH`, 100). Un reintento o un duplicado no cobran; borrar no devuelve el cupo |
+
+### Dónde se guardan los archivos
+
+| Entorno | Almacenamiento |
+|---|---|
+| `R2_*` completas | Cloudflare R2, objeto `private/{empresa}/{sha256}.{ext}` |
+| Sin R2 y `IS_DEV=true` | Disco local (`ATTACHMENT_LOCAL_STORAGE_DIR`, `storage/attachments`), con un receptor `PUT /dev-storage/...` que verifica tamaño y huella. La URL es absoluta al backend (`ATTACHMENT_LOCAL_STORAGE_PUBLIC_URL`) y **no** `/api`: el rewrite de Next corta los cuerpos a 10 MB |
+| Sin R2 y sin `IS_DEV` | Apagado: las rutas de escritura responden 503 `storage_unavailable` y la lista devuelve `can_upload: false`. Se puede desplegar antes de crear el bucket |
+
+En desarrollo hay que abrir el frontend en `http://localhost:3000` (el `PUT` es de otro origen y
+`CORS_ORIGINS` lo autoriza) y no por una IP de la red: WebCrypto, que calcula la huella, solo
+existe en `localhost` y `https`.
+
+### Configurar Cloudflare R2
+
+1. Crear el bucket (`R2_BUCKET`) y un token de API con permiso **Object Read & Write** solo sobre
+   ese bucket. Su `Access Key ID` y `Secret Access Key` son `R2_ACCESS_KEY_ID` y
+   `R2_SECRET_ACCESS_KEY`; `R2_ACCOUNT_ID` es el de la cuenta.
+2. Configurar el CORS del bucket, para que el navegador pueda hacer el `PUT`:
+
+```json
+[{"AllowedOrigins":["https://<frontend-prod>","http://localhost:3000"],"AllowedMethods":["PUT"],"AllowedHeaders":["content-type","x-amz-checksum-sha256"],"MaxAgeSeconds":3600}]
+```
+
+Sin `x-amz-checksum-sha256` y `content-type` en `AllowedHeaders`, el navegador bloquea el `PUT` y
+el cliente ve "No se pudo conectar con el almacenamiento".
+
+La firma SigV4 está escrita a mano (`app/infrastructure/services/attachments/sigv4.py`, sin
+`boto3`) y fijada con los vectores oficiales de la documentación de S3. La URL de subida firma
+`Content-Length` y el checksum, así que queda atada al tamaño y al contenido declarados.
+
+### Lo que hay que saber
+
+- **R2 podría no validar ni devolver el checksum.** `complete` siempre compara el tamaño; si R2
+  informa la huella, también. Si no, el archivo queda `stored` y la extracción de texto
+  (decisión 4) tiene que recalcular el SHA-256 al leerlo.
+- **Objetos huérfanos.** Borrar una licitación o una empresa en cascada (y
+  `scripts/reset_cuentas.py`) borra las filas pero **no** los objetos del bucket. Queda para un
+  limpiador (`purge_after` ya marca qué sobra).
+- `--reload` regenera el secreto del disco local: las URLs pendientes dan 403 y el cliente pide otra.
+- Para colgar trabajo de un archivo recién guardado (extracción, promoción a compartido), se
+  compone `get_attachment_stored_listener` en `app/bootstrap.py`.
+
+---
+
+## Anexos compartidos (plan 233, decisión 6)
+
+Cuando dos fuentes independientes confirman el mismo archivo para un anexo oficial (dos empresas sin personas en común, o una captura de la extensión y otra fuente que no sea la misma persona), el archivo se promueve a versión compartida visible para todas las empresas.
+
+### La fila canónica y privacidad
+- **Fila sin empresa:** La versión compartida es una fila canónica en `attachment_file` con `workspace_id = NULL`, `uploader_user_id = NULL`, `visibility = 'shared'` y `trust = 'corroborated'`, almacenada en `shared/{tender}/{mp_document_id}/{sha}.{ext}`.
+- **Sin filtración de datos:** No lleva autor, empresa ni fecha de subida original. Los aportes originales de las empresas se mantienen `private` y solo actualizan su `trust`.
+- **Borrar una empresa no borra lo compartido:** Como la fila canónica tiene `workspace_id NULL`, el `CASCADE` de `supplier` borra los aportes privados de esa empresa pero deja intacto el documento compartido para el resto.
+
+### Regla de confianza (en 5 líneas)
+1. Una subida manual aislada queda `pending` y `private`; no se comparte, no bloquea a nadie y no revela la existencia de privados ajenos (anti-oráculo).
+2. Dos fuentes independientes con el mismo SHA-256 generan la versión canónica compartida.
+3. Lo compartido es pegajoso: versiones vigentes no se bajan por subidas distintas ajenas (esos aportes quedan `rejected`).
+4. La extensión de navegador arbitra: puede corroborar una versión, suspender lo compartido ante contradicción (`conflict`) o reemplazarlo si confirma una nueva versión.
+5. Conflicto ocurre únicamente cuando hay dos o más versiones respaldadas sin ganador claro; mientras dura, no se comparte nada.
+
+### Candado y concurrencia
+- La reevaluación se ejecuta con un candado `SELECT ... FOR NO KEY UPDATE` sobre la fila `tender_attachment`, que serializa las promociones del mismo anexo pero no bloquea los `INSERT` concurrentes de aportes nuevos de otras empresas (`FOR KEY SHARE`).
+- El caso de uso (`PromoteAttachmentUseCase`) abre su propia sesión de base de datos (`PromoteOpener`), garantizando que la transacción del candado sea independiente de la petición HTTP.
+- Al materializar la versión canónica, se copia el objeto a `shared/` y se verifica estrictamente el tamaño y el hash SHA-256 de los bytes en el destino antes de confirmar en base de datos.
+
+### Integración y eventos
+- **Evento para Decisión 4 (extracción de texto):** `IAttachmentVisibilityListener.on_visibility_changed(file)` notifica cuando una versión canónica pasa a `shared` (para indexarla en el resumen compartido) o vuelve a `private` (para desindexarla).
+- **Reseteo de cuentas (`scripts/reset_cuentas.py`):** Resguarda las versiones canónicas en una tabla temporal `ON COMMIT DROP` durante el `TRUNCATE TABLE ... CASCADE` y las repone en la misma transacción, preservando los documentos compartidos.
+
+---
+
 ## Calidad de Código y Pruebas
 
 Desde `monorepo/backend/` con el `.venv` activo. Ruff cubre linting y formateo; su

@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -28,13 +29,32 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function sonUsuariosIguales(a: UserPublic | null, b: UserPublic | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.email === b.email &&
+    a.full_name === b.full_name &&
+    a.phone === b.phone &&
+    a.active === b.active &&
+    a.email_verified === b.email_verified &&
+    a.created_at === b.created_at
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPublic | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Usuario de Supabase cuyo perfil ya se pidió. auth-js emite SIGNED_IN cada vez
+  // que la pestaña vuelve a estar visible, con la misma sesión: sin esto, cada
+  // vuelta pedía `/auth/me` de nuevo.
+  const perfilPedidoPara = useRef<string | null>(null);
 
   const cargarPerfil = useCallback(async () => {
     try {
-      setUser(await getMe());
+      const nuevo = await getMe();
+      setUser((prev) => (sonUsuariosIguales(prev, nuevo) ? prev : nuevo));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         // La sesión de Supabase existe pero el backend no la acepta: token
@@ -75,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // la página, así que cubre el arranque y no hace falta una carga aparte.
     const { data } = supabase.auth.onAuthStateChange((evento, sesion) => {
       if (!sesion) {
+        perfilPedidoPara.current = null;
         setUser(null);
         setIsLoading(false);
         return;
@@ -82,6 +103,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // TOKEN_REFRESHED llega cada hora y no cambia quién es el usuario:
       // recargar el perfil ahí sería una petición por hora y por pestaña.
       if (evento === "TOKEN_REFRESHED") return;
+      if (
+        evento === "SIGNED_IN" &&
+        perfilPedidoPara.current === sesion.user.id
+      ) {
+        return;
+      }
+      perfilPedidoPara.current = sesion.user.id;
       void cargarPerfil();
     });
 

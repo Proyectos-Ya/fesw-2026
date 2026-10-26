@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -12,6 +13,7 @@ from app.bootstrap.matching import (
     get_list_saved_tenders_use_case,
     get_rank_tenders_use_case,
     get_save_tender_use_case,
+    get_tender_detail_use_case,
     get_unsave_tender_use_case,
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
@@ -19,6 +21,7 @@ from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.tender import Tender
 from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
+from app.domain.errors.matching_errors import RecommendationsSaveError
 from app.domain.errors.saved_tender_errors import SavedTenderNotFound
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -143,6 +146,28 @@ async def test_get_recommended_tenders_vector_not_found(api: AsyncClient) -> Non
     assert response.status_code == 404
     data = response.json()
     assert "No se encontró el vector para el proveedor" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_get_recommended_tenders_save_error_returns_503_with_message(
+    api: AsyncClient,
+) -> None:
+    """Si no se pudo guardar el ranking, responde 503 con un mensaje legible.
+
+    Antes el error escapaba sin traducir y el frontend mostraba el texto crudo
+    "Internal Server Error". Es 503 y no 500: es transitorio y se puede reintentar.
+    """
+    mock_uc = AsyncMock()
+    mock_uc.execute.side_effect = RecommendationsSaveError()
+    app.dependency_overrides[get_rank_tenders_use_case] = lambda: mock_uc
+
+    await autenticar(api, email="ana@example.com", full_name="Ana Rojas")
+
+    response = await api.get("/tenders/recommended")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == str(RecommendationsSaveError())
+    assert "Inténtalo nuevamente" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -597,6 +622,138 @@ async def test_get_saved_tenders_success(api: AsyncClient) -> None:
     assert data[0]["tender"]["buyer_name"] == "Municipalidad de Santiago"
     assert data[0]["tender"]["region"] == "Metropolitana"
     mock_uc.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_expone_el_segundo_llamado(api: AsyncClient) -> None:
+    """El llamado vigente y el cierre de cada llamado viajan en la licitación."""
+    tender_id = uuid4()
+    mock_tender = _build_tender(tender_id).model_copy(
+        update={
+            "call_number": 2,
+            "first_call_closing_at": datetime(2026, 9, 26, 20, 10),
+            "second_call_closing_at": datetime(2026, 9, 27, 20, 28),
+        }
+    )
+    mock_result = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=0.85,
+        final_score=0.85,
+        model_version="v1.0",
+        tender=mock_tender,
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = [mock_result]
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "segundo_llamado@example.com", "Sofía Rojas")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    tender = response.json()[0]["tender"]
+    assert tender["call_number"] == 2
+    assert tender["first_call_closing_at"] == "2026-09-26T20:10:00Z"
+    assert tender["second_call_closing_at"] == "2026-09-27T20:28:00Z"
+
+
+@pytest.mark.asyncio
+async def test_get_saved_tenders_sin_llamado_devuelve_null(api: AsyncClient) -> None:
+    """Una licitación ingerida antes de guardar el llamado responde con null."""
+    tender_id = uuid4()
+    mock_result = MatchingResult(
+        supplier_id=uuid4(),
+        tender_id=tender_id,
+        similarity_score=0.85,
+        final_score=0.85,
+        model_version="v1.0",
+        tender=_build_tender(tender_id),
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = [mock_result]
+    app.dependency_overrides[get_list_saved_tenders_use_case] = lambda: mock_uc
+
+    await _login(api, "sin_llamado@example.com", "Sofía Rojas")
+
+    response = await api.get("/tenders/saved")
+
+    assert response.status_code == 200
+    tender = response.json()[0]["tender"]
+    assert tender["call_number"] is None
+    assert tender["first_call_closing_at"] is None
+    assert tender["second_call_closing_at"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cifra", [4, 0, None])
+async def test_la_ficha_devuelve_las_cotizaciones_tambien_en_null(
+    api: AsyncClient, cifra: int | None
+) -> None:
+    """La clave viaja siempre: el frontend distingue 0 de "sin dato" por su valor."""
+    tender_id = uuid4()
+    tender = _build_tender(tender_id).model_copy(
+        update={
+            "received_offers_count": cifra,
+            "first_call_offers_count": cifra,
+            "offers_checked_at": (
+                datetime(2026, 10, 25, 14, 5) if cifra is not None else None
+            ),
+        }
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = SimpleNamespace(
+        tender=tender, final_score=None, is_closed=False, is_recommended=False
+    )
+    app.dependency_overrides[get_tender_detail_use_case] = lambda: mock_uc
+
+    await _login(api, f"ficha_{cifra}@example.com", "Sofía Rojas")
+
+    response = await api.get(f"/tenders/{tender_id}")
+
+    assert response.status_code == 200
+    ficha = response.json()["tender"]
+    assert "received_offers_count" in ficha
+    assert ficha["received_offers_count"] == cifra
+    assert "first_call_offers_count" in ficha
+    assert ficha["first_call_offers_count"] == cifra
+    assert "offers_checked_at" in ficha
+    if cifra is None:
+        assert ficha["offers_checked_at"] is None
+    else:
+        assert ficha["offers_checked_at"] == "2026-10-25T14:05:00Z"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("con_datos", [True, False], ids=["con datos", "sin datos"])
+async def test_la_ficha_devuelve_la_entrega_tambien_en_null(
+    api: AsyncClient, con_datos: bool
+) -> None:
+    """Las claves viajan siempre: el frontend muestra "no disponible" con el null."""
+    tender_id = uuid4()
+    direccion = "SERVIU REGION DE AYSEN RAMON FREIRE 5"
+    entrega = {
+        "delivery_address": direccion if con_datos else None,
+        "delivery_term_days": 0 if con_datos else None,
+        "requires_environmental_criteria": False if con_datos else None,
+        "requires_social_impact_criteria": True if con_datos else None,
+    }
+    tender = _build_tender(tender_id).model_copy(update=entrega)
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = SimpleNamespace(
+        tender=tender, final_score=None, is_closed=False, is_recommended=False
+    )
+    app.dependency_overrides[get_tender_detail_use_case] = lambda: mock_uc
+
+    await _login(api, f"entrega_{con_datos}@example.com", "Sofía Rojas")
+
+    response = await api.get(f"/tenders/{tender_id}")
+
+    assert response.status_code == 200
+    ficha = response.json()["tender"]
+    for clave, valor in entrega.items():
+        assert clave in ficha
+        assert ficha[clave] == valor
 
 
 @pytest.mark.asyncio

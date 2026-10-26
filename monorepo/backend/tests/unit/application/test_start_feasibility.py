@@ -37,17 +37,21 @@ from app.domain.entities.capability import (
 from app.domain.entities.proposal import DraftContent, DraftSection
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
-from app.domain.entities.tender_chat import TenderChatDocument
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFound
 from app.shared.constants import TENDER_STATUSES
+from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
+from tests.unit.application.attachment_file_fakes import (
+    FakeAttachmentStorage,
+    InMemoryAttachmentFileRepository,
+    guardar_anexo,
+)
 from tests.unit.application.fakes import (
     InMemoryCapabilityAnswerRepository,
     InMemoryCapabilityEvidenceRepository,
     InMemoryCapabilityQuestionRepository,
     InMemoryProposalDraftRepository,
     InMemorySupplierRepository,
-    InMemoryTenderChatRepository,
     InMemoryTenderRepository,
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
@@ -129,7 +133,9 @@ class Escenario:
         self.evidences = InMemoryCapabilityEvidenceRepository()
         self.tenders = InMemoryTenderRepository()
         self.drafts = InMemoryProposalDraftRepository()
-        self.chat = InMemoryTenderChatRepository()
+        self.archivos = InMemoryAttachmentFileRepository()
+        self.oficiales = InMemoryTenderAttachmentRepository()
+        self.almacen = FakeAttachmentStorage()
         self.ai = FakeProposalAI(
             FeasibilityResultDTO(requirements=list(exigencias), **resultado)
         )
@@ -170,7 +176,9 @@ class Escenario:
             catalog_use_case=BuildExperienceCatalogUseCase(
                 self.suppliers, self.questions, self.answers, self.evidences
             ),
-            chat_repo=self.chat,
+            files=self.archivos,
+            attachments=self.oficiales,
+            storage=self.almacen,
             ai_service=self.ai,
         )
 
@@ -362,17 +370,11 @@ class TestBorrador:
         assert segundo == primero
         assert len(e.ai.llamadas) == 1
 
-    async def test_manda_a_la_ia_los_adjuntos_del_usuario(self):
+    async def test_manda_a_la_ia_los_anexos_de_la_empresa(self):
+        # Plan 233, parte 2: los mismos anexos que leen los hitos y el análisis.
         e = await Escenario().preparar()
-        documento = TenderChatDocument(
-            tender_id=e.tender_id,
-            user_id=e.user_id,
-            file_name="bases.pdf",
-            file_type="pdf",
-            file_size_bytes=4,
-            storage_path="x/bases.pdf",
-        )
-        await e.chat.save_document(documento, b"%PDF")
+        await _subir_bases(e, "bases.pdf")
+        await _subir_bases(e, "de-otra-empresa.pdf", workspace_id=uuid4())
 
         await e.ejecutar()
 
@@ -494,17 +496,25 @@ class TestDocumentosNecesarios:
         assert await e.questions.get_by_key(CATEGORIA, "cotizacion_formulario") is None
 
 
-async def _subir_bases(e: "Escenario", nombre: str = "bases.pdf") -> None:
-    await e.chat.save_document(
-        TenderChatDocument(
-            tender_id=e.tender_id,
-            user_id=e.user_id,
-            file_name=nombre,
-            file_type="pdf",
-            file_size_bytes=4,
-            storage_path=f"x/{nombre}",
-        ),
-        b"%PDF",
+_DE_LA_EMPRESA = object()
+
+
+async def _subir_bases(
+    e: "Escenario",
+    nombre: str = "bases.pdf",
+    *,
+    workspace_id: object = _DE_LA_EMPRESA,
+    contenido: bytes | None = b"%PDF",
+) -> None:
+    """Un anexo guardado; por defecto, de la empresa del escenario."""
+    await guardar_anexo(
+        e.archivos,
+        e.oficiales,
+        e.almacen,
+        tender_id=e.tender_id,
+        nombre=nombre,
+        workspace_id=e.empresa.id if workspace_id is _DE_LA_EMPRESA else workspace_id,
+        contenido=contenido,
     )
 
 
@@ -902,22 +912,12 @@ class TestCoberturaDelPerfil:
 
 
 class TestConQueSeAnalizo:
-    """El borrador guarda qué adjuntos se leyeron y si la ficha menciona bases."""
+    """El borrador guarda qué anexos se leyeron y si la ficha menciona bases."""
 
     async def test_guarda_los_adjuntos_con_los_daniados_marcados(self):
         e = await Escenario(mentions_attachments=True).preparar()
         await _subir_bases(e, "bases.pdf")
-        await e.chat.save_document(
-            TenderChatDocument(
-                tender_id=e.tender_id,
-                user_id=e.user_id,
-                file_name="anexo.pdf",
-                file_type="pdf",
-                file_size_bytes=4,
-                storage_path="x/anexo.pdf",
-            ),
-            b"",
-        )
+        await _subir_bases(e, "anexo.pdf", contenido=None)
 
         borrador = await e.ejecutar()
 

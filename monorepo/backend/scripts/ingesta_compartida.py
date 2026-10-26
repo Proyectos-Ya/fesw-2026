@@ -11,18 +11,28 @@ de corte del bucle —cuota agotada, rondas sin avance— salieron de corridas r
 contra la API y no son obvias.
 """
 
+import json
+import os
+import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 from urllib.parse import urlsplit
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlmodel import col, func, select
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.application.services.tender_ingestion_service import ITenderIngestionService
+from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.tender_ingestion_service import (
+    ITenderIngestionService,
+    ModoCola,
+)
 from app.config import settings
+from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
 from app.infrastructure.db import crear_engine
 from app.infrastructure.repositories.tender_model import TenderMetadataModel
 from app.infrastructure.services.tenders.mercado_publico_client import (
@@ -30,6 +40,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
 )
 from app.infrastructure.services.tenders.tender_ingestion_service import (
     TenderIngestionService,
+    condiciones_cola,
 )
 
 # Hosts que se consideran "esta máquina". Todo lo demás es una base compartida
@@ -51,6 +62,12 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     colección `tenders` no existiría. Ambas operaciones son idempotentes, así que
     repetirlas en cada corrida no cuesta nada.
     """
+    from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+        QdrantLexicalTenderRepository,
+    )
+    from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+        QdrantTenderItemVectorRepository,
+    )
     from app.infrastructure.repositories.qdrant_tender_repository import (
         QdrantTenderRepository,
     )
@@ -63,7 +80,50 @@ async def preparar_destino(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> No
     await QdrantTenderRepository(
         client=qdrant, vector_size=settings.embedding_vector_size
     ).ensure_collection()
-    print("Colección 'tenders' lista (con sus índices de payload).\n")
+    print("Colección 'tenders' lista (con sus índices de payload).")
+
+    # La ingesta también guarda un vector por partida; sin esta colección cada
+    # licitación fallaría al escribirlo y se daría por perdida tras tres intentos.
+    await QdrantTenderItemVectorRepository(
+        client=qdrant, vector_size=settings.embedding_vector_size
+    ).ensure_collection()
+    print("Colección 'tender_items' lista.")
+
+    # Y el vector léxico (BM25) del canal léxico. Sin la colección, la ingesta
+    # fallaba en cada licitación con un 404 de Qdrant (plan 305, 2026-10-13).
+    await QdrantLexicalTenderRepository(client=qdrant).ensure_collection()
+    print("Colección 'tender_lexical' lista.\n")
+
+
+def imprimir_resumen(cron: str, datos: dict[str, Any]) -> None:
+    """Una línea `RESUMEN {json}` por corrida (plan 305).
+
+    Para revisar un día entero de crons basta filtrar los logs de Railway por
+    `RESUMEN`: cada línea trae la corrida completa en un JSON de una línea.
+    """
+    print(
+        "RESUMEN "
+        + json.dumps({"cron": cron, **datos}, ensure_ascii=False, default=str)
+    )
+
+
+class EmbeddingsContados(IEmbeddingService):
+    """Envuelve el servicio de embeddings y cuenta sus llamadas (plan 305).
+
+    Cada corrida de la ingesta guarda cuántas hizo en `ingestion_run`: con los
+    vectores por partida, una licitación nueva cuesta dos llamadas y unos
+    cuatro textos, y el proveedor cobra por eso.
+    """
+
+    def __init__(self, interno: IEmbeddingService) -> None:
+        self.interno = interno
+        self.llamadas = 0
+        self.textos = 0
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.llamadas += 1
+        self.textos += len(texts)
+        return await self.interno.embed(texts)
 
 
 class _SinEmbeddings:
@@ -88,9 +148,14 @@ def construir_servicio(
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     servicio = TenderIngestionService(
         engine=engine,
-        client=MercadoPublicoClient(api_keys=settings.mercado_publico_tickets),
+        client=MercadoPublicoClient(
+            api_keys=settings.mercado_publico_tickets,
+            concurrencia_listado=settings.mercadopublico_listing_concurrency,
+        ),
         embedding_service=(
-            build_embedding_service() if con_embeddings else _SinEmbeddings()  # type: ignore[arg-type]
+            EmbeddingsContados(build_embedding_service())  # type: ignore[arg-type]
+            if con_embeddings
+            else _SinEmbeddings()  # type: ignore[arg-type]
         ),
         qdrant_client=qdrant,
     )
@@ -122,13 +187,42 @@ async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int
         return await caso.execute()
 
 
-async def contar_pendientes(engine: AsyncEngine) -> int:
-    """Cuántas licitaciones quedan en la cola sin procesar."""
+async def aplicar_documentos_oficiales(
+    engine: AsyncEngine, listas_por_codigo: Mapping[str, Sequence[DocumentoOficialDTO]]
+) -> int:
+    """Refresca la lista oficial de anexos de las licitaciones que ya tenemos.
+
+    La comparten los dos crons: los dos listan, y el listado ya trae
+    `documentos`, así que no cuesta peticiones a la API.
+    """
+    from app.application.use_cases.tender_attachments.sync_official_attachments import (
+        SyncOfficialAttachmentsUseCase,
+    )
+    from app.infrastructure.repositories.sql_tender_attachment_repository import (
+        SqlTenderAttachmentRepository,
+    )
+
+    async with AsyncSession(engine) as session:
+        caso = SyncOfficialAttachmentsUseCase(SqlTenderAttachmentRepository(session))
+        return await caso.execute(listas_por_codigo)
+
+
+async def contar_pendientes(
+    engine: AsyncEngine,
+    modo: ModoCola = ModoCola.TODAS,
+    antes_de: datetime | None = None,
+) -> int:
+    """Cuántas licitaciones quedan en la parte de la cola que toma `modo`.
+
+    Filtra igual que el SELECT de la pasada (`condiciones_cola`): si contara
+    también las terminales o las que esperan la noche, la cola nunca se vería
+    vacía.
+    """
     async with AsyncSession(engine) as s:
         stmt = (
             select(func.count())
             .select_from(TenderMetadataModel)
-            .where(col(TenderMetadataModel.is_processed).is_(False))
+            .where(*condiciones_cola(modo, antes_de))
         )
         return (await s.exec(stmt)).one()  # type: ignore[arg-type]
 
@@ -159,18 +253,29 @@ class ResultadoRondas:
     segundos: float = 0.0
     cuota_agotada: bool = False
     sin_avance: bool = False
+    # El cortacircuito saltó: casi todos los últimos detalles dieron un error
+    # transitorio.
+    api_caida: bool = False
 
     @property
     def completo(self) -> bool:
         """La cola quedó vacía, sin cortes."""
-        return self.pendientes == 0 and not self.cuota_agotada and not self.sin_avance
+        return (
+            self.pendientes == 0
+            and not self.cuota_agotada
+            and not self.sin_avance
+            and not self.api_caida
+        )
 
 
 async def vaciar_cola(
     servicio: ITenderIngestionService,
     contar_pendientes: Callable[[], Awaitable[int]],
     *,
+    modo: ModoCola = ModoCola.TODAS,
+    antes_de: datetime | None = None,
     verboso: bool = True,
+    en: ResultadoRondas | None = None,
 ) -> ResultadoRondas:
     """Insiste hasta vaciar la cola, o hasta que insistir deje de servir.
 
@@ -179,13 +284,17 @@ async def vaciar_cola(
     * **Cuota agotada.** Seguir gasta los cuatro reintentos del cliente contra
       una cuota que ya no existe. Se para y se retoma en la corrida siguiente:
       lo que está encolado no se pierde.
+    * **API caída.** El cortacircuito del servicio saltó: fallaron 27 de los
+      últimos 30 detalles. La ronda siguiente se los volvería a cobrar.
     * **Varias rondas sin avance.** Alguna licitación está fallando de forma
       reproducible, o la API está caída. Insistir para siempre bloquearía la
       cola. Una ronda que procesa menos de `EXITO_MINIMO_POR_PASADA` de lo que
       intentó también cuenta como sin avance, aunque lo que sí entró se suma.
     """
     inicio = time.perf_counter()
-    resultado = ResultadoRondas()
+    # `en` deja que el llamador lea el avance aunque la corrida se cancele a
+    # mitad: sin él, una corrida que vencía el tope registraba 0 procesadas.
+    resultado = en if en is not None else ResultadoRondas()
     pendientes = await contar_pendientes()
     resultado.pendientes = pendientes
     if not pendientes:
@@ -194,15 +303,21 @@ async def vaciar_cola(
     sin_avance = 0
     while pendientes:
         resultado.rondas += 1
-        pasada = await servicio.process_unprocessed_tenders()
+        pasada = await servicio.process_unprocessed_tenders(
+            modo=modo, antes_de=antes_de
+        )
         restantes = await contar_pendientes()
 
-        if pasada.cuota_agotada:
-            resultado.cuota_agotada = True
+        if pasada.cuota_agotada or pasada.api_caida:
+            resultado.cuota_agotada = pasada.cuota_agotada
+            resultado.api_caida = pasada.api_caida
+            resultado.procesadas += pasada.procesadas
             resultado.pendientes = restantes
             break
 
-        hechas = pendientes - restantes
+        # Lo que esta pasada procesó, no la resta de la cola: el cron de estados
+        # encola en paralelo, y una ronda que avanzó podía verse sin avance.
+        hechas = pasada.procesadas
         resultado.procesadas += hechas
         pendientes = restantes
         resultado.pendientes = restantes
@@ -232,3 +347,18 @@ async def vaciar_cola(
 
     resultado.segundos = time.perf_counter() - inicio
     return resultado
+
+
+def salir(codigo: int) -> None:
+    """Termina el proceso del cron con `codigo`, aunque quede un hilo vivo.
+
+    `sys.exit` espera a los hilos que no son daemon antes de terminar. El
+    2026-10-21 la corrida de sync-estados de las 12:03 imprimió su resumen a
+    las 12:33 y el contenedor siguió vivo sin usar CPU: Railway no arranca un
+    cron mientras el anterior siga corriendo y se saltó la corrida de las
+    13:00. A esta altura todo lo que importa ya se escribió en la base, así que
+    se vacía la salida y se termina sin esperar.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(codigo)

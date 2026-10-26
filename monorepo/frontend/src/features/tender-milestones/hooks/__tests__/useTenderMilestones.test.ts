@@ -80,7 +80,7 @@ describe("useTenderMilestones", () => {
     const aviso = await extraerCon(buildMilestoneList({ unavailable_documents_count: 1 }));
 
     expect(aviso).toBe(
-      "1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.",
+      "1 documento que subiste ya no está disponible. Vuelve a subirlo en Anexos para extraer sus hitos.",
     );
   });
 
@@ -88,7 +88,7 @@ describe("useTenderMilestones", () => {
     const aviso = await extraerCon(buildMilestoneList({ unavailable_documents_count: 2 }));
 
     expect(aviso).toBe(
-      "2 documentos que subiste ya no están disponibles. Vuelve a adjuntarlos en el asistente para extraer sus hitos.",
+      "2 documentos que subiste ya no están disponibles. Vuelve a subirlos en Anexos para extraer sus hitos.",
     );
   });
 
@@ -144,7 +144,7 @@ describe("useTenderMilestones", () => {
     );
 
     expect(aviso).toBe(
-      "1 fecha no se pudo interpretar y se omitió. 1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.",
+      "1 fecha no se pudo interpretar y se omitió. 1 documento que subiste ya no está disponible. Vuelve a subirlo en Anexos para extraer sus hitos.",
     );
   });
 

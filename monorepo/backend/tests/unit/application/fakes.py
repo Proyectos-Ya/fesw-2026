@@ -1,6 +1,8 @@
 """Dobles en memoria para probar casos de uso sin BD ni servicios externos."""
 
-from datetime import datetime
+import math
+from collections.abc import Collection, Sequence
+from datetime import date, datetime
 from uuid import UUID
 
 from app.application.repositories.capability_repository import (
@@ -17,11 +19,21 @@ from app.application.repositories.notification_repository import (
     INotificationPreferenceRepository,
     INotificationRepository,
 )
+from app.application.repositories.ranking_telemetry_repository import (
+    IRankingTelemetryRepository,
+)
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
+from app.application.services.lexical_tokenizer import SparseTermVector
 from app.application.repositories.tender_repository import (
     ClosingOrder,
     ITenderRepository,
@@ -33,11 +45,15 @@ from app.application.repositories.tender_vector_repository import (
 from app.application.repositories.user_repository import IUserRepository
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_formula import (
+    CalibrationCoefficients,
+    CompatibilityFormula,
+)
+from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
-from app.application.services.weighting_service import IWeightingService
 from app.domain.entities.capability import (
     CapabilityAnswer,
     CapabilityEvidence,
@@ -50,6 +66,13 @@ from app.domain.entities.notification import (
     Notification,
     NotificationDelivery,
     NotificationPreference,
+)
+from app.domain.entities.ranking_telemetry import (
+    AttachmentPriorityShadow,
+    PurgeCounts,
+    RankingImpression,
+    RankingMetricDaily,
+    TenderInteraction,
 )
 from app.domain.entities.proposal import ProposalDraft
 from app.domain.entities.saved_tender import SavedTender
@@ -65,7 +88,9 @@ from app.domain.errors.notification_errors import (
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
 )
+from app.domain.errors.tender_errors import TenderNotFound
 from app.infrastructure.repositories.tender_model import TenderItemModel, TenderModel
+from app.shared.datetime_utils import to_utc_epoch
 
 
 class InMemoryUserRepository(IUserRepository):
@@ -371,6 +396,171 @@ class FakeTenderVectorRepository(ITenderVectorRepository):
         return 0
 
 
+class InMemoryTenderItemVectorRepository(ITenderItemVectorRepository):
+    """Repositorio de vectores de partidas en memoria para pruebas.
+
+    Misma semántica que el de Qdrant: `upsert` reemplaza el punto entero (vectores
+    y payload; con lista vacía lo borra), `set_payload` fusiona claves y no hace
+    nada si el punto no existe, `get_many` solo devuelve las licitaciones con
+    vectores, y `search_by_keywords` puntúa con MaxSim real (Σ_keywords
+    max_partidas coseno) sobre el conjunto que pasa los criterios.
+    """
+
+    def __init__(self) -> None:
+        self.vectors: dict[UUID, list[list[float]]] = {}
+        # Todo punto con vectores tiene entrada acá, vacía si se subió sin payload.
+        self.payloads: dict[UUID, dict] = {}
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        item_vectors: list[list[float]],
+        payload: dict | None = None,
+    ) -> None:
+        if not item_vectors:
+            self.vectors.pop(tender_id, None)
+            self.payloads.pop(tender_id, None)
+            return
+        self.vectors[tender_id] = [list(v) for v in item_vectors]
+        self.payloads[tender_id] = dict(payload or {})
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        if tender_id not in self.vectors:
+            return
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
+
+    async def get_many(self, tender_ids: list[UUID]) -> dict[UUID, list[list[float]]]:
+        return {tid: self.vectors[tid] for tid in tender_ids if tid in self.vectors}
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.vectors.pop(tender_id, None)
+        self.payloads.pop(tender_id, None)
+
+    async def search_by_keywords(
+        self,
+        keyword_vectors: list[list[float]],
+        limit: int,
+        criteria: TenderFilterCriteria | None = None,
+    ) -> list[tuple[UUID, float]]:
+        if not keyword_vectors:
+            return []
+        # El filtro se aplica al conjunto elegible ANTES del corte, como el
+        # pre-filtro de Qdrant; el orden de inserción desempata (sort estable).
+        puntajes = [
+            (tid, self._maxsim(keyword_vectors, items))
+            for tid, items in self.vectors.items()
+            if self._cumple(self.payloads.get(tid, {}), criteria)
+        ]
+        puntajes.sort(key=lambda par: par[1], reverse=True)
+        return puntajes[:limit]
+
+    @staticmethod
+    def _coseno(a: list[float], b: list[float]) -> float:
+        norma = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+        if norma == 0.0:
+            return 0.0
+        return sum(x * y for x, y in zip(a, b, strict=True)) / norma
+
+    @classmethod
+    def _maxsim(
+        cls, keyword_vectors: list[list[float]], item_vectors: list[list[float]]
+    ) -> float:
+        return sum(
+            max(cls._coseno(keyword, item) for item in item_vectors)
+            for keyword in keyword_vectors
+        )
+
+    @staticmethod
+    def _cumple(payload: dict, criteria: TenderFilterCriteria | None) -> bool:
+        """Misma interpretación de los criterios que `build_filter` de Qdrant.
+
+        Un campo ausente o nulo no calza con ninguna condición, como en Qdrant.
+        """
+        if criteria is None:
+            return True
+
+        def valor(campo: str):
+            return payload.get(campo)
+
+        if criteria.status_codes and valor("status_code") not in criteria.status_codes:
+            return False
+        if criteria.region_ids and valor("region_id") not in criteria.region_ids:
+            return False
+        if criteria.province_id is not None and valor("provincia_id") != criteria.province_id:
+            return False
+        if criteria.commune_id is not None and valor("comuna_id") != criteria.commune_id:
+            return False
+
+        def epoch(fecha: datetime | None) -> float | None:
+            return None if fecha is None else to_utc_epoch(fecha)
+
+        # Límites inclusivos; las fechas del criterio pasan a epoch como en Qdrant.
+        rangos = (
+            ("closing_at", epoch(criteria.closing_from), epoch(criteria.closing_to)),
+            ("published_at", epoch(criteria.published_from), epoch(criteria.published_to)),
+            ("available_amount_clp", criteria.min_amount, criteria.max_amount),
+        )
+        for campo, desde, hasta in rangos:
+            if desde is None and hasta is None:
+                continue
+            actual = valor(campo)
+            if actual is None:
+                return False
+            if desde is not None and actual < desde:
+                return False
+            if hasta is not None and actual > hasta:
+                return False
+        return True
+
+
+class InMemoryLexicalTenderRepository(ILexicalTenderRepository):
+    """Repositorio en memoria para el canal léxico sparse BM25."""
+
+    def __init__(self) -> None:
+        self.vectors: dict[UUID, SparseTermVector] = {}
+        self.payloads: dict[UUID, dict] = {}
+        self.search_results: list[tuple[UUID, float]] = []
+        self.searches: list[dict] = []
+        self.deleted: list[UUID] = []
+
+    async def upsert(
+        self,
+        tender_id: UUID,
+        sparse_vector: SparseTermVector,
+        payload: dict | None = None,
+    ) -> None:
+        if not sparse_vector.indices:
+            self.vectors.pop(tender_id, None)
+            self.payloads.pop(tender_id, None)
+            return
+        self.vectors[tender_id] = sparse_vector
+        self.payloads[tender_id] = dict(payload or {})
+
+    async def set_payload(self, tender_id: UUID, payload: dict) -> None:
+        if tender_id not in self.vectors:
+            return
+        self.payloads[tender_id] = {**self.payloads.get(tender_id, {}), **payload}
+
+    async def delete(self, tender_id: UUID) -> None:
+        self.vectors.pop(tender_id, None)
+        self.payloads.pop(tender_id, None)
+        self.deleted.append(tender_id)
+
+    async def search_lexical(
+        self,
+        query_vector: SparseTermVector,
+        limit: int,
+        criteria: TenderFilterCriteria | None = None,
+    ) -> list[tuple[UUID, float]]:
+        self.searches.append(
+            {"vector": query_vector, "limit": limit, "criteria": criteria}
+        )
+        return self.search_results
+
+
+FakeLexicalTenderRepository = InMemoryLexicalTenderRepository
+
+
 class FakeEmbeddingService(IEmbeddingService):
     """Devuelve siempre el mismo vector configurable — evita cargar el modelo real."""
 
@@ -381,6 +571,29 @@ class FakeEmbeddingService(IEmbeddingService):
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(texts)
         return [self.vector] * len(texts)
+
+
+class FakeEmbeddingPorTexto(IEmbeddingService):
+    """Embeddings deterministas y distintos por texto, para probar B y C.
+
+    `FakeEmbeddingService` devuelve el mismo vector para todo, así que la
+    similitud entre cualquier par de textos es 1 y no se puede distinguir un buen
+    calce de uno malo. Acá cada texto conocido tiene su vector; los desconocidos
+    reciben `por_defecto` (ortogonal a los vectores de los tests, por convención).
+    """
+
+    def __init__(
+        self,
+        vectores: dict[str, list[float]] | None = None,
+        por_defecto: list[float] | None = None,
+    ) -> None:
+        self.vectores = vectores or {}
+        self.por_defecto = por_defecto if por_defecto is not None else [0.0, 0.0, 1.0]
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        return [list(self.vectores.get(t, self.por_defecto)) for t in texts]
 
 
 class FakeCompanyLookupService(ICompanyLookupService):
@@ -830,8 +1043,12 @@ class InMemoryMatchingResultRepository(IMatchingResultRepository):
     async def save_bulk(self, results: list[MatchingResult]) -> None:
         if not results:
             return
+        # Mismo contrato que el repositorio real: el par (proveedor, licitación)
+        # ya guardado se reemplaza en vez de duplicarse.
         supplier_id = results[0].supplier_id
-        self.results.setdefault(supplier_id, []).extend(results)
+        nuevos = {r.tender_id for r in results}
+        previos = [r for r in self.results.get(supplier_id, []) if r.tender_id not in nuevos]
+        self.results[supplier_id] = previos + list(results)
 
     async def save_on_demand(self, result: MatchingResult) -> MatchingResult:
         await self.delete_by_supplier_and_tender_ids(
@@ -896,17 +1113,185 @@ class FakeRerankerService(IRerankerService):
         ]
 
 
-class FakeWeightingService(IWeightingService):
-    """Ponderación simulada: un score decreciente por candidata."""
+# Coeficientes sencillos y distintos entre sí, para que cada señal (R, B y C) pese
+# algo en el puntaje. Lo que se prueba con ellos es el cableado del scorer, no la
+# calibración (eso vive en test_compatibility_formula.py).
+FORMULA_DE_PRUEBA = CompatibilityFormula(
+    relevant=CalibrationCoefficients(
+        intercept=-3.0, reranker=0.3, best_match=3.0, coverage=4.0
+    ),
+    exact=CalibrationCoefficients(
+        intercept=-4.0, reranker=0.4, best_match=3.0, coverage=3.0
+    ),
+)
+
+
+def armar_scorer(
+    reranker: IRerankerService | None = None,
+    matching_result_repo: IMatchingResultRepository | None = None,
+    embedding: IEmbeddingService | None = None,
+    item_repo: ITenderItemVectorRepository | None = None,
+    formula: CompatibilityFormula | None = None,
+    model_version: str = "bge-m3-v1",
+) -> CompatibilityScorer:
+    """Arma el `CompatibilityScorer` real sobre dobles en memoria.
+
+    Con los valores por defecto todas las keywords y partidas comparten vector
+    (`FakeEmbeddingService`), así que B y C valen 1 para cualquier licitación y el
+    orden lo decide el reranker; quien quiera distinguir calces pasa `embedding`
+    (por ejemplo `FakeEmbeddingPorTexto`) y `item_repo`.
+    """
+    return CompatibilityScorer(
+        reranker_service=reranker or FakeRerankerService(),
+        matching_result_repo=matching_result_repo or InMemoryMatchingResultRepository(),
+        embedding_service=embedding or FakeEmbeddingService(),
+        item_vector_repo=item_repo or InMemoryTenderItemVectorRepository(),
+        formula=formula or FORMULA_DE_PRUEBA,
+        model_version=model_version,
+    )
+
+
+class InMemoryRankingTelemetryRepository(IRankingTelemetryRepository):
+    """Telemetría del ranking en memoria, con la semántica de la versión SQL.
+
+    - Impresiones únicas por (ranking_id, position).
+    - Interacciones únicas por (ranking_id, tender_id, kind) solo si hay `ranking_id`:
+      Postgres trata los NULL como distintos, así que lo no atribuido no se deduplica.
+    - Rangos de tiempo `start <= x < end` y `>= since`.
+    - La purga borra lo crudo con `< cutoff` y deja las métricas.
+    """
 
     def __init__(self) -> None:
-        self.calls: list[list[tuple[Tender, float]]] = []
+        self.impressions: list[RankingImpression] = []
+        self.interactions: list[TenderInteraction] = []
+        self.metrics: dict[tuple[date, str], RankingMetricDaily] = {}
+        self.snapshots: list[AttachmentPriorityShadow] = []
+        self.open_tenders: dict[UUID, datetime] = {}
+        self.manual_uploads: list[tuple[UUID, datetime]] = []
+        self.missing_tenders: set[UUID] = set()
 
-    def calculate_scores(
-        self, candidates: list[tuple[Tender, float]], supplier: Supplier
-    ) -> list[tuple[UUID, float]]:
-        self.calls.append(list(candidates))
-        return [(t.id, 0.95 - (i * 0.05)) for i, (t, _) in enumerate(candidates)]
+    async def save_impressions(self, impressions: list[RankingImpression]) -> None:
+        existentes = {(i.ranking_id, i.position) for i in self.impressions}
+        for impresion in impressions:
+            clave = (impresion.ranking_id, impresion.position)
+            if clave in existentes:
+                continue
+            existentes.add(clave)
+            self.impressions.append(impresion)
+
+    async def find_impression(
+        self, ranking_id: UUID, tender_id: UUID
+    ) -> RankingImpression | None:
+        for impresion in self.impressions:
+            if impresion.ranking_id == ranking_id and impresion.tender_id == tender_id:
+                return impresion
+        return None
+
+    async def save_interaction(self, interaction: TenderInteraction) -> bool:
+        if interaction.tender_id in self.missing_tenders:
+            raise TenderNotFound(interaction.tender_id)
+        if interaction.ranking_id is not None:
+            for existente in self.interactions:
+                if (
+                    existente.ranking_id == interaction.ranking_id
+                    and existente.tender_id == interaction.tender_id
+                    and existente.kind == interaction.kind
+                ):
+                    return False
+        self.interactions.append(interaction)
+        return True
+
+    async def list_impressions_between(
+        self, start: datetime, end: datetime
+    ) -> list[RankingImpression]:
+        return [i for i in self.impressions if start <= i.created_at < end]
+
+    async def list_attributed_interactions(
+        self, ranking_ids: Sequence[UUID]
+    ) -> list[TenderInteraction]:
+        buscados = set(ranking_ids)
+        return [i for i in self.interactions if i.ranking_id in buscados]
+
+    async def upsert_daily_metric(self, metric: RankingMetricDaily) -> None:
+        self.metrics[(metric.day, metric.model_version)] = metric
+
+    async def list_daily_metrics(
+        self, model_version: str | None = None, since_day: date | None = None
+    ) -> list[RankingMetricDaily]:
+        resultado = list(self.metrics.values())
+        if model_version:
+            resultado = [m for m in resultado if m.model_version == model_version]
+        if since_day:
+            resultado = [m for m in resultado if m.day >= since_day]
+        return sorted(resultado, key=lambda m: (m.day, m.model_version), reverse=True)
+
+    async def count_top_impressions_by_tender(
+        self, since: datetime, max_position: int
+    ) -> dict[UUID, int]:
+        conteo: dict[UUID, int] = {}
+        for i in self.interactions:
+            if (
+                i.kind == "impresion"
+                and i.position is not None
+                and i.position <= max_position
+                and i.created_at >= since
+            ):
+                conteo[i.tender_id] = conteo.get(i.tender_id, 0) + 1
+        return conteo
+
+    async def count_interactions_by_tender(self, since: datetime) -> dict[UUID, int]:
+        conteo: dict[UUID, int] = {}
+        for i in self.interactions:
+            if i.kind != "impresion" and i.created_at >= since:
+                conteo[i.tender_id] = conteo.get(i.tender_id, 0) + 1
+        return conteo
+
+    async def tenders_with_manual_upload(self, since: datetime) -> set[UUID]:
+        return {tender_id for tender_id, at in self.manual_uploads if at >= since}
+
+    async def open_tenders_closing_after(
+        self, tender_ids: Collection[UUID], min_closing_at: datetime
+    ) -> dict[UUID, datetime]:
+        return {
+            tender_id: closing
+            for tender_id, closing in self.open_tenders.items()
+            if tender_id in tender_ids and closing > min_closing_at
+        }
+
+    async def save_priority_snapshots(
+        self, snapshots: list[AttachmentPriorityShadow]
+    ) -> None:
+        self.snapshots.extend(snapshots)
+
+    async def purge_before(self, cutoff: datetime) -> PurgeCounts:
+        impresiones = [i for i in self.impressions if i.created_at >= cutoff]
+        interacciones = [i for i in self.interactions if i.created_at >= cutoff]
+        snapshots = [s for s in self.snapshots if s.computed_at >= cutoff]
+        conteo = PurgeCounts(
+            impressions=len(self.impressions) - len(impresiones),
+            interactions=len(self.interactions) - len(interacciones),
+            priority_snapshots=len(self.snapshots) - len(snapshots),
+        )
+        self.impressions = impresiones
+        self.interactions = interacciones
+        self.snapshots = snapshots
+        return conteo
+
+
+class FakeRankingImpressionLogger:
+    """Registrador de impresiones que solo anota las llamadas (para los e2e)."""
+
+    def __init__(self) -> None:
+        self.llamadas: list[tuple[UUID, UUID, list[MatchingResult], datetime]] = []
+
+    async def __call__(
+        self,
+        ranking_id: UUID,
+        user_id: UUID,
+        results: list[MatchingResult],
+        served_at: datetime,
+    ) -> None:
+        self.llamadas.append((ranking_id, user_id, results, served_at))
 
 
 class InMemoryCapabilityQuestionRepository(ICapabilityQuestionRepository):

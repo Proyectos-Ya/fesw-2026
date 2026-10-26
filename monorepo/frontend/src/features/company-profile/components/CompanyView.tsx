@@ -18,6 +18,7 @@ import { TagInput } from "@/features/shared/components/TagInput";
 import { Button } from "@/features/shared/components/Button";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { CompanyTeamSection } from "./CompanyTeamSection";
+import { ExtensionPairingSection } from "./ExtensionPairingSection";
 
 // El RUT no es editable (identidad tributaria de la empresa)
 const companyEditSchema = profileSchema.omit({ rut: true });
@@ -364,6 +365,7 @@ export function CompanyView() {
               company.supplier.trade_name || company.supplier.legal_name
             }
           />
+          <ExtensionPairingSection supplierId={company.supplier.id} />
         </>
       )}
     </div>

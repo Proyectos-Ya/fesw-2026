@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/features/shared/api/client";
+import { reportTenderInteraction } from "@/features/ranking-telemetry/services/rankingTelemetryService";
 import * as service from "../../services/proposalService";
 import { ProposalView } from "../ProposalView";
 import { requisito, vista } from "../../testing/fixtures";
@@ -28,24 +29,55 @@ vi.mock("@/features/matches/services/tenderService", () => ({
   }),
 }));
 
-vi.mock("../ProposalAttachments", () => ({ ProposalAttachments: () => null }));
-
-/** Adjuntos subidos ahora a la licitación (los del asistente). */
-const adjuntos = { lista: [] as { id: string; file_name: string }[] };
-vi.mock("@/features/tender-assistant/hooks/useTenderDocuments", () => ({
-  useTenderDocuments: () => ({
-    documents: adjuntos.lista,
-    isLoading: false,
-    isUploading: false,
-    error: null,
-    uploadDocument: vi.fn(),
-    removeDocument: vi.fn(),
+/** Anexos con archivo de la licitación (plan 233): los mismos que la ficha. */
+// `nombres`: anexos oficiales ya subidos. `pendientes`: oficiales que nadie subió.
+const anexos = { nombres: [] as string[], pendientes: [] as string[] };
+const recargarAnexos = vi.fn();
+vi.mock("@/features/tender-attachments/hooks/useTenderAttachments", () => ({
+  useTenderAttachments: () => ({
+    state: {
+      status: "ready",
+      data: {
+        official: [
+          ...anexos.nombres.map((name, i) => ({ id: `a-${i}`, name, file: { id: `f-${i}` } })),
+          ...anexos.pendientes.map((name, i) => ({ id: `p-${i}`, name, file: null })),
+        ],
+      },
+    },
+    reload: vi.fn(),
+    refresh: recargarAnexos,
   }),
 }));
-vi.mock("@/features/quotations/QuotationEditor", () => ({
-  QuotationEditor: ({ tenderCode }: { tenderCode: string }) => (
-    <div data-testid="cotizador">{tenderCode}</div>
+vi.mock("@/features/tender-attachments/components/TenderAttachmentsPanel", () => ({
+  TenderAttachmentsPanel: ({
+    tenderCode,
+    onUploadSuccess,
+  }: {
+    tenderCode: string;
+    onUploadSuccess?: () => void;
+  }) => (
+    <div data-testid="panel-anexos">
+      {tenderCode}
+      <button type="button" onClick={() => onUploadSuccess?.()}>
+        Simular anexo subido
+      </button>
+    </div>
   ),
+}));
+
+vi.mock("@/features/quotations/QuotationEditor", () => ({
+  QuotationEditor: ({ tenderCode, onSaved }: { tenderCode: string; onSaved?: () => void }) => (
+    <div data-testid="cotizador">
+      {tenderCode}
+      <button type="button" onClick={() => onSaved?.()}>
+        Simular cotización guardada
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("@/features/ranking-telemetry/services/rankingTelemetryService", () => ({
+  reportTenderInteraction: vi.fn(),
 }));
 
 const permiso = { activo: { id: "w" } as object | null, puede: true };
@@ -64,7 +96,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   permiso.activo = { id: "w" };
   permiso.puede = true;
-  adjuntos.lista = [];
+  anexos.nombres = [];
+  anexos.pendientes = [];
 });
 
 const CONTENIDO: DraftContent = {
@@ -100,6 +133,29 @@ describe("ProposalView", () => {
     );
     expect(await screen.findByTestId("cotizador")).toHaveTextContent("657-70-COT26");
     expect(screen.queryByRole("list", { name: /Etapas/ })).not.toBeInTheDocument();
+  });
+
+  it("muestra el panel de anexos de la ficha y al subir recarga la lista (plan 233)", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(await screen.findByTestId("panel-anexos")).toHaveTextContent("657-70-COT26");
+    await userEvent.click(screen.getByRole("button", { name: "Simular anexo subido" }));
+
+    expect(recargarAnexos).toHaveBeenCalled();
+  });
+
+  it("guardar la cotización informa 'cotizacion' a la telemetría del ranking", async () => {
+    // El cotizador se movió de la ficha a la postulación. Aquí no hay ranking del
+    // que venga la licitación, así que la interacción va sin atribuir.
+    svc.getProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Simular cotización guardada" }),
+    );
+
+    expect(reportTenderInteraction).toHaveBeenCalledWith("t-1", "cotizacion", "detalle", null);
   });
 
   it("volver a analizar con borrador redactado pide confirmación", async () => {
@@ -246,21 +302,51 @@ describe("ProposalView", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("Recomendamos no postular");
   });
 
-  it("sin bases al iniciar lo recomienda sin bloquear", async () => {
+  it("sin anexos al iniciar lo recomienda sin bloquear", async () => {
     svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
     render(<ProposalView tenderId="t-1" />);
 
-    expect(await screen.findByText(/No has subido bases/)).toBeInTheDocument();
+    expect(await screen.findByText(/No has subido anexos/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Iniciar análisis/ })).toBeEnabled();
   });
 
-  it("con bases subidas no recomienda subirlas al iniciar", async () => {
-    adjuntos.lista = [{ id: "d-1", file_name: "bases.pdf" }];
+  it("sin anexos subidos y con documentos oficiales, los nombra al iniciar", async () => {
+    anexos.pendientes = ["Bases.pdf", "Anexo 1.docx"];
+    svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(
+      await screen.findByText(/La Compra Ágil publica Bases\.pdf y Anexo 1\.docx/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar análisis/ })).toBeEnabled();
+  });
+
+  it("un borrador hecho solo con la ficha nombra los documentos oficiales", async () => {
+    anexos.pendientes = ["Bases.pdf"];
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "READY",
+        content: CONTENIDO,
+        requirements: [requisito({ status: "cumple" })],
+        analysis_documents: [],
+        mentions_attachments: true,
+      }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+
+    const borrador = await screen.findByRole("region", { name: "Borrador de la oferta" });
+    expect(borrador).toHaveTextContent(
+      "La Compra Ágil publica Bases.pdf: súbelos y vuelve a analizar.",
+    );
+  });
+
+  it("con anexos subidos no recomienda subirlos al iniciar", async () => {
+    anexos.nombres = ["bases.pdf"];
     svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
     render(<ProposalView tenderId="t-1" />);
 
     await screen.findByRole("button", { name: /Iniciar análisis/ });
-    expect(screen.queryByText(/No has subido bases/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No has subido anexos/)).not.toBeInTheDocument();
   });
 
   it("un borrador hecho solo con la ficha recomienda subir las bases", async () => {
@@ -280,11 +366,8 @@ describe("ProposalView", () => {
     expect(borrador).toHaveTextContent("la ficha menciona bases o anexos que no se subieron");
   });
 
-  it("avisa los archivos subidos después del análisis", async () => {
-    adjuntos.lista = [
-      { id: "d-1", file_name: "bases.pdf" },
-      { id: "d-2", file_name: "anexo.pdf" },
-    ];
+  it("avisa los anexos subidos después del análisis", async () => {
+    anexos.nombres = ["bases.pdf", "anexo.pdf"];
     svc.getProposal.mockResolvedValue(
       vista({
         status: "READY",

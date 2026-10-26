@@ -9,6 +9,7 @@ from app.application.repositories.supplier_member_repository import (
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.supplier_member import (
+    ALL_PERMISSIONS,
     MemberRole,
     MemberStatus,
     SupplierMember,
@@ -153,3 +154,69 @@ async def test_workspace_context_fallback_default_workspace(
     assert context.is_admin is False
     assert "view_matches" in context.permissions
     assert "invite_members" not in context.permissions
+
+
+@pytest.mark.asyncio
+async def test_workspace_context_del_dueno_legacy_puede_subir_anexos(
+    mock_user: User, mock_supplier: Supplier
+):
+    # Sin fila de membresía pero dueño de la empresa: recibe todos los permisos,
+    # incluido el de subir anexos (la lista vive en una sola parte).
+    member_repo = MagicMock(spec=ISupplierMemberRepository)
+    supplier_repo = MagicMock(spec=ISupplierRepository)
+    mock_supplier.user_id = mock_user.id
+    member_repo.get_by_user_and_supplier = AsyncMock(return_value=None)
+    supplier_repo.get_by_id = AsyncMock(return_value=mock_supplier)
+
+    get_context = build_get_current_workspace_context(
+        get_current_user=lambda: mock_user,
+        get_member_repo=lambda: member_repo,
+        get_supplier_repo=lambda: supplier_repo,
+    )
+    request = MagicMock()
+    request.headers = {"X-Workspace-Id": str(mock_supplier.id)}
+    request.cookies = {}
+
+    context = await get_context(
+        request=request,
+        current_user=mock_user,
+        member_repo=member_repo,
+        supplier_repo=supplier_repo,
+    )
+
+    assert "upload_attachments" in context.permissions
+    assert context.permissions == list(ALL_PERMISSIONS)
+
+
+@pytest.mark.asyncio
+async def test_workspace_context_del_viewer_no_puede_subir_anexos(
+    mock_user: User, mock_supplier: Supplier
+):
+    member_repo = MagicMock(spec=ISupplierMemberRepository)
+    supplier_repo = MagicMock(spec=ISupplierRepository)
+    member = SupplierMember(
+        user_id=mock_user.id,
+        supplier_id=mock_supplier.id,
+        role=MemberRole.VIEWER,
+        status=MemberStatus.ACTIVE,
+    )
+    member_repo.get_by_user_and_supplier = AsyncMock(return_value=member)
+    supplier_repo.get_by_id = AsyncMock(return_value=mock_supplier)
+
+    get_context = build_get_current_workspace_context(
+        get_current_user=lambda: mock_user,
+        get_member_repo=lambda: member_repo,
+        get_supplier_repo=lambda: supplier_repo,
+    )
+    request = MagicMock()
+    request.headers = {"X-Workspace-Id": str(mock_supplier.id)}
+    request.cookies = {}
+
+    context = await get_context(
+        request=request,
+        current_user=mock_user,
+        member_repo=member_repo,
+        supplier_repo=supplier_repo,
+    )
+
+    assert "upload_attachments" not in context.permissions

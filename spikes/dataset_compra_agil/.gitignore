@@ -1,0 +1,13 @@
+# Datos descargados de Mercado Público, cachés de embeddings, juicios y logs:
+# ~178 MB regenerables con los scripts (ver spikes/spike-2/README.md, "Reproducir").
+# Solo se versionan los resultados que cita el informe.
+data/*
+!data/temporal/
+data/temporal/*
+!data/temporal/metricas_benchmark_temporal.json
+!data/temporal/metricas_con_juez_temporal.json
+!data/temporal/validacion_juez_temporal.json
+!data/temporal/calibracion_resultados.json
+!data/temporal/calibracion_multivector_resultados.json
+
+__pycache__/

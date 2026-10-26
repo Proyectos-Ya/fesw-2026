@@ -5,15 +5,29 @@ from typing import Annotated
 from fastapi import Depends, Request
 from starlette.datastructures import State
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
+)
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
 )
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.services.attachment_processing_notifier import (
+    IAttachmentProcessingNotifier,
+)
+from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.calendar_provider_client import CalendarProviders
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.compatibility_formula import CompatibilityFormula
 from app.application.services.deep_analysis_service import IDeepAnalysisService
+from app.application.services.document_analysis_quotation_service import (
+    IDocumentAnalysisAndQuotationService,
+)
 from app.application.services.document_validator_service import (
     IDocumentValidatorService,
 )
@@ -28,17 +42,26 @@ from app.application.services.milestone_extraction_background import (
     IMilestoneExtractionBackground,
 )
 from app.application.services.proposal_ai_service import IProposalAIService
+from app.application.services.recent_ranking_registry import RecentRankingRegistry
 from app.application.services.reranker_service import IRerankerService
+from app.application.services.tender_analysis_background import (
+    ITenderAnalysisBackground,
+)
 from app.application.services.tender_assistant_ai_service import (
     ITenderAssistantAIService,
 )
 from app.application.services.token_cipher import ITokenCipher
 from app.application.services.token_verifier import IAuthTokenVerifier
-from app.application.services.weighting_service import IWeightingService
 from app.bootstrap.repositories import SessionDep
 from app.config import settings
+from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+    QdrantLexicalTenderRepository,
+)
 from app.infrastructure.repositories.qdrant_supplier_repository import (
     QdrantSupplierRepository,
+)
+from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+    QdrantTenderItemVectorRepository,
 )
 from app.infrastructure.repositories.qdrant_tender_repository import (
     QdrantTenderRepository,
@@ -63,12 +86,33 @@ def build_tender_vector_repo(state: State) -> ITenderVectorRepository:
     )
 
 
+def build_tender_item_vector_repo(state: State) -> ITenderItemVectorRepository:
+    # Como el de licitaciones: el cliente Qdrant nace en el lifespan, que corre
+    # después de `bootstrap(app)`, así que el repositorio se arma en cada uso.
+    return QdrantTenderItemVectorRepository(
+        client=state.qdrant_async_client,
+        vector_size=settings.embedding_vector_size,
+    )
+
+
+def build_lexical_tender_repo(state: State) -> ILexicalTenderRepository:
+    return QdrantLexicalTenderRepository(client=state.qdrant_async_client)
+
+
 def get_supplier_vector_repo(request: Request) -> ISupplierVectorRepository:
     return build_supplier_vector_repo(request.app.state)
 
 
 def get_tender_vector_repo(request: Request) -> ITenderVectorRepository:
     return build_tender_vector_repo(request.app.state)
+
+
+def get_tender_item_vector_repo(request: Request) -> ITenderItemVectorRepository:
+    return build_tender_item_vector_repo(request.app.state)
+
+
+def get_lexical_tender_repo(request: Request) -> ILexicalTenderRepository:
+    return build_lexical_tender_repo(request.app.state)
 
 
 def get_embedding_service(request: Request) -> IEmbeddingService:
@@ -84,8 +128,8 @@ def get_reranker_service(request: Request) -> IRerankerService:
     return request.app.state.reranker_service
 
 
-def get_weighting_service(request: Request) -> IWeightingService:
-    return request.app.state.weighting_service
+def get_compatibility_formula(request: Request) -> CompatibilityFormula:
+    return request.app.state.compatibility_formula
 
 
 def get_email_service(request: Request) -> IEmailService:
@@ -122,6 +166,10 @@ def get_milestone_extraction_background(request: Request) -> IMilestoneExtractio
     return request.app.state.milestone_extraction_background
 
 
+def get_tender_analysis_background(request: Request) -> ITenderAnalysisBackground:
+    return request.app.state.tender_analysis_background
+
+
 def get_calendar_providers(request: Request) -> CalendarProviders:
     return request.app.state.calendar_providers
 
@@ -140,6 +188,25 @@ def get_proposal_ai_service(request: Request) -> IProposalAIService:
 
 def get_document_validator_service() -> IDocumentValidatorService:
     return DocumentValidatorService()
+
+
+def get_document_analysis_quotation_service(
+    request: Request,
+) -> IDocumentAnalysisAndQuotationService:
+    return request.app.state.document_analysis_quotation_service
+
+
+def get_attachment_storage(request: Request) -> IAttachmentStorage | None:
+    # `None` sin R2 fuera de desarrollo: las rutas de escritura responden 503.
+    return getattr(request.app.state, "attachment_storage", None)
+
+
+def get_attachment_processing_notifier(request: Request) -> IAttachmentProcessingNotifier:
+    return request.app.state.attachment_processing_signal
+
+
+def get_ranking_registry(request: Request) -> RecentRankingRegistry:
+    return request.app.state.ranking_registry
 
 
 SupplierVectorRepoDep = Annotated[
@@ -166,4 +233,28 @@ ProposalAIServiceDep = Annotated[IProposalAIService, Depends(get_proposal_ai_ser
 
 MilestoneExtractionBackgroundDep = Annotated[
     IMilestoneExtractionBackground, Depends(get_milestone_extraction_background)
+]
+
+
+TenderItemVectorRepoDep = Annotated[
+    ITenderItemVectorRepository, Depends(get_tender_item_vector_repo)
+]
+
+
+LexicalTenderRepoDep = Annotated[ILexicalTenderRepository, Depends(get_lexical_tender_repo)]
+
+
+CompatibilityFormulaDep = Annotated[CompatibilityFormula, Depends(get_compatibility_formula)]
+
+
+AttachmentStorageDep = Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)]
+
+
+AttachmentProcessingNotifierDep = Annotated[
+    IAttachmentProcessingNotifier, Depends(get_attachment_processing_notifier)
+]
+
+
+DocumentAnalysisQuotationServiceDep = Annotated[
+    IDocumentAnalysisAndQuotationService, Depends(get_document_analysis_quotation_service)
 ]
