@@ -725,6 +725,38 @@ async def test_la_ficha_devuelve_las_cotizaciones_tambien_en_null(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("con_datos", [True, False], ids=["con datos", "sin datos"])
+async def test_la_ficha_devuelve_la_entrega_tambien_en_null(
+    api: AsyncClient, con_datos: bool
+) -> None:
+    """Las claves viajan siempre: el frontend muestra "no disponible" con el null."""
+    tender_id = uuid4()
+    direccion = "SERVIU REGION DE AYSEN RAMON FREIRE 5"
+    entrega = {
+        "delivery_address": direccion if con_datos else None,
+        "delivery_term_days": 0 if con_datos else None,
+        "requires_environmental_criteria": False if con_datos else None,
+        "requires_social_impact_criteria": True if con_datos else None,
+    }
+    tender = _build_tender(tender_id).model_copy(update=entrega)
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = SimpleNamespace(
+        tender=tender, final_score=None, is_closed=False, is_recommended=False
+    )
+    app.dependency_overrides[get_tender_detail_use_case] = lambda: mock_uc
+
+    await _login(api, f"entrega_{con_datos}@example.com", "Sofía Rojas")
+
+    response = await api.get(f"/tenders/{tender_id}")
+
+    assert response.status_code == 200
+    ficha = response.json()["tender"]
+    for clave, valor in entrega.items():
+        assert clave in ficha
+        assert ficha[clave] == valor
+
+
+@pytest.mark.asyncio
 async def test_get_saved_tenders_empty(api: AsyncClient) -> None:
     """Valida que un usuario sin licitaciones guardadas reciba una lista vacía."""
     mock_uc = AsyncMock()

@@ -69,7 +69,7 @@
   - Red: `tests/integration/test_tender_repository.py`, con datos y con `NULL`.
   - Green: `Tender` y las dos conversiones de `TenderRepository`.
   - Commit: `feat(dominio): exponer entrega y requisitos en tender`
-- [ ] **4.2 (invariante) La ficha devuelve los campos.**
+- [x] **4.2 (invariante) La ficha devuelve los campos.**
   - Prueba: `tests/e2e/api/test_tender_router.py`, la clave viaja también en
     `null`.
   - Commit: `test(api): ficha devuelve la entrega, también en null`
