@@ -61,6 +61,16 @@ class TenderIngestaDTO(BaseModel):
     # `resumen.total_ofertas_recibidas`. Un None es "no vino", no 0: la guía de la
     # API lo documenta en el detalle, pero no se confirmó con una petición real.
     received_offers_count: int | None = Field(None, alias="TotalOfertasRecibidas")
+    # Entrega y requisitos (#294). Solo los trae el detalle. Un None es "no
+    # vino"; en los flags, `False` es un dato.
+    delivery_address: str | None = Field(None, alias="DireccionEntrega")
+    delivery_term_days: int | None = Field(None, alias="PlazoEntregaDias")
+    requires_environmental_criteria: bool | None = Field(
+        None, alias="RequisitosMedioambientales"
+    )
+    requires_social_impact_criteria: bool | None = Field(
+        None, alias="RequisitosImpactoSocial"
+    )
     buyer_rut: str = Field(..., alias="RutComprador")
     buyer_name: str = Field(..., alias="NombreOrganismo")
     buyer_unit: str = Field(..., alias="UnidadCompra")

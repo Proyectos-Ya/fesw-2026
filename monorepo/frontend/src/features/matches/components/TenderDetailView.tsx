@@ -30,6 +30,7 @@ import { compraAgilFichaUrl } from "../utils/links";
 import { offersSummary } from "../utils/offers";
 import { callBadge } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
+import { DeliveryInfo } from "./DeliveryInfo";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
 import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
@@ -601,9 +602,9 @@ export function TenderDetailView({
         />
       </div>
 
-      {/* Aquí #294 agrega la dirección y el plazo de entrega. */}
       <Section title="Entrega y requisitos" icon="package">
-        <CallClosingDates tender={tender} />
+        <DeliveryInfo tender={tender} />
+        <CallClosingDates tender={tender} className="mt-5" />
 
         {tender.items.length > 0 && (
           <div className="mt-5">

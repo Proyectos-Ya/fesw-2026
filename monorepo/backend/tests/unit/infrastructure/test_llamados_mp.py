@@ -60,3 +60,40 @@ class TestAnteLaDudaNone:
 
     def test_fechas_que_no_son_objeto(self):
         assert leer_llamado({"fechas": None}).cierre_primer_llamado is None
+
+
+class TestCierresDelDetalle:
+    """El detalle trae los cierres en `convocatoria`; el listado, en `fechas`."""
+
+    def test_en_el_detalle_vienen_en_convocatoria(self):
+        detalle = {
+            "convocatoria": {
+                "estado_convocatoria": 1,
+                "fecha_cierre_primer_llamado": "2026-10-27 11:00",
+                "fecha_cierre_segundo_llamado": "2026-10-28 11:05",
+            },
+            "fechas": {"fecha_cierre": "2026-10-27 11:00"},
+        }
+
+        llamado = leer_llamado(detalle)
+
+        assert llamado.cierre_primer_llamado == datetime(2026, 10, 27, 11, 0)
+        assert llamado.cierre_segundo_llamado == datetime(2026, 10, 28, 11, 5)
+
+    def test_si_vienen_en_los_dos_lados_manda_fechas(self):
+        item = {
+            "convocatoria": {"fecha_cierre_primer_llamado": "2026-10-27 11:00"},
+            "fechas": {"fecha_cierre_primer_llamado": "2026-10-27 12:00"},
+        }
+
+        assert leer_llamado(item).cierre_primer_llamado == datetime(2026, 10, 27, 12, 0)
+
+    def test_un_cierre_ilegible_en_fechas_cae_al_de_convocatoria(self):
+        item = {
+            "convocatoria": {"fecha_cierre_segundo_llamado": "2026-10-28 11:05"},
+            "fechas": {"fecha_cierre_segundo_llamado": "no es fecha"},
+        }
+
+        cierre = leer_llamado(item).cierre_segundo_llamado
+
+        assert cierre == datetime(2026, 10, 28, 11, 5)

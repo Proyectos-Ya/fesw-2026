@@ -25,6 +25,13 @@ export interface Tender {
   offers_checked_at?: string | null;
   /** Última cifra del primer llamado. La API cuenta solo el llamado actual; nulo si no se vio. */
   first_call_offers_count?: number | null;
+  /** Dirección de entrega del detalle (#294). Nula o ausente si no se informó. */
+  delivery_address?: string | null;
+  /** Plazo de entrega en días. Nulo o ausente si no se informó; 0 es un dato. */
+  delivery_term_days?: number | null;
+  /** Requisitos del comprador. Nulo o ausente si no se informó; `false` es un dato. */
+  requires_environmental_criteria?: boolean | null;
+  requires_social_impact_criteria?: boolean | null;
   /** Cierre del primer llamado (ISO UTC con `Z`). */
   first_call_closing_at?: string | null;
   /** Cierre del segundo llamado. En el primero es solo una fecha posible: MP la publica aunque no se use. */

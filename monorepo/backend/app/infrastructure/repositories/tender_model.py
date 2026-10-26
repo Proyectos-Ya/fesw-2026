@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, Index, text
+from sqlalchemy import JSON, Column, Index, Text, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.shared.datetime_utils import utc_now_naive
@@ -96,6 +96,13 @@ class TenderModel(SQLModel, table=True):
     # Última cifra vista del primer llamado. La API cuenta solo el llamado
     # actual, así que al abrirse el segundo esta queda congelada para sumarla.
     first_call_offers_count: int | None = Field(default=None)
+    # Entrega y requisitos del detalle de Compra Ágil (#294). Nulo = el detalle
+    # no lo informó; en los flags, `False` es un dato. Nullable y sin default,
+    # como las columnas de arriba.
+    delivery_address: str | None = Field(default=None, sa_type=Text)
+    delivery_term_days: int | None = Field(default=None)
+    requires_environmental_criteria: bool | None = Field(default=None)
+    requires_social_impact_criteria: bool | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,

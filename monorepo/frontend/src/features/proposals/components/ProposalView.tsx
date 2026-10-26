@@ -14,7 +14,7 @@ import { TenderAttachmentsPanel } from "@/features/tender-attachments/components
 import { useTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
 import { useProposal } from "../hooks/useProposal";
-import { basesNotice, proposalStatus } from "../utils/proposal";
+import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
 import { FeasibilityStep } from "./FeasibilityStep";
@@ -86,7 +86,12 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
     anexos.state.status === "ready"
       ? anexos.state.data.official.filter((a) => a.file !== null).map((a) => a.name)
       : [];
-  const avisoBases = view ? basesNotice(view, anexosSubidos) : null;
+  // Documentos oficiales que nadie subió: el aviso los nombra (#294).
+  const anexosPendientes =
+    anexos.state.status === "ready"
+      ? anexos.state.data.official.filter((a) => a.file === null).map((a) => a.name)
+      : [];
+  const avisoBases = view ? basesNotice(view, anexosSubidos, anexosPendientes) : null;
   const sinBases = anexos.state.status === "ready" && anexosSubidos.length === 0;
   // Proyectos de experiencia: se ofrecen en el análisis, plegado o no.
   const evidencia = {
@@ -236,8 +241,9 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                   // Informativo y sin diálogo: iniciar sin bases es válido.
                   <p className="flex basis-full items-start gap-2 text-xs text-teal-700">
                     <Icon name="info" size={14} className="mt-px shrink-0" />
-                    No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene
-                    bases, súbelas antes en los anexos: el análisis sale más preciso.
+                    {anexosPendientes.length > 0
+                      ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
+                      : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
                   </p>
                 )}
                 {!canWrite && !view && (
