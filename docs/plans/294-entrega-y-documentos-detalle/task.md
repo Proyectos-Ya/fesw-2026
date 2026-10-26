@@ -38,7 +38,7 @@
     sobre valores normales y raros.
   - Green: `app/infrastructure/services/tenders/entrega.py`.
   - Commit: `feat(ingesta): leer entrega y requisitos del detalle`
-- [ ] **2.2 El DTO trae los cuatro campos.**
+- [x] **2.2 El DTO trae los cuatro campos.**
   - Red: `tests/unit/infrastructure/test_detalle_entrega.py`, siguiendo a
     `test_detalle_ofertas.py`.
   - Green: los campos en `TenderIngestaDTO` y en `_parse_to_dto`.
