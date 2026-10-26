@@ -68,14 +68,17 @@ que no cargue skills debe leer ese archivo antes de documentar.
 
 | Situación | Documento | Dónde |
 |---|---|---|
-| Empezar una HdU o un cambio no trivial | Plan técnico, revisado por un humano **antes** de codificar | `docs/plans/<issue>-<slug>.md` |
+| Empezar una HdU o un cambio no trivial (un solo archivo) | Plan técnico, revisado por un humano **antes** de codificar | `docs/plans/<issue>-<slug>.md` |
+| Empezar una HdU con varios documentos (ej. plan y desglose de tareas) | Carpeta de la HdU con `plan.md`, `task.md`, etc. | `docs/plans/<issue>-<slug>/` (ej. `docs/plans/312-hu-30/`) |
 | Tomar o cambiar una decisión de arquitectura | ADR | `docs/decisions/NNNN-<slug>.md` |
 | Crear o modificar una ruta de la API | `summary`, `response_model` y `tags` en la ruta (Swagger en `/docs`) | el router |
 | Cerrar un sprint | Changelog con sección para usuarios y sección técnica | `docs/changelogs/sprint-N.md` |
 | Cambiar reglas para agentes | Editar este archivo; no duplicar en `CLAUDE.md` ni `GEMINI.md` | `AGENTS.md` |
 
 Las issues no se copian en `docs/`: un plan enlaza su issue con `Refs #NNN` y no repite
-los criterios de aceptación.
+los criterios de aceptación. Si la HdU solo requiere el plan técnico, basta un archivo
+`docs/plans/<issue>-<slug>.md`; si incluye desglose de tareas (`task.md`) u otros
+artefactos asociados, se agrupan en su propia carpeta `docs/plans/<issue>-<slug>/`.
 
 ### Git y commits
 

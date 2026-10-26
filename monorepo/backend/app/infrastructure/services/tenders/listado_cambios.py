@@ -11,6 +11,10 @@ Forma verificada contra la API real el 2026-09-28
              "fecha_cierre_segundo_llamado": "2026-09-30T13:40:00.107Z", ...}
 
     documentos: [{"id": 1931002, "nombre": "Anexo 3 ....xlsx"}, ...]
+    resumen: {"total_ofertas_recibidas": 17}
+
+`resumen` es la cifra de cotizaciones recibidas (ver `ofertas.py`). Si falta, el
+cambio sigue siendo válido y la cifra queda en `None`.
 
 `documentos` es la lista oficial de anexos y puede ser `[]` (sin anexos). Si no
 viene o no se puede leer entera, queda en `None` y no invalida el cambio de
@@ -29,6 +33,7 @@ from typing import Any
 from app.domain.models.cambio_estado import CambioDeEstado
 from app.infrastructure.services.tenders.documentos_mp import documentos_desde_payload
 from app.infrastructure.services.tenders.llamados import leer_llamado
+from app.infrastructure.services.tenders.ofertas import leer_total_ofertas
 from app.shared.datetime_utils import fecha_mp_a_utc, to_utc_naive
 
 
@@ -62,4 +67,5 @@ def cambio_desde_item(item: dict[str, Any]) -> CambioDeEstado | None:
         call_number=llamado.numero,
         first_call_closing_at=to_utc_naive(llamado.cierre_primer_llamado),
         second_call_closing_at=to_utc_naive(llamado.cierre_segundo_llamado),
+        received_offers_count=leer_total_ofertas(item),
     )

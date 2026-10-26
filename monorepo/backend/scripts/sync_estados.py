@@ -315,6 +315,7 @@ async def sincronizar_estados(
     print(
         f"{resultado.conocidas} conocidas: {resultado.actualizadas} actualizadas, "
         f"{resultado.llamados_actualizados} con llamado actualizado, "
+        f"{resultado.ofertas_revisadas} con cotizaciones revisadas, "
         f"{resultado.sacadas_del_indice} sacadas del índice, "
         f"{resultado.reabiertas} reabiertas, {resultado.reencoladas} reencoladas. "
         f"En la cola: {resultado.nuevas} nuevas, {resultado.descartadas} "

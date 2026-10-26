@@ -19,6 +19,12 @@ export interface Tender {
   closing_at: string;
   /** Llamado vigente: 1 = primer llamado, 2 = segundo. Nulo o ausente en licitaciones antiguas. */
   call_number?: number | null;
+  /** Cotizaciones recibidas. Nulo o ausente es que la fuente no lo informó, no 0. */
+  received_offers_count?: number | null;
+  /** Cuándo se revisó la cifra de cotizaciones (ISO UTC). Nulo o ausente si no se informó. */
+  offers_checked_at?: string | null;
+  /** Última cifra del primer llamado. La API cuenta solo el llamado actual; nulo si no se vio. */
+  first_call_offers_count?: number | null;
   /** Cierre del primer llamado (ISO UTC con `Z`). */
   first_call_closing_at?: string | null;
   /** Cierre del segundo llamado. En el primero es solo una fecha posible: MP la publica aunque no se use. */

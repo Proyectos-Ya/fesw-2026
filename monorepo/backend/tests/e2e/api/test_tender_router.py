@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -12,6 +13,7 @@ from app.bootstrap.matching import (
     get_list_saved_tenders_use_case,
     get_rank_tenders_use_case,
     get_save_tender_use_case,
+    get_tender_detail_use_case,
     get_unsave_tender_use_case,
 )
 from app.domain.entities.deep_analysis import DeepAnalysis
@@ -681,6 +683,45 @@ async def test_get_saved_tenders_sin_llamado_devuelve_null(api: AsyncClient) -> 
     assert tender["call_number"] is None
     assert tender["first_call_closing_at"] is None
     assert tender["second_call_closing_at"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cifra", [4, 0, None])
+async def test_la_ficha_devuelve_las_cotizaciones_tambien_en_null(
+    api: AsyncClient, cifra: int | None
+) -> None:
+    """La clave viaja siempre: el frontend distingue 0 de "sin dato" por su valor."""
+    tender_id = uuid4()
+    tender = _build_tender(tender_id).model_copy(
+        update={
+            "received_offers_count": cifra,
+            "first_call_offers_count": cifra,
+            "offers_checked_at": (
+                datetime(2026, 10, 25, 14, 5) if cifra is not None else None
+            ),
+        }
+    )
+    mock_uc = AsyncMock()
+    mock_uc.execute.return_value = SimpleNamespace(
+        tender=tender, final_score=None, is_closed=False, is_recommended=False
+    )
+    app.dependency_overrides[get_tender_detail_use_case] = lambda: mock_uc
+
+    await _login(api, f"ficha_{cifra}@example.com", "Sofía Rojas")
+
+    response = await api.get(f"/tenders/{tender_id}")
+
+    assert response.status_code == 200
+    ficha = response.json()["tender"]
+    assert "received_offers_count" in ficha
+    assert ficha["received_offers_count"] == cifra
+    assert "first_call_offers_count" in ficha
+    assert ficha["first_call_offers_count"] == cifra
+    assert "offers_checked_at" in ficha
+    if cifra is None:
+        assert ficha["offers_checked_at"] is None
+    else:
+        assert ficha["offers_checked_at"] == "2026-10-25T14:05:00Z"
 
 
 @pytest.mark.asyncio

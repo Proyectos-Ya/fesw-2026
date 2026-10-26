@@ -58,6 +58,9 @@ class TenderIngestaDTO(BaseModel):
     call_number: int | None = Field(None, alias="NumeroLlamado")
     first_call_closing_at: datetime | None = Field(None, alias="FechaCierrePrimerLlamado")
     second_call_closing_at: datetime | None = Field(None, alias="FechaCierreSegundoLlamado")
+    # `resumen.total_ofertas_recibidas`. Un None es "no vino", no 0: la guía de la
+    # API lo documenta en el detalle, pero no se confirmó con una petición real.
+    received_offers_count: int | None = Field(None, alias="TotalOfertasRecibidas")
     buyer_rut: str = Field(..., alias="RutComprador")
     buyer_name: str = Field(..., alias="NombreOrganismo")
     buyer_unit: str = Field(..., alias="UnidadCompra")

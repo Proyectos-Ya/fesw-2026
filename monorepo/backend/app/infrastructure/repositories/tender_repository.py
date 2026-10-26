@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     Integer,
     String,
+    case,
     cast,
     column,
     delete,
@@ -78,6 +79,9 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             call_number=model.call_number,
             first_call_closing_at=model.first_call_closing_at,
             second_call_closing_at=model.second_call_closing_at,
+            received_offers_count=model.received_offers_count,
+            offers_checked_at=model.offers_checked_at,
+            first_call_offers_count=model.first_call_offers_count,
             last_change_at=model.last_change_at,
             buyer_rut=model.buyer_rut,
             buyer_name=model.buyer.name if model.buyer else None,
@@ -121,6 +125,9 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             call_number=entity.call_number,
             first_call_closing_at=entity.first_call_closing_at,
             second_call_closing_at=entity.second_call_closing_at,
+            received_offers_count=entity.received_offers_count,
+            offers_checked_at=entity.offers_checked_at,
+            first_call_offers_count=entity.first_call_offers_count,
             last_change_at=entity.last_change_at,
             buyer_rut=entity.buyer_rut,
             buyer_unit=entity.buyer_unit,
@@ -533,6 +540,57 @@ class TenderRepository(ITenderRepository, ITenderStatusSyncRepository):
             cambiadas += len(result.all())
         await self.session.commit()
         return cambiadas
+
+    async def overwrite_received_offers_count(
+        self, cambios: list[CambioDeEstado]
+    ) -> int:
+        """Cifra de cotizaciones y hora de la revisión, en lote, sin mover `updated_at`.
+
+        Escribe en todas las filas del lote, aunque la cifra no cambie: lo que
+        registra `offers_checked_at` es la revisión, no el cambio. El caso de uso
+        solo pasa cambios con cifra, así que la cifra no necesita `COALESCE`.
+        `updated_at` dispara la regeneración del análisis de Gemini y una
+        cotización más no cambia lo que se le pide.
+
+        La API cuenta solo el llamado actual. Mientras el cambio dice primer
+        llamado, la cifra se copia también en `first_call_offers_count`; con otro
+        llamado, o sin llamado, esa columna conserva lo que tenía. Se mira el
+        `call_number` del cambio y no el guardado, porque `overwrite_call_info`
+        corre antes y ya lo cambió.
+        """
+        revisadas = 0
+        ahora = utc_now_naive()
+        for inicio in range(0, len(cambios), _LOTE_ESTADOS):
+            lote = cambios[inicio : inicio + _LOTE_ESTADOS]
+            nuevos = sql_values(
+                column("code", String),
+                column("received_offers_count", Integer),
+                column("call_number", Integer),
+                name="ofertas",
+            ).data([(c.code, c.received_offers_count, c.call_number) for c in lote])
+            # El `cast` cubre el lote sin ningún `call_number`, que Postgres
+            # resolvería como `text` (ver `overwrite_call_info`).
+            primer_llamado = case(
+                (
+                    cast(nuevos.c.call_number, Integer) == 1,
+                    nuevos.c.received_offers_count,
+                ),
+                else_=col(TenderModel.first_call_offers_count),
+            )
+            statement = (
+                update(TenderModel)
+                .where(col(TenderModel.code) == nuevos.c.code)
+                .values(
+                    received_offers_count=nuevos.c.received_offers_count,
+                    first_call_offers_count=primer_llamado,
+                    offers_checked_at=ahora,
+                )
+                .returning(TenderModel.id)
+            )
+            result = await self.session.exec(statement)  # type: ignore[call-overload]
+            revisadas += len(result.all())
+        await self.session.commit()
+        return revisadas
 
     async def get_or_create_buyer(
         self,
