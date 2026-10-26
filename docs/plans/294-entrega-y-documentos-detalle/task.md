@@ -21,7 +21,7 @@
 
 ## Bloque 1. Esquema (criterio 1)
 
-- [ ] **1.1 Migración con las cuatro columnas.**
+- [x] **1.1 Migración con las cuatro columnas.**
   - Antes: skills `supabase` y `supabase-postgres-best-practices`.
   - Red: `tests/integration/test_migraciones.py` exige `delivery_address`
     (text), `delivery_term_days` (integer) y los dos flags (boolean), todas
