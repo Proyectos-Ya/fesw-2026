@@ -15,18 +15,20 @@ HU-30 (#312) dejó en la ficha la sección "Entrega y requisitos" esperando la
 dirección y el plazo. La recomendación de subir bases, en la pantalla de
 postulación, no nombra los documentos oficiales aunque la pantalla ya los tiene.
 
-Esta issue cubre los criterios 1, 2 y 4:
+Esta issue cubre los criterios 1, 2, 4 y 5:
 
 1. La ingesta guarda la dirección, el plazo, los nombres de los documentos y
    los dos flags.
 2. La ficha muestra la dirección y el plazo.
 4. Si la Compra Ágil tiene documentos y el usuario no subió ninguno, la
    recomendación de subir bases los nombra.
+5. Con detalles reales se verifica que el detalle trae
+   `resumen.total_ofertas_recibidas` (§2).
 
 **Fuera de alcance:**
 
-- El criterio 3 (el análisis de factibilidad y la redacción los reciben) y el
-  criterio 5 (verificar con detalles reales). Pasan a una issue nueva.
+- El criterio 3 (el análisis de factibilidad y la redacción los reciben). Pasa
+  a una issue nueva.
 - Llenar las licitaciones existentes. Se completan cuando la ingesta vuelve a
   bajar su detalle, normalmente al cambiar de estado.
 - Mostrar los flags en la ficha. Se guardan, pero el criterio 2 no los pide.
@@ -38,8 +40,17 @@ Esta issue cubre los criterios 1, 2 y 4:
   `entrega.plazo_entrega_dias` (int|null) en §6.3, y
   `flags.considera_requisitos_medioambientales` y
   `flags.considera_requisitos_impacto_social_economico` (boolean) en §6.6. El
-  listado no los trae, así que solo la ingesta los escribe. Nadie lo verificó
-  con una petición real (criterio 5).
+  listado no los trae, así que solo la ingesta los escribe.
+- **Verificación con detalles reales (criterio 5, 2026-10-26).** Tres detalles
+  de `GET /v2/compra-agil/{codigo}` (1224953-521-COT26, 557639-3334-COT26 y
+  1078886-157-COT26) traen `entrega`, `flags`,
+  `resumen.total_ofertas_recibidas` y `documentos` con la forma documentada, y
+  `_parse_to_dto` los lee bien. El primero quedó como fixture en
+  `tests/fixtures/mp_detalle_compra_agil.json`
+  (`tests/unit/infrastructure/test_detalle_real.py`).
+- **Cierres por llamado en el detalle.** Ahí vienen dentro de `convocatoria`, no
+  en `fechas` como en el listado, y `leer_llamado` solo miraba `fechas`: desde
+  el detalle quedaban en `None`. Se corrige en esta rama (decisión 6).
 - **Nombres de los documentos.** Ya se guardan en `tender_attachment` desde el
   detalle (`_parse_to_dto` → `_sincronizar_anexos`) y desde el listado (plan
   233, decisión 1). Esa parte del criterio 1 está cumplida y no lleva columna
@@ -134,15 +145,14 @@ Resultado: _pendiente_ (tarea 6.2).
 
 ### Riesgos
 
-1. **El detalle real puede no traer los campos.** Solo lo respalda la guía. Si
-   no los trae, quedan en `NULL` y la ficha dice "no disponible". La
-   verificación es el criterio 5, que pasa a la issue nueva.
+1. **Un detalle puede no traer los campos.** Los tres detalles reales los
+   traen, pero si alguno no, quedan en `NULL` y la ficha dice "no disponible".
 2. **Las licitaciones existentes empiezan vacías.** Se completan cuando la
    ingesta vuelve a bajar su detalle.
 
 ## 8. Decisiones (2026-10-26)
 
-1. **Criterios 1, 2 y 4.** El 3 y el 5 pasan a una issue nueva, y el PR usa
+1. **Criterios 1, 2, 4 y 5.** El 3 pasa a una issue nueva, y el PR usa
    `Closes #294`.
 2. **Textos de HU-22** para la dirección y el plazo sin dato.
 3. **Un cambio que solo toca la entrega o los flags se guarda solo en SQL**,
@@ -150,3 +160,6 @@ Resultado: _pendiente_ (tarea 6.2).
 4. **Sin llenado inicial** de las licitaciones existentes.
 5. **Los nombres de los documentos no llevan columna**: ya están en
    `tender_attachment`.
+6. **`leer_llamado` busca los cierres en `fechas` y, si no hay uno legible, en
+   `convocatoria`.** Así el listado y el detalle se leen con la misma función,
+   y el listado manda si los trae en los dos lados.

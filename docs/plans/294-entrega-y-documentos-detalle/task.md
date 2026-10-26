@@ -47,6 +47,14 @@
   - Prueba: si `test_detalle_documentos.py` ya cubre los nombres, solo se cita
     en el PR. Si no, se agrega.
 
+- [x] **2.4 Cierres por llamado del detalle y verificación real (criterio 5).**
+  - Red: `tests/unit/infrastructure/test_detalle_real.py` con el detalle real
+    de `tests/fixtures/mp_detalle_compra_agil.json`, y `TestCierresDelDetalle`
+    en `test_llamados_mp.py`.
+  - Green: `leer_llamado` busca cada cierre en `fechas` y luego en
+    `convocatoria`.
+  - Commit: `fix(ingesta): leer del detalle los cierres por llamado en convocatoria`
+
 ## Bloque 3. Ingesta (criterio 1)
 
 - [x] **3.1 El alta guarda los cuatro campos.**
@@ -109,6 +117,6 @@
       SQL y restaurados al terminar. Anotar el resultado en §6 del plan.
 - [ ] **6.3 PR hacia `develop`** con `Closes #294`. Mostrar el texto antes de
       crearlo y pedir confirmación antes de `git push`.
-- [ ] **6.4 Issues** (pedir confirmación antes de publicar): una nueva con los
-      criterios 3 y 5, y un comentario en #314 (HU-22) sobre los textos de la
+- [ ] **6.4 Issues** (pedir confirmación antes de publicar): una nueva con el
+      criterio 3, y un comentario en #314 (HU-22) sobre los textos de la
       dirección en la ficha.
