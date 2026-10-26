@@ -199,6 +199,49 @@ async def test_get_tenders_sin_cotizaciones_queda_en_none(db_session: AsyncSessi
 
 
 @pytest.mark.asyncio
+async def test_get_tenders_hidrata_la_entrega_y_los_requisitos(
+    db_session: AsyncSession,
+):
+    repo = TenderRepository(db_session)
+    await _sembrar_comprador(db_session)
+    tender_id = uuid4()
+    db_session.add(
+        _tender_model(
+            tender_id,
+            delivery_address="SERVIU REGION DE AYSEN RAMON FREIRE 5",
+            delivery_term_days=0,
+            requires_environmental_criteria=False,
+            requires_social_impact_criteria=True,
+        )
+    )
+    await db_session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert results[0].delivery_address == "SERVIU REGION DE AYSEN RAMON FREIRE 5"
+    # 0 días y `False` son datos reales: no se confunden con "sin dato".
+    assert results[0].delivery_term_days == 0
+    assert results[0].requires_environmental_criteria is False
+    assert results[0].requires_social_impact_criteria is True
+
+
+@pytest.mark.asyncio
+async def test_get_tenders_sin_entrega_queda_en_none(db_session: AsyncSession):
+    repo = TenderRepository(db_session)
+    await _sembrar_comprador(db_session)
+    tender_id = uuid4()
+    db_session.add(_tender_model(tender_id))
+    await db_session.commit()
+
+    results = await repo.get_tenders(TenderFilters(ids=[tender_id]))
+
+    assert results[0].delivery_address is None
+    assert results[0].delivery_term_days is None
+    assert results[0].requires_environmental_criteria is None
+    assert results[0].requires_social_impact_criteria is None
+
+
+@pytest.mark.asyncio
 async def test_get_tenders_filter_by_region(db_session: AsyncSession):
     repo = TenderRepository(db_session)
 

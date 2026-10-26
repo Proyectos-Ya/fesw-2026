@@ -83,6 +83,12 @@ class Tender(BaseModel):
     # Última cifra vista del primer llamado: la API cuenta solo el llamado
     # actual, y la ficha suma las dos.
     first_call_offers_count: int | None = None
+    # Entrega y requisitos del detalle (#294). `None` es que el detalle no los
+    # informó; en los flags, `False` es un dato.
+    delivery_address: str | None = None
+    delivery_term_days: int | None = None
+    requires_environmental_criteria: bool | None = None
+    requires_social_impact_criteria: bool | None = None
     last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora

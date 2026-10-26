@@ -65,7 +65,7 @@
 
 ## Bloque 4. Dominio y API (criterio 2)
 
-- [ ] **4.1 La entidad trae los campos.**
+- [x] **4.1 La entidad trae los campos.**
   - Red: `tests/integration/test_tender_repository.py`, con datos y con `NULL`.
   - Green: `Tender` y las dos conversiones de `TenderRepository`.
   - Commit: `feat(dominio): exponer entrega y requisitos en tender`
