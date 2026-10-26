@@ -229,6 +229,21 @@ export function proposalStatus(view: ProposalView): ProposalStatusInfo | null {
   };
 }
 
+const MAX_DOCUMENTOS_NOMBRADOS = 5;
+
+/**
+ * Nombres de documentos como en una frase: "A", "A y B", "A, B y C". Con más de
+ * cinco nombra los primeros y cuenta el resto, para que el aviso no se alargue.
+ */
+export function nombrarDocumentos(nombres: string[]): string {
+  if (nombres.length > MAX_DOCUMENTOS_NOMBRADOS) {
+    const resto = nombres.length - MAX_DOCUMENTOS_NOMBRADOS;
+    return `${nombres.slice(0, MAX_DOCUMENTOS_NOMBRADOS).join(", ")} y ${resto} más`;
+  }
+  if (nombres.length <= 1) return nombres.join("");
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+}
+
 /**
  * Recomendación sobre las bases según con qué se analizó, en tono informativo.
  * `uploaded` son los nombres de los adjuntos que hay ahora en la licitación;

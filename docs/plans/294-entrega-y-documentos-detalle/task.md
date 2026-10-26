@@ -84,7 +84,7 @@
   - Red: `TenderDetailView.test.tsx`, con datos, sin datos, plazo 0 y 1.
   - Green: bloque en "Entrega y requisitos", sin el comentario de #294.
   - Commit: `feat(matches): dirección y plazo de entrega en la ficha`
-- [ ] **5.3 `nombrarDocumentos`.**
+- [x] **5.3 `nombrarDocumentos`.**
   - Red: `src/features/proposals/utils/__tests__/proposal.test.ts`.
   - Green: la función en `proposals/utils/proposal.ts`.
   - Commit: `feat(proposals): nombrar documentos en una frase`

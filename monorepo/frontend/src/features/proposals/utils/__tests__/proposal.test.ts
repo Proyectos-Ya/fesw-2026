@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   esDeclaracionDeHabilidad,
   basesNotice,
+  nombrarDocumentos,
   canGenerate,
   currentAnswer,
   pauseOrigin,
@@ -229,6 +230,23 @@ describe("proposalStatus", () => {
 
   it("vencida no muestra estado: ya lo dice el aviso de licitación cerrada", () => {
     expect(proposalStatus(vista({ is_expired: true }))).toBeNull();
+  });
+});
+
+describe("nombrarDocumentos", () => {
+  it("une los nombres como en una frase", () => {
+    expect(nombrarDocumentos(["Bases.pdf"])).toBe("Bases.pdf");
+    expect(nombrarDocumentos(["Bases.pdf", "Anexo 1.docx"])).toBe("Bases.pdf y Anexo 1.docx");
+    expect(nombrarDocumentos(["A.pdf", "B.pdf", "C.pdf"])).toBe("A.pdf, B.pdf y C.pdf");
+  });
+
+  it("con más de cinco nombra los primeros y cuenta el resto", () => {
+    const nombres = ["A", "B", "C", "D", "E", "F", "G"];
+    expect(nombrarDocumentos(nombres)).toBe("A, B, C, D, E y 2 más");
+  });
+
+  it("sin nombres no dice nada", () => {
+    expect(nombrarDocumentos([])).toBe("");
   });
 });
 
