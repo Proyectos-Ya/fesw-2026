@@ -102,7 +102,7 @@
 
 ## Bloque 6. Cierre y PR
 
-- [ ] **6.1 Suites.** `pytest`, `python -m scripts.migraciones`, Ruff sobre los
+- [x] **6.1 Suites.** `pytest`, `python -m scripts.migraciones`, Ruff sobre los
       archivos de la rama, `pnpm run test`, `pnpm run lint` y `pnpm run build`.
       Anotar el resultado en §6 del plan.
 - [ ] **6.2 Prueba manual en el navegador**, con datos de prueba cargados con

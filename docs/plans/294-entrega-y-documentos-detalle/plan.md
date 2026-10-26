@@ -109,6 +109,16 @@ python -m scripts.migraciones   # una sola cabeza
 pnpm run test && pnpm run lint && pnpm run build
 ```
 
+Resultado de la tarea 6.1 (2026-10-26, Supabase local, sin `.env`):
+
+- Backend: 3690 pruebas pasan y 7 fallan. Son las mismas 7 que fallan en
+  `origin/develop`: 6 llaman a Gemini real y
+  `test_un_admin_pide_la_url_y_la_lista_refleja_el_cupo` responde 503 sin
+  storage. `python -m scripts.migraciones` da una sola cabeza (`e7123e26c0be`)
+  y Ruff no marca nada en los archivos de la rama.
+- Frontend: 1142 pruebas pasan, `pnpm run lint` da 0 errores (26 advertencias
+  en archivos que esta issue no toca) y `pnpm run build` compila.
+
 ### Prueba manual
 
 Resultado: _pendiente_ (tarea 6.2).
