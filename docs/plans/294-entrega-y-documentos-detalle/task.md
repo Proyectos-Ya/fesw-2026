@@ -95,7 +95,7 @@
   - Green: tercer parámetro `pendientes` en `basesNotice` y su llamada en
     `ProposalView.tsx`.
   - Commit: `feat(proposals): la recomendación de bases nombra los documentos`
-- [ ] **5.5 El aviso previo al análisis nombra los documentos.**
+- [x] **5.5 El aviso previo al análisis nombra los documentos.**
   - Red: `ProposalView.test.tsx`, sin subidas y con anexos oficiales.
   - Green: el texto del aviso en `ProposalView.tsx`.
   - Commit: `feat(proposals): el aviso sin anexos nombra los documentos`
