@@ -87,3 +87,21 @@ export function getDeepAnalysis(tenderId: string): Promise<DeepAnalysis> {
 export function getTenderDetail(tenderId: string): Promise<TenderDetail> {
   return apiFetch<TenderDetail>(`/tenders/${encodeURIComponent(tenderId)}`);
 }
+
+
+/**
+ * Backend route: POST /tenders/{tender_id}/reports
+ * Reporta un mal match o un análisis de compatibilidad incorrecto (HU-24).
+ */
+export function reportMatch(
+  tenderId: string,
+  payload: { kind: "match" | "analysis"; reason: string },
+): Promise<{ id: string; tender_id: string; kind: string; reason: string }> {
+  return apiFetch<{ id: string; tender_id: string; kind: string; reason: string }>(
+    `/tenders/${encodeURIComponent(tenderId)}/reports`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}

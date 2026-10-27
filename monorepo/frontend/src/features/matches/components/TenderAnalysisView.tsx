@@ -267,6 +267,15 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                     </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                  title="Reportar análisis de compatibilidad incorrecto"
+                >
+                  <Icon name="flag" size={14} />
+                  Reportar
+                </button>
               </div>
 
               <div className="grid grid-cols-1 gap-6 border-t border-border-subtle pt-5 sm:grid-cols-4 items-center">

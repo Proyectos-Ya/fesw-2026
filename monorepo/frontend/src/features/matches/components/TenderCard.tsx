@@ -1,7 +1,9 @@
+import { useState } from "react";
 import Link from "next/link";
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
+import { ReportModal } from "./ReportModal";
 import type { MatchingResult, Tender } from "../tenderTypes";
 import {
   daysUntilClosing,
@@ -16,6 +18,7 @@ interface TenderCardProps {
   tender?: Tender;
   isSaved?: boolean;
   onToggleSave?: (tenderId: string) => void;
+  onReport?: (tenderId: string) => void;
 }
 
 const DASHBOARD_THRESHOLDS = { high: 70, mid: 40 };
@@ -44,7 +47,8 @@ function ScoreLabel({ score }: { score: number }) {
   return "Baja compatibilidad";
 }
 
-export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: TenderCardProps) {
+export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, onReport }: TenderCardProps) {
+  const [reportOpen, setReportOpen] = useState(false);
   const tender: Tender | null = rawTender ?? match?.tender ?? null;
   if (!tender) return null;
 
@@ -91,6 +95,20 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
           <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
           <div className="flex-1" />
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setReportOpen(true);
+            }}
+            aria-label="Reportar mal match"
+            title="Reportar mal match"
+            className="inline-flex size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+          >
+            <Icon name="flag" size={18} />
+          </button>
 
           {onToggleSave && (
             <button
@@ -154,6 +172,14 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave }: 
           </span>
         </div>
       </div>
+      <ReportModal
+        open={reportOpen}
+        kind="match"
+        tenderId={tender.id}
+        tenderTitle={tender.name}
+        onClose={() => setReportOpen(false)}
+        onSuccess={() => onReport?.(tender.id)}
+      />
     </Link>
   );
 }

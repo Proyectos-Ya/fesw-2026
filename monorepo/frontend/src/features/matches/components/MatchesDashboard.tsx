@@ -327,6 +327,18 @@ export function MatchesDashboard() {
                   match={m}
                   isSaved={savedTenderIds.has(tenderId)}
                   onToggleSave={handleToggleSave}
+                  onReport={(reportedId) => {
+                    setState((prev) =>
+                      prev.kind === "ready"
+                        ? {
+                            ...prev,
+                            matches: prev.matches.filter(
+                              (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                            ),
+                          }
+                        : prev
+                    );
+                  }}
                 />
               );
             })}
