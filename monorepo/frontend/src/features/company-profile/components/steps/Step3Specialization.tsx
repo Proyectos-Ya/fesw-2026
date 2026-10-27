@@ -6,13 +6,12 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { step3Schema, type Step3Data } from "../../profileSchema";
 import { Textarea } from "@/features/shared/components/Textarea";
-import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { Button } from "@/features/shared/components/Button";
 import { WizardNavigation } from "../WizardNavigation";
 import { KeywordSuggestions } from "../KeywordSuggestions";
 import { CertificationListInput } from "../CertificationListInput";
-import { SECTORS } from "../../data/sectors";
+import { SectorSelect } from "../SectorSelect";
 import { suggestKeywordsFromDescription } from "../../services/supplierService";
 
 const SUGGEST_ERROR =
@@ -115,9 +114,7 @@ export function Step3Specialization({
           name="sectors"
           control={control}
           render={({ field }) => (
-            <ChipSelect
-              label="Rubros principales"
-              options={SECTORS}
+            <SectorSelect
               selected={field.value}
               onChange={field.onChange}
               error={errors.sectors?.message}

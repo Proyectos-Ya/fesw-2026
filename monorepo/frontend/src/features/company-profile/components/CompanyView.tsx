@@ -14,7 +14,7 @@ import {
 import { getCertificationStatus } from "../utils/certification";
 import { CertificationListInput } from "./CertificationListInput";
 import { REGIONS } from "../data/regions";
-import { SECTORS } from "../data/sectors";
+import { SectorSelect } from "./SectorSelect";
 import { useCompany } from "./CompanyProvider";
 import { updateSupplier, type Supplier } from "../services/supplierService";
 import { parseApiDate } from "@/features/matches/utils/format";
@@ -436,9 +436,7 @@ function CompanyEditForm({
         name="sectors"
         control={control}
         render={({ field }) => (
-          <ChipSelect
-            label="Rubros principales"
-            options={SECTORS}
+          <SectorSelect
             selected={field.value}
             onChange={field.onChange}
             error={errors.sectors?.message}
