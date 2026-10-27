@@ -5,24 +5,35 @@ from app.domain.entities.saved_tender import SavedTender
 
 
 class ISavedTenderRepository(ABC):
-    """Interfaz abstracta para la persistencia de las licitaciones guardadas por un usuario."""
+    """Persistencia de las licitaciones guardadas del workspace (HU-18).
+
+    Scoping por `supplier_id`: todos los miembros del workspace comparten la
+    misma lista. `user_id` queda como auditoría dentro de `SavedTender` (quién
+    la guardó primero), no como criterio de filtrado.
+    """
 
     @abstractmethod
-    async def get_by_user_id(self, user_id: UUID) -> list[SavedTender]:
-        """Obtiene todas las licitaciones que el usuario marcó como de interés."""
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[SavedTender]:
+        """Todas las licitaciones guardadas del workspace."""
         pass
 
     @abstractmethod
-    async def get(self, user_id: UUID, tender_id: UUID) -> SavedTender | None:
-        """Obtiene la marca de interés de un usuario sobre una licitación, si existe."""
+    async def get(self, supplier_id: UUID, tender_id: UUID) -> SavedTender | None:
+        """Marca sobre una licitación del workspace, si existe."""
         pass
 
     @abstractmethod
     async def save(self, saved_tender: SavedTender) -> SavedTender:
-        """Persiste una nueva marca de interés."""
+        """Persiste una marca de interés para el workspace.
+
+        Debe implementarse como idempotente a nivel de DB (`INSERT ... ON
+        CONFLICT DO NOTHING` sobre `(supplier_id, tender_id)`): si otro
+        miembro del workspace ya la había guardado, devolver la fila
+        existente en vez de levantar error.
+        """
         pass
 
     @abstractmethod
-    async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
-        """Elimina la marca de interés. Retorna False si no existía."""
+    async def delete(self, supplier_id: UUID, tender_id: UUID) -> bool:
+        """Retira la marca para todo el workspace. False si no existía."""
         pass

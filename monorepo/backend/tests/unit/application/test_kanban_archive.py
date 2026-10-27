@@ -1,4 +1,8 @@
-"""Tests TDD para HdU 10 CA4: archivado, historial, restauración y auto-archivado."""
+"""Tests TDD para HdU 10 CA4 (archivado, historial, restauración, auto-archivado).
+
+HU-18: el scoping del repo pasó a `supplier_id`. En estos tests el workspace
+y el usuario coinciden (`supplier_id = user_id`) para simplificar fixtures.
+"""
 
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -29,32 +33,39 @@ class InMemoryKanbanCardRepository(IKanbanCardRepository):
 
     def __init__(self) -> None:
         self.cards: list[KanbanCard] = []
-        # El historial enriquecido necesita saber de columnas y licitaciones:
-        # como el fake no las tiene, devolvemos lo mínimo que piden los tests
-        # (nombre de columna y datos de la licitación).
         self.column_names: dict[UUID, str] = {}
         self.tender_meta: dict[UUID, tuple[str, str]] = {}
 
-    async def get_by_user_id(self, user_id: UUID) -> list[KanbanCard]:
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[KanbanCard]:
         return [
-            c for c in self.cards
-            if c.user_id == user_id and c.archived_at is None
+            c
+            for c in self.cards
+            if c.supplier_id == supplier_id and c.archived_at is None
         ]
 
-    async def get(self, user_id: UUID, tender_id: UUID) -> KanbanCard | None:
+    async def get(
+        self, supplier_id: UUID, tender_id: UUID
+    ) -> KanbanCard | None:
         return next(
             (
-                c for c in self.cards
-                if c.user_id == user_id
+                c
+                for c in self.cards
+                if c.supplier_id == supplier_id
                 and c.tender_id == tender_id
                 and c.archived_at is None
             ),
             None,
         )
 
-    async def get_by_id(self, card_id: UUID, user_id: UUID) -> KanbanCard | None:
+    async def get_by_id(
+        self, card_id: UUID, supplier_id: UUID
+    ) -> KanbanCard | None:
         return next(
-            (c for c in self.cards if c.id == card_id and c.user_id == user_id),
+            (
+                c
+                for c in self.cards
+                if c.id == card_id and c.supplier_id == supplier_id
+            ),
             None,
         )
 
@@ -67,31 +78,33 @@ class InMemoryKanbanCardRepository(IKanbanCardRepository):
             if c.id == card.id:
                 self.cards[i] = card
                 return card
-        raise KanbanCardNotFound(card.user_id, card.tender_id)
+        raise KanbanCardNotFound(card.supplier_id, card.tender_id)
 
-    async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
+    async def delete(self, supplier_id: UUID, tender_id: UUID) -> bool:
         before = len(self.cards)
         self.cards = [
-            c for c in self.cards
+            c
+            for c in self.cards
             if not (
-                c.user_id == user_id
+                c.supplier_id == supplier_id
                 and c.tender_id == tender_id
                 and c.archived_at is None
             )
         ]
         return len(self.cards) < before
 
-    async def list_archived(self, user_id: UUID) -> list[KanbanCard]:
+    async def list_archived(self, supplier_id: UUID) -> list[KanbanCard]:
         archived = [
-            c for c in self.cards
-            if c.user_id == user_id and c.archived_at is not None
+            c
+            for c in self.cards
+            if c.supplier_id == supplier_id and c.archived_at is not None
         ]
         return sorted(archived, key=lambda c: c.archived_at, reverse=True)  # type: ignore[arg-type,return-value]
 
     async def list_archived_with_context(
-        self, user_id: UUID
+        self, supplier_id: UUID
     ) -> list[tuple[KanbanCard, str, str, str]]:
-        archived = await self.list_archived(user_id)
+        archived = await self.list_archived(supplier_id)
         rows: list[tuple[KanbanCard, str, str, str]] = []
         for card in archived:
             column_name = self.column_names.get(card.column_id, "Columna")
@@ -103,9 +116,16 @@ class InMemoryKanbanCardRepository(IKanbanCardRepository):
         self, cutoff: datetime
     ) -> list[KanbanCard]:
         return [
-            c for c in self.cards
+            c
+            for c in self.cards
             if c.archived_at is None and c.board_entered_at < cutoff
         ]
+
+
+def _ws() -> tuple[UUID, UUID]:
+    """Shortcut: (supplier_id, user_id) iguales para tests simples."""
+    uid = uuid4()
+    return uid, uid
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +136,20 @@ class InMemoryKanbanCardRepository(IKanbanCardRepository):
 @pytest.mark.asyncio
 async def test_archive_marks_card_with_manual_reason_and_timestamp() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     card = KanbanCard(
-        supplier_id=uuid4(),
-        user_id=user_id, tender_id=uuid4(), column_id=uuid4(), position=0
+        supplier_id=supplier_id,
+        user_id=user_id,
+        tender_id=uuid4(),
+        column_id=uuid4(),
+        position=0,
     )
     repo.cards.append(card)
 
     use_case = ArchiveTenderFromBoardUseCase(card_repo=repo)
-    archived = await use_case.execute(user_id=user_id, card_id=card.id)
+    archived = await use_case.execute(
+        supplier_id=supplier_id, user_id=user_id, card_id=card.id
+    )
 
     assert archived.archived_at is not None
     assert archived.archived_reason == ARCHIVE_REASON_MANUAL
@@ -133,17 +158,22 @@ async def test_archive_marks_card_with_manual_reason_and_timestamp() -> None:
 @pytest.mark.asyncio
 async def test_archive_removes_card_from_active_board() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     card = KanbanCard(
-        supplier_id=uuid4(),
-        user_id=user_id, tender_id=uuid4(), column_id=uuid4(), position=0
+        supplier_id=supplier_id,
+        user_id=user_id,
+        tender_id=uuid4(),
+        column_id=uuid4(),
+        position=0,
     )
     repo.cards.append(card)
 
     use_case = ArchiveTenderFromBoardUseCase(card_repo=repo)
-    await use_case.execute(user_id=user_id, card_id=card.id)
+    await use_case.execute(
+        supplier_id=supplier_id, user_id=user_id, card_id=card.id
+    )
 
-    active = await repo.get_by_user_id(user_id)
+    active = await repo.get_by_supplier_id(supplier_id)
     assert active == []
 
 
@@ -152,16 +182,18 @@ async def test_archive_unknown_card_raises_not_found() -> None:
     repo = InMemoryKanbanCardRepository()
     use_case = ArchiveTenderFromBoardUseCase(card_repo=repo)
     with pytest.raises(KanbanCardNotFound):
-        await use_case.execute(user_id=uuid4(), card_id=uuid4())
+        await use_case.execute(
+            supplier_id=uuid4(), user_id=uuid4(), card_id=uuid4()
+        )
 
 
 @pytest.mark.asyncio
 async def test_archive_is_idempotent_on_already_archived() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     original_ts = datetime(2026, 1, 1, 12, 0, 0)
     card = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -172,7 +204,9 @@ async def test_archive_is_idempotent_on_already_archived() -> None:
     repo.cards.append(card)
 
     use_case = ArchiveTenderFromBoardUseCase(card_repo=repo)
-    result = await use_case.execute(user_id=user_id, card_id=card.id)
+    result = await use_case.execute(
+        supplier_id=supplier_id, user_id=user_id, card_id=card.id
+    )
 
     assert result.archived_at == original_ts
 
@@ -185,9 +219,9 @@ async def test_archive_is_idempotent_on_already_archived() -> None:
 @pytest.mark.asyncio
 async def test_restore_manual_archive_clears_timestamp_and_reason() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     card = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -198,7 +232,9 @@ async def test_restore_manual_archive_clears_timestamp_and_reason() -> None:
     repo.cards.append(card)
 
     use_case = RestoreTenderUseCase(card_repo=repo)
-    restored = await use_case.execute(user_id=user_id, card_id=card.id)
+    restored = await use_case.execute(
+        supplier_id=supplier_id, user_id=user_id, card_id=card.id
+    )
 
     assert restored.archived_at is None
     assert restored.archived_reason is None
@@ -207,9 +243,9 @@ async def test_restore_manual_archive_clears_timestamp_and_reason() -> None:
 @pytest.mark.asyncio
 async def test_restore_auto_archive_raises_not_restorable() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     card = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -221,7 +257,9 @@ async def test_restore_auto_archive_raises_not_restorable() -> None:
 
     use_case = RestoreTenderUseCase(card_repo=repo)
     with pytest.raises(ArchiveNotRestorable):
-        await use_case.execute(user_id=user_id, card_id=card.id)
+        await use_case.execute(
+            supplier_id=supplier_id, user_id=user_id, card_id=card.id
+        )
 
 
 @pytest.mark.asyncio
@@ -229,7 +267,9 @@ async def test_restore_unknown_card_raises_not_found() -> None:
     repo = InMemoryKanbanCardRepository()
     use_case = RestoreTenderUseCase(card_repo=repo)
     with pytest.raises(KanbanCardNotFound):
-        await use_case.execute(user_id=uuid4(), card_id=uuid4())
+        await use_case.execute(
+            supplier_id=uuid4(), user_id=uuid4(), card_id=uuid4()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +280,7 @@ async def test_restore_unknown_card_raises_not_found() -> None:
 @pytest.mark.asyncio
 async def test_list_archived_returns_desc_by_archived_at() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     column_id = uuid4()
     repo.column_names[column_id] = "En revisión"
 
@@ -248,7 +288,7 @@ async def test_list_archived_returns_desc_by_archived_at() -> None:
         tender_id = uuid4()
         repo.tender_meta[tender_id] = (f"T-{label}", f"Lic {label}")
         return KanbanCard(
-            supplier_id=uuid4(),
+            supplier_id=supplier_id,
             user_id=user_id,
             tender_id=tender_id,
             column_id=column_id,
@@ -262,7 +302,7 @@ async def test_list_archived_returns_desc_by_archived_at() -> None:
     repo.cards.extend([older, newer])
 
     use_case = ListArchivedTendersUseCase(card_repo=repo)
-    result = await use_case.execute(user_id=user_id)
+    result = await use_case.execute(supplier_id=supplier_id)
 
     assert [r.archived_at for r in result] == [newer.archived_at, older.archived_at]
     assert result[0].column_name == "En revisión"
@@ -278,11 +318,11 @@ async def test_list_archived_returns_desc_by_archived_at() -> None:
 @pytest.mark.asyncio
 async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     now = datetime.utcnow()
 
     old = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -290,7 +330,7 @@ async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
         board_entered_at=now - timedelta(days=100),
     )
     fresh = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -303,8 +343,8 @@ async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
     archived_ids = await use_case.execute()
 
     assert archived_ids == [old.id]
-    reloaded_old = await repo.get_by_id(old.id, user_id)
-    reloaded_fresh = await repo.get_by_id(fresh.id, user_id)
+    reloaded_old = await repo.get_by_id(old.id, supplier_id)
+    reloaded_fresh = await repo.get_by_id(fresh.id, supplier_id)
     assert reloaded_old is not None and reloaded_old.archived_reason == ARCHIVE_REASON_AUTO
     assert reloaded_fresh is not None and reloaded_fresh.archived_at is None
 
@@ -312,10 +352,10 @@ async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
 @pytest.mark.asyncio
 async def test_scheduler_ignores_already_archived_cards() -> None:
     repo = InMemoryKanbanCardRepository()
-    user_id = uuid4()
+    supplier_id, user_id = _ws()
     now = datetime.utcnow()
     card = KanbanCard(
-        supplier_id=uuid4(),
+        supplier_id=supplier_id,
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -330,6 +370,5 @@ async def test_scheduler_ignores_already_archived_cards() -> None:
     archived_ids = await use_case.execute()
 
     assert archived_ids == []
-    # Mantiene su razón manual, no la pisamos.
-    reloaded = await repo.get_by_id(card.id, user_id)
+    reloaded = await repo.get_by_id(card.id, supplier_id)
     assert reloaded is not None and reloaded.archived_reason == ARCHIVE_REASON_MANUAL
