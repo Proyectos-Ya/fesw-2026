@@ -15,6 +15,11 @@ from app.application.repositories.capability_repository import (
     ICapabilityQuestionRepository,
 )
 from app.application.repositories.export_job_repository import IExportJobRepository
+from app.application.repositories.feedback_repository import (
+    IAppFeedbackRepository,
+    IAssistantFeedbackRepository,
+    IMatchReportRepository,
+)
 from app.application.repositories.kanban_repository import (
     IKanbanCardRepository,
     IKanbanColumnRepository,
@@ -56,6 +61,11 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarOAuthStateRepository,
 )
 from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.repositories.feedback_repository import (
+    AppFeedbackRepository,
+    AssistantFeedbackRepository,
+    MatchReportRepository,
+)
 from app.infrastructure.repositories.kanban_repository import (
     KanbanCardRepository,
     KanbanColumnRepository,
@@ -210,6 +220,18 @@ def get_kanban_column_repo(session: SessionDep) -> IKanbanColumnRepository:
     return KanbanColumnRepository(session)
 
 
+
+def get_match_report_repo(session: SessionDep) -> IMatchReportRepository:
+    return MatchReportRepository(session)
+
+
+def get_assistant_feedback_repo(session: SessionDep) -> IAssistantFeedbackRepository:
+    return AssistantFeedbackRepository(session)
+
+
+def get_app_feedback_repo(session: SessionDep) -> IAppFeedbackRepository:
+    return AppFeedbackRepository(session)
+
 def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
     return KanbanCardRepository(session)
 
@@ -298,3 +320,10 @@ KanbanColumnRepoDep = Annotated[IKanbanColumnRepository, Depends(get_kanban_colu
 
 
 KanbanCardRepoDep = Annotated[IKanbanCardRepository, Depends(get_kanban_card_repo)]
+
+
+MatchReportRepoDep = Annotated[IMatchReportRepository, Depends(get_match_report_repo)]
+AssistantFeedbackRepoDep = Annotated[
+    IAssistantFeedbackRepository, Depends(get_assistant_feedback_repo)
+]
+AppFeedbackRepoDep = Annotated[IAppFeedbackRepository, Depends(get_app_feedback_repo)]

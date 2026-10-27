@@ -31,6 +31,7 @@ from app.bootstrap.exports import (
     get_revoke_share_link_use_case,
     get_shared_tender_use_case,
 )
+from app.bootstrap.feedback import get_report_match_use_case
 from app.bootstrap.kanban import (
     get_add_tender_to_board_use_case,
     get_create_kanban_column_use_case,
@@ -112,6 +113,7 @@ from app.infrastructure.routers.calendar import (
 from app.infrastructure.routers.capability import create_capability_router
 from app.infrastructure.routers.catalog import create_catalog_router
 from app.infrastructure.routers.exports import create_exports_router
+from app.infrastructure.routers.feedback import create_feedback_router
 from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.kanban import create_kanban_router
 from app.infrastructure.routers.milestones import create_milestones_router
@@ -172,6 +174,13 @@ def register_routes(app: FastAPI) -> None:
             get_supplier_repo=get_supplier_repo,
             get_user_repo=get_user_repo,
             get_email_service=get_email_service,
+        )
+    )
+    app.include_router(
+        create_feedback_router(
+            get_current_user=get_current_user,
+            get_report_match_use_case=get_report_match_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(

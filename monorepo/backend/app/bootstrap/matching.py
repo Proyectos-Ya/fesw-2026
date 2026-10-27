@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.application.repositories.feedback_repository import IMatchReportRepository
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -36,6 +37,7 @@ from app.application.use_cases.tender.get_tender_detail import GetTenderDetailUs
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.bootstrap.repositories import (
     MatchingResultRepoDep,
+    MatchReportRepoDep,
     SavedTenderRepoDep,
     SupplierRepoDep,
     TenderRepoDep,
@@ -80,6 +82,7 @@ def build_rank_tenders_use_case(
     scorer: CompatibilityScorer,
     matching_result_repo: IMatchingResultRepository,
     embedding_service: IEmbeddingService,
+    match_report_repo: IMatchReportRepository | None = None,
 ) -> RankTendersUseCase:
     # Con el servicio de embeddings, una empresa sin vector en Qdrant lo recupera
     # en vez de fallar con SupplierVectorNotFound.
@@ -92,6 +95,7 @@ def build_rank_tenders_use_case(
         matching_result_repo=matching_result_repo,
         model_version=settings.embedding_model,
         embedding_service=embedding_service,
+        match_report_repo=match_report_repo,
     )
 
 
@@ -118,6 +122,7 @@ def get_rank_tenders_use_case(
     scorer: CompatibilityScorerDep,
     matching_result_repo: MatchingResultRepoDep,
     embedding_service: EmbeddingServiceDep,
+    match_report_repo: MatchReportRepoDep,
 ) -> RankTendersUseCase:
     return build_rank_tenders_use_case(
         supplier_repo=supplier_repo,
@@ -127,6 +132,7 @@ def get_rank_tenders_use_case(
         scorer=scorer,
         matching_result_repo=matching_result_repo,
         embedding_service=embedding_service,
+        match_report_repo=match_report_repo,
     )
 
 

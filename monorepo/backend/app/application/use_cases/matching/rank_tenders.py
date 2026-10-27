@@ -3,6 +3,9 @@ from datetime import timedelta
 from typing import Protocol
 from uuid import UUID
 
+from app.application.repositories.feedback_repository import (
+    IMatchReportRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -22,6 +25,7 @@ from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.create_supplier import _build_supplier_text
 from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
+from app.domain.entities.feedback import MatchReportKind
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.errors.supplier_errors import (
     SupplierNotFoundForUser,
@@ -62,6 +66,7 @@ class RankTendersUseCase:
         vector_search_limit: int = 50,
         reranker_limit: int = 12,
         embedding_service: IEmbeddingService | None = None,
+        match_report_repo: IMatchReportRepository | None = None,
     ) -> None:
         self.supplier_repo = supplier_repo
         self.supplier_vector_repo = supplier_vector_repo
@@ -73,6 +78,7 @@ class RankTendersUseCase:
         self.vector_search_limit = vector_search_limit
         self.reranker_limit = reranker_limit
         self.embedding_service = embedding_service
+        self.match_report_repo = match_report_repo
 
     async def execute(
         self,
@@ -83,7 +89,32 @@ class RankTendersUseCase:
     ) -> list[MatchingResult]:
         """
         Ejecuta el flujo de recomendación y retorna el listado de resultados ordenados por score final.
+
+        Las licitaciones que la empresa reportó como mal match (HU-24) quedan
+        fuera. Se filtra acá, sobre el resultado, y no al calcular: el ranking
+        cacheado sigue siendo el mismo para todos y el reporte rige apenas se
+        guarda, sin esperar al próximo recálculo.
         """
+        results = await self._rank(
+            user_id=user_id,
+            supplier_id=supplier_id,
+            force_refresh=force_refresh,
+            request=request,
+        )
+        if self.match_report_repo is None or not results:
+            return results
+        reported = await self.match_report_repo.list_reported_tender_ids(
+            results[0].supplier_id, MatchReportKind.MATCH
+        )
+        return [r for r in results if r.tender_id not in reported]
+
+    async def _rank(
+        self,
+        user_id: UUID,
+        supplier_id: UUID | None = None,
+        force_refresh: bool = False,
+        request: ClientConnection | None = None,
+    ) -> list[MatchingResult]:
         if request is not None and await request.is_disconnected():
             raise asyncio.CancelledError()
 
