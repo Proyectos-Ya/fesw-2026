@@ -10,7 +10,20 @@ from app.application.services.company_profiling import (
     activity_dictionary,
     sector_classifier,
 )
-from app.shared.sectors import PRODUCT_SECTORS
+from app.shared.sectors import PRODUCT_SECTORS, SECTOR_GROUPS
+
+
+class TestListaDeRubros:
+    def test_son_los_58_rubros_de_primer_nivel_de_mercado_publico(self):
+        assert len(PRODUCT_SECTORS) == 58
+        assert len(set(PRODUCT_SECTORS)) == 58
+
+    def test_se_agrupan_en_servicios_bienes_y_obras(self):
+        assert [group.title for group in SECTOR_GROUPS] == ["Servicios", "Bienes", "Obras y otros"]
+        assert [len(group.sectors) for group in SECTOR_GROUPS] == [19, 35, 4]
+
+    def test_la_lista_plana_sigue_el_orden_de_los_grupos(self):
+        assert PRODUCT_SECTORS == tuple(s for group in SECTOR_GROUPS for s in group.sectors)
 
 
 class TestVocabularioCerrado:
@@ -44,9 +57,9 @@ class TestDiccionario:
 
     def test_une_los_rubros_de_todas_las_actividades(self):
         assert activity_dictionary.curated_sectors(self.CODIGOS_EMPRESA_REAL) == [
-            "Obras de Construcción e Infraestructura",
-            "Equipos e Insumos Industriales",
-            "Mantención y Reparación",
+            "Servicios de construcción y mantenimiento",
+            "Artículos de fabricación y producción",
+            "Servicios de cuidado personal y domésticos",
         ]
 
     def test_une_las_palabras_clave_sin_repetir(self):
@@ -67,33 +80,54 @@ class TestDiccionario:
 class TestClasificadorDeRubro:
     def test_reconoce_el_rubro_por_la_glosa(self):
         assert sector_classifier.sectors_from_description(
-            "REPARACIÓN DE APARATOS DE USO DOMÉSTICO"
-        ) == ("Mantención y Reparación",)
+            "CONSTRUCCIÓN DE EDIFICIOS PARA USO RESIDENCIAL"
+        ) == ("Servicios de construcción y mantenimiento",)
 
-    def test_acumula_varios_rubros(self):
+    def test_reparacion_domestica_va_a_servicios_domesticos(self):
+        assert sector_classifier.sectors_from_description(
+            "REPARACIÓN DE APARATOS DE USO DOMÉSTICO"
+        ) == ("Servicios de cuidado personal y domésticos",)
+
+    def test_reparacion_de_vehiculos_no_es_construccion(self):
+        """Apuntada a construcción, la empresa recibiría preguntas MOP/MINVU."""
+        assert "Servicios de construcción y mantenimiento" not in (
+            sector_classifier.sectors_from_description("REPARACIÓN DE VEHÍCULOS AUTOMOTORES")
+        )
+
+    def test_mantencion_de_software_es_ti_y_no_construccion(self):
         sectores = sector_classifier.sectors_from_description(
             "REPARACIÓN Y MANTENCIÓN DE SOFTWARE"
         )
-        assert "Mantención y Reparación" in sectores
-        assert "Desarrollo de Software" in sectores
+        assert "Tecnologías de la información, telecomunicaciones y radiodifusión" in sectores
+        assert "Servicios de construcción y mantenimiento" not in sectores
 
-    def test_caza_y_pesca_no_es_alimentacion(self):
-        assert "Alimentación y Gastronomía" not in sector_classifier.sectors_from_description(
-            "VENTA AL POR MENOR DE ARTÍCULOS DE CAZA Y PESCA"
+    def test_restaurante_es_servicio_y_cultivo_es_alimento(self):
+        assert sector_classifier.sectors_from_description("ACTIVIDADES DE RESTAURANTES") == (
+            "Servicios de Viajes, alimentación, alojamiento y entretenimiento",
+        )
+        assert sector_classifier.sectors_from_description("CULTIVO DE FRUTAS") == (
+            "Alimentos, bebidas y tabaco",
         )
 
+    def test_caza_y_pesca_no_es_alimentacion(self):
+        sectores = sector_classifier.sectors_from_description(
+            "VENTA AL POR MENOR DE ARTÍCULOS DE CAZA Y PESCA"
+        )
+        assert "Alimentos, bebidas y tabaco" not in sectores
+        assert "Servicios de Viajes, alimentación, alojamiento y entretenimiento" not in sectores
+
     def test_aparatos_electricos_no_es_energia(self):
-        assert "Energía y Electricidad" not in sector_classifier.sectors_from_description(
-            "VENTA AL POR MENOR DE APARATOS ELÉCTRICOS"
+        assert "Maquinaria para generación y distribución de energía" not in (
+            sector_classifier.sectors_from_description("VENTA AL POR MENOR DE APARATOS ELÉCTRICOS")
         )
 
     def test_el_comodin_de_comercio_solo_aplica_sin_otra_coincidencia(self):
         assert sector_classifier.sectors_from_description("VENTA AL POR MAYOR DE TELAS") == (
-            "Equipos e Insumos Industriales",
+            "Artículos de fabricación y producción",
         )
         assert sector_classifier.sectors_from_description(
             "VENTA DE SERVICIOS DE ASEO"
-        ) == ("Limpieza y Aseo Industrial",)
+        ) == ("Servicios de limpieza industrial",)
 
     def test_glosa_sin_coincidencias_no_fuerza_un_rubro(self):
         assert sector_classifier.sectors_from_description("ACTIVIDADES DE ASOCIACIONES") == ()

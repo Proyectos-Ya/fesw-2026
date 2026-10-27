@@ -60,9 +60,9 @@ class TestMismaEstructuraParaCualquierFuente:
         borrador = await _importar(registro)
 
         assert borrador.sectors == [
-            "Obras de Construcción e Infraestructura",
-            "Equipos e Insumos Industriales",
-            "Mantención y Reparación",
+            "Servicios de construcción y mantenimiento",
+            "Artículos de fabricación y producción",
+            "Servicios de cuidado personal y domésticos",
         ]
         assert "pintura" in borrador.keywords
         assert "reparación de electrodomésticos" in borrador.keywords

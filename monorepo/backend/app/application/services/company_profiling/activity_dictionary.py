@@ -23,9 +23,11 @@ Procedencia y estado
 --------------------
 * 433000, 479100 y 952200: verificados contra un payload real.
 * El resto: escritos leyendo la glosa oficial, sin verificar con empresas reales.
-* **Los rubros son provisionales**: son los del wizard (`app/shared/sectors.py`),
-  no las categorías de Mercado Público. Hay que revisarlos contra ellas y volver a
-  curar esta tabla.
+* Los rubros son los de Mercado Público (`app/shared/sectors.py`). Se reapuntaron
+  desde los provisionales con la tabla de correspondencia del plan 311 (§2.1).
+  Dos códigos se apartan de la tabla porque su glosa es más precisa: 464907
+  (farmacéuticos) va a "Medicamentos y productos farmacéuticos" y 952200
+  (reparación doméstica) a "Servicios de cuidado personal y domésticos".
 """
 
 from dataclasses import dataclass
@@ -43,7 +45,7 @@ class ActivityEntry:
 ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
     # --- Verificados contra un payload real ---
     433000: ActivityEntry(  # Terminación y acabado de edificios
-        sectors=("Obras de Construcción e Infraestructura",),
+        sectors=("Servicios de construcción y mantenimiento",),
         keywords=(
             "pintura",
             "revestimiento",
@@ -53,11 +55,11 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     479100: ActivityEntry(  # Venta al por menor por correo, internet y teléfono
-        sectors=("Equipos e Insumos Industriales",),
+        sectors=("Artículos de fabricación y producción",),
         keywords=("venta en línea", "distribución", "despacho a domicilio", "suministro"),
     ),
     952200: ActivityEntry(  # Reparación de aparatos de uso doméstico y de jardinería
-        sectors=("Mantención y Reparación",),
+        sectors=("Servicios de cuidado personal y domésticos",),
         keywords=(
             "reparación de electrodomésticos",
             "mantención de equipos",
@@ -66,7 +68,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
     ),
     # --- Provisionales, sin verificar contra empresas reales ---
     620100: ActivityEntry(  # Programación informática
-        sectors=("Desarrollo de Software",),
+        sectors=("Tecnologías de la información, telecomunicaciones y radiodifusión",),
         keywords=(
             "desarrollo de software",
             "plataforma web",
@@ -75,23 +77,26 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     620200: ActivityEntry(  # Consultoría informática
-        sectors=("Tecnología y Telecomunicaciones", "Consultoría y Asesoría Técnica"),
+        sectors=(
+            "Tecnologías de la información, telecomunicaciones y radiodifusión",
+            "Servicios profesionales, administrativos y consultorías de gestión empresarial",
+        ),
         keywords=("consultoría informática", "soporte TI", "mesa de ayuda"),
     ),
     702000: ActivityEntry(  # Consultoría de gestión
-        sectors=("Consultoría y Asesoría Técnica",),
+        sectors=("Servicios profesionales, administrativos y consultorías de gestión empresarial",),
         keywords=("consultoría de gestión", "asesoría organizacional", "estudios"),
     ),
     812100: ActivityEntry(  # Limpieza general de edificios
-        sectors=("Limpieza y Aseo Industrial",),
+        sectors=("Servicios de limpieza industrial",),
         keywords=("servicio de aseo", "limpieza de dependencias", "sanitización"),
     ),
     492300: ActivityEntry(  # Transporte de carga por carretera
-        sectors=("Transporte y Logística",),
+        sectors=("Servicios de transporte, almacenaje y correo",),
         keywords=("transporte de carga", "flete", "distribución logística"),
     ),
     801001: ActivityEntry(  # Servicios de seguridad privada prestados por empresas
-        sectors=("Seguridad y Vigilancia",),
+        sectors=("Servicios de defensa nacional, orden público y seguridad",),
         keywords=(
             "guardias de seguridad",
             "vigilancia privada",
@@ -100,15 +105,15 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     813000: ActivityEntry(  # Paisajismo, servicios de jardinería y conexos
-        sectors=("Jardinería y Paisajismo",),
+        sectors=("Servicios agrícolas, pesqueros, forestales y relacionados con la fauna",),
         keywords=("mantención de áreas verdes", "paisajismo", "poda", "jardinería"),
     ),
     561000: ActivityEntry(  # Restaurantes y servicio móvil de comidas
-        sectors=("Alimentación y Gastronomía",),
+        sectors=("Servicios de Viajes, alimentación, alojamiento y entretenimiento",),
         keywords=("servicio de alimentación", "catering", "banquetería", "comida preparada"),
     ),
     692000: ActivityEntry(  # Contabilidad, teneduría de libros y auditoría
-        sectors=("Contabilidad y Auditoría",),
+        sectors=("Servicios financieros, pensiones y seguros",),
         keywords=(
             "servicios contables",
             "auditoría",
@@ -117,7 +122,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     781000: ActivityEntry(  # Agencias de empleo
-        sectors=("Recursos Humanos",),
+        sectors=("Servicios profesionales, administrativos y consultorías de gestión empresarial",),
         keywords=(
             "reclutamiento",
             "selección de personal",
@@ -126,7 +131,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     464907: ActivityEntry(  # Venta al por mayor de productos farmacéuticos
-        sectors=("Salud y Equipamiento Médico",),
+        sectors=("Medicamentos y productos farmacéuticos",),
         keywords=(
             "suministro de medicamentos",
             "insumos farmacéuticos",
@@ -134,7 +139,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     181200: ActivityEntry(  # Servicios relacionados con la impresión
-        sectors=("Servicios de Imprenta y Diseño",),
+        sectors=("Servicios editoriales, de diseño, publicidad, gráficos y artistas",),
         keywords=(
             "servicios de impresión",
             "imprenta",
@@ -143,7 +148,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     351030: ActivityEntry(  # Distribución de energía eléctrica
-        sectors=("Energía y Electricidad",),
+        sectors=("Maquinaria para generación y distribución de energía",),
         keywords=(
             "suministro eléctrico",
             "distribución de energía",
@@ -151,7 +156,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     390000: ActivityEntry(  # Descontaminación y gestión de desechos
-        sectors=("Medio Ambiente y Sustentabilidad",),
+        sectors=("Servicios medioambientales",),
         keywords=(
             "gestión de residuos",
             "descontaminación",
@@ -160,7 +165,7 @@ ACTIVITY_DICTIONARY: dict[int, ActivityEntry] = {
         ),
     ),
     855000: ActivityEntry(  # Apoyo a la enseñanza
-        sectors=("Educación y Capacitación",),
+        sectors=("Educación, formación, entrenamiento y capacitación",),
         keywords=(
             "capacitación",
             "cursos de formación",

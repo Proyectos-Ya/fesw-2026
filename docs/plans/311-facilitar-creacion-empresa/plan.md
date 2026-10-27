@@ -72,15 +72,15 @@ viejos. Cada regla se reapunta según esta tabla:
 | Rubro viejo | Rubro nuevo |
 |---|---|
 | Obras de Construcción e Infraestructura | Servicios de construcción y mantenimiento |
-| Mantención y Reparación | Servicios de construcción y mantenimiento (ver la excepción abajo) |
+| Mantención y Reparación | Servicios de construcción y mantenimiento; la reparación doméstica (952200 y su glosa) va a Servicios de cuidado personal y domésticos (ver las excepciones abajo) |
 | Arquitectura e Ingeniería | Servicios basados en ingeniería, ciencias sociales y tecnología de la información |
 | Tecnología y Telecomunicaciones | Tecnologías de la información, telecomunicaciones y radiodifusión |
 | Desarrollo de Software | Tecnologías de la información, telecomunicaciones y radiodifusión |
 | Consultoría y Asesoría Técnica | Servicios profesionales, administrativos y consultorías de gestión empresarial |
-| Salud y Equipamiento Médico | Salud, servicios sanitarios y alimentación; Equipamiento y suministros médicos |
+| Salud y Equipamiento Médico | Salud, servicios sanitarios y alimentación; lo farmacéutico (464907 y la raíz FARMAC) va a Medicamentos y productos farmacéuticos |
 | Educación y Capacitación | Educación, formación, entrenamiento y capacitación |
 | Transporte y Logística | Servicios de transporte, almacenaje y correo |
-| Alimentación y Gastronomía | Servicios de Viajes, alimentación, alojamiento y entretenimiento |
+| Alimentación y Gastronomía | Servicios de Viajes, alimentación, alojamiento y entretenimiento (restaurantes y comida preparada); Alimentos, bebidas y tabaco (cultivo, producción y venta de alimentos) |
 | Limpieza y Aseo Industrial | Servicios de limpieza industrial |
 | Seguridad y Vigilancia | Servicios de defensa nacional, orden público y seguridad |
 | Medio Ambiente y Sustentabilidad | Servicios medioambientales |
@@ -91,11 +91,13 @@ viejos. Cada regla se reapunta según esta tabla:
 | Recursos Humanos | Servicios profesionales, administrativos y consultorías de gestión empresarial |
 | Contabilidad y Auditoría | Servicios financieros, pensiones y seguros |
 
-Excepción: la regla de `sector_classifier.py:22` (REPARACION, MANTENCION,
-MANTENIMIENTO) también se dispara con la reparación de vehículos, maquinaria o
-electrodomésticos. Apuntada a un rubro de construcción, esas empresas recibirían
-preguntas MOP/MINVU. Se le agregan excepciones (VEHICULO, AUTOMOTOR, MAQUINARIA,
-ELECTRODOMESTICO, COMPUTADOR) para que en esos casos no sugiera ningún rubro.
+Excepciones: la regla de reparación del clasificador (REPARACION, MANTENCION,
+MANTENIMIENTO) también se dispara con la reparación de vehículos, maquinaria,
+equipos informáticos, software o aparatos domésticos. Apuntada a un rubro de
+construcción, esas empresas recibirían preguntas MOP/MINVU. Se le agregan
+excepciones para esos casos. La reparación de aparatos domésticos tiene su propia
+regla, que apunta a Servicios de cuidado personal y domésticos, el rubro donde el
+catálogo ONU pone ese servicio.
 
 #### Palabras genéricas en el matching léxico
 

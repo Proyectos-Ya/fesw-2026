@@ -181,8 +181,8 @@ async def test_profile_import_returns_draft(api: AsyncClient):
     assert body["source"] == "web-empresario"
     assert body["regions"] == ["Metropolitana"]
     assert body["sectors"] == [
-        "Obras de Construcción e Infraestructura",
-        "Mantención y Reparación",
+        "Servicios de construcción y mantenimiento",
+        "Servicios de cuidado personal y domésticos",
     ]
     assert "pintura" in body["keywords"]
     assert isinstance(body["notices"], list)
