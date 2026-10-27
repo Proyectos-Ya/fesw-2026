@@ -89,7 +89,7 @@ export function ReportModal({
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" loading={loading} disabled={!reason.trim()}>
+          <Button type="submit" variant="primary" isLoading={loading} disabled={!reason.trim()}>
             Enviar reporte
           </Button>
         </div>

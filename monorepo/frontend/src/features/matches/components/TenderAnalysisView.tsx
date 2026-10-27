@@ -50,6 +50,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   const [promptError, setPromptError] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // 1. Cargar la licitación. Se pide por su ficha y no por las recomendadas:
   // el análisis no es un privilegio del top-12, y una licitación llegada del
