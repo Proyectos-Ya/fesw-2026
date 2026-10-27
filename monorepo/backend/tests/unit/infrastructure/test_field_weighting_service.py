@@ -246,3 +246,23 @@ def test_la_frase_completa_sigue_sumando_entero(service: FieldWeightingService) 
     empresa = _empresa("Servicios de limpieza industrial")
     licitacion = _licitacion("Contratación de servicios de limpieza industrial")
     assert _bono_de_rubro(service, empresa, licitacion) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize(
+    ("sector", "nombre"),
+    [
+        ("Servicios medioambientales", "Gestión medioambiental del relleno sanitario"),
+        ("Organizaciones sociales, laborales y clubes", "Arriendo de club deportivo"),
+        (
+            "Servicios financieros, pensiones y seguros",
+            "Asesoría en pensión de invalidez",
+        ),
+        ("Muebles y mobiliario", "Adquisición de mueble de oficina"),
+    ],
+)
+def test_el_plural_en_es_encuentra_el_singular(
+    service: FieldWeightingService, sector: str, nombre: str
+) -> None:
+    assert _bono_de_rubro(
+        service, _empresa(sector), _licitacion(nombre)
+    ) == pytest.approx(0.25 * 0.75)

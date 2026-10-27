@@ -7,6 +7,8 @@ from app.domain.entities.tender import Tender
 from app.shared.regions import are_regions_matching
 from app.shared.sectors import fold, significant_terms
 
+_PLURAL_ES_CONSONANTS = frozenset("bdjlnrs")
+
 
 def _term_pattern(term: str) -> str:
     """Regex del término como palabra completa, en singular o plural.
@@ -14,13 +16,16 @@ def _term_pattern(term: str) -> str:
     Los nombres del catálogo van en plural ("Tecnologías", "telecomunicaciones") y
     las licitaciones suelen decirlo en singular, o al revés.
     """
-    if term.endswith("ciones"):
+    # Consonante + "es" puede ser singular + "es" ("medioambientales", "pensiones")
+    # o singular en "e" + "s" ("muebles"): el patrón acepta "es", "e" o "s" tras la
+    # raíz. Vocal + "s" ("tecnologias") solo suma la "s".
+    if term.endswith("es") and len(term) > 3 and term[-3] in _PLURAL_ES_CONSONANTS:
         stem = term[: -len("es")]
     elif term.endswith("s"):
         stem = term[:-1]
     else:
         stem = term
-    return rf"\b{re.escape(stem)}(?:es|s)?\b"
+    return rf"\b{re.escape(stem)}(?:es|e|s)?\b"
 
 
 class FieldWeightingService(IWeightingService):

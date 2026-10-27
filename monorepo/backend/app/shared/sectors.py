@@ -128,6 +128,7 @@ GENERIC_SECTOR_WORDS: frozenset[str] = frozenset(
         "relacionados",
         "industria",
         "industrial",
+        "industriales",
         "general",
         "para",
         "sobre",
