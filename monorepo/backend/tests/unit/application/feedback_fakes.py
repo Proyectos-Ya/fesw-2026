@@ -62,3 +62,14 @@ class InMemoryAssistantFeedbackRepository(IAssistantFeedbackRepository):
             for fb in self.feedbacks.values()
             if fb.tender_id == tender_id and fb.supplier_id == supplier_id
         ]
+
+from app.application.repositories.feedback_repository import IAppFeedbackRepository
+from app.domain.entities.feedback import AppFeedback, AppFeedbackKind
+
+class InMemoryAppFeedbackRepository(IAppFeedbackRepository):
+    def __init__(self) -> None:
+        self.feedbacks: list[AppFeedback] = []
+
+    async def add(self, feedback: AppFeedback) -> AppFeedback:
+        self.feedbacks.append(feedback)
+        return feedback

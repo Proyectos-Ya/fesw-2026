@@ -13,6 +13,21 @@ from app.domain.errors.tender_errors import TenderNotFound
 from app.infrastructure.routers.feedback import create_feedback_router
 
 
+class _AppFeedbackUseCase:
+    def __init__(self) -> None:
+        self.comment_calls: list[dict] = []
+        self.review_calls: list[dict] = []
+
+    async def submit_comment(self, user_id, message):
+        from app.domain.entities.feedback import AppFeedback, AppFeedbackKind
+        self.comment_calls.append({"user_id": user_id, "message": message})
+        return AppFeedback(user_id=user_id, kind=AppFeedbackKind.COMMENT, message=message)
+
+    async def submit_review(self, user_id, rating=None, message=None, anonymous=False):
+        from app.domain.entities.feedback import AppFeedback, AppFeedbackKind
+        self.review_calls.append({"user_id": user_id, "rating": rating, "message": message, "anonymous": anonymous})
+        return AppFeedback(user_id=user_id, kind=AppFeedbackKind.REVIEW, rating=rating, message=message, anonymous=anonymous)
+
 class _UseCase:
     def __init__(self) -> None:
         self.error: Exception | None = None
@@ -52,12 +67,18 @@ def active_supplier():
 
 
 @pytest.fixture
-def client(user, report_use_case, active_supplier) -> AsyncClient:
+def app_feedback_use_case() -> _AppFeedbackUseCase:
+    return _AppFeedbackUseCase()
+
+
+@pytest.fixture
+def client(user, report_use_case, app_feedback_use_case, active_supplier) -> AsyncClient:
     app = FastAPI()
     app.include_router(
         create_feedback_router(
             get_current_user=lambda: user,
             get_report_match_use_case=lambda: report_use_case,
+            get_submit_app_feedback_use_case=lambda: app_feedback_use_case,
             get_current_workspace_context=lambda: WorkspaceContext(
                 user_id=user.id,
                 active_supplier_id=active_supplier,
@@ -135,3 +156,42 @@ async def test_usuario_sin_empresa_responde_404(client, report_use_case, user):
         f"/tenders/{uuid4()}/reports", json={"kind": "match", "reason": "x"}
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_submit_comment_endpoint_success(client, app_feedback_use_case, user):
+    response = await client.post(
+        "/feedback/comments",
+        json={"message": "Sería útil tener gráficos de evolución."},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["kind"] == "comment"
+    assert body["message"] == "Sería útil tener gráficos de evolución."
+    assert app_feedback_use_case.comment_calls[0]["user_id"] == user.id
+
+
+@pytest.mark.asyncio
+async def test_submit_review_endpoint_success(client, app_feedback_use_case, user):
+    response = await client.post(
+        "/feedback/reviews",
+        json={"rating": 4, "message": "Muy buena experiencia.", "anonymous": True},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["kind"] == "review"
+    assert body["rating"] == 4
+    assert body["anonymous"] is True
+    call = app_feedback_use_case.review_calls[0]
+    assert call["user_id"] == user.id
+    assert call["rating"] == 4
+    assert call["anonymous"] is True
+
+
+@pytest.mark.asyncio
+async def test_submit_review_invalid_rating_responds_422(client):
+    response = await client.post(
+        "/feedback/reviews",
+        json={"rating": 7},
+    )
+    assert response.status_code == 422

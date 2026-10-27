@@ -5,10 +5,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.application.schemas.feedback_schema import (
+    AppFeedbackResponse,
+    CreateCommentRequest,
+    CreateReviewRequest,
     MatchReportResponse,
     ReportMatchRequest,
 )
 from app.application.use_cases.feedback.report_match import ReportMatchUseCase
+from app.application.use_cases.feedback.submit_app_feedback import (
+    SubmitAppFeedbackUseCase,
+)
 from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
@@ -18,6 +24,7 @@ from app.domain.errors.tender_errors import TenderNotFound
 def create_feedback_router(
     get_current_user: Callable,
     get_report_match_use_case: Callable,
+    get_submit_app_feedback_use_case: Callable | None = None,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     """Retroalimentación de la empresa sobre los resultados del sistema (HU-24)."""
@@ -59,5 +66,48 @@ def create_feedback_router(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
+
+
+    @router.post(
+        "/feedback/comments",
+        response_model=AppFeedbackResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Dejar un mensaje, comentario o queja acerca del sistema (HU-24, S6)",
+    )
+    async def create_comment(
+        body: CreateCommentRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            SubmitAppFeedbackUseCase,
+            Depends(get_submit_app_feedback_use_case or (lambda: None)),
+        ],
+    ):
+        """Permite a un usuario autenticado enviar comentarios, sugerencias o quejas desde ajustes."""
+        return await use_case.submit_comment(
+            user_id=current_user.id,
+            message=body.message,
+        )
+
+    @router.post(
+        "/feedback/reviews",
+        response_model=AppFeedbackResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Dejar una reseña con estrellas y comentario opcional (HU-24, S7)",
+    )
+    async def create_review(
+        body: CreateReviewRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            SubmitAppFeedbackUseCase,
+            Depends(get_submit_app_feedback_use_case or (lambda: None)),
+        ],
+    ):
+        """Permite a un usuario autenticado dejar una reseña (0 a 5 estrellas) con opción de anonimato."""
+        return await use_case.submit_review(
+            user_id=current_user.id,
+            rating=body.rating,
+            message=body.message,
+            anonymous=body.anonymous,
+        )
 
     return router

@@ -33,6 +33,7 @@ from app.bootstrap.exports import (
 )
 from app.bootstrap.feedback import (
     get_report_match_use_case,
+    get_submit_app_feedback_use_case,
     get_submit_assistant_dislike_use_case,
 )
 from app.bootstrap.kanban import (
@@ -183,6 +184,7 @@ def register_routes(app: FastAPI) -> None:
         create_feedback_router(
             get_current_user=get_current_user,
             get_report_match_use_case=get_report_match_use_case,
+            get_submit_app_feedback_use_case=get_submit_app_feedback_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

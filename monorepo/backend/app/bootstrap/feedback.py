@@ -3,10 +3,14 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.application.use_cases.feedback.report_match import ReportMatchUseCase
+from app.application.use_cases.feedback.submit_app_feedback import (
+    SubmitAppFeedbackUseCase,
+)
 from app.application.use_cases.feedback.submit_assistant_dislike import (
     SubmitAssistantDislikeUseCase,
 )
 from app.bootstrap.repositories import (
+    AppFeedbackRepoDep,
     AssistantFeedbackRepoDep,
     MatchReportRepoDep,
     SupplierRepoDep,
@@ -46,4 +50,15 @@ def get_submit_assistant_dislike_use_case(
 
 SubmitAssistantDislikeUseCaseDep = Annotated[
     SubmitAssistantDislikeUseCase, Depends(get_submit_assistant_dislike_use_case)
+]
+
+
+def get_submit_app_feedback_use_case(
+    app_feedback_repo: AppFeedbackRepoDep,
+) -> SubmitAppFeedbackUseCase:
+    return SubmitAppFeedbackUseCase(app_feedback_repo=app_feedback_repo)
+
+
+SubmitAppFeedbackUseCaseDep = Annotated[
+    SubmitAppFeedbackUseCase, Depends(get_submit_app_feedback_use_case)
 ]
