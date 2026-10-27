@@ -8,48 +8,117 @@ Los criterios de aceptación están en la issue #311. Cada bloque indica qué CA
 
 ---
 
-## Bloque A: rubros de ChileProveedores (CA 1)
+## Bloque A: rubros de Mercado Público (CA 1)
+
+Decisiones en [plan.md §2.1](./plan.md#21-rubros-de-mercado-público-ca-1). Cada tarea de
+A1 a A4 va en su propio commit; A5 se hace después de desplegar.
 
 ### A0. Registrar la lista oficial
-- [ ] Copiar la lista de rubros de ChileProveedores, con su fecha de consulta, en el
-  docstring de `monorepo/backend/app/shared/sectors.py`.
-- [ ] Anotar aquí cuántos rubros tiene y si alguno tiene subrubros.
+- [x] Fuente: `Listado_rubros_ONU.xlsx` de Datos Abiertos de ChileCompra, consultado el
+  2026-10-26.
+- [x] 58 rubros de primer nivel (19 Servicios, 35 Bienes, 4 `SinInfo`), sin `x` ni
+  `eCommerce`. Tienen 362 rubros de segundo nivel, que no se usan.
+- [ ] Copiar los 58 nombres, la URL y la fecha en `monorepo/backend/app/shared/sectors.py`
+  (se hace dentro de A1). Se copian del Excel, no de este documento.
 
-### A1 (backend). Reemplazar `PRODUCT_SECTORS` y lo que depende del nombre
+### A1 (backend). Lista nueva y diccionarios que sugieren rubros
 - **Archivos**:
   - `monorepo/backend/app/shared/sectors.py`
   - `monorepo/backend/app/application/services/company_profiling/activity_dictionary.py`
   - `monorepo/backend/app/application/services/company_profiling/sector_classifier.py`
-  - `monorepo/backend/app/application/use_cases/questions/smart_question_use_case.py`
-  - `monorepo/backend/app/infrastructure/services/field_weighting_service.py`
-  - `monorepo/backend/tests/unit/test_sectors_alignment.py` (nuevo)
-- [ ] **[Red]** `test_sectors_alignment.py`: `PRODUCT_SECTORS` es la lista de A0, y todo
-  rubro que sugieren el diccionario y el clasificador existe en ella.
-- [ ] **[Red]** Test de `smart_question_use_case` que elige la categoría correcta con los
-  nombres nuevos.
-- [ ] **[Green]** Actualizar la lista, el mapeo de actividades, las palabras del
-  clasificador y las reglas de `smart_question_use_case`.
-- [ ] **[Refactor]** Confirmar que `field_weighting_service` sigue sumando con nombres
-  largos (busca la frase completa y luego palabras sueltas).
+  - `monorepo/backend/tests/unit/application/test_company_profiling.py`
+  - Tests que hoy esperan nombres viejos y hay que actualizar:
+    `tests/unit/application/test_import_company_profile_use_case.py`,
+    `tests/e2e/api/test_supplier_router.py`,
+    `tests/unit/application/test_start_feasibility.py`,
+    `tests/unit/application/test_capability_use_cases.py`,
+    `tests/unit/shared/test_slug.py`
+- [ ] **[Red]** En `test_company_profiling.py`: `PRODUCT_SECTORS` tiene 58 rubros, sin
+  repetidos, en el orden de `SECTOR_GROUPS`; todo rubro que sugieren el diccionario y el
+  clasificador existe en la lista (el test actual, que debe seguir pasando).
+- [ ] **[Red]** Casos de clasificación con la tabla de correspondencia del plan: una
+  actividad SII de construcción sugiere "Servicios de construcción y mantenimiento";
+  una descripción de desarrollo de software sugiere "Tecnologías de la información,
+  telecomunicaciones y radiodifusión"; "reparación de vehículos" no sugiere ningún
+  rubro de construcción.
+- [ ] **[Green]** `SECTOR_GROUPS` y `PRODUCT_SECTORS` derivado; reapuntar los 18 códigos
+  SII, `_RULES` y `_CATCHALL_SECTORS` según la tabla; excepciones de la regla de
+  reparación.
+- [ ] Actualizar los tests de la lista de arriba a los nombres nuevos. `pytest` en verde.
 
-### A2 (frontend). Sincronizar `SECTORS`
+### A2 (backend). Peso de rubro y banco de preguntas con los nombres nuevos
+- **Archivos**:
+  - `monorepo/backend/app/shared/sectors.py` (`significant_terms`, `GENERIC_SECTOR_WORDS`)
+  - `monorepo/backend/app/infrastructure/services/field_weighting_service.py`
+  - `monorepo/backend/app/application/use_cases/questions/smart_question_use_case.py`
+  - Tests junto a cada uno
+- [ ] **[Red]** `significant_terms`: "Servicios de limpieza industrial" da `["limpieza"]`;
+  "Tecnologías de la información, telecomunicaciones y radiodifusión" da
+  `["tecnologias", "informacion", "telecomunicaciones", "radiodifusion"]`, sin comas
+  ni tildes; cada uno de los 58 rubros tiene al menos un término.
+- [ ] **[Red]** `field_weighting_service`: una empresa de "Servicios de limpieza
+  industrial" no suma peso de rubro contra una licitación de "servicios de transporte" y
+  sí suma contra una de "limpieza de oficinas"; una de "Tecnologías de la información..."
+  suma contra "soporte de tecnología"; "Consultoria" suma contra "consultoría". El caso
+  de frase completa sigue sumando 1. Los tests actuales con rubros cortos ("TI") siguen
+  pasando.
+- [ ] **[Red]** `smart_question_use_case`: "Obras" da `construccion`, "Tecnologías de la
+  información, telecomunicaciones y radiodifusión" da `ti`, "Productos de papel" da
+  `general`, con rubros de las dos categorías gana el primero, y cada clave del mapa
+  existe en `PRODUCT_SECTORS`.
+- [ ] **[Green]** `significant_terms` y su uso en `field_weighting_service`; mapa de
+  rubro a categoría en el use case.
+- **Risk**: item 6 parcial. Cambia el puntaje de todas las empresas; los tests de arriba
+  son los que lo cubren.
+
+### A3 (frontend). `SECTORS` agrupado y `SectorSelect`
 - **Archivos**:
   - `monorepo/frontend/src/features/company-profile/data/sectors.ts`
-  - `monorepo/frontend/src/features/company-profile/components/__tests__/Step3Specialization.test.tsx`
-- [ ] **[Red]** Test que renderiza los rubros nuevos en el `ChipSelect` del paso 3 y
-  permite elegirlos.
-- [ ] **[Green]** Copiar la lista de A0 en `sectors.ts`.
+  - `monorepo/frontend/src/features/company-profile/components/SectorSelect.tsx` (nuevo)
+  - `monorepo/frontend/src/features/company-profile/components/__tests__/SectorSelect.test.tsx` (nuevo)
+  - `monorepo/frontend/src/features/company-profile/components/steps/Step3Specialization.tsx`
+  - `monorepo/frontend/src/features/company-profile/components/CompanyView.tsx`
+  - `monorepo/backend/tests/unit/test_sectors_frontend_parity.py` (nuevo)
+  - Tests y fixtures que hoy usan nombres viejos: `useProfileWizard.test.ts`,
+    `importCompanyProfile.test.ts`, `CompanyImportCard.test.tsx`,
+    `e2e/certifications-fixture/main.tsx`, `e2e/certifications.spec.ts`
+- [ ] **[Red]** `test_sectors_frontend_parity.py`: los títulos de grupo, los nombres y su
+  orden en `sectors.ts` son iguales a `SECTOR_GROUPS`.
+- [ ] **[Red]** `SectorSelect`: muestra los tres grupos con su título; escribir "limpieza"
+  deja visibles solo los rubros que la contienen; "tecnologia" sin tilde encuentra
+  "Tecnologías..."; un rubro elegido sigue visible aunque el filtro no lo incluya;
+  elegir un rubro en Servicios y otro en Bienes conserva los dos, en el orden en que se
+  eligieron; quitar uno llama a `onChange` sin él.
+- [ ] **[Green]** `SECTOR_GROUPS` en `sectors.ts` con `SECTORS` derivado y la cabecera
+  que documenta el formato; `SectorSelect`; reemplazar el `ChipSelect` de rubros en el
+  paso 3 y en `CompanyView`.
+- [ ] Actualizar los tests y fixtures de la lista de arriba. `pnpm run test` en verde.
 
-### A3 (backend). Script de borrado de perfiles antiguos
+### A4 (backend). Modo `--solo-empresas` en `reset_cuentas.py`
 - **Archivos**:
-  - `monorepo/backend/scripts/borrar_perfiles_antiguos.py` (nuevo)
-- [ ] Listar en el script todas las tablas con FK hacia `supplier`, en orden de borrado.
-- [ ] Modo `--dry-run` por defecto: imprime cuántas filas borraría por tabla y cuántos
-  puntos de Qdrant.
-- [ ] Con `--ejecutar`, borra todo en una transacción de Postgres y después los puntos
-  de Qdrant de esas empresas.
-- [ ] Lo ejecuta un humano después del despliegue de A1 y A2. El entorno dev test
-  comparte la base de producción.
+  - `monorepo/backend/scripts/reset_cuentas.py`
+  - `monorepo/backend/tests/integration/test_reset_cuentas_compartidos.py`
+- [ ] **[Red]** Test de integración: con dos empresas, un `tender_digest` y un
+  `attachment_processing_job` compartidos (`workspace_id` nulo) y uno de cada empresa,
+  `--solo-empresas --ejecutar` borra las empresas y sus filas, y conserva los
+  compartidos y las filas de `users`.
+- [ ] **[Red]** Sin `--ejecutar` no cambia ninguna fila e informa el conteo por tabla.
+- [ ] **[Red]** El modo sin `--solo-empresas` sigue haciendo lo de antes (el test actual
+  pasa sin cambios).
+- [ ] **[Green]** Reutilizar el cierre del grafo (`_DEPENDIENTES`) con raíz `supplier`,
+  borrar con `DELETE` las tablas sin `CASCADE` y luego `supplier`, y reutilizar
+  `_borrar_vectores` para Qdrant.
+- [ ] Actualizar el docstring del script con el modo nuevo.
+- **Risk**: item 1. El script borra datos; los tests prueban qué conserva.
+
+### A5 (operación). Borrar las empresas de prueba
+- [ ] Después de desplegar A1 a A4, correr
+  `python -m scripts.reset_cuentas --solo-empresas` contra producción y pegar aquí la
+  salida.
+- [ ] Si el conteo es el esperado, correrlo con `--ejecutar`. Lo hace un humano. El
+  entorno dev test comparte la base de producción.
+- [ ] Anotar aquí la fecha y cuántas empresas y puntos de Qdrant se borraron.
+- **Risk**: item 1. Borra datos de producción; se acepta porque son de prueba.
 
 ---
 

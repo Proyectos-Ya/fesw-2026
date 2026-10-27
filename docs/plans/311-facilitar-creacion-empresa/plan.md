@@ -2,7 +2,7 @@
 
 **Issue asociada**: Refs #311 (HU-29)  
 **Estado**: En revisión  
-**Fecha**: 2026-10-25  
+**Fecha**: 2026-10-25 (sección 2.1 rehecha el 2026-10-26)  
 **Documento de tareas**: [tasks.md](./tasks.md)
 
 ---
@@ -20,34 +20,171 @@ técnicas; el desglose por tareas está en [tasks.md](./tasks.md).
 
 ## 2. Decisiones técnicas
 
-### 2.1 Rubros de ChileProveedores (CA 1)
+### 2.1 Rubros de Mercado Público (CA 1)
 
-- **Situación actual**: `app/shared/sectors.py` y
-  `frontend/src/features/company-profile/data/sectors.ts` tienen 19 rubros definidos a
-  mano (el docstring de `sectors.py` ya los marca como provisionales).
-- **Fuente**: la lista de rubros que ve un proveedor al inscribirse en ChileProveedores.
-  Se copia tal cual, con la fecha de consulta anotada en el docstring de `sectors.py`.
-  La lista exacta y su número de rubros quedan registrados en la tarea A0 antes de
-  tocar código.
-- **Dependencias del nombre del rubro**. Cambiar los nombres afecta a:
-  - `activity_dictionary.py` y `sector_classifier.py`, que sugieren rubros desde la
-    actividad del SII y desde la descripción.
-  - `start_feasibility.categoria_de()`, que usa el primer rubro como clave del banco de
-    preguntas.
-  - `smart_question_use_case`, que busca "construcción" o "tecnología" en los rubros.
-  - `field_weighting_service`, que busca el nombre del rubro en el texto de la licitación.
-  - El embedding de la empresa (`sectors` está en `_MATCHING_FIELDS`).
-- **Perfiles existentes**: se borran, también en producción. Las empresas actuales
-  tienen rubros de la lista provisional y no se migran. El borrado lo hace un script
-  (tarea A3) que:
-  - recorre las tablas con FK hacia `supplier` en orden (equipo, postulaciones, anexos
-    de la empresa, respuestas del banco de capacidades, ranking guardado y el resto que
-    aparezca al revisar el esquema);
-  - borra los puntos de la empresa en Qdrant;
-  - tiene modo `--dry-run` por defecto, que solo cuenta filas;
-  - lo ejecuta un humano, nunca el `preDeployCommand`.
+**Resumen**: los 19 rubros provisionales se reemplazan por los 58 rubros de primer nivel
+del catálogo ONU de ChileCompra. Los nombres largos obligan a filtrar palabras genéricas
+en el matching léxico, el paso 3 agrupa y filtra los rubros, y las empresas actuales se
+borran con un modo nuevo de `scripts/reset_cuentas.py` que no toca las cuentas ni los
+datos compartidos.
+
+| Tema | Decisión |
+|---|---|
+| Fuente | `Listado_rubros_ONU.xlsx` de Datos Abiertos de ChileCompra (`https://transparenciachc.blob.core.windows.net/oc-da/Listado_rubros_ONU.xlsx`), consultado el 2026-10-26. La URL y la fecha van en el docstring de `sectors.py`. |
+| Nivel | Solo el primer nivel (columna `Nivel1`). El catálogo tiene 362 rubros de segundo nivel; quedan fuera de esta HdU. El primer nivel cumple el CA 1 (decisión del 2026-10-26). |
+| Cantidad | 58 rubros: 19 de tipo Servicios, 35 de Bienes y 4 de tipo `SinInfo` (Obras, Obras MINVU, Servicios de construcción y mantenimiento, y Organizaciones y consultorías políticas, demográficas, económicas, sociales y de administración pública). Se excluyen `x` y `eCommerce`. |
+| Nombres | Se copian tal cual del Excel, con sus mayúsculas y tildes (por ejemplo "Consultoria", sin tilde). |
+| Agrupación | Tres grupos en este orden: Servicios, Bienes y "Obras y otros" (los 4 `SinInfo`). |
+
+#### Una sola lista y su copia en el frontend
+
+- `PRODUCT_SECTORS` sigue siendo una tupla plana de strings, así que `Supplier.sectors`
+  no cambia de forma y no hace falta migración.
+- `sectors.py` agrega `SECTOR_GROUPS`, de la que se deriva `PRODUCT_SECTORS`.
+- `sectors.ts` repite los mismos grupos. Un test de backend lee `sectors.ts` y falla si
+  los títulos de grupo, los nombres o su orden no coinciden con `SECTOR_GROUPS`.
+  - `sectors.ts` usa un formato fijo, documentado en su cabecera: un string por línea,
+    entre comillas dobles, y cada grupo abre con `title: "..."`. El test lo lee con
+    expresiones regulares sobre ese formato.
+  - Corre en el job `test-unit-backend` del CI, que tiene el repositorio completo. La
+    imagen Docker del backend no corre tests.
+- Se descartó un endpoint `GET /sectors`: agrega una petición al wizard para una lista
+  que cambia una vez por año.
+- El test que exige que todo rubro sugerido exista en la lista ya está en
+  `tests/unit/application/test_company_profiling.py`. Se extiende ese, no se crea otro.
+
+#### Quién depende del nombre del rubro
+
+| Consumidor | Qué hace con el nombre | Cambio |
+|---|---|---|
+| `activity_dictionary.py` (18 códigos SII) y `sector_classifier.py` (`_RULES`, `_CATCHALL_SECTORS`) | Sugieren rubros desde la actividad del SII y la descripción | Reapuntar cada regla a un rubro nuevo |
+| `field_weighting_service.py:62-92` | Suma el 25% de peso de rubro si el nombre completo o cualquier palabra de 4 letras o más aparece en el resumen de la licitación | Usar solo palabras significativas (ver abajo) |
+| `rank_tenders.py:424` | Mete los rubros en la búsqueda léxica BM25 junto con las palabras clave | Ninguno. La colección usa `Modifier.IDF` (`qdrant_lexical_tender_repository.py:50`), que ya baja el peso de las palabras comunes, y el tokenizador quita tildes y stopwords |
+| `smart_question_use_case.py:33-46` | Elige la categoría del banco de preguntas | Mapa explícito de rubro a categoría (ver abajo) |
+| `start_feasibility.categoria_de()` | Usa el slug del primer rubro como `capability_question.category` | Ninguno. Las preguntas guardadas con slugs viejos quedan sin uso; se acepta |
+| Embedding de la empresa, prompts de Gemini, `text_builder`, `create_supplier`, `build_experience_catalog` | Unen los rubros en un texto | Ninguno |
+
+#### Correspondencia de los rubros viejos
+
+Las reglas de `activity_dictionary` y `sector_classifier` hoy apuntan a los 19 rubros
+viejos. Cada regla se reapunta según esta tabla:
+
+| Rubro viejo | Rubro nuevo |
+|---|---|
+| Obras de Construcción e Infraestructura | Servicios de construcción y mantenimiento |
+| Mantención y Reparación | Servicios de construcción y mantenimiento (ver la excepción abajo) |
+| Arquitectura e Ingeniería | Servicios basados en ingeniería, ciencias sociales y tecnología de la información |
+| Tecnología y Telecomunicaciones | Tecnologías de la información, telecomunicaciones y radiodifusión |
+| Desarrollo de Software | Tecnologías de la información, telecomunicaciones y radiodifusión |
+| Consultoría y Asesoría Técnica | Servicios profesionales, administrativos y consultorías de gestión empresarial |
+| Salud y Equipamiento Médico | Salud, servicios sanitarios y alimentación; Equipamiento y suministros médicos |
+| Educación y Capacitación | Educación, formación, entrenamiento y capacitación |
+| Transporte y Logística | Servicios de transporte, almacenaje y correo |
+| Alimentación y Gastronomía | Servicios de Viajes, alimentación, alojamiento y entretenimiento |
+| Limpieza y Aseo Industrial | Servicios de limpieza industrial |
+| Seguridad y Vigilancia | Servicios de defensa nacional, orden público y seguridad |
+| Medio Ambiente y Sustentabilidad | Servicios medioambientales |
+| Energía y Electricidad | Maquinaria para generación y distribución de energía |
+| Servicios de Imprenta y Diseño | Servicios editoriales, de diseño, publicidad, gráficos y artistas |
+| Jardinería y Paisajismo | Servicios agrícolas, pesqueros, forestales y relacionados con la fauna |
+| Equipos e Insumos Industriales (también `_CATCHALL_SECTORS`) | Artículos de fabricación y producción |
+| Recursos Humanos | Servicios profesionales, administrativos y consultorías de gestión empresarial |
+| Contabilidad y Auditoría | Servicios financieros, pensiones y seguros |
+
+Excepción: la regla de `sector_classifier.py:22` (REPARACION, MANTENCION,
+MANTENIMIENTO) también se dispara con la reparación de vehículos, maquinaria o
+electrodomésticos. Apuntada a un rubro de construcción, esas empresas recibirían
+preguntas MOP/MINVU. Se le agregan excepciones (VEHICULO, AUTOMOTOR, MAQUINARIA,
+ELECTRODOMESTICO, COMPUTADOR) para que en esos casos no sugiera ningún rubro.
+
+#### Palabras genéricas en el matching léxico
+
+Hoy `field_weighting_service` suma 0,75 del peso de rubro si **cualquier** palabra de 4
+letras o más del rubro aparece en el resumen de la licitación. Con los nombres ONU,
+palabras como "Servicios", "Equipos", "suministros" o "Artículos" aparecen en casi toda
+licitación, así que casi todas las empresas sumarían ese peso.
+
+- `sectors.py` expone `significant_terms(sector) -> list[str]`:
+  - quita la puntuación ("información," pasa a "información"), pasa a minúsculas y quita
+    las tildes;
+  - deja las palabras de 4 letras o más que no estén en `GENERIC_SECTOR_WORDS`.
+- `GENERIC_SECTOR_WORDS` es una lista escrita a mano en `sectors.py`: servicios,
+  servicio, equipos, equipamiento, suministros, articulos, accesorios, productos,
+  relacionados, industria, industrial, general, y los conectores "para", "sobre",
+  "entre", "desde", "hasta".
+- `field_weighting_service` busca primero la frase completa, como hoy. Después busca
+  cada término de `significant_terms` contra el resumen de la licitación también sin
+  tildes, y acepta singular y plural: el término `tecnologias` encuentra "tecnología"
+  y "tecnologías".
+- Un test recorre los 58 rubros y exige que cada uno tenga al menos un término
+  significativo. Si alguno queda vacío, se ajusta la lista de genéricas, no el test.
+
+#### Categoría del banco de preguntas
+
+Hoy no funciona: el use case compara cada rubro por igualdad con "construcción" o
+"tecnología", y ningún rubro se llama así. Además devuelve `"construction"`, pero
+`smart_question_service` espera `"construccion"`, `"obras_civiles"` o `"constructora"`.
+
+Se reemplaza por un mapa explícito en el use case:
+
+| Rubros | Categoría |
+|---|---|
+| Obras; Obras MINVU; Servicios de construcción y mantenimiento; Artículos para estructuras, obras y construcciones; Maquinaria para construcción y edificación | `construccion` |
+| Tecnologías de la información, telecomunicaciones y radiodifusión; Servicios basados en ingeniería, ciencias sociales y tecnología de la información | `ti` |
+| Cualquier otro | `general` |
+
+Si la empresa tiene rubros de las dos categorías, gana el primero de su lista.
+
+- Un test exige que cada clave del mapa exista en `PRODUCT_SECTORS`, para que un nombre
+  mal copiado no caiga en `general` sin aviso.
+- Efecto visible: las ramas `construccion` y `ti` de `smart_question_service`, hoy
+  inalcanzables, empiezan a ofrecerse. Las empresas de obras reciben las preguntas
+  MOP/MINVU. Es lo que esas ramas buscaban; se corrige en esta HdU porque el cambio de
+  nombres obliga a rehacer el mapa igual.
+
+#### Paso 3 con 58 rubros
+
+- `ChipSelect` (compartido) no cambia. En `company-profile` se agrega
+  `SectorSelect`, que muestra los tres grupos con su título, cada uno con un
+  `ChipSelect`, y un campo de texto que filtra por nombre sin distinguir tildes ni
+  mayúsculas.
+- Se usa en el paso 3 del wizard y en la edición de `CompanyView`.
+- A cada `ChipSelect` le pasa como `options` los rubros del grupo que pasan el filtro
+  más los ya elegidos de ese grupo, para que un rubro elegido no desaparezca al filtrar.
+- A cada `ChipSelect` le pasa la selección completa, no la del grupo, y `onChange`
+  devuelve la selección completa. Así elegir en un grupo no borra lo elegido en otro, y
+  se conserva el orden de selección, que importa porque `categoria_de()` y el mapa del
+  banco de preguntas usan el primer rubro.
+
+#### Empresas existentes
+
+Se borran todas, también en producción: son pocas y todas de prueba (decisión del
+2026-10-26). No se migran a los rubros nuevos.
+
+`scripts/reset_cuentas.py` no sirve tal como está. Hace `TRUNCATE ... CASCADE`, que
+vacía tablas enteras sin mirar el `ON DELETE`. Solo aparta los anexos compartidos de
+`attachment_file`, así que también vaciaría las filas compartidas (`workspace_id`
+nulo) de `attachment_processing_job` y `tender_digest`, que cuestan llamadas a Gemini.
+Además borraría todas las cuentas de `users`, y eso esta HdU no lo pide.
+
+Se agrega a `reset_cuentas.py` un modo `--solo-empresas` (tarea A4) que reutiliza su
+cierre del grafo de claves foráneas en `pg_constraint` y su borrado en Qdrant, pero:
+
+- borra con `DELETE`, no con `TRUNCATE`, en una transacción. Primero borra las filas de
+  las empresas en las tablas que apuntan a `supplier` sin `CASCADE` (hoy
+  `deep_analysis`, `matching_result`, `quotation`, `tender_ai_analysis`), en el orden
+  que da el grafo, y después `DELETE FROM supplier`. El resto lo resuelve el `ON DELETE`
+  de cada clave foránea, que no toca las filas con `workspace_id` nulo;
+- no toca `users`. Las cuentas siguen y vuelven a pasar por el wizard;
+- sin `--ejecutar` imprime cuántas filas borraría por tabla y cuántos puntos de Qdrant;
+- después del commit borra los puntos de esas empresas en la colección `suppliers`.
+
+Lo ejecuta un humano después del despliegue de A1 a A4 (tarea A5), nunca el
+`preDeployCommand`. Antes de `--ejecutar` se guarda la salida del modo de prueba en
+`tasks.md`.
   El entorno dev test de Railway comparte la base de producción: ejecutarlo ahí ya es
   borrar en producción.
+- No hace falta regenerar embeddings: las empresas nuevas se embeben al crearse.
 
 ### 2.2 Sugerencias de palabras clave por RUT (CA 2)
 
@@ -121,6 +258,9 @@ técnicas; el desglose por tareas está en [tasks.md](./tasks.md).
 ```bash
 # Backend (monorepo/backend, con .venv activo)
 pytest tests/unit/test_certification_backward_compatibility.py
+pytest tests/unit/application/test_company_profiling.py
+pytest tests/unit/test_sectors_frontend_parity.py
+pytest tests/integration/test_reset_cuentas_compartidos.py
 pytest
 python -m scripts.migraciones
 
