@@ -6,6 +6,20 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.services.smart_question_service import ISmartQuestionService
 from app.domain.entities.question import Question  # Cambiado a la entidad de dominio
 
+# Rubros de Mercado Público (`app/shared/sectors.py`) que tienen banco de preguntas
+# propio en `SmartQuestionServiceImpl`. El resto usa "general". Los valores son las
+# categorías que ese servicio reconoce; un test exige que cada rubro exista en
+# `PRODUCT_SECTORS`.
+QUESTION_CATEGORY_BY_SECTOR: dict[str, str] = {
+    "Obras": "construccion",
+    "Obras MINVU": "construccion",
+    "Servicios de construcción y mantenimiento": "construccion",
+    "Artículos para estructuras, obras y construcciones": "construccion",
+    "Maquinaria para construcción y edificación": "construccion",
+    "Tecnologías de la información, telecomunicaciones y radiodifusión": "ti",
+    "Servicios basados en ingeniería, ciencias sociales y tecnología de la información": "ti",
+}
+
 
 class SmartQuestionUseCase:
     """
@@ -29,22 +43,15 @@ class SmartQuestionUseCase:
         """
         supplier = await self.supplier_repository.get_by_user_id(user_id=user_id)
 
+        # Manda el primer rubro de la empresa que tenga banco propio, igual que
+        # `categoria_de()` usa el primero de sus rubros.
         category = "general"
         if supplier and supplier.sectors:
-            normalized_sectors = [str(s).lower().strip() for s in supplier.sectors]
-
-            if (
-                "construction" in normalized_sectors
-                or "construcción" in normalized_sectors
-            ):
-                category = "construction"
-            elif (
-                "ti" in normalized_sectors
-                or "tecnología" in normalized_sectors
-                or "it" in normalized_sectors
-            ):
-                category = "ti"
-            # Se pueden agregar otros rubros
+            for sector in supplier.sectors:
+                mapped = QUESTION_CATEGORY_BY_SECTOR.get(str(sector).strip())
+                if mapped:
+                    category = mapped
+                    break
 
         # La cola de preguntas se guarda por empresa. Si el usuario todavía no
         # tiene una —está en pleno onboarding—, se usa su propio id para no

@@ -20,6 +20,8 @@ El diccionario de actividades y el clasificador de rubro
 exige que todo rubro que sugieran exista acá.
 """
 
+import re
+import unicodedata
 from dataclasses import dataclass
 
 
@@ -108,3 +110,48 @@ SECTOR_GROUPS: tuple[SectorGroup, ...] = (
 PRODUCT_SECTORS: tuple[str, ...] = tuple(
     sector for group in SECTOR_GROUPS for sector in group.sectors
 )
+
+# Palabras que los nombres del catálogo repiten entre rubros ("Servicios de...",
+# "Equipos y suministros de...") y que aparecen en casi toda licitación. Si contaran
+# para el peso de rubro, casi toda empresa lo sumaría contra casi toda licitación.
+# Van en minúsculas y sin tildes, como las devuelve `fold`.
+GENERIC_SECTOR_WORDS: frozenset[str] = frozenset(
+    {
+        "servicios",
+        "servicio",
+        "equipos",
+        "equipamiento",
+        "suministros",
+        "articulos",
+        "accesorios",
+        "productos",
+        "relacionados",
+        "industria",
+        "industrial",
+        "general",
+        "para",
+        "sobre",
+        "entre",
+        "desde",
+        "hasta",
+    }
+)
+
+
+def fold(text: str) -> str:
+    """Minúsculas y sin tildes, para comparar nombres de rubro con texto libre."""
+    decomposed = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+def significant_terms(sector: str) -> list[str]:
+    """Palabras del rubro que sirven para reconocerlo en una licitación.
+
+    Sin puntuación ni tildes, de 4 letras o más y fuera de `GENERIC_SECTOR_WORDS`,
+    en el orden del nombre y sin repetir.
+    """
+    terms: list[str] = []
+    for word in re.findall(r"\w+", fold(sector)):
+        if len(word) >= 4 and word not in GENERIC_SECTOR_WORDS and word not in terms:
+            terms.append(word)
+    return terms
