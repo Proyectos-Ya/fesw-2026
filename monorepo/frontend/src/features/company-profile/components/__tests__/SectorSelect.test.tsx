@@ -10,8 +10,25 @@ const CLEANING_GOODS = "Equipos y suministros de limpieza";
 const CONSULTING = "Consultoria";
 const FOOD = "Alimentos, bebidas y tabaco";
 
+// Solo los chips de rubro: las cabeceras de grupo no tienen aria-pressed.
 function sectorButtons() {
-  return screen.getAllByRole("button").map((button) => button.textContent);
+  return screen
+    .queryAllByRole("button")
+    .filter((button) => button.hasAttribute("aria-pressed"))
+    .map((button) => button.textContent);
+}
+
+// Las cabeceras de grupo son los botones con aria-expanded; un chip como
+// "Servicios de limpieza industrial" también empieza con "Servicios".
+function groupHeader(title: string) {
+  const header = screen
+    .getAllByRole("button")
+    .find(
+      (button) =>
+        button.hasAttribute("aria-expanded") && button.textContent?.includes(`${title}(`),
+    );
+  if (!header) throw new Error(`No hay cabecera para el grupo ${title}`);
+  return header;
 }
 
 function Controlled({
@@ -42,6 +59,48 @@ describe("SectorSelect", () => {
     expect(screen.getByText("Obras y otros")).toBeInTheDocument();
   });
 
+  it("los grupos empiezan plegados y no muestran rubros", () => {
+    render(<SectorSelect selected={[]} onChange={vi.fn()} />);
+
+    expect(sectorButtons()).toEqual([]);
+    for (const title of ["Servicios", "Bienes", "Obras y otros"]) {
+      expect(groupHeader(title)).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
+  it("la cabecera dice cuántos rubros tiene el grupo y cuántos están elegidos", () => {
+    render(<SectorSelect selected={[CONSULTING, FOOD]} onChange={vi.fn()} />);
+
+    expect(groupHeader("Servicios")).toHaveTextContent("(19)");
+    expect(groupHeader("Servicios")).toHaveTextContent("1 elegido");
+    expect(groupHeader("Bienes")).toHaveTextContent("(35)");
+    expect(groupHeader("Obras y otros")).toHaveTextContent("0 elegidos");
+  });
+
+  it("un clic en la cabecera despliega el grupo y otro lo pliega", async () => {
+    render(<SectorSelect selected={[]} onChange={vi.fn()} />);
+
+    await userEvent.click(groupHeader("Obras y otros"));
+
+    expect(groupHeader("Obras y otros")).toHaveAttribute("aria-expanded", "true");
+    expect(sectorButtons()).toHaveLength(4);
+
+    await userEvent.click(groupHeader("Obras y otros"));
+
+    expect(sectorButtons()).toEqual([]);
+  });
+
+  it("al borrar la búsqueda los grupos vuelven a plegarse", async () => {
+    render(<SectorSelect selected={[]} onChange={vi.fn()} />);
+    const search = screen.getByPlaceholderText("Buscar rubro");
+
+    await userEvent.type(search, "limpieza");
+    expect(groupHeader("Servicios")).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.clear(search);
+    expect(sectorButtons()).toEqual([]);
+  });
+
   it("al escribir 'limpieza' deja visibles solo los rubros que la contienen", async () => {
     render(<SectorSelect selected={[]} onChange={vi.fn()} />);
 
@@ -70,6 +129,8 @@ describe("SectorSelect", () => {
   it("elegir un rubro en Servicios y otro en Bienes conserva los dos en el orden elegido", async () => {
     const onChange = vi.fn();
     render(<Controlled onChange={onChange} />);
+    await userEvent.click(groupHeader("Servicios"));
+    await userEvent.click(groupHeader("Bienes"));
 
     await userEvent.click(screen.getByRole("button", { name: FOOD }));
     await userEvent.click(screen.getByRole("button", { name: CONSULTING }));
@@ -80,6 +141,7 @@ describe("SectorSelect", () => {
   it("quitar un rubro llama a onChange sin él", async () => {
     const onChange = vi.fn();
     render(<SectorSelect selected={[CONSULTING, FOOD]} onChange={onChange} />);
+    await userEvent.click(groupHeader("Servicios"));
 
     await userEvent.click(screen.getByRole("button", { name: CONSULTING }));
 

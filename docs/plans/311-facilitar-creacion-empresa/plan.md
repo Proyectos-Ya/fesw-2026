@@ -150,6 +150,12 @@ Si la empresa tiene rubros de las dos categorías, gana el primero de su lista.
   `SectorSelect`, que muestra los tres grupos con su título, cada uno con un
   `ChipSelect`, y un campo de texto que filtra por nombre sin distinguir tildes ni
   mayúsculas.
+- Los grupos empiezan plegados (decisión del 2026-10-27, porque 58 chips a la vista
+  eran demasiados). La cabecera de cada grupo dice cuántos rubros tiene y cuántos
+  están elegidos ("Servicios (19) · 1 elegido") y se abre o cierra con un clic.
+  Mientras hay texto en el buscador se abren solos los grupos con coincidencias y se
+  ocultan los que no tienen; al borrar la búsqueda vuelven a como los dejó el
+  usuario.
 - Se usa en el paso 3 del wizard y en la edición de `CompanyView`.
 - A cada `ChipSelect` le pasa como `options` los rubros del grupo que pasan el filtro
   más los ya elegidos de ese grupo, para que un rubro elegido no desaparezca al filtrar.
