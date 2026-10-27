@@ -627,7 +627,7 @@ async def test_save_tender_success(api: AsyncClient) -> None:
     tender_id = uuid4()
     user_id = uuid4()
     mock_uc = AsyncMock()
-    mock_uc.execute.return_value = SavedTender(user_id=user_id, tender_id=tender_id)
+    mock_uc.execute.return_value = SavedTender(supplier_id=uuid4(), user_id=user_id, tender_id=tender_id)
     app.dependency_overrides[get_save_tender_use_case] = lambda: mock_uc
 
     await _login(api, "guardar@example.com", "Camila Vera")

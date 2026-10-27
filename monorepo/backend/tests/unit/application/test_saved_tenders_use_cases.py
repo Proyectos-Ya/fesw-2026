@@ -58,7 +58,7 @@ async def test_list_returns_only_tenders_saved_by_the_user() -> None:
     user_id = uuid4()
     tender_id = uuid4()
     saved_repo, tender_repo = build_repos([tender_id, uuid4()])
-    await saved_repo.save(SavedTender(user_id=user_id, tender_id=tender_id))
+    await saved_repo.save(SavedTender(supplier_id=uuid4(), user_id=user_id, tender_id=tender_id))
 
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
 
@@ -92,8 +92,8 @@ async def test_list_excludes_tenders_saved_by_another_user() -> None:
     own_tender_id = uuid4()
     other_tender_id = uuid4()
     saved_repo, tender_repo = build_repos([own_tender_id, other_tender_id])
-    await saved_repo.save(SavedTender(user_id=user_id, tender_id=own_tender_id))
-    await saved_repo.save(SavedTender(user_id=other_user_id, tender_id=other_tender_id))
+    await saved_repo.save(SavedTender(supplier_id=uuid4(), user_id=user_id, tender_id=own_tender_id))
+    await saved_repo.save(SavedTender(supplier_id=uuid4(), user_id=other_user_id, tender_id=other_tender_id))
 
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
 
@@ -109,11 +109,12 @@ async def test_list_is_ordered_by_saved_at_descending() -> None:
     now = datetime.now(UTC).replace(tzinfo=None)
     await saved_repo.save(
         SavedTender(
+            supplier_id=uuid4(),
             user_id=user_id, tender_id=older_id, saved_at=now - timedelta(days=2)
         )
     )
     await saved_repo.save(
-        SavedTender(user_id=user_id, tender_id=newer_id, saved_at=now)
+        SavedTender(supplier_id=uuid4(), user_id=user_id, tender_id=newer_id, saved_at=now)
     )
 
     result = await ListSavedTendersUseCase(saved_repo, tender_repo).execute(user_id)
@@ -176,7 +177,7 @@ async def test_unsave_removes_the_tender_from_the_list() -> None:
     user_id = uuid4()
     tender_id = uuid4()
     saved_repo, _ = build_repos([tender_id])
-    await saved_repo.save(SavedTender(user_id=user_id, tender_id=tender_id))
+    await saved_repo.save(SavedTender(supplier_id=uuid4(), user_id=user_id, tender_id=tender_id))
 
     await UnsaveTenderUseCase(saved_repo).execute(user_id, tender_id)
 
