@@ -147,9 +147,9 @@ export function Sidebar() {
           </div>
         </div>
         <Link
-          href="/configuracion/notificaciones"
+          href="/configuracion"
           className="p-1.5 rounded-md text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-all duration-200"
-          title="Preferencias de alertas"
+          title="Ajustes y configuración"
         >
           <Icon name="settings" size={18} />
         </Link>
