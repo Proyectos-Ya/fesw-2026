@@ -34,7 +34,7 @@ datos compartidos.
 | Nivel | Solo el primer nivel (columna `Nivel1`). El catálogo tiene 362 rubros de segundo nivel; quedan fuera de esta HdU. El primer nivel cumple el CA 1 (decisión del 2026-10-26). |
 | Cantidad | 58 rubros: 19 de tipo Servicios, 35 de Bienes y 4 de tipo `SinInfo` (Obras, Obras MINVU, Servicios de construcción y mantenimiento, y Organizaciones y consultorías políticas, demográficas, económicas, sociales y de administración pública). Se excluyen `x` y `eCommerce`. |
 | Nombres | Se copian tal cual del Excel, con sus mayúsculas y tildes (por ejemplo "Consultoria", sin tilde). |
-| Agrupación | Tres grupos en este orden: Servicios, Bienes y "Obras y otros" (los 4 `SinInfo`). |
+| Agrupación | Seis grupos por rangos de segmentos UNSPSC (cada rubro es un segmento, según los dos primeros dígitos de `CodigoProducto`): Materias primas (10-15, 6), Maquinaria y equipamiento industrial (20-27, 8), Componentes y suministros (30-41, 6), Productos de uso final (42-60, 15), Servicios (70-94, 20) y Obras y consultorías de ChileCompra (Obras, Obras MINVU y Consultoria, 3). Tecnologías de la información (43) va en Servicios porque ChileCompra lo marca como servicio. Dentro de cada grupo, orden de segmento. Decisión del 2026-10-27; reemplaza los tres grupos por `Tipo`, que dejaban 35 rubros en Bienes. |
 
 #### Una sola lista y su copia en el frontend
 
@@ -147,7 +147,7 @@ Si la empresa tiene rubros de las dos categorías, gana el primero de su lista.
 #### Paso 3 con 58 rubros
 
 - `ChipSelect` (compartido) no cambia. En `company-profile` se agrega
-  `SectorSelect`, que muestra los tres grupos con su título, cada uno con un
+  `SectorSelect`, que muestra los grupos con su título, cada uno con un
   `ChipSelect`, y un campo de texto que filtra por nombre sin distinguir tildes ni
   mayúsculas.
 - Los grupos empiezan plegados (decisión del 2026-10-27, porque 58 chips a la vista

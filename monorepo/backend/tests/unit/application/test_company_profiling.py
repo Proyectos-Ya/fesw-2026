@@ -18,9 +18,23 @@ class TestListaDeRubros:
         assert len(PRODUCT_SECTORS) == 58
         assert len(set(PRODUCT_SECTORS)) == 58
 
-    def test_se_agrupan_en_servicios_bienes_y_obras(self):
-        assert [group.title for group in SECTOR_GROUPS] == ["Servicios", "Bienes", "Obras y otros"]
-        assert [len(group.sectors) for group in SECTOR_GROUPS] == [19, 35, 4]
+    def test_se_agrupan_por_rangos_de_segmentos_unspsc(self):
+        assert [group.title for group in SECTOR_GROUPS] == [
+            "Materias primas",
+            "Maquinaria y equipamiento industrial",
+            "Componentes y suministros",
+            "Productos de uso final",
+            "Servicios",
+            "Obras y consultorías de ChileCompra",
+        ]
+        assert [len(group.sectors) for group in SECTOR_GROUPS] == [6, 8, 6, 15, 20, 3]
+
+    def test_tecnologias_de_la_informacion_va_en_servicios(self):
+        """UNSPSC lo pone en productos (43), pero ChileCompra lo marca como servicio."""
+        servicios = next(group for group in SECTOR_GROUPS if group.title == "Servicios")
+        assert servicios.sectors[0] == (
+            "Tecnologías de la información, telecomunicaciones y radiodifusión"
+        )
 
     def test_la_lista_plana_sigue_el_orden_de_los_grupos(self):
         assert PRODUCT_SECTORS == tuple(s for group in SECTOR_GROUPS for s in group.sectors)
