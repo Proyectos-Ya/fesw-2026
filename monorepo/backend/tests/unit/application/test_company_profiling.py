@@ -91,6 +91,42 @@ class TestDiccionario:
         assert activity_dictionary.curated_sectors([970000]) == []
 
 
+class TestDiccionarioPorRubrosDeMayorGasto:
+    """Los 53 códigos de los 15 rubros con más gasto público (plan 311, CA 2)."""
+
+    CODIGOS = (
+        421000, 422000, 429000, 431100, 431200, 432100, 432200, 432900,
+        410010, 410020, 439000,
+        861020, 862021, 862022, 862031, 266000, 325009,
+        477201, 477202, 210000,
+        562100, 562900, 107500, 107100,
+        105000, 463019,
+        381100, 381200, 382100, 382200, 383009,
+        812909, 812901, 960100,
+        782000, 783000,
+        492120, 492190, 492250, 492290, 492230,
+        711002, 711003, 722000, 732000, 691001,
+        801003, 802000,
+        13000, 21002, 24001, 24003, 773002,
+    )  # fmt: skip
+
+    def test_son_53_codigos_distintos(self):
+        assert len(self.CODIGOS) == 53
+        assert len(set(self.CODIGOS)) == 53
+
+    def test_cada_codigo_tiene_uno_o_dos_rubros_y_de_tres_a_seis_palabras_clave(self):
+        for code in self.CODIGOS:
+            entry = activity_dictionary.ACTIVITY_DICTIONARY.get(code)
+            assert entry is not None, code
+            assert 1 <= len(entry.sectors) <= 2, code
+            assert 3 <= len(entry.keywords) <= 6, code
+            assert len(entry.keywords) == len(set(entry.keywords)), code
+
+    def test_cada_codigo_aporta_palabras_clave(self):
+        for code in self.CODIGOS:
+            assert activity_dictionary.keywords_for([code]), code
+
+
 class TestClasificadorDeRubro:
     def test_reconoce_el_rubro_por_la_glosa(self):
         assert sector_classifier.sectors_from_description(

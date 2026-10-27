@@ -204,6 +204,13 @@ Lo ejecuta un humano después del despliegue de A1 a A4 (tarea A5), nunca el
 - **Cambio**: cada chip de `KeywordSuggestions` se puede aceptar o descartar con un
   clic. Los descartados no vuelven a aparecer mientras el usuario siga en el wizard, y
   "Agregar todas" ignora los descartados.
+- **Cobertura** (2026-10-27): las palabras clave salen solo del diccionario curado, y
+  solo 18 de los 674 códigos del SII tenían. Se curaron 53 más, elegidos de los 15
+  rubros con más gasto del Estado, con palabras tomadas del vocabulario de productos de
+  `Listado_rubros_ONU.xlsx`. Un código sin curar sigue sin sugerencias y muestra el
+  aviso "agrégalas a mano". Se descartó usar la glosa del SII como respaldo: probada
+  sobre 10 códigos, la mitad de las sugerencias eran lenguaje tributario ("mayor de
+  maquinaria", "a cambio de una retribución").
 
 ### 2.3 Sugerencias de palabras clave desde la descripción (CA 3)
 
