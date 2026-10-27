@@ -231,8 +231,15 @@ Lo ejecuta un humano después del despliegue de A1 a A4 (tarea A5), nunca el
   ```
 - **Compatibilidad**: la entidad y los esquemas aceptan strings sueltos de registros
   antiguos y los convierten en `CertificationItem`. No hace falta migración de Alembic.
-- **Validación en la API**: `name` se recorta y no puede quedar vacío, y la lista se
-  deduplica por nombre en minúsculas y sin tildes, conservando la primera aparición.
+- **Validación en la API**: `name` se recorta, deja un solo espacio entre palabras y
+  no puede quedar vacío. La lista se deduplica conservando la primera aparición, con
+  una clave que ignora mayúsculas, tildes, espacios, guiones, puntos y guiones bajos:
+  "ISO-9001" e "iso 9001" son la misma, pero "ISO 9001:2015" no, porque una base puede
+  exigir la versión. El texto que escribió el usuario se guarda tal cual, sin pasarlo a
+  mayúsculas (decisión del 2026-10-27).
+- `CertificationListInput` usa la misma clave (`certificationKey` en
+  `utils/certification.ts`) y rechaza el duplicado al agregarlo, en vez de que la API
+  lo descarte al guardar.
 - La propiedad `Supplier.certification_names` reemplaza a `', '.join(certifications)`
   en prompts, texto del embedding y catálogo de experiencia.
 - **Cambio de contrato**: `GET /suppliers/me` devuelve objetos en vez de strings. Dentro
@@ -250,6 +257,9 @@ Lo ejecuta un humano después del despliegue de A1 a A4 (tarea A5), nunca el
   - `valid` o `no_date`: sin badge.
 - La alerta se muestra solo en `CompanyView` ("Mi empresa"). El paso 4 del wizard
   muestra la fecha sin badge.
+- En el paso 3 y en el editor de "Mi empresa", `CertificationListInput` avisa "Esta
+  certificación ya está vencida." bajo una certificación con fecha pasada. No impide
+  guardarla: las fechas son declarativas y el CA 5 necesita poder señalarla.
 - Cada certificación tiene "Editar fecha" y "Eliminar" (con confirmación). Ambos
   guardan con `PATCH /suppliers/me`.
 

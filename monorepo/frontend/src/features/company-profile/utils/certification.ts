@@ -50,3 +50,23 @@ export function getCertificationStatus(
   }
   return { status: "valid", daysLeft, label: "Vigente" };
 }
+
+/**
+ * Clave para comparar nombres de certificaciones: sin tildes, mayúsculas, espacios,
+ * guiones, puntos ni guiones bajos. "ISO-9001" e "iso 9001" son la misma; los dígitos
+ * y los dos puntos se conservan, así que "ISO 9001:2015" sigue siendo otra.
+ * Es la misma regla que `_clave_certificacion` en el backend
+ * (monorepo/backend/app/domain/entities/supplier.py).
+ */
+export function certificationKey(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\s\-._]/g, "");
+}
+
+/** Recorta el nombre y deja un solo espacio entre palabras. */
+export function cleanCertificationName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}

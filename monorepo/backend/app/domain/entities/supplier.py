@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from datetime import date
 from typing import Annotated
@@ -53,6 +54,12 @@ class CertificationItem(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     expires_at: date | None = None
 
+    @field_validator("name")
+    @classmethod
+    def _collapse_inner_spaces(cls, name: str) -> str:
+        """Deja un solo espacio entre palabras. El resto del texto se guarda tal cual."""
+        return re.sub(r"\s+", " ", name)
+
 
 def normalize_certifications(value: object) -> object:
     """Convierte los strings sueltos de registros antiguos en CertificationItem.
@@ -70,14 +77,21 @@ def normalize_certifications(value: object) -> object:
 
 
 def _clave_certificacion(name: str) -> str:
+    """Clave para comparar nombres: sin tildes, mayúsculas, espacios, guiones, puntos
+    ni guiones bajos. "ISO-9001" e "iso 9001" son la misma; los dígitos y los dos
+    puntos se conservan, así que "ISO 9001:2015" sigue siendo otra.
+
+    `frontend/src/features/company-profile/utils/certification.ts` usa la misma regla
+    (`certificationKey`) para rechazar el duplicado en el formulario.
+    """
     sin_tildes = unicodedata.normalize("NFKD", name).encode("ascii", "ignore")
-    return sin_tildes.decode().casefold()
+    return re.sub(r"[\s\-._]", "", sin_tildes.decode().casefold())
 
 
 def dedupe_certifications(
     items: list[CertificationItem] | None,
 ) -> list[CertificationItem] | None:
-    """Quita las certificaciones repetidas, sin distinguir mayúsculas ni tildes.
+    """Quita las certificaciones repetidas según `_clave_certificacion`.
 
     Conserva la primera aparición, que es la que trae la fecha que el usuario vio.
     """

@@ -9,6 +9,11 @@ import {
   type CertificationEntry,
   type CertificationItem,
 } from "../profileSchema";
+import {
+  certificationKey,
+  cleanCertificationName,
+  getCertificationStatus,
+} from "../utils/certification";
 
 interface CertificationListInputProps {
   label: string;
@@ -34,11 +39,12 @@ export function CertificationListInput({
   const items = value.map(normalizeCertification);
 
   const add = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const exists = items.some((item) => item.name.toLowerCase() === trimmed.toLowerCase());
+    const cleaned = cleanCertificationName(name);
+    if (!cleaned) return;
+    const key = certificationKey(cleaned);
+    const exists = items.some((item) => certificationKey(item.name) === key);
     if (!exists) {
-      onChange([...items, { name: trimmed, expires_at: expiresAt || null }]);
+      onChange([...items, { name: cleaned, expires_at: expiresAt || null }]);
     }
     setName("");
     setExpiresAt("");
@@ -96,6 +102,11 @@ export function CertificationListInput({
                 {item.expires_at ? (
                   <span className="text-xs text-text-muted">
                     Vence: {formatCertificationDate(item.expires_at)}
+                  </span>
+                ) : null}
+                {getCertificationStatus(item.expires_at).status === "expired" ? (
+                  <span className="text-xs font-medium text-danger">
+                    Esta certificación ya está vencida.
                   </span>
                 ) : null}
               </div>

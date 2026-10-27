@@ -110,4 +110,59 @@ describe("CertificationListInput", () => {
 
     expect(screen.getByText("Algo salió mal")).toBeInTheDocument();
   });
+
+  it("reduce los espacios repetidos del nombre al agregar", async () => {
+    const { onChange } = renderInput();
+
+    await userEvent.type(screen.getByLabelText("Nombre de la certificación"), "ISO   9001");
+    await userEvent.click(screen.getByRole("button", { name: "Agregar" }));
+
+    expect(onChange).toHaveBeenCalledWith([{ name: "ISO 9001", expires_at: null }]);
+  });
+
+  it.each(["iso-9001", "ISO9001", "I.S.O. 9001"])(
+    "no agrega %s si ya está ISO 9001",
+    async (duplicate) => {
+      const { onChange } = renderInput([{ name: "ISO 9001", expires_at: null }]);
+
+      await userEvent.type(screen.getByLabelText("Nombre de la certificación"), duplicate);
+      await userEvent.click(screen.getByRole("button", { name: "Agregar" }));
+
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("no agrega un duplicado que solo cambia en las tildes", async () => {
+    const { onChange } = renderInput([{ name: "Certificación SEC", expires_at: null }]);
+
+    await userEvent.type(screen.getByLabelText("Nombre de la certificación"), "certificacion sec");
+    await userEvent.click(screen.getByRole("button", { name: "Agregar" }));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("agrega otra versión de la misma norma", async () => {
+    const { onChange } = renderInput([{ name: "ISO 9001", expires_at: null }]);
+
+    await userEvent.type(screen.getByLabelText("Nombre de la certificación"), "ISO 9001:2015");
+    await userEvent.click(screen.getByRole("button", { name: "Agregar" }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      { name: "ISO 9001", expires_at: null },
+      { name: "ISO 9001:2015", expires_at: null },
+    ]);
+  });
+
+  it("avisa que una certificación ya está vencida sin impedir guardarla", () => {
+    renderInput([
+      { name: "ISO 9001", expires_at: "2020-01-31" },
+      { name: "SEC", expires_at: "2999-12-31" },
+      { name: "ISO 14001", expires_at: null },
+    ]);
+
+    expect(screen.getAllByText("Esta certificación ya está vencida.")).toHaveLength(1);
+    expect(screen.getByText("ISO 9001").closest("li")).toHaveTextContent(
+      "Esta certificación ya está vencida.",
+    );
+  });
 });

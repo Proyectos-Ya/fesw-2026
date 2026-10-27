@@ -85,6 +85,26 @@ class TestValidacion:
         assert supplier.certifications is not None
         assert supplier.certifications[0].expires_at == date(2026, 12, 31)
 
+    def test_reduce_los_espacios_repetidos_dentro_del_nombre(self):
+        assert _supplier(["ISO   9001"]).certification_names == ["ISO 9001"]
+
+    def test_quita_duplicados_que_solo_cambian_en_espacios_guiones_o_puntos(self):
+        supplier = _supplier(
+            ["ISO 9001", "ISO-9001", "iso9001", "ISO_9001", "I.S.O. 9001"]
+        )
+
+        assert supplier.certification_names == ["ISO 9001"]
+
+    def test_la_version_de_la_norma_distingue_certificaciones(self):
+        """Una base puede exigir la versión 2015; unirlas perdería ese dato."""
+        supplier = _supplier(["ISO 9001", "ISO 9001:2015", "ISO 9001:2008"])
+
+        assert supplier.certification_names == [
+            "ISO 9001",
+            "ISO 9001:2015",
+            "ISO 9001:2008",
+        ]
+
     def test_el_esquema_de_edicion_tambien_valida(self):
         with pytest.raises(ValidationError):
             UpdateSupplierSchema.model_validate({"certifications": [{"name": ""}]})
