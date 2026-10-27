@@ -135,6 +135,7 @@ export function TenderAssistantDrawer({
       {/* Chat Messages */}
       <ChatMessageList
         messages={messages}
+        tenderId={tenderId}
         isAsking={isAsking}
         error={chatError}
       />
