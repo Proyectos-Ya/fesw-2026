@@ -22,6 +22,11 @@ from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
 from app.infrastructure.repositories.export_job_model import ExportJobModel
+from app.infrastructure.repositories.feedback_model import (
+    AppFeedbackModel,
+    AssistantMessageFeedbackModel,
+    MatchReportModel,
+)
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -77,6 +82,9 @@ from app.infrastructure.repositories.tender_share_link_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "AppFeedbackModel",
+    "AssistantMessageFeedbackModel",
+    "MatchReportModel",
     "SyncEstadosRunModel",
     "CapabilityAnswerModel",
     "CapabilityEvidenceModel",
