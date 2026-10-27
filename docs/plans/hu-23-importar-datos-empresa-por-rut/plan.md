@@ -52,6 +52,12 @@ Las rutas de frontend son relativas a `monorepo/frontend/src/features/company-pr
    usuario vuelve al paso 1, cambia el RUT y aprieta "Importar datos", se vacían la
    razón social, las regiones y los rubros, y se aplica la importación nueva. Con el mismo RUT se aplica la regla 5 y los tres campos vuelven
    a quedar pendientes.
+
+   Si el usuario cambia el RUT después de importar y no vuelve a importar, la
+   importación se descarta al escribir en el campo: se quitan la razón social, las
+   regiones y los rubros importados, aunque ya estén confirmados, y la tarjeta vuelve a
+   ofrecer "Importar datos". Lo elegido a mano se conserva. Sin esto, la empresa se
+   guardaría con el RUT nuevo y los datos de la empresa del RUT anterior.
 7. **Revisión por campo (CA4).** Cada campo importado (razón social, regiones, rubros)
    muestra la insignia "Pendiente de revisión" y queda de solo lectura, con tres botones:
    - Confirmar: la insignia cambia a "Revisado".

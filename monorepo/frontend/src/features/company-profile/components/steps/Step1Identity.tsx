@@ -15,6 +15,8 @@ interface Step1Props {
   adminName: string;
   importedProfile: CompanyProfileImport | null;
   onImported: (profile: CompanyProfileImport) => void;
+  /** El RUT cambió después de importar: lo importado ya no corresponde. */
+  onImportDiscarded: () => void;
   legalNameReview: FieldReview;
   /** "Siguiente" queda bloqueado mientras la razón social importada no se confirma. */
   nextBlocked: boolean;
@@ -27,6 +29,7 @@ export function Step1Identity({
   adminName,
   importedProfile,
   onImported,
+  onImportDiscarded,
   legalNameReview,
   nextBlocked,
   onNext,
@@ -62,6 +65,13 @@ export function Step1Identity({
     // Con otro RUT el wizard vacía la razón social anterior; el campo vivo hace lo mismo.
     if (legalName) setLegalName(legalName);
     else if (isOtherRut) setLegalName("");
+  };
+
+  const handleRutChanged = (newRut: string) => {
+    if (!importedProfile || formatRut(importedProfile.rut) === newRut) return;
+    // Lo importado es de la empresa del RUT anterior, aunque ya se haya confirmado.
+    if (legalNameReview.status) setLegalName("");
+    onImportDiscarded();
   };
 
   const handleClearLegalName = () => {
@@ -138,6 +148,7 @@ export function Step1Identity({
           {...rutField}
           onChange={(e) => {
             e.target.value = formatRut(e.target.value);
+            handleRutChanged(e.target.value);
             return rutField.onChange(e);
           }}
         />

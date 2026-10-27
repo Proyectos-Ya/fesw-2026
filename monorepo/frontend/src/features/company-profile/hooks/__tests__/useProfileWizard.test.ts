@@ -234,6 +234,40 @@ describe("useProfileWizard", () => {
     });
   });
 
+  describe("descartar la importación al cambiar el RUT", () => {
+    it("quita lo importado aunque ya esté confirmado y conserva lo elegido a mano", () => {
+      const { result } = renderHook(() => useProfileWizard());
+      act(() => result.current.nextStep({ regions: ["Valparaíso"], sectors: ["Servicios medioambientales"] }));
+      act(() => result.current.applyImport(WITH_REGIONS));
+      act(() => result.current.confirmField("legal_name"));
+      act(() => result.current.confirmField("regions"));
+
+      act(() => result.current.discardImport());
+
+      expect(result.current.importedProfile).toBeNull();
+      expect(result.current.formData.legal_name).toBe("");
+      expect(result.current.formData.regions).toEqual(["Valparaíso"]);
+      expect(result.current.formData.sectors).toEqual(["Servicios medioambientales"]);
+      expect(result.current.importReview).toEqual({
+        rut: null,
+        status: {},
+        added: { regions: [], sectors: [] },
+      });
+      expect(result.current.isStepBlocked(1)).toBe(false);
+    });
+
+    it("no vacía una razón social que el usuario borró y volvió a escribir", () => {
+      const { result } = renderHook(() => useProfileWizard());
+      act(() => result.current.applyImport(WITH_REGIONS));
+      act(() => result.current.clearField("legal_name"));
+      act(() => result.current.nextStep({ legal_name: "Escrita a mano SpA" }));
+
+      act(() => result.current.discardImport());
+
+      expect(result.current.formData.legal_name).toBe("Escrita a mano SpA");
+    });
+  });
+
   it("empieza sin palabras clave descartadas", () => {
     const { result } = renderHook(() => useProfileWizard());
     expect(result.current.dismissedKeywords).toEqual([]);

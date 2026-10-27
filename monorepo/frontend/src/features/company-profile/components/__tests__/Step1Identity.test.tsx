@@ -40,19 +40,21 @@ function renderStep(defaultValues = {}, options: RenderOptions = {}) {
   const onConfirm = vi.fn();
   const onEdit = vi.fn();
   const onClear = vi.fn();
+  const onImportDiscarded = vi.fn();
   render(
     <Step1Identity
       defaultValues={defaultValues}
       adminName="Ana Pérez"
       importedProfile={options.importedProfile ?? null}
       onImported={onImported}
+      onImportDiscarded={onImportDiscarded}
       legalNameReview={{ status: options.review, onConfirm, onEdit, onClear }}
       nextBlocked={options.blocked ?? false}
       onNext={onNext}
       onBack={vi.fn()}
     />,
   );
-  return { onNext, onImported, onConfirm, onEdit, onClear };
+  return { onNext, onImported, onConfirm, onEdit, onClear, onImportDiscarded };
 }
 
 describe("Step1Identity (RUT)", () => {
@@ -224,6 +226,40 @@ describe("Step1Identity (revisión de la razón social)", () => {
 
     expect(onClear).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Nombre de la empresa")).toHaveValue("");
+  });
+
+  it("cambiar el RUT después de importar descarta la importación y vacía la razón social", async () => {
+    const { onImportDiscarded } = renderStep(
+      { legal_name: IMPORTED.legal_name, rut: "76.668.304-5" },
+      { importedProfile: IMPORTED, review: "confirmed" },
+    );
+    const rutInput = screen.getByLabelText("RUT de la empresa");
+
+    await userEvent.clear(rutInput);
+    await userEvent.type(rutInput, "760864285");
+
+    expect(onImportDiscarded).toHaveBeenCalled();
+    expect(screen.getByLabelText("Nombre de la empresa")).toHaveValue("");
+  });
+
+  it("cambiar el RUT no vacía una razón social que no viene de la importación", async () => {
+    const { onImportDiscarded } = renderStep(
+      { legal_name: "Escrita a mano SpA", rut: "76.668.304-5" },
+      { importedProfile: IMPORTED },
+    );
+
+    await userEvent.type(screen.getByLabelText("RUT de la empresa"), "{backspace}");
+
+    expect(onImportDiscarded).toHaveBeenCalled();
+    expect(screen.getByLabelText("Nombre de la empresa")).toHaveValue("Escrita a mano SpA");
+  });
+
+  it("sin importación, cambiar el RUT no avisa al wizard", async () => {
+    const { onImportDiscarded } = renderStep({ rut: "76.668.304-5" });
+
+    await userEvent.type(screen.getByLabelText("RUT de la empresa"), "{backspace}");
+
+    expect(onImportDiscarded).not.toHaveBeenCalled();
   });
 
   it("confirmada la razón social, Siguiente avanza", async () => {

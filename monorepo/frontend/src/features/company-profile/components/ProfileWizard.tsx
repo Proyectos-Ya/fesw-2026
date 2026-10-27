@@ -72,6 +72,7 @@ export function ProfileWizard() {
     confirmField,
     editField,
     clearField,
+    discardImport,
     isStepBlocked,
     dismissedKeywords,
     nextStep,
@@ -172,6 +173,7 @@ export function ProfileWizard() {
             adminName={adminName}
             importedProfile={importedProfile}
             onImported={applyImport}
+            onImportDiscarded={discardImport}
             legalNameReview={{
               status: importReview.status.legal_name,
               onConfirm: () => confirmField("legal_name"),

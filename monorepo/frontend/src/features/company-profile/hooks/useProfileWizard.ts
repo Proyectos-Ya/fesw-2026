@@ -44,6 +44,7 @@ type WizardAction =
   | { type: "CONFIRM_FIELD"; payload: ImportedField }
   | { type: "EDIT_FIELD"; payload: ImportedField }
   | { type: "CLEAR_FIELD"; payload: ImportedField }
+  | { type: "DISCARD_IMPORT" }
   | { type: "DISMISS_KEYWORD"; payload: string };
 
 const initialState: WizardState = {
@@ -85,6 +86,8 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       return setReviewStatus(state, action.payload, "editing");
     case "CLEAR_FIELD":
       return clearField(state, action.payload);
+    case "DISCARD_IMPORT":
+      return discardImport(state);
     case "DISMISS_KEYWORD": {
       const taken = new Set(state.dismissedKeywords.map(normalizeKeyword));
       if (taken.has(normalizeKeyword(action.payload))) return state;
@@ -177,6 +180,21 @@ function clearField(state: WizardState, field: ImportedField): WizardState {
  * El usuario cambió el RUT después de importar: lo importado es de otra empresa.
  * Se quita aunque ya esté confirmado, y se conserva lo que el usuario eligió a mano.
  */
+function discardImport(state: WizardState): WizardState {
+  const { status, added } = state.importReview;
+  return {
+    ...state,
+    importedProfile: null,
+    data: {
+      ...state.data,
+      legal_name: status.legal_name ? "" : state.data.legal_name,
+      regions: (state.data.regions ?? []).filter((region) => !added.regions.includes(region)),
+      sectors: (state.data.sectors ?? []).filter((sector) => !added.sectors.includes(sector)),
+    },
+    importReview: initialState.importReview,
+  };
+}
+
 export function useProfileWizard() {
   const [state, dispatch] = useReducer(reducer, initialState);
   return {
@@ -194,6 +212,7 @@ export function useProfileWizard() {
     confirmField: (field: ImportedField) => dispatch({ type: "CONFIRM_FIELD", payload: field }),
     editField: (field: ImportedField) => dispatch({ type: "EDIT_FIELD", payload: field }),
     clearField: (field: ImportedField) => dispatch({ type: "CLEAR_FIELD", payload: field }),
+    discardImport: () => dispatch({ type: "DISCARD_IMPORT" }),
     /** Verdadero si el paso tiene un campo importado sin confirmar. */
     isStepBlocked: (step: WizardStep) => {
       const field = REVIEWED_FIELD_BY_STEP[step];

@@ -55,17 +55,20 @@ vi.mock("../steps/Step1Identity", () => ({
   Step1Identity: ({
     onNext,
     onImported,
+    onImportDiscarded,
     legalNameReview,
     nextBlocked,
   }: {
     onNext: (data: typeof STEP1) => void;
     onImported: (profile: typeof IMPORT_A) => void;
+    onImportDiscarded: () => void;
     legalNameReview: MockReview;
     nextBlocked: boolean;
   }) => (
     <div>
       <button onClick={() => onImported(IMPORT_A)}>importar RUT A</button>
       <button onClick={() => onImported(IMPORT_B)}>importar RUT B</button>
+      <button onClick={onImportDiscarded}>cambiar el RUT</button>
       <button onClick={legalNameReview.onConfirm}>confirmar razón social</button>
       <span>razón social: {legalNameReview.status ?? "sin revisión"}</span>
       <button disabled={nextBlocked} onClick={() => onNext(STEP1)}>
@@ -392,6 +395,19 @@ describe("ProfileWizard: datos importados", () => {
 
     expect(createSupplierMock).not.toHaveBeenCalled();
     expect(await screen.findByRole("alert")).toHaveTextContent(/sin confirmar/i);
+  });
+
+  it("cambiar el RUT después de importar quita lo importado y desbloquea el paso", () => {
+    render(<ProfileWizard />);
+    click("importar RUT A");
+    click("confirmar razón social");
+
+    click("cambiar el RUT");
+
+    expect(screen.getByText("razón social: sin revisión")).toBeInTheDocument();
+    click("paso 1 listo");
+    expect(screen.getByText("regiones: ninguna")).toBeInTheDocument();
+    expect(screen.getByText("paso 2 listo")).not.toBeDisabled();
   });
 
   it("recorre el wizard: importa, confirma en cada paso, reimporta con otro RUT y guarda", async () => {
