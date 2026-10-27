@@ -61,6 +61,7 @@ from app.infrastructure.services.tenders.documentos_mp import (
     documentos_desde_payload,
     documentos_por_codigo,
 )
+from app.infrastructure.services.tenders.entrega import leer_entrega, leer_requisitos
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.infrastructure.services.tenders.llamados import leer_llamado
 from app.infrastructure.services.tenders.mercado_publico_client import (
@@ -68,6 +69,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.infrastructure.services.tenders.ofertas import leer_total_ofertas
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import fecha_mp_a_utc, leer_fecha_mp, utc_now_naive
 from app.shared.ingestion_window import calcular_ventana
@@ -1258,6 +1260,8 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         presupuesto = detail.get("presupuesto", {}) or {}
         estado = detail.get("estado", {}) or {}
         llamado = leer_llamado(detail)
+        entrega = leer_entrega(detail)
+        requisitos = leer_requisitos(detail)
 
         # Sin las dos fechas oficiales no se ingesta: antes se rellenaban con
         # "ahora", y `_actualizar` lo leía como un cambio de cierre. El error
@@ -1290,6 +1294,11 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             NumeroLlamado=llamado.numero,
             FechaCierrePrimerLlamado=llamado.cierre_primer_llamado,
             FechaCierreSegundoLlamado=llamado.cierre_segundo_llamado,
+            TotalOfertasRecibidas=leer_total_ofertas(detail),
+            DireccionEntrega=entrega.direccion,
+            PlazoEntregaDias=entrega.plazo_dias,
+            RequisitosMedioambientales=requisitos.medioambientales,
+            RequisitosImpactoSocial=requisitos.impacto_social,
             RutComprador=str(institucion.get("rut", "Sin RUT")),
             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),
