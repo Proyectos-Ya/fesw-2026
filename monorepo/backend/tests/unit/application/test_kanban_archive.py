@@ -118,6 +118,7 @@ async def test_archive_marks_card_with_manual_reason_and_timestamp() -> None:
     repo = InMemoryKanbanCardRepository()
     user_id = uuid4()
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id, tender_id=uuid4(), column_id=uuid4(), position=0
     )
     repo.cards.append(card)
@@ -134,6 +135,7 @@ async def test_archive_removes_card_from_active_board() -> None:
     repo = InMemoryKanbanCardRepository()
     user_id = uuid4()
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id, tender_id=uuid4(), column_id=uuid4(), position=0
     )
     repo.cards.append(card)
@@ -159,6 +161,7 @@ async def test_archive_is_idempotent_on_already_archived() -> None:
     user_id = uuid4()
     original_ts = datetime(2026, 1, 1, 12, 0, 0)
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -184,6 +187,7 @@ async def test_restore_manual_archive_clears_timestamp_and_reason() -> None:
     repo = InMemoryKanbanCardRepository()
     user_id = uuid4()
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -205,6 +209,7 @@ async def test_restore_auto_archive_raises_not_restorable() -> None:
     repo = InMemoryKanbanCardRepository()
     user_id = uuid4()
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -243,6 +248,7 @@ async def test_list_archived_returns_desc_by_archived_at() -> None:
         tender_id = uuid4()
         repo.tender_meta[tender_id] = (f"T-{label}", f"Lic {label}")
         return KanbanCard(
+            supplier_id=uuid4(),
             user_id=user_id,
             tender_id=tender_id,
             column_id=column_id,
@@ -276,6 +282,7 @@ async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
     now = datetime.utcnow()
 
     old = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -283,6 +290,7 @@ async def test_scheduler_archives_only_cards_older_than_cutoff() -> None:
         board_entered_at=now - timedelta(days=100),
     )
     fresh = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),
@@ -307,6 +315,7 @@ async def test_scheduler_ignores_already_archived_cards() -> None:
     user_id = uuid4()
     now = datetime.utcnow()
     card = KanbanCard(
+        supplier_id=uuid4(),
         user_id=user_id,
         tender_id=uuid4(),
         column_id=uuid4(),

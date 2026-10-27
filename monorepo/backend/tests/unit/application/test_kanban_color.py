@@ -161,7 +161,7 @@ async def test_existing_columns_preserve_their_color() -> None:
     user_id = uuid4()
     custom_color = "#123456"
     repo.columns.append(
-        KanbanColumn(user_id=user_id, name="Mi columna", position=0, color=custom_color)
+        KanbanColumn(supplier_id=uuid4(), user_id=user_id, name="Mi columna", position=0, color=custom_color)
     )
 
     use_case = ListKanbanColumnsUseCase(column_repo=repo)
@@ -179,7 +179,7 @@ async def test_existing_columns_preserve_their_color() -> None:
 async def test_update_column_changes_color() -> None:
     repo = InMemoryKanbanColumnRepository()
     user_id = uuid4()
-    col = KanbanColumn(user_id=user_id, name="Col", position=0, color="#A99A7C")
+    col = KanbanColumn(supplier_id=uuid4(), user_id=user_id, name="Col", position=0, color="#A99A7C")
     repo.columns.append(col)
 
     use_case = UpdateKanbanColumnUseCase(column_repo=repo)
@@ -195,7 +195,7 @@ async def test_update_column_preserves_color_when_not_provided() -> None:
     repo = InMemoryKanbanColumnRepository()
     user_id = uuid4()
     original_color = "#BF6E4A"
-    col = KanbanColumn(user_id=user_id, name="Col", position=0, color=original_color)
+    col = KanbanColumn(supplier_id=uuid4(), user_id=user_id, name="Col", position=0, color=original_color)
     repo.columns.append(col)
 
     use_case = UpdateKanbanColumnUseCase(column_repo=repo)

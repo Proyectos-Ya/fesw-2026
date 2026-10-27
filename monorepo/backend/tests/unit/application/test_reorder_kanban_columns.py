@@ -71,7 +71,7 @@ class InMemoryKanbanColumnRepository(IKanbanColumnRepository):
 def _seed(repo: InMemoryKanbanColumnRepository, user_id: UUID, n: int) -> list[UUID]:
     ids: list[UUID] = []
     for i in range(n):
-        col = KanbanColumn(user_id=user_id, name=f"Col {i}", position=i)
+        col = KanbanColumn(supplier_id=uuid4(), user_id=user_id, name=f"Col {i}", position=i)
         repo.columns.append(col)
         ids.append(col.id)
     return ids
@@ -112,7 +112,7 @@ async def test_reorder_rejects_column_from_other_user() -> None:
     other_id = uuid4()
     ids = _seed(repo, user_id, 2)
     # columna de otro usuario, mismo tamaño total
-    foreign = KanbanColumn(user_id=other_id, name="Ajena", position=0)
+    foreign = KanbanColumn(supplier_id=uuid4(), user_id=other_id, name="Ajena", position=0)
     repo.columns.append(foreign)
 
     use_case = ReorderKanbanColumnsUseCase(column_repo=repo)
