@@ -37,6 +37,7 @@ class ITenderAssistantAIService(ABC):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
     ) -> AIResponseDTO:
         """
         Genera la respuesta a la pregunta del usuario utilizando el historial de chat,

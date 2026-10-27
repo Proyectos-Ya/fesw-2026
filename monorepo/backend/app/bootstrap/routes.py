@@ -31,7 +31,10 @@ from app.bootstrap.exports import (
     get_revoke_share_link_use_case,
     get_shared_tender_use_case,
 )
-from app.bootstrap.feedback import get_report_match_use_case
+from app.bootstrap.feedback import (
+    get_report_match_use_case,
+    get_submit_assistant_dislike_use_case,
+)
 from app.bootstrap.kanban import (
     get_add_tender_to_board_use_case,
     get_create_kanban_column_use_case,
@@ -226,6 +229,7 @@ def register_routes(app: FastAPI) -> None:
             get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
             get_chat_history_use_case=get_tender_chat_history_use_case,
             get_create_chat_session_use_case=get_create_tender_chat_session_use_case,
+            get_submit_dislike_use_case=get_submit_assistant_dislike_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

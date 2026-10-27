@@ -1,5 +1,7 @@
-from typing import Annotated, Callable, List, Optional
+from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -9,38 +11,47 @@ from fastapi import (
     status,
 )
 
+from app.application.schemas.feedback_schema import (
+    AssistantFeedbackResponse,
+    DislikeMessageRequest,
+)
 from app.application.schemas.tender_chat_schema import (
     AskQuestionRequest,
-    CreateChatSessionRequest,
-    TenderChatSessionResponse,
-    TenderChatMessageResponse,
-    TenderChatDocumentResponse,
     CitationResponse,
+    CreateChatSessionRequest,
     DiscrepancyResponse,
+    TenderChatDocumentResponse,
+    TenderChatMessageResponse,
+    TenderChatSessionResponse,
 )
-from app.domain.entities.tender_chat import (
-    TenderChatMessage,
-    TenderChatDocument,
-    TenderChatSession,
+from app.application.use_cases.feedback.submit_assistant_dislike import (
+    SubmitAssistantDislikeUseCase,
 )
 from app.domain.entities.supplier_member import WorkspaceContext
+from app.domain.entities.tender_chat import (
+    TenderChatDocument,
+    TenderChatMessage,
+    TenderChatSession,
+)
 from app.domain.entities.user import User
+from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_chat_errors import (
-    TenderChatQueryTooLongError,
-    TenderAssistantUnavailableError,
+    ChatHistoryLoadError,
+    ChatSessionNotFoundError,
+    CorruptedDocumentError,
+    DocumentNotFoundError,
+    InvalidPromptInstruction,
+    MaxDocumentsExceededError,
+    MessageNotFoundError,
+    OutOfScopeQueryError,
     TenderAssistantAIProviderError,
     TenderAssistantResponseError,
+    TenderAssistantUnavailableError,
     TenderChatQueryInvalidError,
+    TenderChatQueryTooLongError,
     TenderChatStorageError,
-    UnsupportedDocumentTypeError,
-    DocumentNotFoundError,
-    MaxDocumentsExceededError,
-    InvalidPromptInstruction,
-    OutOfScopeQueryError,
-    ChatSessionNotFoundError,
-    ChatHistoryLoadError,
-    CorruptedDocumentError,
     UnreadableDocumentError,
+    UnsupportedDocumentTypeError,
 )
 
 
@@ -52,6 +63,7 @@ def create_tender_chat_router(
     get_ask_assistant_use_case: Callable,
     get_chat_history_use_case: Callable,
     get_create_chat_session_use_case: Callable,
+    get_submit_dislike_use_case: Callable | None = None,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/tenders/{tender_id}/assistant", tags=["Tender Assistant"])
@@ -121,7 +133,7 @@ def create_tender_chat_router(
     @router.post("/sessions", status_code=status.HTTP_201_CREATED, response_model=TenderChatSessionResponse)
     async def create_session(
         tender_id: UUID,
-        body: Optional[CreateChatSessionRequest] = None,
+        body: CreateChatSessionRequest | None = None,
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_create_chat_session_use_case),
     ):
@@ -174,7 +186,7 @@ def create_tender_chat_router(
             )
 
     # 3. Listar documentos adjuntos del chat
-    @router.get("/documents", response_model=List[TenderChatDocumentResponse])
+    @router.get("/documents", response_model=list[TenderChatDocumentResponse])
     async def list_documents(
         tender_id: UUID,
         current_user: User = Depends(get_current_user),
@@ -245,14 +257,14 @@ def create_tender_chat_router(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         except TenderChatQueryInvalidError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        except ValueError as e:
+        except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Consulta inválida.")
         except TenderAssistantAIProviderError as e:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(e) or "No se pudo conectar al proveedor de IA. Inténtalo nuevamente en unos minutos.",
             )
-        except TenderAssistantResponseError as e:
+        except TenderAssistantResponseError:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="El asistente no pudo procesar la respuesta del modelo de IA. Por favor intenta reformular tu pregunta.",
@@ -271,10 +283,10 @@ def create_tender_chat_router(
             )
 
     # 6. Obtener historial del chat
-    @router.get("/history", response_model=List[TenderChatMessageResponse])
+    @router.get("/history", response_model=list[TenderChatMessageResponse])
     async def get_history(
         tender_id: UUID,
-        session_id: Optional[UUID] = None,
+        session_id: UUID | None = None,
         limit: int = 50,
         current_user: User = Depends(get_current_user),
         use_case = Depends(get_chat_history_use_case),
@@ -289,7 +301,7 @@ def create_tender_chat_router(
             return [_to_msg_response(m) for m in messages]
         except ChatSessionNotFoundError as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        except (ChatHistoryLoadError, TenderChatStorageError) as e:
+        except (ChatHistoryLoadError, TenderChatStorageError):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="No se pudo cargar el historial de la conversación. Por favor reintente más tarde.",
@@ -301,6 +313,42 @@ def create_tender_chat_router(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="No se pudo cargar el historial de la conversación. Por favor reintente más tarde.",
             )
+
+
+    @router.post(
+        "/messages/{message_id}/dislike",
+        status_code=status.HTTP_201_CREATED,
+        response_model=AssistantFeedbackResponse,
+        summary="Registrar descontento (dislike) con la respuesta del asistente virtual",
+        responses={
+            404: {"description": "El mensaje no existe o no pertenece a esta licitación"},
+        },
+    )
+    async def dislike_message(
+        tender_id: UUID,
+        message_id: UUID,
+        body: DislikeMessageRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[WorkspaceContext | None, Depends(workspace_context_dep)],
+        use_case: Annotated[
+            SubmitAssistantDislikeUseCase, Depends(get_submit_dislike_use_case or (lambda: None))
+        ],
+    ):
+        """Registra el motivo del descontento del usuario con una respuesta específica del asistente (HU-24)."""
+        try:
+            return await use_case.execute(
+                user_id=current_user.id,
+                supplier_id=(
+                    workspace_context.active_supplier_id if workspace_context else None
+                ),
+                tender_id=tender_id,
+                message_id=message_id,
+                reason=body.reason,
+            )
+        except (MessageNotFoundError, SupplierNotFoundForUser) as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
 
     return router
 

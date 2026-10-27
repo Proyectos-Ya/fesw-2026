@@ -244,3 +244,42 @@ def test_app_feedback_rules():
         user_id=user, kind=AppFeedbackKind.REVIEW, rating=5, message="Genial"
     )
     assert review.anonymous is False
+
+@pytest.mark.asyncio
+async def test_assistant_feedback_list_by_tender_and_supplier(engine):
+    tender, supplier, other_supplier, user = uuid4(), uuid4(), uuid4(), uuid4()
+    async with _session(engine) as session:
+        repo = AssistantFeedbackRepository(session)
+        msg1, msg2, msg3 = uuid4(), uuid4(), uuid4()
+        await repo.upsert(
+            AssistantMessageFeedback(
+                message_id=msg1,
+                user_id=user,
+                supplier_id=supplier,
+                tender_id=tender,
+                reason="Faltaron las fechas",
+            )
+        )
+        await repo.upsert(
+            AssistantMessageFeedback(
+                message_id=msg2,
+                user_id=user,
+                supplier_id=supplier,
+                tender_id=tender,
+                reason="Requisito de garantía incorrecto",
+            )
+        )
+        # Otro supplier
+        await repo.upsert(
+            AssistantMessageFeedback(
+                message_id=msg3,
+                user_id=user,
+                supplier_id=other_supplier,
+                tender_id=tender,
+                reason="Otro motivo",
+            )
+        )
+        # Consulta
+        res = await repo.list_by_tender_and_supplier(tender, supplier)
+        assert len(res) == 2
+        assert [r.reason for r in res] == ["Faltaron las fechas", "Requisito de garantía incorrecto"]

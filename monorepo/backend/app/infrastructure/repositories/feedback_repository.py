@@ -132,6 +132,19 @@ class AssistantFeedbackRepository(IAssistantFeedbackRepository):
         model = await self._get_model(message_id, user_id)
         return self._to_entity(model) if model else None
 
+    async def list_by_tender_and_supplier(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> list[AssistantMessageFeedback]:
+        result = await self.session.exec(
+            select(AssistantMessageFeedbackModel)
+            .where(
+                AssistantMessageFeedbackModel.tender_id == tender_id,
+                AssistantMessageFeedbackModel.supplier_id == supplier_id,
+            )
+            .order_by(AssistantMessageFeedbackModel.created_at.asc())
+        )
+        return [self._to_entity(m) for m in result.all()]
+
 
 class AppFeedbackRepository(IAppFeedbackRepository):
     def __init__(self, session: AsyncSession):

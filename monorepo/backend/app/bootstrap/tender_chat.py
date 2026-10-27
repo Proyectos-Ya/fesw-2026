@@ -25,7 +25,12 @@ from app.application.use_cases.list_tender_chat_documents_use_case import (
 from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
-from app.bootstrap.repositories import SupplierRepoDep, TenderChatRepoDep, TenderRepoDep
+from app.bootstrap.repositories import (
+    AssistantFeedbackRepoDep,
+    SupplierRepoDep,
+    TenderChatRepoDep,
+    TenderRepoDep,
+)
 from app.bootstrap.services import (
     DocumentValidatorDep,
     MilestoneExtractionBackgroundDep,
@@ -65,6 +70,7 @@ def get_ask_tender_assistant_use_case(
     supplier_repo: SupplierRepoDep,
     tender_repo: TenderRepoDep,
     validator_service: DocumentValidatorDep,
+    assistant_feedback_repo: AssistantFeedbackRepoDep,
 ) -> AskTenderAssistantUseCase:
     return AskTenderAssistantUseCase(
         chat_repo=chat_repo,
@@ -72,6 +78,7 @@ def get_ask_tender_assistant_use_case(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         validator_service=validator_service,
+        assistant_feedback_repo=assistant_feedback_repo,
     )
 
 

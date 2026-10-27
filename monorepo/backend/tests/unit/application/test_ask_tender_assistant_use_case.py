@@ -19,7 +19,10 @@ from app.domain.errors.tender_chat_errors import (
     TenderAssistantUnavailableError,
     InvalidPromptInstruction,
 )
-from tests.unit.application.fakes import InMemoryTenderChatRepository
+from tests.unit.application.fakes import InMemoryTenderChatRepository, InMemorySupplierRepository
+from tests.unit.application.feedback_fakes import InMemoryAssistantFeedbackRepository
+from app.domain.entities.feedback import AssistantMessageFeedback
+from app.domain.entities.supplier import Supplier
 
 
 class FakeTenderAssistantAIService(ITenderAssistantAIService):
@@ -37,6 +40,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_documents: List[List[DocumentContextDTO]] = []
         self.called_supplier_contexts: List[Optional[str]] = []
         self.called_tender_contexts: List[Optional[str]] = []
+        self.called_feedback_contexts: List[Optional[str]] = []
 
     async def generate_response(
         self,
@@ -45,6 +49,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
     ) -> AIResponseDTO:
         if self.should_fail:
             raise TenderAssistantUnavailableError("Error simulado de conexión con Gemini")
@@ -54,6 +59,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_documents.append(documents)
         self.called_supplier_contexts.append(supplier_context)
         self.called_tender_contexts.append(tender_context)
+        self.called_feedback_contexts.append(feedback_context)
 
 
         if self.custom_response is not None:
@@ -734,3 +740,46 @@ async def test_ask_assistant_usa_el_perfil_de_la_empresa_activa(repo, ai_service
     assert supplier_ctx is not None
     assert "Activa Ltda" in supplier_ctx
     assert "Propia SpA" not in supplier_ctx
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_injects_dislike_feedback_context_on_new_chat(repo, ai_service):
+    """S5: Si el usuario dio dislike con motivos previos en esta licitación y empresa, se inyectan en el prompt."""
+    tender_id = uuid4()
+    user_id = uuid4()
+    supplier_id = uuid4()
+
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(id=supplier_id, rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    feedback_repo = InMemoryAssistantFeedbackRepository()
+    await feedback_repo.upsert(
+        AssistantMessageFeedback(
+            message_id=uuid4(),
+            user_id=user_id,
+            supplier_id=supplier_id,
+            tender_id=tender_id,
+            reason="No especificó si la garantía es con póliza o boleta bancaria",
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+        assistant_feedback_repo=feedback_repo,
+    )
+
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        supplier_id=supplier_id,
+        question="¿Qué tipo de garantía piden?",
+    )
+
+    assert len(ai_service.called_feedback_contexts) == 1
+    ctx = ai_service.called_feedback_contexts[0]
+    assert ctx is not None
+    assert "No especificó si la garantía es con póliza o boleta bancaria" in ctx
+    assert "acoger explícitamente" in ctx.lower()

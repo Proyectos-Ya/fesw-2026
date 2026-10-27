@@ -38,6 +38,12 @@ class IAssistantFeedbackRepository(ABC):
     ) -> AssistantMessageFeedback | None:
         """Dislike de un usuario a un mensaje, si existe."""
 
+    @abstractmethod
+    async def list_by_tender_and_supplier(
+        self, tender_id: UUID, supplier_id: UUID
+    ) -> list[AssistantMessageFeedback]:
+        """Dislikes previos de una empresa en una licitación, ordenados cronológicamente."""
+
 
 class IAppFeedbackRepository(ABC):
     """Persistencia de comentarios, quejas y reseñas sobre el sistema."""

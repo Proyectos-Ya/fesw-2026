@@ -1,3 +1,4 @@
+from app.application.repositories.feedback_repository import IAssistantFeedbackRepository
 from typing import List, Optional
 from uuid import UUID
 
@@ -56,12 +57,14 @@ class AskTenderAssistantUseCase:
         supplier_repo: Optional[ISupplierRepository] = None,
         tender_repo: Optional[ITenderRepository] = None,
         validator_service: Optional[IDocumentValidatorService] = None,
+        assistant_feedback_repo: Optional[IAssistantFeedbackRepository] = None,
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.supplier_repo = supplier_repo
         self.tender_repo = tender_repo
         self.validator_service = validator_service
+        self.assistant_feedback_repo = assistant_feedback_repo
 
 
     def _validate_guardrails(self, question: str) -> None:
@@ -250,7 +253,26 @@ class AskTenderAssistantUseCase:
             except Exception:
                 tender_context_str = None
 
-        # 10. Invocar servicio de IA con historial multi-turn, documentos cruzados, perfil e información de licitación
+        # 9.c Obtener retroalimentación previa de descontento (dislike) en esta licitación para esta empresa (HU-24, S5)
+        feedback_context_str: Optional[str] = None
+        if self.assistant_feedback_repo and self.supplier_repo:
+            active_supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
+            if active_supplier:
+                feedbacks = await self.assistant_feedback_repo.list_by_tender_and_supplier(
+                    tender_id=tender_id, supplier_id=active_supplier.id
+                )
+            if feedbacks:
+                lines = [
+                    "El usuario expresó descontento con respuestas anteriores para esta licitación por los siguientes motivos:"
+                ]
+                for idx, fb in enumerate(feedbacks, 1):
+                    lines.append(f"{idx}. {fb.reason}")
+                lines.append(
+                    "Debes acoger explícitamente estas observaciones para no repetir el error o la omisión en esta nueva respuesta."
+                )
+                feedback_context_str = "\n".join(lines)
+
+        # 10. Invocar servicio de IA con historial multi-turn, documentos cruzados, perfil, licitación y feedback
         try:
             ai_response = await self.ai_service.generate_response(
                 question=cleaned_question,
@@ -258,6 +280,7 @@ class AskTenderAssistantUseCase:
                 documents=document_contexts,
                 supplier_context=supplier_context_str,
                 tender_context=tender_context_str,
+                feedback_context=feedback_context_str,
             )
 
 

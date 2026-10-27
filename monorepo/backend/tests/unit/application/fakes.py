@@ -486,6 +486,12 @@ class InMemoryTenderChatRepository:
             return True
         return False
 
+    async def get_message_by_id(self, message_id: UUID):
+        for m in self.messages:
+            if m.id == message_id:
+                return m
+        return None
+
     async def save_message(self, message):
         if message.session_id is None:
             active = await self.get_or_create_active_session(

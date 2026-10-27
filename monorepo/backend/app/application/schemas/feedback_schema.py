@@ -32,3 +32,27 @@ class MatchReportResponse(BaseModel):
     kind: MatchReportKind
     reason: str
     created_at: datetime
+
+
+class DislikeMessageRequest(BaseModel):
+    """Cuerpo de la retroalimentación negativa (dislike) sobre una respuesta del asistente."""
+
+    reason: str = Field(
+        max_length=MAX_REASON_CHARS,
+        description="Motivo del descontento o corrección sobre la respuesta del asistente.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("El motivo no puede estar vacío.")
+        return value.strip()
+
+
+class AssistantFeedbackResponse(BaseModel):
+    id: UUID
+    message_id: UUID
+    tender_id: UUID
+    reason: str
+    created_at: datetime

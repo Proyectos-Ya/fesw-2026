@@ -39,7 +39,10 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         return xlsx_to_text(file_bytes, file_name)
 
     def _build_system_instruction(
-        self, has_supplier: bool = False, has_tender: bool = False
+        self,
+        has_supplier: bool = False,
+        has_tender: bool = False,
+        feedback_context: Optional[str] = None,
     ) -> str:
         base_instruction = (
             "Eres un asistente analítico experto en compras públicas y licitaciones de Mercado Público de Chile.\n"
@@ -58,6 +61,13 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                 "Se te adjuntan los ANTECEDENTES Y PERFIL DE LA EMPRESA CONSULTANTE. Debes utilizarlos activamente cuando el "
                 "usuario pregunte sobre compatibilidad, cumplimiento de requisitos habilitantes (certificaciones, años de experiencia, "
                 "rubros, registros especiales como ESVAL, MINVU, etc.) contrastando su perfil contra lo exigido en las bases.\n\n"
+            )
+
+        if feedback_context:
+            base_instruction += (
+                "RETROALIMENTACIÓN Y CORRECCIONES DE RESPUESTAS ANTERIORES EN ESTA LICITACIÓN:\n"
+                f"{feedback_context}\n"
+                "INSTRUCCIÓN: Debes acoger explícitamente estas observaciones para no repetir el error ni la omisión.\n\n"
             )
 
         base_instruction += (
@@ -91,6 +101,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
     ) -> AIResponseDTO:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
