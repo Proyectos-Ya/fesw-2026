@@ -22,6 +22,7 @@ from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
 from app.infrastructure.repositories.export_job_model import ExportJobModel
+from app.infrastructure.repositories.kanban_event_model import KanbanEventModel
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -93,6 +94,7 @@ __all__ = [
     "ExportJobModel",
     "KanbanCardModel",
     "KanbanColumnModel",
+    "KanbanEventModel",
     "MatchingResultModel",
     "NotificationDeliveryModel",
     "NotificationModel",

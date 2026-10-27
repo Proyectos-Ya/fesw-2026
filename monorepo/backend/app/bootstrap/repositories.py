@@ -15,6 +15,9 @@ from app.application.repositories.capability_repository import (
     ICapabilityQuestionRepository,
 )
 from app.application.repositories.export_job_repository import IExportJobRepository
+from app.application.repositories.kanban_event_repository import (
+    IKanbanEventRepository,
+)
 from app.application.repositories.kanban_repository import (
     IKanbanCardRepository,
     IKanbanColumnRepository,
@@ -56,6 +59,9 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarOAuthStateRepository,
 )
 from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.repositories.kanban_event_repository import (
+    KanbanEventRepository,
+)
 from app.infrastructure.repositories.kanban_repository import (
     KanbanCardRepository,
     KanbanColumnRepository,
@@ -214,6 +220,10 @@ def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
     return KanbanCardRepository(session)
 
 
+def get_kanban_event_repo(session: SessionDep) -> IKanbanEventRepository:
+    return KanbanEventRepository(session)
+
+
 SupplierRepoDep = Annotated[ISupplierRepository, Depends(get_supplier_repo)]
 
 
@@ -298,3 +308,11 @@ KanbanColumnRepoDep = Annotated[IKanbanColumnRepository, Depends(get_kanban_colu
 
 
 KanbanCardRepoDep = Annotated[IKanbanCardRepository, Depends(get_kanban_card_repo)]
+
+
+KanbanEventRepoDep = Annotated[IKanbanEventRepository, Depends(get_kanban_event_repo)]
+
+
+SupplierMemberRepoDep = Annotated[
+    ISupplierMemberRepository, Depends(get_supplier_member_repo)
+]

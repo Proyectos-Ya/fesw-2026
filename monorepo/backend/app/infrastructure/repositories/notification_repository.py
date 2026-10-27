@@ -49,6 +49,7 @@ class NotificationPreferenceRepository(INotificationPreferenceRepository):
             threshold=model.threshold,
             delivery_mode=modo,
             email_delivery_enabled=model.email_delivery_enabled,
+            kanban_notifications_enabled=model.kanban_notifications_enabled,
             last_failure_reason=model.last_failure_reason,
             last_failure_at=model.last_failure_at,
             created_at=model.created_at,
@@ -95,6 +96,7 @@ class NotificationPreferenceRepository(INotificationPreferenceRepository):
         model.threshold = preference.threshold
         model.delivery_mode = preference.delivery_mode
         model.email_delivery_enabled = preference.email_delivery_enabled
+        model.kanban_notifications_enabled = preference.kanban_notifications_enabled
         model.last_failure_reason = preference.last_failure_reason
         model.last_failure_at = preference.last_failure_at
         model.updated_at = preference.updated_at
@@ -111,7 +113,7 @@ class NotificationRepository(INotificationRepository):
     def _to_entity(self, model: NotificationModel) -> Notification:
         tipo: NotificationKind = (
             model.kind
-            if model.kind in ("date_changed", "milestone_reminder")
+            if model.kind in ("date_changed", "milestone_reminder", "kanban_change")
             else "match"
         )  # type: ignore[assignment]
         payload = model.payload or {}

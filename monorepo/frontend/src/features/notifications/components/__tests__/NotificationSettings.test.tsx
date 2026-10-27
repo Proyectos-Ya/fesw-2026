@@ -26,6 +26,7 @@ function preferencias(
     threshold_pct: 70,
     delivery_mode: "immediate",
     email_delivery_enabled: true,
+    kanban_notifications_enabled: false,
     last_failure_reason: null,
     last_failure_at: null,
     ...overrides,

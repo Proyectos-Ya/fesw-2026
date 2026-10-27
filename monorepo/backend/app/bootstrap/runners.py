@@ -230,6 +230,13 @@ def build_notification_runners(
         for user_id in user_ids:
             try:
                 async with async_session_maker() as session:
+                    # HU-18: resolver el supplier del usuario para que el
+                    # fallback de umbral (workspace > user) tenga de dónde
+                    # leer `supplier.match_threshold`.
+                    supplier_repo = SupplierRepository(session)
+                    supplier = await supplier_repo.get_by_user_id(user_id)
+                    supplier_id = supplier.id if supplier else None
+
                     use_case = ScanSupplierForAlertsUseCase(
                         rank_tenders_use_case=build_scan_rank_tenders_use_case(
                             app.state, session
@@ -237,8 +244,11 @@ def build_notification_runners(
                         preference_repo=NotificationPreferenceRepository(session),
                         notification_repo=NotificationRepository(session),
                         delivery_repo=NotificationDeliveryRepository(session),
+                        supplier_repo=supplier_repo,
                     )
-                    total += len(await use_case.execute(user_id))
+                    total += len(
+                        await use_case.execute(user_id, supplier_id=supplier_id)
+                    )
             except Exception as e:
                 # Un proveedor sin vector en Qdrant, o cualquier otro fallo
                 # puntual, no puede detener el escaneo del resto.

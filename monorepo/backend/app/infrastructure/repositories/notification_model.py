@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, Index, UniqueConstraint
+from sqlalchemy import JSON, Column, Index, UniqueConstraint, false
 from sqlmodel import Field, SQLModel
 
 
@@ -17,6 +17,13 @@ class NotificationPreferenceModel(SQLModel, table=True):
     threshold: float = Field(default=0.70)  # Escala 0..1, igual que final_score
     delivery_mode: str = Field(default="immediate")  # immediate | daily_digest
     email_delivery_enabled: bool = Field(default=True)
+    # HU-18: avisos cuando otro miembro del workspace mueve el tablero kanban.
+    # Default `false` para no spamear a usuarios que no esperan avisos del
+    # tablero; `server_default` requerido para que la fila existente no
+    # explote al leerse después de aplicar la migración.
+    kanban_notifications_enabled: bool = Field(
+        default=False, sa_column_kwargs={"server_default": false()}
+    )
     last_failure_reason: str | None = Field(default=None)
     last_failure_at: datetime | None = Field(default=None)
     created_at: datetime
