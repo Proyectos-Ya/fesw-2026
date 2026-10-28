@@ -91,7 +91,7 @@
 
 ## Bloque 4. Frontend
 
-- [ ] **4.1 Dependencias.**
+- [x] **4.1 Dependencias.**
   - `pnpm add leaflet react-leaflet react-leaflet-cluster` y
     `pnpm add -D @types/leaflet`. `pnpm run build` compila.
   - Commit: `build(frontend): leaflet para el mapa de licitaciones`
