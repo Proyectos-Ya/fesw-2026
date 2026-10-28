@@ -82,7 +82,7 @@
     lanza `InvalidSearchCriteria`.
   - Green: `GetTendersMapUseCase` y su proveedor en `bootstrap/matching.py`.
   - Commit: `feat(mapa): caso de uso del mapa de licitaciones`
-- [ ] **3.3 Endpoint `GET /tenders/map`.**
+- [x] **3.3 Endpoint `GET /tenders/map`.**
   - Red: `tests/e2e/api/test_tender_router.py` con `dependency_overrides`:
     200 con ítems, 422 región desconocida, 503 con error de base, 401 sin
     sesión, y que no lo capture `/{tender_id}`.
