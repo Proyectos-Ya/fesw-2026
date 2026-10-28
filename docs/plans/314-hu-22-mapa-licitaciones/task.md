@@ -53,7 +53,7 @@
   - Green: `GeocodePendingTendersUseCase` y los métodos del puerto del
     repositorio (pendientes, guardar resultado, caché).
   - Commit: `feat(geocodificacion): geocodificar licitaciones pendientes`
-- [ ] **2.4 Repositorio contra Postgres.**
+- [x] **2.4 Repositorio contra Postgres.**
   - Red: `tests/integration/test_tender_geocoding_repository.py`: la cola trae
     solo abiertas con dirección y sin intento; guardar saca de la cola; la
     caché guarda también los no encontrados.
