@@ -31,6 +31,20 @@ describe("SmartQuestionCard (Fase 4)", () => {
     ).toBeInTheDocument();
   });
 
+  it("muestra el contador de progreso 'actual/total' en la parte inferior izquierda", () => {
+    render(
+      <SmartQuestionCard
+        question={MOCK_QUESTION}
+        progress={{ current: 1, total: 3 }}
+        onAnswered={vi.fn()}
+      />,
+    );
+
+    const progressEl = screen.getByTestId("question-progress");
+    expect(progressEl).toBeInTheDocument();
+    expect(progressEl).toHaveTextContent("1/3");
+  });
+
   it("envía 'Sí' al hacer clic en 'Sí, lo tengo', muestra estado de éxito y llama a onAnswered", async () => {
     const onAnswered = vi.fn();
     const answerSpy = vi

@@ -40,6 +40,7 @@ export function HomeDashboard() {
 
   const { questions: fetchedQuestions } = useSmartQuestions(undefined, isAuthenticated);
   const [pendingQuestions, setPendingQuestions] = useState<Question[]>([]);
+  const [totalQuestionsCount, setTotalQuestionsCount] = useState<number>(0);
   const [showCard, setShowCard] = useState(false);
 
   useEffect(() => {
@@ -47,13 +48,20 @@ export function HomeDashboard() {
   }, [fetchedQuestions]);
 
   function handleBannerOpen() {
-    if (pendingQuestions.length > 0) setShowCard(true);
+    if (pendingQuestions.length > 0) {
+      setTotalQuestionsCount(pendingQuestions.length);
+      setShowCard(true);
+    }
   }
 
   function advanceQueue() {
     setPendingQuestions((prev) => {
       const next = prev.slice(1);
-      if (next.length === 0) setShowCard(false);
+      if (next.length === 0) {
+        setShowCard(false);
+        setTotalQuestionsCount(0);
+        setRetryNonce((n) => n + 1);
+      }
       return next;
     });
   }
@@ -180,19 +188,21 @@ export function HomeDashboard() {
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
       <RecentWorkspacesBar />
-      <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
-      {showCard && pendingQuestions[0] && (
+      {!showCard ? (
+        <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
+      ) : pendingQuestions[0] ? (
         <div className="mb-6">
           <SmartQuestionCard
             key={pendingQuestions[0].id}
             question={pendingQuestions[0]}
-            onAnswered={() => {
-              advanceQueue();
-              setRetryNonce((n) => n + 1);
+            progress={{
+              current: Math.max(1, totalQuestionsCount - pendingQuestions.length + 1),
+              total: Math.max(totalQuestionsCount, pendingQuestions.length),
             }}
+            onAnswered={advanceQueue}
           />
         </div>
-      )}
+      ) : null}
       {matches.length === 0 ? (
         <EmptyGreen />
       ) : (
