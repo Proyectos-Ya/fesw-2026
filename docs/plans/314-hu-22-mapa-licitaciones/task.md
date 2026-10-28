@@ -116,7 +116,7 @@
     enlaza a `/matches/{id}`, y avisa "aproximada" con precisión `comuna`.
   - Green: `components/TenderMapSummary.tsx`.
   - Commit: `feat(mapa): resumen de la licitación en el marcador`
-- [ ] **4.6 Mapa Leaflet (criterios 1 y 4).**
+- [x] **4.6 Mapa Leaflet (criterios 1 y 4).**
   - Green: `components/TenderMap.tsx` con `MarkerClusterGroup`, `divIcon` y
     `flyTo`. Sin prueba unitaria (jsdom sin canvas); se prueba a mano en 6.2.
   - Commit: `feat(mapa): mapa con marcadores agrupados`
