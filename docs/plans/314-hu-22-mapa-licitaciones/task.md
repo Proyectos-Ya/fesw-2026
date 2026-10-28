@@ -22,7 +22,7 @@
 
 ## Bloque 1. Esquema
 
-- [ ] **1.1 Migración con las columnas de ubicación y la caché.**
+- [x] **1.1 Migración con las columnas de ubicación y la caché.**
   - Antes: skills `supabase` y `supabase-postgres-best-practices`.
   - Red: `tests/integration/test_migraciones.py` exige las cuatro columnas de
     `tender` (nullable, sin default), el índice parcial y `geocoding_cache`.
@@ -33,14 +33,14 @@
 
 ## Bloque 2. Geocodificación
 
-- [ ] **2.1 Cliente Nominatim.**
+- [x] **2.1 Cliente Nominatim.**
   - Red: `tests/unit/infrastructure/test_nominatim_geocoding.py` con
     `httpx.MockTransport`: resultado normal, lista vacía (`None`), respuesta
     rara, 5xx y error de red (`GeocodingUnavailable`), y que mande
     `countrycodes=cl` y el `User-Agent`.
   - Green: puerto `geocoding_service.py` y `nominatim_geocoding_service.py`.
   - Commit: `feat(geocodificacion): cliente de nominatim`
-- [ ] **2.2 Settings y armado.**
+- [x] **2.2 Settings y armado.**
   - Red: `provider="none"` no arma cliente; `nominatim` sin correo falla la
     validación, como `company_lookup_*`.
   - Green: `config.py`, `bootstrap/builders.py`.
