@@ -120,7 +120,7 @@
   - Green: `components/TenderMap.tsx` con `MarkerClusterGroup`, `divIcon` y
     `flyTo`. Sin prueba unitaria (jsdom sin canvas); se prueba a mano en 6.2.
   - Commit: `feat(mapa): mapa con marcadores agrupados`
-- [ ] **4.7 Vista (criterios 1, 2, 5, 6 y 8).**
+- [x] **4.7 Vista (criterios 1, 2, 5, 6 y 8).**
   - Red: `components/__tests__/TenderMapView.test.tsx` con `TenderMap`
     mockeado: zona inicial de la empresa; sin zona pide elegir y enlaza al
     perfil; cambiar zona pide de nuevo; vacío sugiere otra zona; error dice
