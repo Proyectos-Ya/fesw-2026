@@ -45,7 +45,7 @@
     validación, como `company_lookup_*`.
   - Green: `config.py`, `bootstrap/builders.py`.
   - Commit: `feat(geocodificacion): configuración del proveedor`
-- [ ] **2.3 Caso de uso de la cola.**
+- [x] **2.3 Caso de uso de la cola.**
   - Red: `tests/unit/application/test_geocodificar_licitaciones.py` con fakes:
     dirección encontrada (`direccion`), respaldo por comuna (`comuna`), sin
     comuna (`no_encontrada`, sin coordenadas), acierto de caché sin llamar al

@@ -48,3 +48,9 @@ class PendingGeocoding(BaseModel):
     delivery_address: str
     commune: str | None = None
     region: str | None = None
+
+
+class CachedGeocode(BaseModel):
+    """Una consulta ya respondida. `point` nulo = se preguntó y no se encontró."""
+
+    point: GeoPoint | None = None
