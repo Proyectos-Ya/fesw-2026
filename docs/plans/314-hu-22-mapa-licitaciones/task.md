@@ -127,7 +127,7 @@
     "No se pudo cargar el mapa" y Reintentar vuelve a pedir.
   - Green: `components/TenderMapView.tsx` y `src/app/(app)/mapa/page.tsx`.
   - Commit: `feat(mapa): vista del mapa de licitaciones`
-- [ ] **4.8 Entrada en el menú (criterio 1).**
+- [x] **4.8 Entrada en el menú (criterio 1).**
   - Red: el test del `Sidebar` encuentra "Mapa de licitaciones" con
     `href="/mapa"`.
   - Green: `NAV_ITEMS` en `shared/components/Sidebar.tsx`.
