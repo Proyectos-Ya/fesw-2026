@@ -1,7 +1,7 @@
 # Plan Técnico: #314, HU-22, mapa de las direcciones de entrega de mi zona
 
 **Issue asociada**: Refs #314  
-**Estado**: En revisión  
+**Estado**: Implementado; falta la prueba con datos reales (§6)  
 **Fecha**: 2026-10-28  
 **Tareas**: [task.md](./task.md)
 
@@ -177,12 +177,60 @@ pnpm run test && pnpm run lint && pnpm run build
 jsdom no tiene canvas, así que las pruebas de Vitest mockean `TenderMap`. La
 agrupación y el centrado se prueban a mano.
 
+Resultado de la tarea 6.1 (2026-10-28, Postgres local en Docker, sin `.env`):
+
+- **Backend.**
+  - La suite de CI (`pytest tests/unit/ -m "not integration and not network"`)
+    da 3243 pasadas y 0 fallidas.
+  - Las pruebas nuevas de integración y de API pasan: `test_migraciones.py`
+    (5), `test_tender_location_repository.py` (10), `test_tender_map_router.py`
+    (6) y `test_tender_router.py` (33).
+  - `alembic upgrade`, `check`, `downgrade -1`, `upgrade` y `check` funcionan
+    de punta a punta, y queda una sola cabeza (`7c1fa735a495`).
+  - La suite completa no terminó en esta máquina: las de integración recrean
+    el esquema en cada prueba y avanzaban a unas 9 por minuto. Antes de
+    cortarla fallaron dos pruebas de anexos que este cambio no toca.
+    `test_dos_empresas_que_suben_lo_mismo_lo_comparten_con_una_tercera` falla
+    porque la base de desarrollo local no tiene `attachment_extraction`.
+    `test_un_admin_pide_la_url_y_la_lista_refleja_el_cupo` es una de las 7 que
+    #294 ya registra como fallidas en develop.
+- **Frontend.**
+  - `pnpm run test` da 1166 de 1167. La que falla es
+    `useTenderExport.test.ts`, que es de otra feature y pasa sus 7 pruebas al
+    correrla sola: depende del tiempo y falla con la máquina cargada.
+  - `pnpm run lint` da 0 errores y 26 advertencias, las mismas de develop.
+  - `pnpm run build` compila e incluye `/mapa`.
+
 ### Prueba manual
 
 Con `GEOCODING_PROVIDER=nominatim`, geocodificar un lote real y recorrer
 `/mapa`: los 8 criterios, forzando un 503 para el 8.
 
-Resultado: _pendiente_.
+Resultado parcial (2026-10-28). En esta máquina no se puede iniciar sesión en
+el navegador (Supabase Auth local no levanta), así que la vista se montó sola
+con Vite, como el fixture de `proposal.spec.ts`. La API y la empresa eran dobles
+y Leaflet corría de verdad, con teselas reales de OpenStreetMap. En el
+navegador integrado:
+
+- Criterio 1: el mapa se centra en la primera región del perfil
+  ("Metropolitana" se envía como "Metropolitana de Santiago").
+- Criterio 2: sin regiones pide elegir una zona y enlaza a `/empresa`; sin
+  empresa enlaza a `/perfil`, y no hace ningún pedido.
+- Criterio 3: el popup muestra nombre, organismo, dirección y cierre, con
+  enlace a `/matches/{id}`.
+- Criterio 4: cinco licitaciones cercanas se ven como un "5" y se separan al
+  hacer clic o zoom.
+- Criterio 5: al cambiar a Los Lagos el mapa se recentra y pide la región
+  nueva.
+- Criterio 6: Ñuble vacía muestra el aviso y sugiere otra zona.
+- Criterio 8: un 503 muestra "No se pudo cargar el mapa" y Reintentar vuelve a
+  pedir y carga.
+- En celular (375 px) no hay scroll horizontal y la consola no muestra errores.
+
+**Pendiente**, con el backend desplegado y `GEOCODING_PROVIDER=nominatim`:
+geocodificar un lote real y recorrer `/mapa` con sesión real. No se probó
+contra Nominatim real porque el `User-Agent` necesita el correo de contacto
+del equipo. El criterio 7 lo cubre #294 (§2).
 
 ## 7. Despliegue y rollback
 

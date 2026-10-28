@@ -135,15 +135,16 @@
 
 ## Bloque 5. Criterio 7
 
-- [ ] **5.1 (invariante) La ficha muestra la dirección o el texto sin dato.**
+- [x] **5.1 (invariante) La ficha muestra la dirección o el texto sin dato.**
   Ya cubierto por #294 en `TenderDetailView.test.tsx` y `entrega.test.ts`;
   solo se cita en el PR.
 
 ## Bloque 6. Cierre
 
-- [ ] **6.1 Suites completas.** `pytest`, `python -m scripts.migraciones`,
+- [x] **6.1 Suites completas.** `pytest`, `python -m scripts.migraciones`,
   `pnpm run test`, `pnpm run lint` y `pnpm run build`. Resultado en el plan §6.
 - [ ] **6.2 Prueba manual** de los 8 criterios con geocodificación real.
-  Resultado en el plan §6.
-- [ ] **6.3 Documentación.** Plan en estado Completado y enlazado en
+  Resultado en el plan §6. Hecha con la API simulada; falta con Nominatim y
+  sesión reales.
+- [x] **6.3 Documentación.** Plan en estado Completado y enlazado en
   `docs/README.md`; variables `GEOCODING_*` en `monorepo/backend/README.md`.
