@@ -95,7 +95,7 @@
   - `pnpm add leaflet react-leaflet react-leaflet-cluster` y
     `pnpm add -D @types/leaflet`. `pnpm run build` compila.
   - Commit: `build(frontend): leaflet para el mapa de licitaciones`
-- [ ] **4.2 Servicio y tipos.**
+- [x] **4.2 Servicio y tipos.**
   - Red: `tender-map/services/__tests__/tenderMapService.test.ts`: arma
     `/tenders/map?region=...` y propaga `ApiError`.
   - Green: `types/index.ts`, `services/tenderMapService.ts`, `test-utils.ts`
