@@ -106,7 +106,7 @@
     a pedir, cambiar región vuelve a pedir y descarta la respuesta vieja.
   - Green: `hooks/useTenderMap.ts`.
   - Commit: `feat(mapa): hook del mapa con reintento`
-- [ ] **4.4 Centros de región.**
+- [x] **4.4 Centros de región.**
   - Red: hay centro para cada una de `SEARCH_REGIONS`, y toda región del
     perfil se resuelve vía `toSearchRegion`.
   - Green: `data/regionCenters.ts`.
