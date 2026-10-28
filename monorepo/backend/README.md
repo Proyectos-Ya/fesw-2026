@@ -427,6 +427,33 @@ Desde la ficha de una licitación se puede compartir un **enlace público de 7 d
 
 ---
 
+## Mapa de licitaciones (HU-22)
+
+La vista `/mapa` muestra dónde hay que entregar lo que piden las licitaciones
+**abiertas** de una región. Las coordenadas no vienen de Mercado Público: un
+scheduler del lifespan geocodifica `tender.delivery_address` con
+[Nominatim](https://nominatim.org/) (OpenStreetMap) y las guarda en `tender`.
+El mapa lee lo guardado con `GET /tenders/map?region=`. Plan técnico:
+[`docs/plans/314-hu-22-mapa-licitaciones/plan.md`](../../docs/plans/314-hu-22-mapa-licitaciones/plan.md).
+
+| Variable | Default | Qué es |
+|---|---|---|
+| `GEOCODING_PROVIDER` | `none` | `nominatim` enciende la geocodificación. Con `none` el mapa sale vacío, sin errores |
+| `GEOCODING_CONTACT_EMAIL` | — | Obligatorio con `nominatim`: va en el `User-Agent`, como exige su política de uso |
+| `GEOCODING_BASE_URL` | host público | Solo para apuntar a otra instancia de Nominatim |
+| `GEOCODING_BATCH_SIZE` | `50` | Licitaciones por vuelta |
+| `GEOCODING_INTERVAL_SECONDS` | `300` | Espera entre vueltas cuando la cola quedó vacía |
+
+- Primero se busca la dirección con la comuna y la región del organismo; si no
+  aparece, la comuna sola, y el marcador se muestra como **ubicación
+  aproximada**. Sin comuna no se inventa un punto (`no_encontrada`).
+- Nominatim permite **una petición por segundo**. `ThrottledGeocodingService` lo
+  respeta, y la tabla `geocoding_cache` evita repetir consultas, también las que
+  no encontraron nada. Como los demás schedulers, asume una sola instancia de la API.
+- Si la ingesta trae otra dirección, la licitación pierde su punto y vuelve a la cola.
+
+---
+
 ## Hitos y sincronización con Google Calendar (HU-16)
 
 La ficha de cada licitación muestra sus hitos: publicación y cierre oficiales, más los que

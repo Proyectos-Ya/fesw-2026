@@ -69,9 +69,11 @@ así que la versión anterior del backend lo ignora durante el despliegue.
 | `delivery_geo_precision` | text | `direccion`, `comuna` o `no_encontrada` |
 | `delivery_geocoded_at` | timestamp | Cuándo se intentó. `NULL` = pendiente |
 
-Índice parcial `ix_tender_geocodificacion_pendiente` sobre `(id)` con
+Índice parcial `ix_tender_geocodificacion_pendiente` sobre `(closing_at)` con
 `WHERE delivery_address IS NOT NULL AND delivery_geocoded_at IS NULL`: la cola
-es una fracción mínima de la tabla.
+es una fracción mínima de la tabla, y el scheduler la recorre por cierre. Se
+crea sin `CONCURRENTLY`, como los demás índices del repositorio: bloquea las
+escrituras de `tender` los segundos que tarda en recorrerla.
 
 **Tabla `geocoding_cache`:** `query` (text, PK, la consulta normalizada),
 `lat`, `lng` (nullable: `NULL` = Nominatim no encontró nada), `geocoded_at`.
@@ -98,16 +100,23 @@ de uso de Nominatim pide no repetir consultas. RLS la activa el event trigger
      inventa una ubicación (fuera de alcance de la issue).
   Si Nominatim está caído, la licitación queda pendiente y se reintenta en la
   vuelta siguiente.
-- **Scheduler** `GeocodingScheduler`, como `MilestoneRefreshScheduler`, espera
-  al menos 1 s entre llamadas reales (límite de Nominatim; los aciertos de la
-  caché no esperan).
+- **Scheduler** `GeocodingScheduler`, como `MilestoneRefreshScheduler`. Un
+  lote lleno sigue sin esperar el intervalo, porque queda cola. El límite de
+  Nominatim lo pone `ThrottledGeocodingService`, que envuelve al cliente y
+  separa las llamadas reales por al menos 1 s; los aciertos de la caché no
+  llegan a él.
 - **Settings**, como `company_lookup_*`: `geocoding_provider` (default
   `"none"`, apagado en local y en tests), `geocoding_contact_email`,
   `geocoding_interval_seconds`, `geocoding_batch_size`. Activarlo en Railway
   es poner `GEOCODING_PROVIDER=nominatim` y el correo.
-- **Ingesta.** Si `_aplicar_entrega` cambia la dirección, también pone
-  `delivery_geocoded_at` en `NULL` para que se vuelva a geocodificar. Sigue la
-  regla de #294: solo SQL, sin mover `updated_at` ni tocar Qdrant.
+- **Ingesta.** Si `_aplicar_entrega` cambia la dirección, también borra el
+  punto guardado (era de la dirección anterior) y pone `delivery_geocoded_at`
+  en `NULL` para que se vuelva a geocodificar. Sigue la regla de #294: solo
+  SQL, sin mover `updated_at` ni tocar Qdrant.
+- **Repositorio.** `SqlTenderLocationRepository` implementa dos puertos chicos,
+  `ITenderGeocodingRepository` (cola y caché) e `ITenderMapRepository` (el
+  mapa), en vez de ensanchar `ITenderRepository`, igual que
+  `ITenderStatusSyncRepository`.
 - **Endpoint** `GET /tenders/map?region=<nombre>`, antes de `/{tender_id}`,
   con `summary`, `response_model` y `tags`.
   - `GetTendersMapUseCase` normaliza la región; una desconocida da 422.
@@ -122,8 +131,10 @@ de uso de Nominatim pide no repetir consultas. RLS la activa el event trigger
 
 ## 5. Frontend
 
-- **Dependencias nuevas** (pnpm): `leaflet`, `react-leaflet`,
-  `react-leaflet-cluster` y `@types/leaflet`. Teselas de OpenStreetMap con su
+- **Dependencias nuevas** (pnpm, versión exacta): `leaflet` 1.9.4,
+  `react-leaflet` 5.0.0, `react-leaflet-cluster` 4.1.3, y de desarrollo
+  `@types/leaflet` 1.9.22 y `@types/leaflet.markercluster` 1.5.6 (los tipos de
+  `react-leaflet-cluster` lo necesitan). Teselas de OpenStreetMap con su
   atribución; no piden key.
 - **Ruta y menú.** `src/app/(app)/mapa/page.tsx` de una línea, y
   `{ icon: "map", label: "Mapa de licitaciones", href: "/mapa" }` en
