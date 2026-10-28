@@ -72,7 +72,7 @@
 
 ## Bloque 3. API del mapa (criterios 1, 5, 6 y 8)
 
-- [ ] **3.1 Consulta del mapa.**
+- [x] **3.1 Consulta del mapa.**
   - Red: `tests/integration/test_tender_repository.py`: por región, solo
     publicadas con cierre futuro y coordenadas; tope y `total`.
   - Green: `list_open_with_location` y la entidad `TenderMapPoint`.

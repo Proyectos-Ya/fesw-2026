@@ -217,3 +217,79 @@ class TestCache:
 
         guardada = await repo.get_cached("Ancud, Chile")
         assert guardada is not None and guardada.point is not None
+
+
+def _ubicada(**extra) -> TenderModel:
+    return _tender(
+        delivery_lat=-41.87,
+        delivery_lng=-73.82,
+        delivery_geo_precision="direccion",
+        delivery_geocoded_at=utc_now_naive(),
+        **extra,
+    )
+
+
+async def _otra_region(session: AsyncSession) -> str:
+    rut = "63.333.333-3"
+    ahora = utc_now_naive()
+    session.add(RegionModel(id=13, name=CHILE_REGIONS[13]))
+    session.add(
+        BuyerInstitutionModel(
+            rut=rut,
+            name="Municipalidad de Santiago",
+            region_id=13,
+            created_at=ahora,
+            updated_at=ahora,
+        )
+    )
+    await session.commit()
+    return rut
+
+
+class TestMapa:
+    async def test_trae_abiertas_ubicadas_de_la_region(self, db_session: AsyncSession):
+        await _sembrar(db_session)
+        santiago = await _otra_region(db_session)
+        [visible] = await _guardar(db_session, _ubicada())
+        await _guardar(
+            db_session,
+            _tender(),  # pendiente, sin punto
+            _tender(
+                delivery_geo_precision="no_encontrada",
+                delivery_geocoded_at=utc_now_naive(),
+            ),
+            _ubicada(estado=CERRADA_STATUS_ID),
+            _ubicada(cierra_en=timedelta(hours=-1)),
+            _ubicada(comprador=santiago),
+        )
+
+        puntos, total = await SqlTenderLocationRepository(
+            db_session
+        ).list_open_with_location(region_id=10, limit=50)
+
+        assert [p.id for p in puntos] == [visible]
+        assert total == 1
+        punto = puntos[0]
+        assert (punto.lat, punto.lng) == (-41.87, -73.82)
+        assert punto.precision == GeoPrecision.DIRECCION
+        assert punto.delivery_address == "Yerbas Buenas #915"
+        assert punto.buyer_name == "Municipalidad de Ancud"
+        assert punto.name == "Insumos"
+
+    async def test_el_total_cuenta_lo_que_el_tope_deja_fuera(
+        self, db_session: AsyncSession
+    ):
+        await _sembrar(db_session)
+        pronto, medio, _tarde = await _guardar(
+            db_session,
+            _ubicada(cierra_en=timedelta(days=1)),
+            _ubicada(cierra_en=timedelta(days=2)),
+            _ubicada(cierra_en=timedelta(days=3)),
+        )
+
+        puntos, total = await SqlTenderLocationRepository(
+            db_session
+        ).list_open_with_location(region_id=10, limit=2)
+
+        assert [p.id for p in puntos] == [pronto, medio]
+        assert total == 3

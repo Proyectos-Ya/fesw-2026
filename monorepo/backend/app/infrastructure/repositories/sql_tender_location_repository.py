@@ -1,8 +1,8 @@
-"""Dónde cae la entrega de cada licitación: la cola de geocodificación (#314)."""
+"""Dónde cae la entrega de cada licitación: la cola de geocodificación y el mapa (#314)."""
 
 from uuid import UUID
 
-from sqlalchemy import update
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -10,11 +10,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.application.repositories.tender_geocoding_repository import (
     ITenderGeocodingRepository,
 )
+from app.application.repositories.tender_map_repository import ITenderMapRepository
 from app.domain.entities.tender_map import (
     CachedGeocode,
     GeoPoint,
     GeoPrecision,
     PendingGeocoding,
+    TenderMapPoint,
 )
 from app.infrastructure.repositories.geocoding_cache_model import GeocodingCacheModel
 from app.infrastructure.repositories.tender_model import (
@@ -27,7 +29,7 @@ from app.shared.constants import PUBLICADA_STATUS_ID
 from app.shared.datetime_utils import utc_now_naive
 
 
-class SqlTenderLocationRepository(ITenderGeocodingRepository):
+class SqlTenderLocationRepository(ITenderGeocodingRepository, ITenderMapRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -108,3 +110,70 @@ class SqlTenderLocationRepository(ITenderGeocodingRepository):
             .on_conflict_do_update(index_elements=["query"], set_=valores)
         )
         await self.session.commit()
+
+    async def list_open_with_location(
+        self, region_id: int, limit: int
+    ) -> tuple[list[TenderMapPoint], int]:
+        # La región es la del organismo, como en el buscador: el punto
+        # geocodificado no decide en qué zona aparece (plan #314, decisión 5).
+        condiciones = (
+            col(BuyerInstitutionModel.region_id) == region_id,
+            col(TenderModel.status_id) == PUBLICADA_STATUS_ID,
+            col(TenderModel.closing_at) > utc_now_naive(),
+            col(TenderModel.delivery_lat).is_not(None),
+            col(TenderModel.delivery_lng).is_not(None),
+            col(TenderModel.delivery_address).is_not(None),
+        )
+
+        def _con_comprador(query):
+            return query.join(
+                BuyerInstitutionModel,
+                col(TenderModel.buyer_rut) == col(BuyerInstitutionModel.rut),
+            ).where(*condiciones)
+
+        total = (
+            await self.session.exec(
+                _con_comprador(select(func.count()).select_from(TenderModel))  # type: ignore[call-overload]
+            )
+        ).one()
+        filas = (
+            await self.session.exec(
+                _con_comprador(
+                    select(
+                        TenderModel.id,
+                        TenderModel.name,
+                        BuyerInstitutionModel.name,
+                        TenderModel.delivery_address,
+                        TenderModel.closing_at,
+                        TenderModel.delivery_lat,
+                        TenderModel.delivery_lng,
+                        TenderModel.delivery_geo_precision,
+                    )
+                )
+                .order_by(col(TenderModel.closing_at).asc())
+                .limit(limit)
+            )
+        ).all()
+        puntos = [
+            TenderMapPoint(
+                id=tender_id,
+                name=nombre,
+                buyer_name=organismo,
+                delivery_address=direccion,
+                closing_at=cierre,
+                lat=lat,
+                lng=lng,
+                precision=GeoPrecision(precision or GeoPrecision.DIRECCION),
+            )
+            for (
+                tender_id,
+                nombre,
+                organismo,
+                direccion,
+                cierre,
+                lat,
+                lng,
+                precision,
+            ) in filas
+        ]
+        return puntos, total
