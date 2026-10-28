@@ -77,7 +77,7 @@
     publicadas con cierre futuro y coordenadas; tope y `total`.
   - Green: `list_open_with_location` y la entidad `TenderMapPoint`.
   - Commit: `feat(mapa): licitaciones abiertas con ubicación por región`
-- [ ] **3.2 Caso de uso.**
+- [x] **3.2 Caso de uso.**
   - Red: nombres del wizard y canónicos dan la misma región; desconocida
     lanza `InvalidSearchCriteria`.
   - Green: `GetTendersMapUseCase` y su proveedor en `bootstrap/matching.py`.
