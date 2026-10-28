@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../HomeDashboard";
@@ -50,21 +50,37 @@ vi.mock("next/link", () => ({
 const MOCK_QUESTIONS: Question[] = [
   {
     id: "q-1",
+    provider_id: "sup-1",
+    discrepancy_type: null,
+    tender_requirement: null,
     question: "¿Dispone de certificación ISO 9001?",
-    target_keyword: "certificacion:iso_9001",
-    supplier_id: "sup-1",
+    target_profile_field: "certificaciones",
+    answered: false,
+    answer: null,
+    omitted: false,
+    generated_at: "2026-06-01T00:00:00Z",
+    answered_at: null,
+    target_category: "certificaciones",
+    options: ["Sí", "No"],
     tender_id: null,
-    status: "pending",
-    created_at: "2026-06-01T00:00:00Z",
+    target_keyword: "certificacion:iso_9001",
   },
   {
     id: "q-2",
+    provider_id: "sup-1",
+    discrepancy_type: null,
+    tender_requirement: null,
     question: "¿Dispone de camión aljibe de 10.000 litros?",
-    target_keyword: "maquinaria:camion_aljibe",
-    supplier_id: "sup-1",
+    target_profile_field: "maquinaria",
+    answered: false,
+    answer: null,
+    omitted: false,
+    generated_at: "2026-06-01T00:00:00Z",
+    answered_at: null,
+    target_category: "maquinaria",
+    options: ["Sí", "No"],
     tender_id: null,
-    status: "pending",
-    created_at: "2026-06-01T00:00:00Z",
+    target_keyword: "maquinaria:camion_aljibe",
   },
 ];
 
@@ -77,9 +93,7 @@ describe("HomeDashboard: Flujo e Interacción de Preguntas Inteligentes", () => 
   it("muestra el banner y al hacer clic en 'Responder' oculta el banner y muestra la tarjeta con progreso '1/2'", async () => {
     vi.spyOn(useSmartQuestionsHook, "useSmartQuestions").mockReturnValue({
       questions: MOCK_QUESTIONS,
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
+      loading: false,
     });
 
     render(<HomeDashboard />);
@@ -105,9 +119,7 @@ describe("HomeDashboard: Flujo e Interacción de Preguntas Inteligentes", () => 
   it("avanza de la pregunta 1 a la 2 con progreso '2/2' al responder y se cierra al terminar", async () => {
     vi.spyOn(useSmartQuestionsHook, "useSmartQuestions").mockReturnValue({
       questions: MOCK_QUESTIONS,
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
+      loading: false,
     });
 
     vi.mocked(questionService.answerSmartQuestion).mockResolvedValue({

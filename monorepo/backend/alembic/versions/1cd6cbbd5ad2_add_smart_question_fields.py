@@ -1,7 +1,7 @@
 """add_smart_question_fields
 
 Revision ID: 1cd6cbbd5ad2
-Revises: 1ddfcce953b7
+Revises: e7123e26c0be
 Create Date: 2026-10-27 21:09:56.493550
 
 Campos para el motor dinámico de Smart Questions:
@@ -19,7 +19,7 @@ import sqlmodel
 
 # revision identifiers, used by Alembic.
 revision: str = '1cd6cbbd5ad2'
-down_revision: str | Sequence[str] | None = '1ddfcce953b7'
+down_revision: str | Sequence[str] | None = 'e7123e26c0be'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

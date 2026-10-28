@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Sparkles, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
-import type { DynamicQuestionDTO, Question } from "../questionTypes";
+import { Sparkles, AlertCircle, RefreshCw } from "lucide-react";
+import type { Question } from "../questionTypes";
 import { getSmartQuestions } from "../services/questionService";
 import { SmartQuestionCard } from "./SmartQuestionCard";
 

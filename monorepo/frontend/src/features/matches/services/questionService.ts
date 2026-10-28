@@ -1,5 +1,5 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { DynamicQuestionDTO, Question } from "../questionTypes";
+import type { Question } from "../questionTypes";
 
 export function getSmartQuestions(tenderId?: string): Promise<Question[]> {
   const endpoint = tenderId
