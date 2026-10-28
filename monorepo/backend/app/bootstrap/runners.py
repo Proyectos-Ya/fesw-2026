@@ -53,6 +53,9 @@ from app.application.use_cases.notifications.scan_supplier_for_alerts import (
 from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle import (
     RankingTelemetryCycleResult,
 )
+from app.application.use_cases.tender.geocode_pending_tenders import (
+    GeocodePendingTendersUseCase,
+)
 from app.application.use_cases.tender_attachments.analyze_tender_attachments import (
     AnalyzeTenderAttachmentsUseCase,
 )
@@ -90,6 +93,9 @@ from app.infrastructure.repositories.sql_attachment_file_repository import (
 from app.infrastructure.repositories.sql_tender_attachment_repository import (
     SqlTenderAttachmentRepository,
 )
+from app.infrastructure.repositories.sql_tender_location_repository import (
+    SqlTenderLocationRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_milestone_attachment_repository import (
     TenderMilestoneAttachmentRepository,
@@ -103,6 +109,9 @@ from app.infrastructure.services.attachment_processing_jobs import (
     sql_processing_units,
 )
 from app.infrastructure.services.exports.background import AsyncioExportBackground
+from app.infrastructure.services.geocoding.throttled_geocoding_service import (
+    ThrottledGeocodingService,
+)
 from app.infrastructure.services.milestone_extraction_background import (
     AsyncioMilestoneExtractionBackground,
 )
@@ -206,6 +215,25 @@ def build_kanban_archive_runner(age_days: int = 90) -> Callable[[], Awaitable[li
             return await use_case.execute()
 
     return auto_archive
+
+
+def build_geocoding_runner(app: FastAPI) -> Callable[[], Awaitable[int]]:
+    """Arma la función que ejecuta `GeocodingScheduler` (HU-22, #314).
+
+    El límite de 1 req/s se arma una sola vez, fuera de la vuelta: así también
+    separa la última petición de un lote de la primera del siguiente.
+    """
+    geocoder = ThrottledGeocodingService(app.state.geocoding_service)
+
+    async def geocode() -> int:
+        async with async_session_maker() as session:
+            return await GeocodePendingTendersUseCase(
+                repo=SqlTenderLocationRepository(session),
+                geocoder=geocoder,
+                batch_size=settings.geocoding_batch_size,
+            ).execute()
+
+    return geocode
 
 
 def build_milestone_refresh_runner(

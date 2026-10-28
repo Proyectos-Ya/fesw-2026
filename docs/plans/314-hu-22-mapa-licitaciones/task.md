@@ -59,7 +59,7 @@
     caché guarda también los no encontrados.
   - Green: implementación en `TenderRepository` y repositorio de la caché.
   - Commit: `feat(geocodificacion): cola y caché en postgres`
-- [ ] **2.5 Scheduler en el lifespan.**
+- [x] **2.5 Scheduler en el lifespan.**
   - Red: el loop sobrevive a un error y espera 1 s entre llamadas reales.
   - Green: `GeocodingScheduler`, runner en `bootstrap/runners.py`, arranque
     en `app/main.py` solo si el proveedor no es `none`.
