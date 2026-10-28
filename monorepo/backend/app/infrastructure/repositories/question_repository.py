@@ -49,6 +49,7 @@ class QuestionRepositoryImpl(IQuestionRepository):
         model = self._to_model(question)
         self.session.add(model)
         await self.session.flush()
+        await self.session.commit()
         return self._to_entity(model)
 
     async def save_all(self, questions: list[Question]) -> list[Question]:
@@ -59,6 +60,7 @@ class QuestionRepositoryImpl(IQuestionRepository):
             # Flush para obtener los IDs generados por Postgres de inmediato
             await self.session.flush()
             saved_entities.append(self._to_entity(model))
+        await self.session.commit()
         return saved_entities
 
     async def update(self, question: Question) -> Question:
@@ -70,4 +72,5 @@ class QuestionRepositoryImpl(IQuestionRepository):
             setattr(model, key, value)
         self.session.add(model)
         await self.session.flush()
+        await self.session.commit()
         return self._to_entity(model)

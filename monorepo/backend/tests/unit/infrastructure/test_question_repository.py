@@ -101,10 +101,11 @@ class TestQuestionRepository:
         assert results[1].id == q2.id
         session.exec.assert_awaited_once()
 
-    async def test_save_adds_and_flushes(self) -> None:
+    async def test_save_adds_flushes_and_commits(self) -> None:
         session = MagicMock()
         session.add = MagicMock()
         session.flush = AsyncMock()
+        session.commit = AsyncMock()
 
         repo = QuestionRepositoryImpl(session)
         q = _make_question()
@@ -113,14 +114,32 @@ class TestQuestionRepository:
         assert saved.id == q.id
         session.add.assert_called_once()
         session.flush.assert_awaited_once()
+        session.commit.assert_awaited_once()
 
-    async def test_update_updates_and_flushes(self) -> None:
+    async def test_save_all_adds_flushes_and_commits(self) -> None:
+        session = MagicMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        repo = QuestionRepositoryImpl(session)
+        q1 = _make_question()
+        q2 = _make_question()
+        saved = await repo.save_all([q1, q2])
+
+        assert len(saved) == 2
+        assert session.add.call_count == 2
+        assert session.flush.await_count == 2
+        session.commit.assert_awaited_once()
+
+    async def test_update_updates_flushes_and_commits(self) -> None:
         session = MagicMock()
         q = _make_question()
         model = _make_model(q)
         session.get = AsyncMock(return_value=model)
         session.add = MagicMock()
         session.flush = AsyncMock()
+        session.commit = AsyncMock()
 
         repo = QuestionRepositoryImpl(session)
         q.answered = True
@@ -132,6 +151,7 @@ class TestQuestionRepository:
         assert updated.answer == "Sí"
         session.get.assert_awaited_once_with(QuestionModel, q.id)
         session.flush.assert_awaited_once()
+        session.commit.assert_awaited_once()
 
     async def test_update_raises_when_not_found(self) -> None:
         session = MagicMock()
