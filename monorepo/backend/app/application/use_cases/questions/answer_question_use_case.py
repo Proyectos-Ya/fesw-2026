@@ -8,6 +8,7 @@ from app.application.repositories.supplier_vector_repository import (
 )
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.use_cases.supplier.create_supplier import _build_supplier_text
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.question import Question
 from app.shared.datetime_utils import utc_now_naive
 
@@ -33,6 +34,7 @@ class AnswerQuestionUseCase:
         field_name: str | None = None,
         answer: str = "",
         question_id: UUID | None = None,
+        supplier_id: UUID | None = None,
     ) -> None:
         """Guarda la respuesta en las keywords o memoria negativa de la empresa del usuario.
 
@@ -42,7 +44,7 @@ class AnswerQuestionUseCase:
           `supplier.keywords`, limpia `supplier.negative_keywords`, actualiza
           `profile_changed_at` y sincroniza con Qdrant de forma transaccional.
         """
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if supplier is None:
             raise ValueError("El usuario no tiene una empresa asociada.")
 

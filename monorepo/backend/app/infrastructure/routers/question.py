@@ -15,6 +15,7 @@ from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
 from app.domain.entities.question import Question
+from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 
 
@@ -23,6 +24,7 @@ def create_question_router(
     get_answer_question_use_case: Callable,
     get_current_user: Callable,
     get_generate_tender_smart_questions_use_case: Callable | None = None,
+    get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
 
     router = APIRouter(
@@ -36,6 +38,14 @@ def create_question_router(
         if get_generate_tender_smart_questions_use_case is not None
         else lambda: None
     )
+    workspace_dep = (
+        get_current_workspace_context
+        if get_current_workspace_context is not None
+        else lambda: None
+    )
+
+    def _empresa_activa(workspace_context: WorkspaceContext | None) -> UUID | None:
+        return workspace_context.active_supplier_id if workspace_context else None
 
     @router.get(
         "",
@@ -52,6 +62,10 @@ def create_question_router(
             GenerateTenderSmartQuestionsUseCase | None,
             Depends(generate_dep),
         ] = None,
+        workspace_context: Annotated[
+            WorkspaceContext | None,
+            Depends(workspace_dep),
+        ] = None,
         tender_id: UUID | None = None,
     ):
         """Cola de preguntas dinámicas para la empresa del usuario autenticado.
@@ -60,11 +74,18 @@ def create_question_router(
         a esa licitación mediante IA y análisis de bases. Si se omite, retorna la cola general.
         """
         try:
+            active_supplier = _empresa_activa(workspace_context)
+            kwargs = {"supplier_id": active_supplier} if active_supplier is not None else {}
             if tender_id is not None and generate_use_case is not None:
                 return await generate_use_case.execute(
-                    user_id=current_user.id, tender_id=tender_id
+                    user_id=current_user.id,
+                    tender_id=tender_id,
+                    **kwargs,
                 )
-            return await use_case.execute(user_id=current_user.id)
+            return await use_case.execute(
+                user_id=current_user.id,
+                **kwargs,
+            )
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
@@ -77,12 +98,10 @@ def create_question_router(
             ) from e
 
     class QuestionAnswerInput(BaseModel):
-        # Sin `supplier_id`: la empresa se deduce de la sesión. Un cliente que
-        # siga mandándolo no rompe —pydantic ignora los campos de más— pero el
-        # valor no se usa.
         question_id: UUID
         answer: str
         target_profile_field: str | None = None
+        supplier_id: UUID | None = None
 
     @router.post("/answer", status_code=status.HTTP_200_OK)
     async def answer_question(
@@ -91,13 +110,20 @@ def create_question_router(
         use_case: Annotated[
             AnswerQuestionUseCase, Depends(get_answer_question_use_case)
         ],
+        workspace_context: Annotated[
+            WorkspaceContext | None,
+            Depends(workspace_dep),
+        ] = None,
     ):
         try:
+            active_supplier = payload.supplier_id or _empresa_activa(workspace_context)
+            kwargs = {"supplier_id": active_supplier} if active_supplier is not None else {}
             await use_case.execute(
                 user_id=current_user.id,
-                field_name=payload.target_profile_field,
-                answer=payload.answer,
                 question_id=payload.question_id,
+                answer=payload.answer,
+                field_name=payload.target_profile_field,
+                **kwargs,
             )
             return {
                 "status": "success",

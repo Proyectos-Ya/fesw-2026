@@ -106,7 +106,7 @@ def bootstrap(app: FastAPI) -> None:
     )
     app.state.smart_question_ai_service = GeminiSmartQuestionAIService(
         api_key=settings.gemini_api_key,
-        model_name="gemini-1.5-flash",
+        model_name=settings.gemini_model,
     )
     # Una llave inválida corta el arranque acá, no al guardar el primer token.
     app.state.token_cipher = (

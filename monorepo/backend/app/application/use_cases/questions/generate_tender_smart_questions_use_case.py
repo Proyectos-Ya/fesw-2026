@@ -18,6 +18,7 @@ from app.application.repositories.tender_repository import (
 from app.application.services.anexos_visibles import anexos_visibles
 from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.smart_question_ai_service import ISmartQuestionAIService
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.question import Question
 from app.infrastructure.services.attachments.pdf_text import pdf_paginas
 from app.shared.datetime_utils import utc_now_naive
@@ -48,9 +49,14 @@ class GenerateTenderSmartQuestionsUseCase:
         self.storage = storage
         self.now_func = now_func
 
-    async def execute(self, user_id: UUID, tender_id: UUID) -> list[Question]:
+    async def execute(
+        self,
+        user_id: UUID,
+        tender_id: UUID,
+        supplier_id: UUID | None = None,
+    ) -> list[Question]:
         # 1. Resolver proveedor y licitación
-        supplier = await self.supplier_repo.get_by_user_id(user_id)
+        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if supplier is None:
             raise ValueError("El usuario no tiene una empresa asociada.")
 

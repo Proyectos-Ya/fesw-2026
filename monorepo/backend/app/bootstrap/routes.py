@@ -243,6 +243,7 @@ def register_routes(app: FastAPI) -> None:
             get_answer_question_use_case=get_answer_question_use_case,
             get_current_user=get_current_user,
             get_generate_tender_smart_questions_use_case=get_generate_tender_smart_questions_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(create_catalog_router(get_current_user=get_current_user))

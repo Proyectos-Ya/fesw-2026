@@ -178,9 +178,13 @@ class GeminiSmartQuestionAIService(ISmartQuestionAIService):
             "2. Tu misión es contrastar los requerimientos de la licitación y sus bases adjuntas con el perfil del proveedor.\n"
             "3. Identifica vacíos estratégicos o exigencias clave (certificaciones ISO/NCh, maquinaria o equipamiento especializado, registros MOP/MINVU, experiencia específica) indispensables para postular que NO figuren en el perfil del proveedor.\n"
             "4. Formula preguntas estratégicas orientadas a respuesta 'Sí' o 'No'.\n"
-            "5. Cada pregunta debe definir un 'target_keyword' normalizado en minúsculas en formato 'categoria:detalle' (ej: 'certificacion:iso_9001', 'maquinaria:retroexcavadora', 'registro:mop_primera').\n"
+            "5. Cada pregunta debe definir un 'target_keyword' normalizado en minúsculas en formato 'categoria:detalle' (ej: 'certificacion:iso_9001', 'maquinaria:retroexcavadora_oruga', 'registro:mop_primera').\n"
             "6. CUMPLE ESTRICTAMENTE LA REGLA DE EXCLUSIONES DE MEMORIA NEGATIVA: NUNCA preguntes por capacidades descartadas.\n"
             "7. Basa tus preguntas prioritariamente en las exigencias y especificaciones técnicas encontradas en las bases adjuntas.\n"
+            "8. REGLA DE NO REDUNDANCIA Y GRANULARIDAD:\n"
+            "   - NO preguntes por capacidades, maquinaria o certificaciones que el proveedor YA posea en sus Palabras Clave o perfil actual.\n"
+            "   - Si el proveedor ya cuenta con una categoría de maquinaria (ej: 'maquinaria:camion_pluma'), NO generes preguntas redundantes añadiendo sufijos de tonelaje, modelo o capacidad menor (ej: NO generar 'maquinaria:camion_pluma_15t' o 'maquinaria:camion_pluma_20t'). Se asume ya cubierto por la maquinaria existente.\n"
+            "   - Los 'target_keyword' deben ser canónicos, limpios y reutilizables entre distintas licitaciones (ej: 'maquinaria:retroexcavadora_oruga', 'certificacion:iso_45001', 'seguridad:prevencionista_sns'). Evita sufijos de medidas particulares o números que ensucien el perfil.\n"
         )
 
         return f"{instructions}\n{neg_text}\n{tender_ctx}\n{supplier_ctx}\n{rag_text}"
