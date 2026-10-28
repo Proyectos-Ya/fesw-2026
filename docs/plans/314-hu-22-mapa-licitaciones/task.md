@@ -64,7 +64,7 @@
   - Green: `GeocodingScheduler`, runner en `bootstrap/runners.py`, arranque
     en `app/main.py` solo si el proveedor no es `none`.
   - Commit: `feat(geocodificacion): scheduler de la cola`
-- [ ] **2.6 La ingesta re-encola una dirección cambiada.**
+- [x] **2.6 La ingesta re-encola una dirección cambiada.**
   - Red: en `test_ingesta_entrega.py`, cambiar la dirección limpia
     `delivery_geocoded_at` sin mover `updated_at`; la misma dirección no.
   - Green: `_aplicar_entrega` en `tender_ingestion_use_case.py`.
