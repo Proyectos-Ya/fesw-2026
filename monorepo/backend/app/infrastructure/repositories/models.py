@@ -36,6 +36,9 @@ from app.infrastructure.repositories.extension_model import (
     ExtensionFetchJobModel,
     ExtensionInstallationModel,
 )
+from app.infrastructure.repositories.geocoding_cache_model import (
+    GeocodingCacheModel,
+)
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -130,6 +133,7 @@ __all__ = [
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "ExportJobModel",
+    "GeocodingCacheModel",
     "KanbanCardModel",
     "KanbanColumnModel",
     "MatchingResultModel",
