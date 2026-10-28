@@ -110,20 +110,13 @@ def create_question_router(
         use_case: Annotated[
             AnswerQuestionUseCase, Depends(get_answer_question_use_case)
         ],
-        workspace_context: Annotated[
-            WorkspaceContext | None,
-            Depends(workspace_dep),
-        ] = None,
     ):
         try:
-            active_supplier = payload.supplier_id or _empresa_activa(workspace_context)
-            kwargs = {"supplier_id": active_supplier} if active_supplier is not None else {}
             await use_case.execute(
                 user_id=current_user.id,
                 question_id=payload.question_id,
                 answer=payload.answer,
                 field_name=payload.target_profile_field,
-                **kwargs,
             )
             return {
                 "status": "success",

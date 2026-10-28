@@ -35,7 +35,8 @@ class SupplierModel(SQLModel, table=True):
     certifications: list[str] | None = Field(default=None, sa_column=Column(JSON))
     keywords: list[str] | None = Field(default=None, sa_column=Column(JSON))
     negative_keywords: list[dict[str, Any]] | None = Field(
-        default=[], sa_column=Column(JSONB, nullable=True, default=[])
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=True),
     )
     years_experience: int | None = None
     num_employees: int | None = None

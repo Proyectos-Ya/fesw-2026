@@ -46,7 +46,6 @@ def upgrade() -> None:
             "negative_keywords",
             postgresql.JSONB(astext_type=sa.Text()),
             nullable=True,
-            server_default=sa.text("'[]'::jsonb"),
         ),
     )
 

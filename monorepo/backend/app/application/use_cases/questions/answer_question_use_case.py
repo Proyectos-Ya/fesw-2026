@@ -34,7 +34,6 @@ class AnswerQuestionUseCase:
         field_name: str | None = None,
         answer: str = "",
         question_id: UUID | None = None,
-        supplier_id: UUID | None = None,
     ) -> None:
         """Guarda la respuesta en las keywords o memoria negativa de la empresa del usuario.
 
@@ -44,7 +43,7 @@ class AnswerQuestionUseCase:
           `supplier.keywords`, limpia `supplier.negative_keywords`, actualiza
           `profile_changed_at` y sincroniza con Qdrant de forma transaccional.
         """
-        supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
+        supplier = await resolver_empresa(self.supplier_repo, user_id, None)
         if supplier is None:
             raise ValueError("El usuario no tiene una empresa asociada.")
 
