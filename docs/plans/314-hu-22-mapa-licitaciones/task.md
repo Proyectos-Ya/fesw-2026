@@ -111,7 +111,7 @@
     perfil se resuelve vía `toSearchRegion`.
   - Green: `data/regionCenters.ts`.
   - Commit: `feat(mapa): centro y zoom de cada región`
-- [ ] **4.5 Resumen del marcador (criterio 3).**
+- [x] **4.5 Resumen del marcador (criterio 3).**
   - Red: `TenderMapSummary` muestra nombre, organismo, dirección y cierre,
     enlaza a `/matches/{id}`, y avisa "aproximada" con precisión `comuna`.
   - Green: `components/TenderMapSummary.tsx`.
