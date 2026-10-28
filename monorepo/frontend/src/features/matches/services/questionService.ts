@@ -1,11 +1,11 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { DynamicQuestionDTO } from "../questionTypes";
+import type { DynamicQuestionDTO, Question } from "../questionTypes";
 
-export function getSmartQuestions(tenderId?: string): Promise<DynamicQuestionDTO[]> {
+export function getSmartQuestions(tenderId?: string): Promise<Question[]> {
   const endpoint = tenderId
     ? `/questions?tender_id=${encodeURIComponent(tenderId)}`
     : "/questions";
-  return apiFetch<DynamicQuestionDTO[]>(endpoint);
+  return apiFetch<Question[]>(endpoint);
 }
 
 export interface AnswerQuestionInput {

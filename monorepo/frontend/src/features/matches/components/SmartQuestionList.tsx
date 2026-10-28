@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Sparkles, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
-import type { DynamicQuestionDTO } from "../questionTypes";
+import type { DynamicQuestionDTO, Question } from "../questionTypes";
 import { getSmartQuestions } from "../services/questionService";
 import { SmartQuestionCard } from "./SmartQuestionCard";
 
@@ -17,7 +17,7 @@ export function SmartQuestionList({
   className = "",
   onAllAnswered,
 }: SmartQuestionListProps) {
-  const [questions, setQuestions] = useState<DynamicQuestionDTO[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +86,7 @@ export function SmartQuestionList({
   if (error) {
     return (
       <div
-        role="alert"
+        aria-live="polite"
         className={`flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 ${className}`}
       >
         <div className="flex items-center gap-2">
