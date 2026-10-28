@@ -92,6 +92,7 @@ from app.bootstrap.proposals import (
 )
 from app.bootstrap.questions import (
     get_answer_question_use_case,
+    get_generate_tender_smart_questions_use_case,
     get_smart_question_use_case,
 )
 from app.bootstrap.ranking_telemetry import (
@@ -241,6 +242,7 @@ def register_routes(app: FastAPI) -> None:
             get_smart_question_use_case=get_smart_question_use_case,
             get_answer_question_use_case=get_answer_question_use_case,
             get_current_user=get_current_user,
+            get_generate_tender_smart_questions_use_case=get_generate_tender_smart_questions_use_case,
         )
     )
     app.include_router(create_catalog_router(get_current_user=get_current_user))
