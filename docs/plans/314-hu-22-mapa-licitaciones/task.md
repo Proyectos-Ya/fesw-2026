@@ -101,7 +101,7 @@
   - Green: `types/index.ts`, `services/tenderMapService.ts`, `test-utils.ts`
     con `buildTenderMapPoint`.
   - Commit: `feat(mapa): servicio del mapa de licitaciones`
-- [ ] **4.3 Hook con reintento.**
+- [x] **4.3 Hook con reintento.**
   - Red: `hooks/__tests__/useTenderMap.test.ts`: carga, error, `retry` vuelve
     a pedir, cambiar región vuelve a pedir y descarta la respuesta vieja.
   - Green: `hooks/useTenderMap.ts`.
