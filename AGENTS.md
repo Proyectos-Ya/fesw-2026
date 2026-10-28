@@ -68,14 +68,17 @@ que no cargue skills debe leer ese archivo antes de documentar.
 
 | Situación | Documento | Dónde |
 |---|---|---|
-| Empezar una HdU o un cambio no trivial | Plan técnico, revisado por un humano **antes** de codificar | `docs/plans/<issue>-<slug>.md` |
+| Empezar una HdU o un cambio no trivial (un solo archivo) | Plan técnico, revisado por un humano **antes** de codificar | `docs/plans/<issue>-<slug>.md` |
+| Empezar una HdU con varios documentos (ej. plan y desglose de tareas) | Carpeta de la HdU con `plan.md`, `task.md`, etc. | `docs/plans/<issue>-<slug>/` (ej. `docs/plans/312-hu-30/`) |
 | Tomar o cambiar una decisión de arquitectura | ADR | `docs/decisions/NNNN-<slug>.md` |
 | Crear o modificar una ruta de la API | `summary`, `response_model` y `tags` en la ruta (Swagger en `/docs`) | el router |
 | Cerrar un sprint | Changelog con sección para usuarios y sección técnica | `docs/changelogs/sprint-N.md` |
 | Cambiar reglas para agentes | Editar este archivo; no duplicar en `CLAUDE.md` ni `GEMINI.md` | `AGENTS.md` |
 
 Las issues no se copian en `docs/`: un plan enlaza su issue con `Refs #NNN` y no repite
-los criterios de aceptación.
+los criterios de aceptación. Si la HdU solo requiere el plan técnico, basta un archivo
+`docs/plans/<issue>-<slug>.md`; si incluye desglose de tareas (`task.md`) u otros
+artefactos asociados, se agrupan en su propia carpeta `docs/plans/<issue>-<slug>/`.
 
 ### Git y commits
 
@@ -174,4 +177,14 @@ y recetas de resolución de incidentes, consultar la
   verde contra un esquema viejo). El reemplazo es Infrastructure as Code
   (`.railway/railway.ts`). Mientras tanto, un servicio nuevo se configura por el panel,
   no por archivo.
+- **Crons de licitaciones** (Railway, misma imagen que la API; plan 305):
+  - `sync-estados` (`scripts/sync_estados.py`) corre cada hora. Lista los cambios,
+    aplica estado y cierre página por página y deja en `tender_metadata` qué hay
+    que bajar (`nueva` o `actualizar`).
+  - La ingesta (`scripts/sync_diaria.py`) corre cada 2 h. La corrida de las 06:00
+    UTC es la nocturna: lista por tramos (cada tramo mueve el cursor), vacía la
+    cola y reintenta. El resto solo vacía la cola.
+- **No mergear a `main` entre las 06:00 y las 12:00 UTC** (03:00 a 09:00 de
+  Chile). Railway corta los crons en curso al desplegar: el 2026-10-06 un merge
+  cortó la ingesta nocturna y el cursor quedó atrasado un día más.
 - **Vercel**: despliega el frontend.

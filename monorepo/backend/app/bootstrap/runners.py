@@ -209,7 +209,7 @@ def build_kanban_archive_runner(age_days: int = 90) -> Callable[[], Awaitable[li
 
 
 def build_milestone_refresh_runner(
-    app: FastAPI, refresher: ITenderRefresher
+    app: FastAPI, refresher: ITenderRefresher | None
 ) -> Callable[[], Awaitable[int]]:
     """Arma la función que ejecuta `MilestoneRefreshScheduler` (HU-16).
 

@@ -47,6 +47,29 @@ class _TenderTexto:
     description: str | None
 
 
+def _pares_de_entrega(
+    existente: TenderModel, dto: TenderIngestaDTO
+) -> tuple[tuple[object, object], ...]:
+    """Cada dato de entrega del detalle junto al guardado, en el mismo orden."""
+    return (
+        (dto.delivery_address, existente.delivery_address),
+        (dto.delivery_term_days, existente.delivery_term_days),
+        (
+            dto.requires_environmental_criteria,
+            existente.requires_environmental_criteria,
+        ),
+        (
+            dto.requires_social_impact_criteria,
+            existente.requires_social_impact_criteria,
+        ),
+    )
+
+
+def _ordenadas(items: list[TenderItemModel]) -> list[TenderItemModel]:
+    """Las partidas en un orden que no depende de cómo las devolvió la fuente."""
+    return sorted(items, key=lambda i: (i.name or "", i.description or ""))
+
+
 class TenderIngestionUseCase:
     def __init__(
         self,
@@ -118,6 +141,17 @@ class TenderIngestionUseCase:
                 call_number=dto.call_number,
                 first_call_closing_at=dto.first_call_closing_at,
                 second_call_closing_at=dto.second_call_closing_at,
+                received_offers_count=dto.received_offers_count,
+                offers_checked_at=(
+                    now if dto.received_offers_count is not None else None
+                ),
+                first_call_offers_count=(
+                    dto.received_offers_count if dto.call_number == 1 else None
+                ),
+                delivery_address=dto.delivery_address,
+                delivery_term_days=dto.delivery_term_days,
+                requires_environmental_criteria=dto.requires_environmental_criteria,
+                requires_social_impact_criteria=dto.requires_social_impact_criteria,
                 last_change_at=now,
                 buyer_rut=safe_buyer_rut,
                 buyer_unit=dto.buyer_unit,
@@ -162,7 +196,9 @@ class TenderIngestionUseCase:
                 # el mismo orden: si SQL falla después, queda un punto sin fila,
                 # que el ranking limpia solo. Llevan el mismo payload que el punto
                 # de la licitación para pre-filtrar dentro de su propia colección.
-                await self._guardar_vectores_de_partidas(tender_id, tender_items, payload)
+                await self._guardar_vectores_de_partidas(
+                    tender_id, tender_items, payload
+                )
                 await self._guardar_vector_lexico(tender_id, text, payload)
 
             # Recién acá se abre la transacción SQL. Ambos get_or_create
@@ -180,7 +216,9 @@ class TenderIngestionUseCase:
                 status_id=dto.status_code, code=dto.status_semantic_code
             )
             await self.repo.save_complex_tender(new_tender, tender_items)
-            await self._sincronizar_anexos(tender_id, dto)  # FK: después de la licitación
+            await self._sincronizar_anexos(
+                tender_id, dto
+            )  # FK: después de la licitación
 
             return {"status": "success", "tender_code": dto.code}
 
@@ -236,7 +274,8 @@ class TenderIngestionUseCase:
 
         Hay un tercer caso, que no toca Qdrant ni paga inferencia:
 
-        - **Cambio de llamado** — solo SQL, sin `updated_at`.
+        - **Cambio de llamado, de cotizaciones o de entrega** — solo SQL, sin
+          `updated_at`.
 
         Sobre eso manda el estado, porque Qdrant guarda solo activas: la que
         deja de estar activa pierde su punto, y la que vuelve a estarlo lo
@@ -245,22 +284,34 @@ class TenderIngestionUseCase:
         items_nuevos = self._construir_items(existente.id, dto)
         items_actuales = await self.repo.get_items_by_tender_id(existente.id)
 
-        texto_actual = self.text_builder.build_from_tender(existente, items_actuales)
         texto_nuevo = self.text_builder.build_from_tender(
             _TenderTexto(name=dto.name, description=dto.description), items_nuevos
         )
-        cambio_semantico = texto_actual != texto_nuevo
+        # La comparación ordena las partidas: Postgres no garantiza su orden, y
+        # si contara, un detalle idéntico volvería a pagar todos los embeddings
+        # (plan 305). El texto del embedding conserva el orden de la API.
+        cambio_semantico = self.text_builder.build_from_tender(
+            existente, _ordenadas(items_actuales)
+        ) != self.text_builder.build_from_tender(
+            _TenderTexto(name=dto.name, description=dto.description),
+            _ordenadas(items_nuevos),
+        )
         cambio_metadatos = self._metadatos_cambiaron(existente, dto)
         cambio_llamado = self._llamado_cambio(existente, dto)
+        cambio_ofertas = self._ofertas_cambio(existente, dto)
+        cambio_entrega = self._entrega_cambio(existente, dto)
 
         if not cambio_semantico and not cambio_metadatos:
-            if cambio_llamado:
+            if cambio_llamado or cambio_ofertas or cambio_entrega:
                 # Solo cambió el llamado (o se completa en una licitación
                 # ingerida antes de guardarlo). No mueve `updated_at` ni toca
                 # Qdrant: no cambia lo que se pide, y mover `updated_at`
                 # regeneraría el análisis de Gemini (6.4). Un cambio de llamado
-                # de verdad trae otro `closing_at`, que sí es metadato.
+                # de verdad trae otro `closing_at`, que sí es metadato. Una
+                # cotización más tampoco cambia lo que se pide.
                 self._aplicar_llamado(existente, dto)
+                self._aplicar_ofertas(existente, dto)
+                self._aplicar_entrega(existente, dto)
                 await self.repo.update_tender(existente)
                 return {
                     "status": "updated",
@@ -303,7 +354,9 @@ class TenderIngestionUseCase:
             )
             # Cambió el texto (o vuelve a estar activa y no tenía puntos): los
             # vectores por partida se rehacen con el mismo payload.
-            await self._guardar_vectores_de_partidas(existente.id, items_nuevos, payload)
+            await self._guardar_vectores_de_partidas(
+                existente.id, items_nuevos, payload
+            )
             await self._guardar_vector_lexico(existente.id, texto_nuevo, payload)
         else:
             metadatos = {
@@ -327,6 +380,8 @@ class TenderIngestionUseCase:
 
         self._aplicar_cambios(existente, dto)
         self._aplicar_llamado(existente, dto)
+        self._aplicar_ofertas(existente, dto)
+        self._aplicar_entrega(existente, dto)
         await self.repo.update_tender(existente)
 
         return {
@@ -461,6 +516,58 @@ class TenderIngestionUseCase:
             existente.first_call_closing_at = dto.first_call_closing_at
         if dto.second_call_closing_at is not None:
             existente.second_call_closing_at = dto.second_call_closing_at
+
+    @staticmethod
+    def _ofertas_cambio(existente: TenderModel, dto: TenderIngestaDTO) -> bool:
+        """Si el detalle trae una cifra de cotizaciones distinta de la guardada.
+
+        Un None no cuenta, por la misma razón que en `_llamado_cambio`: borraría
+        la cifra que escribió el cron de estados desde el listado.
+        """
+        nueva = dto.received_offers_count
+        return nueva is not None and nueva != existente.received_offers_count
+
+    @staticmethod
+    def _aplicar_ofertas(existente: TenderModel, dto: TenderIngestaDTO) -> None:
+        """Vuelca la cifra del detalle y la hora de esta revisión, si la trae.
+
+        En primer llamado la copia también en `first_call_offers_count`: la API
+        cuenta solo el llamado actual, y al abrirse el segundo esa columna
+        conserva la última cifra del primero.
+        """
+        if dto.received_offers_count is not None:
+            existente.received_offers_count = dto.received_offers_count
+            existente.offers_checked_at = utc_now_naive()
+            if dto.call_number == 1:
+                existente.first_call_offers_count = dto.received_offers_count
+
+    @staticmethod
+    def _entrega_cambio(existente: TenderModel, dto: TenderIngestaDTO) -> bool:
+        """Si el detalle trae una entrega o un requisito distinto del guardado.
+
+        Un None no cuenta: el detalle puede no traerlos (#294, sin verificar con
+        una petición real). Un `False` en los flags sí es un dato.
+        """
+        return any(
+            nuevo is not None and nuevo != actual
+            for nuevo, actual in _pares_de_entrega(existente, dto)
+        )
+
+    @staticmethod
+    def _aplicar_entrega(existente: TenderModel, dto: TenderIngestaDTO) -> None:
+        """Vuelca la entrega y los requisitos del detalle, sin borrar lo que no trae."""
+        if dto.delivery_address is not None:
+            existente.delivery_address = dto.delivery_address
+        if dto.delivery_term_days is not None:
+            existente.delivery_term_days = dto.delivery_term_days
+        if dto.requires_environmental_criteria is not None:
+            existente.requires_environmental_criteria = (
+                dto.requires_environmental_criteria
+            )
+        if dto.requires_social_impact_criteria is not None:
+            existente.requires_social_impact_criteria = (
+                dto.requires_social_impact_criteria
+            )
 
     @staticmethod
     def _aplicar_cambios(existente: TenderModel, dto: TenderIngestaDTO) -> None:

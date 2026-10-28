@@ -6,6 +6,7 @@ cierre vienen ahí, así que actualizarlos no cuesta una petición por licitaci�
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 from app.domain.models.tender_ingestion_dto import DocumentoOficialDTO
@@ -35,6 +36,9 @@ class CambioDeEstado:
     call_number: int | None = None
     first_call_closing_at: datetime | None = None
     second_call_closing_at: datetime | None = None
+    # `resumen.total_ofertas_recibidas`. `None` es que el ítem no la trae: no se
+    # confunde con 0, que es una cifra real. No cuenta como llamado.
+    received_offers_count: int | None = None
 
     @property
     def trae_llamado(self) -> bool:
@@ -71,8 +75,62 @@ class ResultadoSyncEstados:
     actualizadas: int = 0
     # Filas cuyo llamado o cierre por llamado cambió. No mueven `updated_at`.
     llamados_actualizados: int = 0
+    # Filas cuya cifra de cotizaciones se revisó, cambie o no. Mueven
+    # `offers_checked_at`, no `updated_at`.
+    ofertas_revisadas: int = 0
     # Dejaron de estar activas: su punto se borra del índice vectorial.
     sacadas_del_indice: int = 0
     # Volvieron a estar activas: no tienen punto, así que las reindexa el ingest.
     reabiertas: int = 0
+    # Quedaron en la cola para que el ingest vuelva a bajar su detalle
+    # (`actualizar`), reaperturas incluidas.
     reencoladas: int = 0
+    # Publicadas que no tenemos: quedaron en la cola como `nueva`.
+    nuevas: int = 0
+    # Pendientes en la cola que el listado reporta inactivas: pasan a terminal.
+    descartadas: int = 0
+
+    def sumar(self, otro: "ResultadoSyncEstados") -> None:
+        """Acumula una página en el total de la corrida."""
+        for campo in self.__dataclass_fields__:
+            setattr(self, campo, getattr(self, campo) + getattr(otro, campo))
+
+
+class Intencion(StrEnum):
+    """Qué tiene que pasar en la cola con un código que apareció en el listado.
+
+    El caso de uso clasifica; si una conocida activa cambió después de la última
+    bajada lo decide el SQL del upsert, que es donde está `detail_fetched_at` y
+    donde la comparación no puede quedar vieja por una carrera con el ingest.
+    """
+
+    # No está en `tender`, sigue publicada y abierta.
+    NUEVA = "nueva"
+    # Está en `tender` y sigue activa: vuelve a la cola solo si el cambio es
+    # posterior a la última bajada de su detalle.
+    ACTUALIZAR_SI_CAMBIO = "actualizar_si_cambio"
+    # Está en `tender` inactiva y vuelve a estar activa: hay que reindexarla.
+    REABIERTA = "reabierta"
+    # Ya no está activa, o sigue publicada con el cierre vencido. Si estaba
+    # pendiente en la cola, pasa a terminal.
+    INACTIVA = "inactiva"
+
+
+@dataclass(frozen=True)
+class PunteroDeCambio:
+    """Lo que el cron de estados deja en `tender_metadata` por cada código."""
+
+    code: str
+    status_code: str
+    # `fecha_ultimo_cambio` de la API, en UTC naive.
+    changed_at: datetime | None
+    intencion: Intencion
+
+
+@dataclass
+class ResultadoPunteros:
+    """Cuántas filas de la cola cambiaron de verdad con los punteros."""
+
+    nuevas: int = 0
+    actualizar: int = 0
+    descartadas: int = 0

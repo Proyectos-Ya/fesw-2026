@@ -7,7 +7,8 @@ import * as tenderService from "../../services/tenderService";
 import * as savedService from "@/features/saved-tenders/services/savedTenders.service";
 import { SAVED_TENDERS_ERRORS } from "@/features/saved-tenders/constants";
 import type { DeepAnalysis, MatchingResult, Tender } from "../../tenderTypes";
-import { formatDateTime } from "../../utils/format";
+import { formatDateTime, normalizeScore } from "../../utils/format";
+import type { TenderDetail } from "@/features/notifications/notificationTypes";
 
 const mockRouter = {
   push: vi.fn(),
@@ -157,12 +158,26 @@ const mockMatch: MatchingResult = {
   },
 };
 
+/**
+ * Respuesta de `GET /tenders/{id}` para una licitación del ranking. La ficha ya
+ * no pide la lista de recomendadas: el detalle le dice si está en ella.
+ */
+function detalleDe(match: MatchingResult, isRecommended = true): TenderDetail {
+  return {
+    tender: match.tender as Tender,
+    score_pct:
+      match.final_score !== null ? Math.round(normalizeScore(match.final_score)) : null,
+    is_closed: false,
+    is_recommended: isRecommended,
+  };
+}
+
 describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", () => {
   const user = userEvent.setup();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
   });
 
@@ -175,12 +190,12 @@ describe("TenderDetailView (CA-5: Rollback y notificación en error de red)", ()
     expect(screen.getByTestId("milestones-section")).toHaveTextContent("tender-50");
   });
 
-  it("muestra el resumen de anexos en la sección de requisitos y descripción", async () => {
+  it("muestra el resumen de anexos en la sección de entrega y requisitos", async () => {
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    expect(await screen.findByText("Requisitos y descripción")).toBeInTheDocument();
+    expect(await screen.findByText("Entrega y requisitos")).toBeInTheDocument();
     expect(screen.getByTestId("digest-card")).toHaveTextContent("tender-50");
   });
 
@@ -330,14 +345,13 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Fuera de las recomendadas: la ficha cae al detalle directo.
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
       tender: tenderFueraDelTop,
       score_pct: null,
       is_closed: false,
+      is_recommended: false,
     });
   });
 
@@ -376,6 +390,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: 40,
       is_closed: false,
+      is_recommended: false,
     });
 
     render(<TenderDetailView tenderId="tender-77" />);
@@ -425,6 +440,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: 64,
       is_closed: false,
+      is_recommended: false,
     });
     vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({
       score_pct: 73,
@@ -447,6 +463,7 @@ describe("TenderDetailView: compatibilidad a pedido", () => {
       tender: tenderFueraDelTop,
       score_pct: null,
       is_closed: true,
+      is_recommended: false,
     });
 
     render(<TenderDetailView tenderId="tender-77" />);
@@ -468,13 +485,13 @@ describe("TenderDetailView: puntaje de una recomendada", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
-      {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({
         ...mockMatch,
         tender: { ...(mockMatch.tender as Tender), closing_at: EN_UN_MES },
         final_score: 0.91,
-      },
-    ]);
+      }),
+    );
   });
 
   it("no ofrece recalcular: ese puntaje lo mantiene el ranking", async () => {
@@ -486,7 +503,9 @@ describe("TenderDetailView: puntaje de una recomendada", () => {
     expect(
       screen.queryByRole("button", { name: /recalcular/i })
     ).not.toBeInTheDocument();
-    expect(tenderService.getTenderDetail).not.toHaveBeenCalled();
+    // El detalle ya dice si es recomendada: pedir el ranking completo para
+    // buscarla en él podía disparar un re-ranking entero por abrir una ficha.
+    expect(tenderService.getRecommendedTenders).not.toHaveBeenCalled();
   });
 });
 
@@ -497,7 +516,7 @@ describe("TenderDetailView: volver", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
   });
 
   it("vuelve a la pantalla anterior, no siempre a los matches", async () => {
@@ -521,19 +540,17 @@ describe("TenderDetailView: anexos oficiales", () => {
     vi.clearAllMocks();
     vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
     vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
   });
 
-  it("muestra el panel de anexos justo bajo el encabezado, antes de la tarjeta de análisis IA", async () => {
+  it("muestra el panel de anexos en la sección Documentos, antes de la tarjeta de análisis IA", async () => {
     render(<TenderDetailView tenderId="tender-50" />);
 
     const panel = await screen.findByTestId("tender-attachments-panel");
     expect(panel).toHaveTextContent("tender-50|555-66-COT26");
-    const header = screen
-      .getByRole("heading", { level: 1, name: "Servicios de Seguridad y Redes" })
-      .closest("header") as HTMLElement;
-    // Inmediatamente después del encabezado: queda antes del editor de cotización.
-    expect(header.nextElementSibling).toBe(panel);
+    // Desde la HU-30 los anexos viven en su propia sección, bajo la grilla de métricas.
+    const documentos = screen.getByText("Documentos").parentElement as HTMLElement;
+    expect(documentos).toContainElement(panel);
     expect(
       panel.compareDocumentPosition(
         screen.getByRole("heading", { name: "Análisis de compatibilidad IA" }),
@@ -577,10 +594,20 @@ describe("TenderDetailView: segundo llamado", () => {
   });
 
   function conTender(cambios: Partial<Tender>) {
-    vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([
-      { ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } },
-    ]);
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({ ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } }),
+    );
   }
+
+  it("en segundo llamado el encabezado no repite la etiqueta", async () => {
+    conTender({ call_number: 2 });
+
+    render(<TenderDetailView tenderId="tender-50" />);
+
+    const encabezado = (await screen.findByRole("heading", { level: 1 })).closest("header");
+    expect(encabezado).not.toBeNull();
+    expect(within(encabezado as HTMLElement).queryByText("Segundo llamado")).not.toBeInTheDocument();
+  });
 
   it("en segundo llamado etiqueta la ficha y muestra el cierre de cada llamado", async () => {
     conTender({
@@ -592,7 +619,8 @@ describe("TenderDetailView: segundo llamado", () => {
 
     render(<TenderDetailView tenderId="tender-50" />);
 
-    expect(await screen.findByText("Segundo llamado")).toBeInTheDocument();
+    const llamado = await screen.findByText("Llamado y cotizaciones");
+    expect(within(llamado.parentElement as HTMLElement).getByText("Segundo llamado")).toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Cierre 1.er llamado")).toBeInTheDocument();
     expect(within(region).getByText(conEspaciosNormales(formatDateTime(PRIMER)))).toBeInTheDocument();
@@ -612,6 +640,7 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     // Coincidencia exacta: "Segundo llamado posible" no cuenta como la etiqueta.
+    expect(screen.getByText("Primer llamado")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     const region = screen.getByRole("region", { name: "Cierre por llamado" });
     expect(within(region).getByText("Segundo llamado posible")).toBeInTheDocument();
@@ -625,6 +654,9 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    // La tarjeta no afirma ningún llamado: dice que no hay dato.
+    const llamado = screen.getByText("Llamado y cotizaciones").parentElement as HTMLElement;
+    expect(within(llamado).getByText("Llamado no disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
@@ -636,6 +668,9 @@ describe("TenderDetailView: segundo llamado", () => {
 
     expect(await screen.findByText("Servicios de Seguridad y Redes")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Cierre por llamado" })).not.toBeInTheDocument();
+    // La tarjeta no afirma ningún llamado: dice que no hay dato.
+    const llamado = screen.getByText("Llamado y cotizaciones").parentElement as HTMLElement;
+    expect(within(llamado).getByText("Llamado no disponible")).toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado")).not.toBeInTheDocument();
     expect(screen.queryByText("Segundo llamado posible")).not.toBeInTheDocument();
   });
@@ -659,5 +694,301 @@ describe("TenderDetailView: segundo llamado", () => {
     expect(
       await screen.findByRole("img", { name: "Compatibilidad 88%" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("TenderDetailView: grilla de métricas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
+    vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
+  });
+
+  function conTender(cambios: Partial<Tender>) {
+    vi.mocked(tenderService.getTenderDetail).mockResolvedValue(
+      detalleDe({ ...mockMatch, tender: { ...(mockMatch.tender as Tender), ...cambios } }),
+    );
+  }
+
+  /** La tarjeta que lleva ese título (el título está en el primer hijo), para no confundirla con otro texto de la ficha. */
+  async function tarjeta(titulo: string): Promise<HTMLElement> {
+    const eyebrow = await screen.findByText(titulo);
+    return eyebrow.parentElement as HTMLElement;
+  }
+
+  describe("cotizaciones recibidas", () => {
+    it("una cifra de 0 se muestra como 0", async () => {
+      conTender({ received_offers_count: 0 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("0 cotizaciones")).toBeInTheDocument();
+    });
+
+    it("una cifra mayor a 0 se muestra tal cual", async () => {
+      conTender({ received_offers_count: 17 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("17 cotizaciones")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["null", { received_offers_count: null }],
+      ["ausente", {}],
+    ])("con la cifra %s dice que no está disponible y no muestra un 0", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("No disponible")).toBeInTheDocument();
+      expect(screen.queryByText("0 cotizaciones")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("secciones de entrega y de descripción", () => {
+    const ITEM = {
+      id: "item-1",
+      name: "Firewall perimetral",
+      description: null,
+      quantity: 2,
+      unit_of_measure: "unidad",
+    } as unknown as Tender["items"][number];
+
+    it("entrega y requisitos agrupa los cierres por llamado, los ítems y el resumen de anexos", async () => {
+      conTender({
+        call_number: 1,
+        first_call_closing_at: "2026-10-06T16:30:00Z",
+        second_call_closing_at: "2026-10-07T16:40:00Z",
+        items: [ITEM],
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const entrega = (await screen.findByText("Entrega y requisitos")).parentElement as HTMLElement;
+      expect(within(entrega).getByRole("region", { name: "Cierre por llamado" })).toBeInTheDocument();
+      expect(within(entrega).getByText("Firewall perimetral")).toBeInTheDocument();
+      expect(within(entrega).getByTestId("digest-card")).toBeInTheDocument();
+      expect(within(entrega).queryByText("Ciberseguridad integral")).not.toBeInTheDocument();
+    });
+
+    it("entrega y requisitos muestra la dirección y el plazo de entrega", async () => {
+      conTender({
+        delivery_address: "SERVIU REGION DE AYSEN RAMON FREIRE 5",
+        delivery_term_days: 5,
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const entrega = (await screen.findByText("Entrega y requisitos")).parentElement as HTMLElement;
+      const datos = within(entrega).getByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText("Dirección de entrega")).toBeInTheDocument();
+      expect(within(datos).getByText("SERVIU REGION DE AYSEN RAMON FREIRE 5")).toBeInTheDocument();
+      expect(within(datos).getByText("Plazo de entrega")).toBeInTheDocument();
+      expect(within(datos).getByText("5 días")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["null", { delivery_address: null, delivery_term_days: null }],
+      ["ausentes", {}],
+    ])("con la entrega %s usa los textos de no disponible", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const datos = await screen.findByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText("Dirección de entrega no disponible")).toBeInTheDocument();
+      expect(within(datos).getByText("Plazo de entrega no disponible")).toBeInTheDocument();
+    });
+
+    it.each([
+      [0, "0 días"],
+      [1, "1 día"],
+    ])("un plazo de %i se muestra como %s", async (dias, texto) => {
+      conTender({ delivery_term_days: dias });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const datos = await screen.findByRole("region", { name: "Entrega" });
+      expect(within(datos).getByText(texto)).toBeInTheDocument();
+    });
+
+    it("descripción lleva solo el texto de la licitación", async () => {
+      conTender({ items: [ITEM] });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const descripcion = (await screen.findByText("Descripción")).parentElement as HTMLElement;
+      expect(within(descripcion).getByText("Ciberseguridad integral")).toBeInTheDocument();
+      expect(within(descripcion).queryByText("Firewall perimetral")).not.toBeInTheDocument();
+      expect(within(descripcion).queryByTestId("digest-card")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("orden de la ficha", () => {
+    /** `a` aparece antes que `b` en el documento. */
+    function antes(a: Node, b: Node): boolean {
+      return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+
+    it("las secciones van como entrega y requisitos, documentos y descripción", async () => {
+      conTender({});
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const entrega = await screen.findByText("Entrega y requisitos");
+      const documentos = screen.getByText("Documentos");
+      const descripcion = screen.getByText("Descripción");
+      expect(antes(entrega, documentos)).toBe(true);
+      expect(antes(documentos, descripcion)).toBe(true);
+    });
+
+    it("los anexos están dentro de la sección de documentos", async () => {
+      conTender({});
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const documentos = (await screen.findByText("Documentos")).parentElement as HTMLElement;
+      expect(within(documentos).getByTestId("tender-attachments-panel")).toBeInTheDocument();
+    });
+
+    it("la grilla de métricas queda justo debajo del encabezado", async () => {
+      conTender({});
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const encabezado = (await screen.findByRole("heading", { level: 1 })).closest("header") as HTMLElement;
+      const grilla = (await tarjeta("Monto estimado")).parentElement as HTMLElement;
+      expect(encabezado.nextElementSibling).toBe(grilla);
+    });
+  });
+
+  describe("composición de la grilla", () => {
+    it("tiene tres tarjetas, con el llamado y las cotizaciones juntos", async () => {
+      conTender({});
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const grilla = (await tarjeta("Monto estimado")).parentElement as HTMLElement;
+      const titulos = Array.from(grilla.children).map((c) => c.firstElementChild?.textContent);
+      expect(titulos).toEqual(["Monto estimado", "Cierre", "Llamado y cotizaciones"]);
+      expect(grilla).toHaveClass("sm:grid-cols-3");
+      expect(screen.queryByText("Publicación")).not.toBeInTheDocument();
+    });
+
+    it("la fecha de publicación aparece en hitos y fechas importantes", async () => {
+      const PUBLICADA = "2026-06-02T15:00:00Z";
+      conTender({ published_at: PUBLICADA, last_change_at: "2026-06-05T15:00:00Z" });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const seccion = (await screen.findByText("Hitos y fechas importantes")).parentElement as HTMLElement;
+      expect(conEspaciosNormales(seccion.textContent ?? "")).toContain(
+        `Publicada en Mercado Público: ${conEspaciosNormales(formatDateTime(PUBLICADA))}`,
+      );
+    });
+  });
+
+  describe("tarjeta del llamado", () => {
+    it("el primer llamado se muestra en tono informativo", async () => {
+      conTender({ call_number: 1 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("Primer llamado")).toHaveAttribute("data-tone", "info");
+    });
+
+    it("el segundo llamado se muestra como advertencia", async () => {
+      conTender({ call_number: 2 });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("Segundo llamado")).toHaveAttribute("data-tone", "warning");
+    });
+
+    it.each([
+      ["null", { call_number: null }],
+      ["ausente", {}],
+    ])("con el llamado %s dice que no está disponible", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("Llamado no disponible")).toHaveAttribute("data-tone", "neutral");
+    });
+  });
+
+  describe("fecha de revisión de las cotizaciones", () => {
+    const REVISADO = "2026-10-25T17:05:00Z";
+
+    it("con cifra y fecha dice cuándo se revisó", async () => {
+      conTender({ received_offers_count: 17, offers_checked_at: REVISADO });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(conEspaciosNormales(card.textContent ?? "")).toContain(
+        `Revisado el ${conEspaciosNormales(formatDateTime(REVISADO))}`,
+      );
+    });
+
+    it("con un 0 y fecha también lo dice: el 0 es una cifra real", async () => {
+      conTender({ received_offers_count: 0, offers_checked_at: REVISADO });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(card.textContent).toContain("Revisado el");
+    });
+
+    it.each([
+      ["sin cifra", { received_offers_count: null, offers_checked_at: REVISADO }],
+      ["sin fecha", { received_offers_count: 17, offers_checked_at: null }],
+      ["sin ninguna de las dos", {}],
+    ])("%s no muestra la pista", async (_caso, cambios) => {
+      conTender(cambios);
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      await tarjeta("Llamado y cotizaciones");
+      expect(screen.queryByText(/Revisado el/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("cotizaciones de los dos llamados", () => {
+    const REVISADO = "2026-10-25T17:05:00Z";
+
+    it("en segundo llamado suma los dos y desglosa junto a la revisión", async () => {
+      conTender({
+        call_number: 2,
+        received_offers_count: 2,
+        first_call_offers_count: 5,
+        offers_checked_at: REVISADO,
+      });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      const texto = conEspaciosNormales(card.textContent ?? "");
+      expect(within(card).getByText("7 cotizaciones")).toBeInTheDocument();
+      expect(texto).toContain("5 en el 1.er llamado y 2 en el 2.º");
+      expect(texto).toContain(`Revisado el ${conEspaciosNormales(formatDateTime(REVISADO))}`);
+    });
+
+    it("sin la cifra del primer llamado muestra solo la del segundo", async () => {
+      conTender({ call_number: 2, received_offers_count: 2, first_call_offers_count: null });
+
+      render(<TenderDetailView tenderId="tender-50" />);
+
+      const card = await tarjeta("Llamado y cotizaciones");
+      expect(within(card).getByText("2 en el 2.º llamado")).toBeInTheDocument();
+      expect(card.textContent).toContain("1.er llamado: No disponible");
+    });
   });
 });

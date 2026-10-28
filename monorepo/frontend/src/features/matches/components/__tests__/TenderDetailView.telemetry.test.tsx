@@ -102,19 +102,24 @@ function llamadasDe(kind: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(tenderService.getRecommendedTenders).mockResolvedValue([mockMatch]);
+  vi.mocked(tenderService.getTenderDetail).mockResolvedValue({
+    tender,
+    score_pct: 95,
+    is_closed: false,
+    is_recommended: true,
+  });
   vi.mocked(tenderService.getDeepAnalysisOnly).mockResolvedValue(null as never);
   vi.mocked(tenderService.calculateTenderScore).mockResolvedValue({ score_pct: 85 } as never);
   vi.mocked(savedService.fetchSavedTenders).mockResolvedValue([]);
 });
 
 describe("TenderDetailView: telemetría del ranking", () => {
-  it("pide las recomendadas con track: false para no crear un ranking fantasma", async () => {
+  it("no pide las recomendadas, así que no crea un ranking fantasma", async () => {
     render(<TenderDetailView tenderId="tender-50" rankingContext={CTX} />);
 
     await screen.findByText("Servicios de Seguridad y Redes");
 
-    expect(tenderService.getRecommendedTenders).toHaveBeenCalledWith("user-1", { track: false });
+    expect(tenderService.getRecommendedTenders).not.toHaveBeenCalled();
   });
 
   it("informa el detalle con el ranking de la URL", async () => {

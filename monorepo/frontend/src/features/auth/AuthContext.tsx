@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -45,6 +46,10 @@ function sonUsuariosIguales(a: UserPublic | null, b: UserPublic | null): boolean
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPublic | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Usuario de Supabase cuyo perfil ya se pidió. auth-js emite SIGNED_IN cada vez
+  // que la pestaña vuelve a estar visible, con la misma sesión: sin esto, cada
+  // vuelta pedía `/auth/me` de nuevo.
+  const perfilPedidoPara = useRef<string | null>(null);
 
   const cargarPerfil = useCallback(async () => {
     try {
@@ -90,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // la página, así que cubre el arranque y no hace falta una carga aparte.
     const { data } = supabase.auth.onAuthStateChange((evento, sesion) => {
       if (!sesion) {
+        perfilPedidoPara.current = null;
         setUser(null);
         setIsLoading(false);
         return;
@@ -97,6 +103,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // TOKEN_REFRESHED llega cada hora y no cambia quién es el usuario:
       // recargar el perfil ahí sería una petición por hora y por pestaña.
       if (evento === "TOKEN_REFRESHED") return;
+      if (
+        evento === "SIGNED_IN" &&
+        perfilPedidoPara.current === sesion.user.id
+      ) {
+        return;
+      }
+      perfilPedidoPara.current = sesion.user.id;
       void cargarPerfil();
     });
 

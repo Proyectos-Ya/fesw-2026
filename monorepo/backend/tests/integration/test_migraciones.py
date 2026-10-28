@@ -23,7 +23,7 @@ import pytest
 import pytest_asyncio
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import text
+from sqlalchemy import Boolean, DateTime, Integer, Text, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -109,3 +109,53 @@ async def test_el_esquema_migrado_coincide_con_los_modelos(engine_migrado):
         "aplicada, ajusta el modelo a lo que creó.\n"
         f"Diferencias: {diferencias}"
     )
+
+
+async def test_tender_guarda_las_cotizaciones_y_su_fecha_de_revision(engine_migrado):
+    """Plan HU-30: tres columnas nullable y sin default.
+
+    Sin default, para que agregarlas no reescriba la tabla y la versión anterior
+    de la app, que no las conoce, siga insertando filas durante el deploy.
+    """
+
+    def _columnas(connection):
+        return {c["name"]: c for c in inspect(connection).get_columns("tender")}
+
+    async with engine_migrado.connect() as conn:
+        columnas = await conn.run_sync(_columnas)
+
+    ofertas = columnas["received_offers_count"]
+    revision = columnas["offers_checked_at"]
+    primer_llamado = columnas["first_call_offers_count"]
+    assert isinstance(ofertas["type"], Integer)
+    assert isinstance(primer_llamado["type"], Integer)
+    # Naive, como el resto de las fechas de `tender`.
+    assert isinstance(revision["type"], DateTime) and not revision["type"].timezone
+    for columna in (ofertas, revision, primer_llamado):
+        assert columna["nullable"] is True
+        assert columna["default"] is None
+
+
+async def test_tender_guarda_la_entrega_y_los_requisitos(engine_migrado):
+    """Plan #294: cuatro columnas nullable y sin default.
+
+    `NULL` es que el detalle no lo informó. En los flags, `false` es un dato.
+    """
+
+    def _columnas(connection):
+        return {c["name"]: c for c in inspect(connection).get_columns("tender")}
+
+    async with engine_migrado.connect() as conn:
+        columnas = await conn.run_sync(_columnas)
+
+    direccion = columnas["delivery_address"]
+    plazo = columnas["delivery_term_days"]
+    medioambientales = columnas["requires_environmental_criteria"]
+    impacto_social = columnas["requires_social_impact_criteria"]
+    assert isinstance(direccion["type"], Text)
+    assert isinstance(plazo["type"], Integer)
+    assert isinstance(medioambientales["type"], Boolean)
+    assert isinstance(impacto_social["type"], Boolean)
+    for columna in (direccion, plazo, medioambientales, impacto_social):
+        assert columna["nullable"] is True
+        assert columna["default"] is None

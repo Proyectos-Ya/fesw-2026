@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, Index
+from sqlalchemy import JSON, Column, Index, Text, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.shared.datetime_utils import utc_now_naive
@@ -87,6 +87,22 @@ class TenderModel(SQLModel, table=True):
     call_number: int | None = Field(default=None)
     first_call_closing_at: datetime | None = Field(default=None)
     second_call_closing_at: datetime | None = Field(default=None)
+    # Cotizaciones recibidas (HU-30) y cuándo se revisó la cifra por última vez
+    # (UTC naive). Nulo = la fuente no la informó, que no es lo mismo que 0.
+    # Nullable y sin default por la misma razón que el llamado: la versión
+    # anterior de la app convive con este esquema durante el deploy.
+    received_offers_count: int | None = Field(default=None)
+    offers_checked_at: datetime | None = Field(default=None)
+    # Última cifra vista del primer llamado. La API cuenta solo el llamado
+    # actual, así que al abrirse el segundo esta queda congelada para sumarla.
+    first_call_offers_count: int | None = Field(default=None)
+    # Entrega y requisitos del detalle de Compra Ágil (#294). Nulo = el detalle
+    # no lo informó; en los flags, `False` es un dato. Nullable y sin default,
+    # como las columnas de arriba.
+    delivery_address: str | None = Field(default=None, sa_type=Text)
+    delivery_term_days: int | None = Field(default=None)
+    requires_environmental_criteria: bool | None = Field(default=None)
+    requires_social_impact_criteria: bool | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,
@@ -165,7 +181,12 @@ class IngestionRunModel(SQLModel, table=True):
     listed: int = Field(default=0)
     processed: int = Field(default=0)
     failed: int = Field(default=0)
-    # "running" | "ok" | "partial" | "failed".
+    # "running" | "ok" | "partial" | "failed" | "vaciada" | "tope".
+    #
+    # `vaciada` es el cierre de una corrida frecuente (plan 305), que solo vacía
+    # la cola. No es `ok` para que ningún cursor la lea, tampoco el de la
+    # versión anterior del script, que no mira el tipo. `tope` es una frecuente
+    # que llegó a su tope de tiempo: sale con 0 y lo pendiente sigue en la cola.
     #
     # `ok` significa **que se listó la ventana entera**, no que se procesara
     # todo. Son cosas distintas a propósito: una vez que los códigos están en
@@ -174,6 +195,14 @@ class IngestionRunModel(SQLModel, table=True):
     # de la ventana sin listar, y eso es justo lo que marca `partial`.
     status: str = Field(default="running")
     created_at: datetime = Field(default_factory=utc_now_naive)
+    # "nocturna" (lista por publicación y mueve el cursor) o "frecuente" (solo
+    # vacía la cola). Nulo en las filas de antes del plan 305: cuentan como
+    # nocturnas.
+    kind: str | None = Field(default=None)
+    # Peticiones a Mercado Público que hizo la corrida, reintentos incluidos.
+    requests: int | None = Field(default=None)
+    # Llamadas a la API de embeddings (cada una con uno o más textos).
+    embedding_calls: int | None = Field(default=None)
 
     # El cursor se lee como MAX(window_to) WHERE status = 'ok'.
     __table_args__ = (Index("ix_ingestion_run_cursor", "status", "window_to"),)
@@ -188,9 +217,17 @@ class TenderMetadataModel(SQLModel, table=True):
     # created_at. Se declara acá y no solo en la migración para que el
     # autogenerate de Alembic no lo vea como un índice de más y proponga
     # borrarlo en la migración siguiente.
+    #
+    # `ix_tender_metadata_pendientes` es la cola del diseño nuevo (plan 305):
+    # solo las filas que todavía se pueden pedir, que son unos pocos miles frente
+    # a las decenas de miles ya procesadas.
     __table_args__ = (
+        Index("ix_tender_metadata_cola", "is_processed", "attempts", "created_at"),
         Index(
-            "ix_tender_metadata_cola", "is_processed", "attempts", "created_at"
+            "ix_tender_metadata_pendientes",
+            "attempts",
+            "created_at",
+            postgresql_where=text("is_processed = false AND discarded_at IS NULL"),
         ),
     )
     id: UUID = Field(primary_key=True)
@@ -212,3 +249,26 @@ class TenderMetadataModel(SQLModel, table=True):
     last_error: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: datetime = Field(default_factory=utc_now_naive)
+
+    # Puntero de cambios (plan 305). El cron de estados lista cada hora y deja
+    # aquí lo que la ingesta tiene que bajar; la ingesta solo baja lo etiquetado.
+    #
+    # Por qué se baja: "nueva" (no está en `tender`) o "actualizar" (cambió
+    # después de la última bajada). Nulo cuando no hay nada pendiente.
+    pending_reason: str | None = Field(default=None)
+    # Estado y `fecha_ultimo_cambio` según el último listado que la vio. La fecha
+    # se escribe con GREATEST: un listado viejo no la hace retroceder.
+    api_status_code: str | None = Field(default=None)
+    api_changed_at: datetime | None = Field(default=None)
+    # Cuándo se **pidió** el último detalle que se procesó bien. Es el instante
+    # del pedido y no el de la escritura: un cambio que llegó mientras se bajaba
+    # el detalle tiene que quedar pendiente.
+    detail_fetched_at: datetime | None = Field(default=None)
+    # Reintentos que hizo la corrida nocturna. Tope de 5; después, terminal.
+    night_retries: int = Field(
+        default=0, nullable=False, sa_column_kwargs={"server_default": "0"}
+    )
+    # Estado terminal: no se vuelve a pedir y ningún listado la reencola.
+    # Motivo: "reintentos_agotados", "inactiva_en_listado" o "abandono_por_error".
+    discarded_at: datetime | None = Field(default=None)
+    discard_reason: str | None = Field(default=None)
