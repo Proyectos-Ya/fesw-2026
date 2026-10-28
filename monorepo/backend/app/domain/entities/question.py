@@ -8,6 +8,8 @@ from app.shared.datetime_utils import UtcDateTime, utc_now_naive
 class Question(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     provider_id: UUID
+    tender_id: UUID | None = None
+    target_keyword: str | None = None
     discrepancy_type: str | None = "Category"
     tender_requirement: str | None = None
     question: str
