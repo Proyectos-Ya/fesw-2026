@@ -10,6 +10,9 @@ from app.application.repositories.attachment_extraction_repository import (
 from app.application.repositories.attachment_file_repository import (
     IAttachmentFileRepository,
 )
+from app.application.repositories.feedback_repository import (
+    IAssistantFeedbackRepository,
+)
 from app.application.repositories.gemini_usage_repository import (
     IGeminiUsageRepository,
 )
@@ -32,13 +35,18 @@ from app.application.services.assistant_context_builder import (
     deduplicar_documentos_chat,
 )
 from app.application.services.attachment_storage import IAttachmentStorage
-from app.application.services.document_validator_service import IDocumentValidatorService
+from app.application.services.document_validator_service import (
+    IDocumentValidatorService,
+)
 from app.application.services.tender_assistant_ai_service import (
     DocumentContextDTO,
     ITenderAssistantAIService,
 )
 from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
-from app.domain.entities.attachment_extraction import EXTRACTION_PROMPT_VERSION, FuenteDeExtraccion
+from app.domain.entities.attachment_extraction import (
+    EXTRACTION_PROMPT_VERSION,
+    FuenteDeExtraccion,
+)
 from app.domain.entities.attachment_file import AttachmentFile, AttachmentFileStatus
 from app.domain.entities.tender import Tender
 from app.domain.entities.tender_chat import TenderChatMessage
@@ -126,6 +134,7 @@ class AskTenderAssistantUseCase:
         supplier_repo: Optional[ISupplierRepository] = None,
         tender_repo: Optional[ITenderRepository] = None,
         validator_service: Optional[IDocumentValidatorService] = None,
+        assistant_feedback_repo: Optional[IAssistantFeedbackRepository] = None,
         digest_repo: Optional[ITenderDigestRepository] = None,
         extraction_repo: Optional[IAttachmentExtractionRepository] = None,
         attachment_file_repo: Optional[IAttachmentFileRepository] = None,
@@ -140,6 +149,8 @@ class AskTenderAssistantUseCase:
         self.supplier_repo = supplier_repo
         self.tender_repo = tender_repo
         self.validator_service = validator_service
+        self.assistant_feedback_repo = assistant_feedback_repo
+
         self.digest_repo = digest_repo
         self.extraction_repo = extraction_repo
         self.attachment_file_repo = attachment_file_repo
@@ -277,6 +288,26 @@ class AskTenderAssistantUseCase:
                     )
             except Exception:
                 tender_context_str = None
+
+        # 9.c Obtener retroalimentación previa de descontento (dislike) en esta licitación para esta empresa (HU-24, S5)
+        feedback_context_str: Optional[str] = None
+        if self.assistant_feedback_repo and self.supplier_repo:
+            active_supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
+            feedbacks = []
+            if active_supplier:
+                feedbacks = await self.assistant_feedback_repo.list_by_tender_and_supplier(
+                    tender_id=tender_id, supplier_id=active_supplier.id
+                )
+            if feedbacks:
+                lines = [
+                    "El usuario expresó descontento con respuestas anteriores para esta licitación por los siguientes motivos:"
+                ]
+                for idx, fb in enumerate(feedbacks, 1):
+                    lines.append(f"{idx}. {fb.reason}")
+                lines.append(
+                    "Debes acoger explícitamente estas observaciones para no repetir el error o la omisión en esta nueva respuesta."
+                )
+                feedback_context_str = "\n".join(lines)
 
         # 9. Obtener digest y fuentes oficiales del panel (Decisión 4 y 5)
         digest_data: Optional[TenderDigestData] = None
@@ -430,6 +461,7 @@ class AskTenderAssistantUseCase:
                 documents=document_contexts_p1,
                 supplier_context=supplier_context_str,
                 tender_context=tender_context_str,
+                feedback_context=feedback_context_str,
                 pass_number=1,
             )
         except TenderAssistantUnavailableError:
@@ -517,6 +549,7 @@ class AskTenderAssistantUseCase:
                             documents=document_contexts_p2,
                             supplier_context=supplier_context_str,
                             tender_context=tender_context_str,
+                            feedback_context=feedback_context_str,
                             pass_number=2,
                         )
                         ai_response = ai_response_p2

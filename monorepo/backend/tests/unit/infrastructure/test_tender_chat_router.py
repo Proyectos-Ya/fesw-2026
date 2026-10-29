@@ -1,22 +1,21 @@
-import pytest
+from datetime import UTC, datetime
 from uuid import uuid4
+
+import pytest
 from fastapi import FastAPI, status
-from httpx import AsyncClient, ASGITransport
-from datetime import datetime, timezone
+from httpx import ASGITransport, AsyncClient
 
 from app.domain.entities.tender_chat import (
-    TenderChatMessage,
-    TenderChatDocument,
     Citation,
+    TenderChatDocument,
+    TenderChatMessage,
 )
 from app.domain.entities.user import User
 from app.domain.errors.tender_chat_errors import (
-    TenderChatQueryTooLongError,
+    DocumentNotFoundError,
+    InvalidPromptInstruction,
     TenderAssistantUnavailableError,
     UnsupportedDocumentTypeError,
-    DocumentNotFoundError,
-    MaxDocumentsExceededError,
-    InvalidPromptInstruction,
 )
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
 
@@ -29,8 +28,8 @@ def mock_user():
         hashed_password="hash",
         full_name="Usuario Prueba",
         active=True,
-        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
     )
 
 
@@ -43,6 +42,7 @@ def mock_use_cases():
         ask_assistant = None
         get_history = None
         create_session = None
+        submit_dislike = None
     return MockUseCases()
 
 
@@ -79,6 +79,7 @@ def app(mock_user, mock_use_cases):
         get_ask_assistant_use_case=get_ask_use_case,
         get_chat_history_use_case=get_history_use_case,
         get_create_chat_session_use_case=get_create_session_use_case,
+        get_submit_dislike_use_case=lambda: mock_use_cases.submit_dislike,
     )
     app.include_router(router)
     return app
@@ -540,3 +541,39 @@ async def test_list_documents_error_handling(app, mock_use_cases):
     assert response.json()["detail"] == "No se pudieron cargar los documentos adjuntos de la licitación."
 
 
+
+
+@pytest.mark.asyncio
+async def test_dislike_message_endpoint_success(app, mock_use_cases, mock_user):
+    from datetime import datetime
+    from unittest.mock import AsyncMock
+
+    from app.domain.entities.feedback import AssistantMessageFeedback
+
+    tender_id = uuid4()
+    message_id = uuid4()
+    feedback_id = uuid4()
+
+    mock_dislike_use_case = AsyncMock()
+    mock_dislike_use_case.execute.return_value = AssistantMessageFeedback(
+        id=feedback_id,
+        message_id=message_id,
+        user_id=mock_user.id,
+        tender_id=tender_id,
+        reason="Faltaron los plazos de entrega",
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    mock_use_cases.submit_dislike = mock_dislike_use_case
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            f"/tenders/{tender_id}/assistant/messages/{message_id}/dislike",
+            json={"reason": "Faltaron los plazos de entrega"},
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()
+    assert data["id"] == str(feedback_id)
+    assert data["message_id"] == str(message_id)
+    assert data["reason"] == "Faltaron los plazos de entrega"
+    mock_dislike_use_case.execute.assert_awaited_once()

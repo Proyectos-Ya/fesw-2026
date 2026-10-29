@@ -193,3 +193,25 @@ describe("ChatMessageList (HU-05.2)", () => {
     ).toBeInTheDocument();
   });
 });
+
+
+describe("Dislike en respuestas del asistente (HU-24, S4)", () => {
+  it("muestra el botón de dislike en mensajes del asistente y abre formulario breve al presionar", async () => {
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    render(
+      <ChatMessageList
+        messages={mockMessages}
+        tenderId="tender-1"
+        isAsking={false}
+      />
+    );
+
+    const dislikeBtn = screen.getByRole("button", { name: /No me sirvió esta respuesta/i });
+    expect(dislikeBtn).toBeInTheDocument();
+
+    fireEvent.click(dislikeBtn);
+
+    expect(screen.getByRole("heading", { name: /Reportar respuesta del asistente/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Razón o motivo del descontento/i)).toBeInTheDocument();
+  });
+});

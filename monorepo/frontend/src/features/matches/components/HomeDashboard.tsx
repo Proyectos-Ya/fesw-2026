@@ -219,6 +219,18 @@ export function HomeDashboard() {
                 key={m.id}
                 match={m}
                 ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
+                onReport={(reportedId) => {
+                  setState((prev) =>
+                    prev.kind === "ready"
+                      ? {
+                          ...prev,
+                          matches: prev.matches.filter(
+                            (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                          ),
+                        }
+                      : prev
+                  );
+                }}
               />
             ))}
           </div>

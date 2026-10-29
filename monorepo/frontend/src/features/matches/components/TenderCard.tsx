@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   reportImpressionOnce,
@@ -11,6 +12,7 @@ import { tenderDetailHref } from "@/features/ranking-telemetry/utils/rankingLink
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
+import { ReportModal } from "./ReportModal";
 import type { MatchingResult, Tender } from "../tenderTypes";
 import {
   daysUntilClosing,
@@ -26,6 +28,7 @@ interface TenderCardProps {
   tender?: Tender;
   isSaved?: boolean;
   onToggleSave?: (tenderId: string) => void;
+  onReport?: (tenderId: string) => void;
   /**
    * Solo en recomendadas: ranking servido y posición MOSTRADA. Con él, la tarjeta
    * cuenta su impresión, lleva el ranking en el enlace a la ficha y reporta
@@ -66,7 +69,9 @@ export function TenderCard({
   isSaved,
   onToggleSave,
   ranking = null,
+  onReport,
 }: TenderCardProps) {
+  const [reportOpen, setReportOpen] = useState(false);
   const tender: Tender | null = rawTender ?? match?.tender ?? null;
 
   // Los hooks van antes del retorno temprano: las reglas de hooks no admiten
@@ -110,6 +115,7 @@ export function TenderCard({
   };
 
   return (
+    <>
     <Link
       href={tenderDetailHref(tender.id, rankingContext)}
       ref={impressionRef}
@@ -142,6 +148,22 @@ export function TenderCard({
           <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
           <div className="flex-1" />
+
+          {match && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setReportOpen(true);
+              }}
+              aria-label="Reportar mal match"
+              title="Reportar mal match"
+              className="inline-flex size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+            >
+              <Icon name="flag" size={18} />
+            </button>
+          )}
 
           {onToggleSave && (
             <button
@@ -206,5 +228,16 @@ export function TenderCard({
         </div>
       </div>
     </Link>
+    {match && (
+      <ReportModal
+        open={reportOpen}
+        kind="match"
+        tenderId={tender.id}
+        tenderTitle={tender.name}
+        onClose={() => setReportOpen(false)}
+        onSuccess={() => onReport?.(tender.id)}
+      />
+    )}
+    </>
   );
 }

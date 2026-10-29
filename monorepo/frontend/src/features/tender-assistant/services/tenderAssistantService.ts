@@ -89,3 +89,21 @@ export function getTenderChatHistory(
  */
 export { formatTenderAssistantError } from "./tenderErrorUtils";
 
+
+
+/**
+ * Envía retroalimentación negativa (dislike) sobre una respuesta del asistente (HU-24, S4).
+ */
+export function submitAssistantDislike(
+  tenderId: string,
+  messageId: string,
+  reason: string,
+): Promise<{ id: string; message_id: string; reason: string }> {
+  return apiFetch<{ id: string; message_id: string; reason: string }>(
+    `/tenders/${encodeURIComponent(tenderId)}/assistant/messages/${encodeURIComponent(messageId)}/dislike`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+}

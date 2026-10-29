@@ -20,6 +20,7 @@ import {
 } from "../services/tenderService";
 import type { Tender, DeepAnalysis } from "../tenderTypes";
 import { formatDateTime } from "../utils/format";
+import { ReportModal } from "./ReportModal";
 
 interface TenderAnalysisViewProps {
   tenderId: string;
@@ -50,6 +51,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   const [promptError, setPromptError] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // 1. Cargar la licitación. Se pide por su ficha y no por las recomendadas:
   // el análisis no es un privilegio del top-12, y una licitación llegada del
@@ -267,6 +269,15 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                     </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                  title="Reportar análisis de compatibilidad incorrecto"
+                >
+                  <Icon name="flag" size={14} />
+                  Reportar
+                </button>
               </div>
 
               <div className="grid grid-cols-1 gap-6 border-t border-border-subtle pt-5 sm:grid-cols-4 items-center">
@@ -397,6 +408,34 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
           </Button>
         </div>
       )}
+
+      <ReportModal
+        open={reportModalOpen}
+        kind="analysis"
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        onClose={() => setReportModalOpen(false)}
+        onSuccess={async (reportedReason) => {
+          if (licitacionCerrada) return;
+          setRegenerating(true);
+          setErrorMsg("");
+          try {
+            const instruction = `El usuario reportó como imprecisa la evaluación anterior por el siguiente motivo: ${reportedReason}`.slice(0, 1000);
+            const res = await generateDeepAnalysis(
+              tenderId,
+              instruction,
+              true
+            );
+            setAnalysis(res);
+          } catch (err) {
+            setErrorMsg(
+              err instanceof Error ? err.message : "Error al actualizar el análisis con tu reporte."
+            );
+          } finally {
+            setRegenerating(false);
+          }
+        }}
+      />
     </section>
   );
 }

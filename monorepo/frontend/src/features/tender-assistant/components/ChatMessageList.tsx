@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Bot,
   User as UserIcon,
@@ -14,19 +14,25 @@ import type { TenderChatMessage } from "../types";
 import { DiscrepancyCard } from "./DiscrepancyCard";
 import { UnbackedAspectsList } from "./UnbackedAspectsList";
 import { InsufficientInfoBanner } from "./InsufficientInfoBanner";
+import { AssistantDislikeModal } from "./AssistantDislikeModal";
+import { ThumbsDown } from "lucide-react";
 
 interface ChatMessageListProps {
   messages: TenderChatMessage[];
+  tenderId?: string;
   isAsking?: boolean;
   error?: string | null;
 }
 
 export function ChatMessageList({
   messages,
+  tenderId,
   isAsking = false,
   error = null,
 }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [dislikeMessageId, setDislikeMessageId] = useState<string | null>(null);
+  const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (bottomRef.current && typeof bottomRef.current.scrollIntoView === "function") {
@@ -155,6 +161,30 @@ export function ChatMessageList({
                   ))}
                 </div>
               )}
+
+              {/* Botón de Dislike / Feedback para respuestas del asistente (HU-24, S4) */}
+              {!isUser && tenderId && (
+                <div className="mt-1 flex items-center justify-end border-t border-slate-100 pt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDislikeMessageId(msg.id)}
+                    aria-label="No me sirvió esta respuesta"
+                    title={
+                      dislikedIds.has(msg.id)
+                        ? "Descontento reportado"
+                        : "Reportar respuesta errónea o inadecuada"
+                    }
+                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                      dislikedIds.has(msg.id)
+                        ? "bg-rose-50 text-rose-600"
+                        : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    }`}
+                  >
+                    <ThumbsDown className="h-3 w-3" />
+                    <span>{dislikedIds.has(msg.id) ? "Reportado" : "Dislike"}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -178,6 +208,17 @@ export function ChatMessageList({
       )}
 
       <div ref={bottomRef} />
+      {tenderId && dislikeMessageId && (
+        <AssistantDislikeModal
+          open={Boolean(dislikeMessageId)}
+          tenderId={tenderId}
+          messageId={dislikeMessageId}
+          onClose={() => setDislikeMessageId(null)}
+          onSuccess={() => {
+            setDislikedIds((prev) => new Set(prev).add(dislikeMessageId));
+          }}
+        />
+      )}
     </div>
   );
 }
