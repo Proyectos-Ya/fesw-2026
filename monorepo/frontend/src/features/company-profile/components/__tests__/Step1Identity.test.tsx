@@ -111,10 +111,23 @@ describe("Step1Identity (importación por RUT)", () => {
     vi.clearAllMocks();
   });
 
-  it("muestra la tarjeta de importación debajo del RUT", () => {
+  it("muestra el RUT en primera posición y la tarjeta de importación justo debajo, antes del nombre de la empresa", () => {
     renderStep();
 
-    expect(screen.getByRole("button", { name: /importar datos/i })).toBeInTheDocument();
+    const rutInput = screen.getByLabelText("RUT de la empresa");
+    const importButton = screen.getByRole("button", { name: /importar datos/i });
+    const legalNameInput = screen.getByLabelText("Nombre de la empresa");
+    const tradeNameInput = screen.getByLabelText("Nombre de fantasía (opcional)");
+
+    expect(
+      rutInput.compareDocumentPosition(importButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      importButton.compareDocumentPosition(legalNameInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      legalNameInput.compareDocumentPosition(tradeNameInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("con un RUT inválido muestra el error en el campo y no consulta la fuente", async () => {

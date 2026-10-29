@@ -118,6 +118,25 @@ export function Step1Identity({
       </div>
 
       <div className="flex flex-col gap-6">
+        <Input
+          label="RUT de la empresa"
+          placeholder="Ej: 76.123.456-7"
+          hint="Formato: XX.XXX.XXX-X"
+          error={errors.rut?.message}
+          maxLength={12}
+          {...rutField}
+          onChange={(e) => {
+            e.target.value = formatRut(e.target.value);
+            handleRutChanged(e.target.value);
+            return rutField.onChange(e);
+          }}
+        />
+        <CompanyImportCard
+          rut={rut ?? ""}
+          imported={importedProfile}
+          onImported={handleImported}
+          onInvalidRut={(message) => setError("rut", { type: "manual", message })}
+        />
         <div className="flex flex-col gap-2">
           <Input
             label="Nombre de la empresa"
@@ -138,25 +157,6 @@ export function Step1Identity({
           hint="El nombre con el que se conoce comercialmente a tu empresa."
           error={errors.trade_name?.message}
           {...register("trade_name")}
-        />
-        <Input
-          label="RUT de la empresa"
-          placeholder="Ej: 76.123.456-7"
-          hint="Formato: XX.XXX.XXX-X"
-          error={errors.rut?.message}
-          maxLength={12}
-          {...rutField}
-          onChange={(e) => {
-            e.target.value = formatRut(e.target.value);
-            handleRutChanged(e.target.value);
-            return rutField.onChange(e);
-          }}
-        />
-        <CompanyImportCard
-          rut={rut ?? ""}
-          imported={importedProfile}
-          onImported={handleImported}
-          onInvalidRut={(message) => setError("rut", { type: "manual", message })}
         />
       </div>
 
