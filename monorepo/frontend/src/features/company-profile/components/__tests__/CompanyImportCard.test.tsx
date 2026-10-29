@@ -56,6 +56,19 @@ describe("CompanyImportCard", () => {
     expect(screen.getByRole("button", { name: /volver a importar/i })).toBeInTheDocument();
   });
 
+  it("muestra ChileRUT Empresa como nombre legible de la fuente chilerut", () => {
+    render(
+      <CompanyImportCard
+        rut="76.668.304-5"
+        imported={{ ...IMPORTED, source: "chilerut" }}
+        onImported={vi.fn()}
+        onInvalidRut={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/importados desde ChileRUT Empresa/i)).toBeInTheDocument();
+  });
+
   it("no consulta la fuente con un RUT de dígito verificador incorrecto", () => {
     const onInvalidRut = vi.fn();
     render(

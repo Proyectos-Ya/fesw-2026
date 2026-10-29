@@ -15,6 +15,7 @@ import {
 const SOURCE_NAMES: Record<string, string> = {
   sre: "SRE",
   "web-empresario": "Web Empresario",
+  chilerut: "ChileRUT Empresa",
 };
 
 interface CompanyImportCardProps {

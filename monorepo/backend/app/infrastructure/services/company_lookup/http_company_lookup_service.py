@@ -153,6 +153,49 @@ def _text(data: dict[str, Any], key: str) -> str:
     return repair_mojibake(str(value)).strip() if value else ""
 
 
+class ChileRutLookupService(HttpCompanyLookupService):
+    source = "chilerut"
+
+    async def _request(self, client: httpx.AsyncClient, rut: str) -> httpx.Response:
+        response = await client.get(
+            f"{self._base_url}/api/lookup/{rut}",
+            headers={"Accept": "application/json", "x-api-key": self._api_key},
+        )
+        quota_used = response.headers.get("x-quota-used")
+        quota_limit = response.headers.get("x-quota-limit")
+        if quota_used is not None and quota_limit is not None:
+            logger.info("ChileRUT Empresa: cuota %s/%s", quota_used, quota_limit)
+        return response
+
+    def _parse(self, payload: Any, rut: str) -> CompanyRecord:
+        if not isinstance(payload, dict) or not payload.get("found") or not payload.get("razon_social"):
+            raise CompanyNotFoundInSource(rut)
+
+        body = str(payload.get("rut", "")).strip()
+        dv = str(payload.get("dv", "")).strip().upper()
+
+        activities: list[EconomicActivity] = []
+        for raw in payload.get("actividades") or []:
+            code = _parse_code(raw.get("codigo")) if isinstance(raw, dict) else None
+            if code is None:
+                logger.info("Código de actividad ilegible en %s: %r", self.source, raw)
+                continue
+            activities.append(
+                EconomicActivity(code=code, description=_text(raw, "descripcion"))
+            )
+
+        region = _text(payload, "region")
+        raw_regions = [region] if region else []
+
+        return CompanyRecord(
+            source=self.source,
+            rut=f"{body}-{dv}" if body and dv else rut,
+            legal_name=_text(payload, "razon_social"),
+            activities=activities,
+            raw_regions=raw_regions,
+        )
+
+
 class SreLookupService(HttpCompanyLookupService):
     source = "sre"
 
