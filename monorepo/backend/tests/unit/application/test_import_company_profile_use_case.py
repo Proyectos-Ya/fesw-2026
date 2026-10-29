@@ -71,7 +71,7 @@ class TestMismaEstructuraParaCualquierFuente:
     async def test_web_empresario_entrega_regiones_con_el_nombre_del_wizard(self):
         borrador = await _importar(_registro_web_empresario())
 
-        assert borrador.regions == ["Valparaíso", "Metropolitana"]
+        assert borrador.regions == ["Valparaíso", "Metropolitana de Santiago"]
         assert borrador.is_active is True
 
     async def test_sre_no_entrega_regiones_y_se_avisa(self):

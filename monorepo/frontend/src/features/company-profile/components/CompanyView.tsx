@@ -6,7 +6,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { profileSchema } from "../profileSchema";
-import { REGIONS } from "../data/regions";
+import { REGIONS, toCanonicalRegions } from "@/features/shared/data/regions";
 import { SECTORS } from "../data/sectors";
 import { useCompany } from "./CompanyProvider";
 import { updateSupplier, type Supplier } from "../services/supplierService";
@@ -135,7 +135,7 @@ function CompanyEditForm({
       legal_name: supplier.legal_name,
       trade_name: supplier.trade_name ?? "",
       description: supplier.description ?? "",
-      regions: supplier.regions ?? [],
+      regions: toCanonicalRegions(supplier.regions ?? []),
       sectors: supplier.sectors ?? [],
       keywords: supplier.keywords ?? [],
       certifications: supplier.certifications ?? [],

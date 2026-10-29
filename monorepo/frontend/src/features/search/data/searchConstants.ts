@@ -1,22 +1,3 @@
-export const SEARCH_REGIONS: readonly string[] = [
-  "Arica y Parinacota",
-  "Tarapacá",
-  "Antofagasta",
-  "Atacama",
-  "Coquimbo",
-  "Valparaíso",
-  "Libertador General Bernardo O'Higgins",
-  "Maule",
-  "Ñuble",
-  "Biobío",
-  "La Araucanía",
-  "Los Ríos",
-  "Los Lagos",
-  "Aysén del General Carlos Ibáñez del Campo",
-  "Magallanes y de la Antártica Chilena",
-  "Metropolitana de Santiago",
-];
-
 /**
  * Estados por los que se puede filtrar: los que el backend acepta en
  * `status_codes`. Son los que tienen un id medido en Mercado Público; otro

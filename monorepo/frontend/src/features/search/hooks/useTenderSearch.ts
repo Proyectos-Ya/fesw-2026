@@ -12,7 +12,7 @@ import {
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import { getMySupplierOrNull } from "@/features/company-profile/services/supplierService";
 import { searchTenders } from "../services/searchService";
-import { toSearchRegions } from "../data/profileRegions";
+import { toCanonicalRegions } from "@/features/shared/data/regions";
 import type { Tender } from "@/features/matches/tenderTypes";
 import type { TenderSearchParams } from "../types";
 import {
@@ -104,7 +104,7 @@ export function useTenderSearch() {
         window.sessionStorage.setItem(SEARCH_REGIONS_PREFILLED_KEY, "1");
       } catch {}
 
-      const regiones = toSearchRegions(empresa?.regions ?? []);
+      const regiones = toCanonicalRegions(empresa?.regions ?? []);
       if (regiones.length === 0) return;
 
       const sp = new URLSearchParams();

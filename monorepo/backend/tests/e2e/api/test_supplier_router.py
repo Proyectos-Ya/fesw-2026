@@ -179,7 +179,7 @@ async def test_profile_import_returns_draft(api: AsyncClient):
     assert resp.status_code == 200
     body = resp.json()
     assert body["source"] == "web-empresario"
-    assert body["regions"] == ["Metropolitana"]
+    assert body["regions"] == ["Metropolitana de Santiago"]
     assert body["sectors"] == [
         "Obras de Construcción e Infraestructura",
         "Mantención y Reparación",

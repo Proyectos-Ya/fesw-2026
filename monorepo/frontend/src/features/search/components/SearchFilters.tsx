@@ -2,9 +2,9 @@
 
 import React, { useState } from "react";
 import { Icon } from "@/features/shared/components/Icon";
+import { REGIONS } from "@/features/shared/data/regions";
 import {
   DEFAULT_STATUS_CODES,
-  SEARCH_REGIONS,
   TENDER_STATUS_OPTIONS,
   type TenderStatusCode,
 } from "../data/searchConstants";
@@ -244,7 +244,7 @@ export function SearchFilters({
               )}
             </div>
             <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 border border-border-subtle rounded-md bg-white">
-              {SEARCH_REGIONS.map((region) => {
+              {REGIONS.map((region) => {
                 const isSelected = regions.includes(region);
                 return (
                   <button

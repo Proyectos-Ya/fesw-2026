@@ -7,7 +7,7 @@ import { Input } from "@/features/shared/components/Input";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { WizardNavigation } from "../WizardNavigation";
 import { CompanyImportCard } from "../CompanyImportCard";
-import { REGIONS } from "../../data/regions";
+import { REGIONS } from "@/features/shared/data/regions";
 import type { CompanyProfileImport } from "../../services/supplierService";
 
 interface Step2Props {
