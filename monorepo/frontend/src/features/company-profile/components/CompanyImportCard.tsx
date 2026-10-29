@@ -68,7 +68,7 @@ export function CompanyImportCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-3">
-          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-xs">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-card text-primary shadow-xs">
             <Sparkles className="size-4" aria-hidden="true" />
           </div>
           <div className="flex flex-col gap-1">

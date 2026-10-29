@@ -149,7 +149,7 @@ function CertificationsField({
           return (
             <li
               key={`${item.name}-${index}`}
-              className="rounded-md border border-border-default bg-white px-3 py-2"
+              className="rounded-md border border-border-default bg-surface-card px-3 py-2"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">

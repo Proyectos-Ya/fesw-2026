@@ -139,10 +139,10 @@ export function PendingInvitationsList() {
             return (
               <div
                 key={inv.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg bg-white p-3.5 border border-border-subtle shadow-2xs"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg bg-surface-card p-3.5 border border-border-subtle shadow-2xs"
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="flex size-9 flex-none items-center justify-center rounded-lg bg-warm-100 text-text-muted">
+                  <div className="flex size-9 flex-none items-center justify-center rounded-lg bg-surface-inset text-text-muted">
                     <Icon name="building-2" size={18} />
                   </div>
                   <div className="min-w-0">
@@ -179,7 +179,7 @@ export function PendingInvitationsList() {
                     type="button"
                     onClick={() => void handleReject(inv)}
                     disabled={isBusy}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-warm-100 hover:text-text-strong transition-colors disabled:opacity-50 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-card px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-surface-hover hover:text-text-strong transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isBusy && processingAction === "reject" ? (
                       <span>Rechazando...</span>

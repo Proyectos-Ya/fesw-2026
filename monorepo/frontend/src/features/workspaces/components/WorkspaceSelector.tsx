@@ -14,17 +14,17 @@ export function getRoleBadge(role: MemberRole) {
     case "admin":
       return {
         label: "Admin",
-        className: "bg-purple-100 text-purple-700 border-purple-200",
+        className: "bg-primary-soft text-primary border-primary-border",
       };
     case "member":
       return {
         label: "Representante",
-        className: "bg-blue-100 text-blue-700 border-blue-200",
+        className: "bg-info-soft text-info-text border-info/30",
       };
     case "viewer":
       return {
         label: "Lector",
-        className: "bg-gray-100 text-gray-700 border-gray-200",
+        className: "bg-surface-inset text-text-body border-border-subtle",
       };
   }
 }
@@ -60,11 +60,11 @@ export function WorkspaceSelector() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-3 p-2 rounded-lg border border-border-subtle bg-white animate-pulse">
-        <div className="size-8 rounded-md bg-warm-200" />
+      <div className="flex items-center gap-3 p-2 rounded-lg border border-border-subtle bg-surface-card animate-pulse">
+        <div className="size-8 rounded-md bg-surface-inset" />
         <div className="flex-1 space-y-1">
-          <div className="h-3 w-24 rounded bg-warm-200" />
-          <div className="h-2 w-16 rounded bg-warm-200" />
+          <div className="h-3 w-24 rounded bg-surface-inset" />
+          <div className="h-2 w-16 rounded bg-surface-inset" />
         </div>
       </div>
     );
@@ -112,7 +112,7 @@ export function WorkspaceSelector() {
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
-          className="flex w-full items-center gap-2.5 rounded-lg border border-border-subtle bg-white p-2 text-left hover:border-border-strong hover:shadow-2xs transition-all cursor-pointer group"
+          className="flex w-full items-center gap-2.5 rounded-lg border border-border-subtle bg-surface-card p-2 text-left hover:border-border-strong hover:shadow-2xs transition-all cursor-pointer group"
           aria-expanded={isOpen}
           aria-haspopup="true"
           aria-label="Seleccionar espacio de trabajo"
@@ -218,7 +218,7 @@ export function WorkspaceSelector() {
                     setIsOpen(false);
                     setIsInviteModalOpen(true);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-warm-100 hover:text-primary transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors cursor-pointer"
                 >
                   <Icon name="user-plus" size={15} />
                   <span>Invitar miembro</span>
@@ -228,7 +228,7 @@ export function WorkspaceSelector() {
               <Link
                 href="/empresa/crear"
                 onClick={() => setIsOpen(false)}
-                className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-warm-100 hover:text-primary transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors"
               >
                 <Icon name="plus" size={15} />
                 <span>Registrar nueva empresa</span>
