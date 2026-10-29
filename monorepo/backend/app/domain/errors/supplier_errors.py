@@ -48,3 +48,8 @@ class SupplierVectorNotFound(Exception):
             f"No se encontró el vector para el proveedor {supplier_id} en el almacén vectorial"
         )
         self.supplier_id = supplier_id
+
+
+class SupplierLogoStorageUnavailable(Exception):
+    def __init__(self) -> None:
+        super().__init__("El almacenamiento de archivos no está disponible.")

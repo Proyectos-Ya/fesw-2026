@@ -391,3 +391,75 @@ async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
     assert resp.status_code == 503
     assert resp.json()["detail"]
     assert (await api.get("/suppliers/me")).status_code == 404
+
+
+PNG_TEST_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 30
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_without_session_returns_401(api: AsyncClient):
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_without_company_returns_404(api: AsyncClient):
+    await _login(api)
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_invalid_format_returns_400(api: AsyncClient):
+    await _login(api)
+    await api.post("/suppliers", json=SUPPLIER)
+
+    files = {"file": ("documento.pdf", b"%PDF-1.4 sample", "application/pdf")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Formato inválido o archivo muy pesado"
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_too_large_returns_400(api: AsyncClient):
+    await _login(api)
+    await api.post("/suppliers", json=SUPPLIER)
+
+    oversized = b"\x89PNG\r\n\x1a\n" + b"A" * (5 * 1024 * 1024 + 10)
+    files = {"file": ("huge.png", oversized, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Formato inválido o archivo muy pesado"
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_success_and_public_retrieval(api: AsyncClient):
+    await _login(api)
+    created = await api.post("/suppliers", json=SUPPLIER)
+    assert created.status_code == 201
+    supplier_id = created.json()["id"]
+
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["logo_url"] is not None
+    assert f"/api/suppliers/{supplier_id}/logo/" in body["logo_url"]
+
+    # Verify persisted in GET /suppliers/me
+    me_resp = await api.get("/suppliers/me")
+    assert me_resp.status_code == 200
+    assert me_resp.json()["logo_url"] == body["logo_url"]
+
+    # Verify public retrieval without session (no cookies, no headers)
+    # The URL in body["logo_url"] is e.g. /api/suppliers/{id}/logo/{filename}
+    filename = body["logo_url"].split("/")[-1]
+    raw_api = AsyncClient(transport=api._transport, base_url="http://test")
+    public_resp = await raw_api.get(f"/suppliers/{supplier_id}/logo/{filename}")
+    assert public_resp.status_code == 200
+    assert public_resp.headers["content-type"] == "image/png"
+    assert public_resp.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert public_resp.content == PNG_TEST_BYTES
+

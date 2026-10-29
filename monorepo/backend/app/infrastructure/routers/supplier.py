@@ -1,8 +1,9 @@
+import re
 from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from app.application.repositories.supplier_member_repository import (
     ISupplierMemberRepository,
@@ -17,6 +18,10 @@ from app.application.schemas.supplier_schema import (
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
     UpdateSupplierSchema,
+)
+from app.application.services.attachment_storage import (
+    AttachmentStorageError,
+    IAttachmentStorage,
 )
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
@@ -33,6 +38,9 @@ from app.application.use_cases.supplier.suggest_keywords_from_description import
     SuggestKeywordsFromDescriptionUseCase,
 )
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
+from app.application.use_cases.supplier.upload_supplier_logo import (
+    UploadSupplierLogoUseCase,
+)
 from app.config import settings
 from app.domain.entities.company_profile import CompanyProfileDraft
 from app.domain.entities.supplier import Supplier
@@ -46,6 +54,7 @@ from app.domain.errors.company_lookup_errors import (
 )
 from app.domain.errors.supplier_errors import (
     SupplierAlreadyExists,
+    SupplierLogoStorageUnavailable,
     SupplierNotFound,
     SupplierNotFoundForUser,
     SupplierProfileIndexingUnavailable,
@@ -62,6 +71,7 @@ def create_supplier_router(
     get_current_user: Callable,
     get_supplier_member_repo: Callable,
     get_current_workspace_context: Callable | None = None,
+    get_attachment_storage: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de proveedores. Todas las rutas requieren sesión iniciada.
@@ -239,6 +249,74 @@ def create_supplier_router(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
             ) from e
 
+    @router.post(
+        "/me/logo",
+        response_model=Supplier,
+        summary="Subir el logotipo corporativo de la empresa activa",
+        responses={
+            400: {"description": "Formato inválido o archivo muy pesado"},
+            403: {"description": "Sin permiso para editar el perfil de la empresa activa"},
+            404: {"description": "El usuario no tiene una empresa asociada"},
+            502: {"description": "Error al comunicarse con el almacenamiento"},
+            503: {"description": "El servicio de almacenamiento no está disponible"},
+        },
+    )
+    async def upload_my_supplier_logo(
+        file: UploadFile = File(...),
+        current_user: Annotated[User, Depends(get_current_user)] = None,
+        repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)] = None,
+        storage: Annotated[
+            IAttachmentStorage | None,
+            Depends(get_attachment_storage or (lambda: None)),
+        ] = None,
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ] = None,
+    ):
+        if (
+            workspace_context is not None
+            and "edit_company_profile" not in workspace_context.permissions
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para editar el perfil de esta empresa",
+            )
+
+        try:
+            file_bytes = await file.read()
+            public_base_url = (
+                settings.r2_public_base_url if settings.r2_enabled else None
+            )
+            return await UploadSupplierLogoUseCase(
+                repo=repo,
+                storage=storage,
+                public_base_url=public_base_url,
+            ).execute(
+                user_id=current_user.id,
+                file_bytes=file_bytes,
+                content_type=file.content_type,
+                filename=file.filename,
+                supplier_id=(
+                    workspace_context.active_supplier_id if workspace_context else None
+                ),
+            )
+        except SupplierNotFoundForUser as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except SupplierValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        except SupplierLogoStorageUnavailable as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+        except AttachmentStorageError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            ) from e
+
     @router.get("/rut-exists", response_model=RutExistsResponse)
     async def rut_exists(
         rut: str,
@@ -337,5 +415,52 @@ def create_supplier_router(
                     detail="No existe una empresa con ese identificador.",
                 )
         return supplier
+
+    return router
+
+
+def create_public_supplier_logo_router(
+    get_attachment_storage: Callable,
+) -> APIRouter:
+    router = APIRouter(prefix="/suppliers", tags=["Supplier Logos"])
+
+    @router.get(
+        "/{supplier_id}/logo/{filename}",
+        summary="Obtener el logo público de una empresa",
+        responses={
+            400: {"description": "Nombre de archivo de logo inválido"},
+            404: {"description": "Logo o empresa no encontrada"},
+            503: {"description": "Almacenamiento no disponible"},
+        },
+    )
+    async def get_supplier_logo(
+        supplier_id: UUID,
+        filename: str,
+        storage: Annotated[IAttachmentStorage | None, Depends(get_attachment_storage)],
+    ) -> Response:
+        if storage is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Almacenamiento no disponible",
+            )
+        if not re.match(r"^[0-9a-f]{16}\.(png|jpg)$", filename):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nombre de archivo inválido",
+            )
+        key = f"logos/{supplier_id}/{filename}"
+        try:
+            data = await storage.get_bytes(key)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Logo no encontrado",
+            )
+        media_type = "image/png" if filename.endswith(".png") else "image/jpeg"
+        return Response(
+            content=data,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     return router

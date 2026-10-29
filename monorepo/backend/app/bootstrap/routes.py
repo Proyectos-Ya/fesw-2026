@@ -112,6 +112,7 @@ from app.bootstrap.repositories import (
     get_user_repo,
 )
 from app.bootstrap.services import (
+    get_attachment_storage,
     get_company_lookup_service,
     get_email_service,
     get_embedding_service,
@@ -156,7 +157,10 @@ from app.infrastructure.routers.sharing import (
     create_public_sharing_router,
     create_sharing_router,
 )
-from app.infrastructure.routers.supplier import create_supplier_router
+from app.infrastructure.routers.supplier import (
+    create_public_supplier_logo_router,
+    create_supplier_router,
+)
 from app.infrastructure.routers.tender import create_tender_router
 from app.infrastructure.routers.tender_attachments import (
     create_tender_attachments_router,
@@ -193,6 +197,11 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(create_health_router(), tags=["Health"])
     app.include_router(create_auth_router(get_current_user=get_current_user))
     app.include_router(
+        create_public_supplier_logo_router(
+            get_attachment_storage=get_attachment_storage
+        )
+    )
+    app.include_router(
         create_supplier_router(
             get_supplier_repo=get_supplier_repo,
             get_supplier_vector_repo=get_supplier_vector_repo,
@@ -201,6 +210,7 @@ def register_routes(app: FastAPI) -> None:
             get_current_user=get_current_user,
             get_supplier_member_repo=get_supplier_member_repo,
             get_current_workspace_context=get_optional_workspace_context,
+            get_attachment_storage=get_attachment_storage,
         )
     )
     app.include_router(
