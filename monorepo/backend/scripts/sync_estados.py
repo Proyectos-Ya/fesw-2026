@@ -112,6 +112,7 @@ from scripts.ingesta_compartida import (
     aplicar_documentos_oficiales,
     construir_servicio,
     imprimir_resumen,
+    indices_secundarios,
     marcar_vencidas,
     preparar_destino,
     salir,
@@ -397,6 +398,7 @@ async def _aplicar(
                 client=qdrant, vector_size=settings.embedding_vector_size
             ),
             cola=servicio,
+            **indices_secundarios(qdrant),
         )
         return await caso.execute(cambios)
 

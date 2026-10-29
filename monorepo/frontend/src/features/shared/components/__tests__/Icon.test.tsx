@@ -14,6 +14,7 @@ describe("Icon", () => {
       "sliders",
       "bookmark-check",
       "calendar-clock",
+      "star",
     ];
 
     for (const name of names) {

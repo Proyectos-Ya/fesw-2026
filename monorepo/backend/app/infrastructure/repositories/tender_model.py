@@ -138,7 +138,7 @@ class TenderModel(SQLModel, table=True):
 class TenderItemModel(SQLModel, table=True):
     __tablename__ = "tender_item"  # type: ignore
     id: UUID = Field(primary_key=True)
-    tender_id: UUID = Field(foreign_key="tender.id")
+    tender_id: UUID = Field(foreign_key="tender.id", index=True)
     product_code: str
     name: str
     description: str | None = None

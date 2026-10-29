@@ -10,7 +10,6 @@ from app.application.repositories.feedback_repository import (
 )
 from app.domain.entities.feedback import (
     AppFeedback,
-    AppFeedbackKind,
     AssistantMessageFeedback,
     MatchReport,
     MatchReportKind,
@@ -167,7 +166,6 @@ class AppFeedbackRepository(IAppFeedbackRepository):
 
 
 __all__ = [
-    "AppFeedbackKind",
     "AppFeedbackRepository",
     "AssistantFeedbackRepository",
     "MatchReportRepository",

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  certificationName,
   formatCertificationDate,
   formatRut,
   isValidRut,
@@ -170,11 +169,6 @@ describe("helpers de certificación", () => {
 
   it("normalizeCertification pone null cuando falta la fecha", () => {
     expect(normalizeCertification({ name: "SEC" })).toEqual({ name: "SEC", expires_at: null });
-  });
-
-  it("certificationName devuelve el nombre de ambos formatos", () => {
-    expect(certificationName("ISO 9001")).toBe("ISO 9001");
-    expect(certificationName({ name: "SEC", expires_at: "2026-12-31" })).toBe("SEC");
   });
 
   it("formatCertificationDate entrega DD/MM/AAAA", () => {

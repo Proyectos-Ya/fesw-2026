@@ -489,3 +489,46 @@ async def test_search_by_keywords_rechaza_ids_que_no_son_uuid_en_string(
 
     with pytest.raises(ValueError, match="ID de punto inesperado"):
         await repository.search_by_keywords([[1.0, 0.0, 0.0, 0.0]], limit=10)
+
+
+# --- delete_many (plan 306) ---
+# Al cerrar, sync-estados y el barrido de vencidas sacan cientos de licitaciones
+# por corrida, y la retención nocturna miles. Hasta ahora esta colección solo
+# borraba de a una, así que las cerradas se quedaban con payload "publicada".
+
+
+@pytest.mark.anyio
+async def test_delete_many_borra_en_una_sola_llamada(
+    repository: QdrantTenderItemVectorRepository, client: AsyncMock
+) -> None:
+    ids = [uuid4() for _ in range(3)]
+
+    await repository.delete_many(ids)
+
+    client.delete.assert_called_once()
+    assert client.delete.call_args.kwargs["collection_name"] == COLLECTION
+    selector = client.delete.call_args.kwargs["points_selector"]
+    assert selector.points == [str(i) for i in ids]
+
+
+@pytest.mark.anyio
+async def test_delete_many_parte_en_lotes_las_listas_grandes(
+    repository: QdrantTenderItemVectorRepository, client: AsyncMock
+) -> None:
+    ids = [uuid4() for _ in range(2_500)]
+
+    await repository.delete_many(ids)
+
+    tamanos = [
+        len(c.kwargs["points_selector"].points) for c in client.delete.call_args_list
+    ]
+    assert tamanos == [1_000, 1_000, 500]
+
+
+@pytest.mark.anyio
+async def test_delete_many_sin_ids_no_llama_a_qdrant(
+    repository: QdrantTenderItemVectorRepository, client: AsyncMock
+) -> None:
+    await repository.delete_many([])
+
+    client.delete.assert_not_called()
