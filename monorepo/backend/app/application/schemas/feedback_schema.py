@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.entities.feedback import MAX_REASON_CHARS, MatchReportKind
 
@@ -94,6 +94,16 @@ class CreateReviewRequest(BaseModel):
         default=False,
         description="Si la reseña es anónima o lleva el nombre del usuario.",
     )
+
+    @model_validator(mode="after")
+    def _exigir_estrellas_o_comentario(self) -> "CreateReviewRequest":
+        msg = self.message.strip() if self.message else None
+        self.message = msg or None
+        if self.rating is None and self.message is None:
+            raise ValueError(
+                "La reseña debe incluir al menos una calificación o un comentario."
+            )
+        return self
 
 
 class AppFeedbackResponse(BaseModel):
