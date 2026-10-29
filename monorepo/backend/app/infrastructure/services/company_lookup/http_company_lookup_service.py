@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from app.application.services.company_lookup_service import ICompanyLookupService
+from app.application.services.company_profiling import activity_catalog
 from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
 from app.domain.errors.company_lookup_errors import (
     CompanyLookupUnavailable,
@@ -175,11 +176,21 @@ class ChileRutLookupService(HttpCompanyLookupService):
         dv = str(payload.get("dv", "")).strip().upper()
 
         activities: list[EconomicActivity] = []
+        seen_codes: set[int] = set()
+        giro = _text(payload, "giro")
+        giro_code = activity_catalog.code_for_description(giro)
+        if giro_code is not None:
+            activities.append(EconomicActivity(code=giro_code, description=giro))
+            seen_codes.add(giro_code)
+
         for raw in payload.get("actividades") or []:
             code = _parse_code(raw.get("codigo")) if isinstance(raw, dict) else None
             if code is None:
                 logger.info("Código de actividad ilegible en %s: %r", self.source, raw)
                 continue
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
             activities.append(
                 EconomicActivity(code=code, description=_text(raw, "descripcion"))
             )

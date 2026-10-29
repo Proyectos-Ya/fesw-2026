@@ -65,6 +65,22 @@ class TestCatalogoSii:
     def test_codigo_inexistente_devuelve_cadena_vacia(self):
         assert activity_catalog.official_description(999999) == ""
 
+    def test_devuelve_el_subrubro_oficial_de_un_codigo(self):
+        assert (
+            activity_catalog.group_title(170200)
+            == "FABRICACIÓN DE PAPEL Y DE PRODUCTOS DE PAPEL"
+        )
+        assert activity_catalog.group_title(999999) == ""
+
+    def test_encuentra_el_codigo_por_glosa_ignorando_tildes_y_mayusculas(self):
+        assert (
+            activity_catalog.code_for_description(
+                "FABRICACION DE PAPEL Y CARTON ONDULADO Y DE ENVASES DE PAPEL Y CARTON"
+            )
+            == 170200
+        )
+        assert activity_catalog.code_for_description("GLOSA INEXISTENTE") is None
+
 
 class TestDiccionario:
     CODIGOS_EMPRESA_REAL = [433000, 479100, 952200]

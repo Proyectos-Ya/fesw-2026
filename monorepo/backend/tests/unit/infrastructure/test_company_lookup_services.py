@@ -212,9 +212,9 @@ class TestChileRut:
         assert record.source == "chilerut"
         assert record.rut == RUT
         assert record.legal_name == "REBOBINADOS SPA"
-        assert [a.code for a in record.activities] == [476103]
+        assert [a.code for a in record.activities] == [170200, 476103]
         assert (
-            record.activities[0].description
+            record.activities[1].description
             == "VENTA AL POR MENOR DE ARTICULOS DE PAPELERIA Y ESCRITORIO EN COMERCIOS ESPECIALIZADOS"
         )
         assert record.raw_regions == ["XIII REGION METROPOLITANA"]

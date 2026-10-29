@@ -34,6 +34,10 @@ def build_profile_draft(record: CompanyRecord) -> CompanyProfileDraft:
                 sectors.append(sector)
 
     keywords = activity_dictionary.keywords_for(codes)
+    for code in activity_dictionary.codes_without_keywords(codes):
+        for kw in activity_catalog.fallback_keywords_for_code(code, descriptions.get(code, "")):
+            if kw not in keywords:
+                keywords.append(kw)
 
     regions: list[str] = []
     for raw_region in record.raw_regions:
