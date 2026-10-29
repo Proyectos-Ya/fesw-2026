@@ -111,6 +111,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                 "text": self._build_system_instruction(
                     has_supplier=bool(supplier_context),
                     has_tender=bool(tender_context),
+                    feedback_context=feedback_context,
                 )
             }
         ]

@@ -39,7 +39,7 @@ class SubmitAssistantDislikeUseCase:
             raise SupplierNotFoundForUser(user_id)
 
         msg = await self.chat_repo.get_message_by_id(message_id)
-        if msg is None or msg.tender_id != tender_id:
+        if msg is None or msg.tender_id != tender_id or msg.role != "assistant":
             raise MessageNotFoundError()
 
         feedback = AssistantMessageFeedback(

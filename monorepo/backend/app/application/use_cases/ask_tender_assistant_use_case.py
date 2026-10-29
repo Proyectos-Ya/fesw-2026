@@ -257,6 +257,7 @@ class AskTenderAssistantUseCase:
         feedback_context_str: Optional[str] = None
         if self.assistant_feedback_repo and self.supplier_repo:
             active_supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
+            feedbacks = []
             if active_supplier:
                 feedbacks = await self.assistant_feedback_repo.list_by_tender_and_supplier(
                     tender_id=tender_id, supplier_id=active_supplier.id

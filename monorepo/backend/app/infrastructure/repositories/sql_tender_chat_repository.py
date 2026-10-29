@@ -244,7 +244,7 @@ class SQLTenderChatRepository(ITenderChatRepository):
             select(TenderChatMessageModel).where(TenderChatMessageModel.id == message_id)
         )
         model = res.first()
-        return self._to_message_entity(model) if model else None
+        return self._message_to_entity(model) if model else None
 
     async def save_message(self, message: TenderChatMessage) -> TenderChatMessage:
         # Si el mensaje no trae session_id, intentar asociarlo a la sesión activa

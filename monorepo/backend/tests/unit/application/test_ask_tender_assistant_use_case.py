@@ -783,3 +783,26 @@ async def test_ask_assistant_injects_dislike_feedback_context_on_new_chat(repo, 
     assert ctx is not None
     assert "No especificó si la garantía es con póliza o boleta bancaria" in ctx
     assert "acoger explícitamente" in ctx.lower()
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_without_resolvable_supplier_does_not_fail_with_feedback_repo(repo, ai_service):
+    """Sin empresa resolvible, el asistente responde sin contexto de feedback (no UnboundLocalError)."""
+    supplier_repo = InMemorySupplierRepository()
+    feedback_repo = InMemoryAssistantFeedbackRepository()
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+        assistant_feedback_repo=feedback_repo,
+    )
+
+    await use_case.execute(
+        tender_id=uuid4(),
+        user_id=uuid4(),
+        supplier_id=None,
+        question="¿Qué tipo de garantía piden?",
+    )
+
+    assert ai_service.called_feedback_contexts == [None]

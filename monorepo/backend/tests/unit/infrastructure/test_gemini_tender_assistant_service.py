@@ -432,4 +432,42 @@ async def test_generate_response_includes_tender_context_in_payload(service):
     assert any(tender_context_sample in t for t in parts_text)
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_response_includes_feedback_context_in_payload(service):
+    mock_gemini_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps({
+                                "answer": "Se exige boleta de garantía.",
+                                "citations": [],
+                                "has_sufficient_info": True
+                            })
+                        }
+                    ]
+                }
+            }
+        ]
+    }
 
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=test-api-key"
+    ).respond(status_code=200, json=mock_gemini_response)
+
+    feedback_sample = "1. No especificó si la garantía es con póliza o boleta bancaria"
+
+    await service.generate_response(
+        question="¿Qué garantía piden?",
+        history=[],
+        documents=[],
+        feedback_context=feedback_sample,
+    )
+
+    request_data = json.loads(route.calls.last.request.content.decode("utf-8"))
+    parts_text = [p.get("text", "") for p in request_data["contents"][0]["parts"]]
+    system_text = parts_text[0]
+    assert "RETROALIMENTACIÓN Y CORRECCIONES DE RESPUESTAS ANTERIORES" in system_text
+    assert feedback_sample in system_text
