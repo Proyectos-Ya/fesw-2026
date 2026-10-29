@@ -14,7 +14,8 @@ class QuestionModel(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     provider_id: UUID = Field(index=True, nullable=False)
-    # tender_id: Optional[UUID] = Field(default=None, nullable=True) # Por el pmv, lo dejamos comentado
+    tender_id: UUID | None = Field(default=None, nullable=True, index=True)
+    target_keyword: str | None = Field(default=None, nullable=True)
 
     discrepancy_type: str | None = Field(default="Category", nullable=True)
     tender_requirement: str | None = Field(default=None, nullable=True)

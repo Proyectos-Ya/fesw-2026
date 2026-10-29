@@ -1,7 +1,9 @@
+from typing import Any
 from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import JSON, Column, Index, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -30,8 +32,16 @@ class SupplierModel(SQLModel, table=True):
     description: str | None = None
     regions: list[str] | None = Field(default=None, sa_column=Column(JSON))
     sectors: list[str] | None = Field(default=None, sa_column=Column(JSON))
-    certifications: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    # {"name", "expires_at"} por certificación; los registros antiguos guardan
+    # solo el nombre como string.
+    certifications: list[dict[str, str | None] | str] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
     keywords: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    negative_keywords: list[dict[str, Any]] | None = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=True),
+    )
     years_experience: int | None = None
     num_employees: int | None = None
     created_at: datetime

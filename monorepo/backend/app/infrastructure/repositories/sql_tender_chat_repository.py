@@ -239,6 +239,13 @@ class SQLTenderChatRepository(ITenderChatRepository):
         await self.session.commit()
         return True
 
+    async def get_message_by_id(self, message_id: UUID) -> Optional[TenderChatMessage]:
+        res = await self.session.exec(
+            select(TenderChatMessageModel).where(TenderChatMessageModel.id == message_id)
+        )
+        model = res.first()
+        return self._message_to_entity(model) if model else None
+
     async def save_message(self, message: TenderChatMessage) -> TenderChatMessage:
         # Si el mensaje no trae session_id, intentar asociarlo a la sesión activa
         if message.session_id is None:

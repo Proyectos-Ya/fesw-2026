@@ -28,6 +28,7 @@ vi.mock("../../services/tenderService", () => ({
   getDeepAnalysis: vi.fn(),
   getDeepAnalysisOnly: vi.fn(),
   generateDeepAnalysis: vi.fn(),
+  reportMatch: vi.fn(),
 }));
 
 const EN_UN_MES = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -143,5 +144,17 @@ describe("TenderAnalysisView", () => {
       ).toBeInTheDocument();
     });
     expect(tenderService.getDeepAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("abre el modal de reportar análisis incorrecto al presionar Reportar (CA2)", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<TenderAnalysisView tenderId="tender-99" />);
+
+    const reportBtn = await screen.findByRole("button", { name: /reportar/i });
+    fireEvent.click(reportBtn);
+
+    expect(
+      await screen.findByText("Reportar análisis incorrecto")
+    ).toBeInTheDocument();
   });
 });

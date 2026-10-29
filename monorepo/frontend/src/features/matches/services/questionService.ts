@@ -1,15 +1,18 @@
 import { apiFetch } from "@/features/shared/api/client";
 import type { Question } from "../questionTypes";
 
-export function getSmartQuestions(profileId: string): Promise<Question[]> {
-  return apiFetch<Question[]>(`/questions?profileId=${encodeURIComponent(profileId)}`);
+export function getSmartQuestions(tenderId?: string): Promise<Question[]> {
+  const endpoint = tenderId
+    ? `/questions?tender_id=${encodeURIComponent(tenderId)}`
+    : "/questions";
+  return apiFetch<Question[]>(endpoint);
 }
 
 export interface AnswerQuestionInput {
-  supplier_id: string;
   question_id: string;
-  target_profile_field: string;
-  answer: string;
+  answer: "Sí" | "No" | string;
+  target_profile_field?: string | null;
+  supplier_id?: string;
 }
 
 export function answerSmartQuestion(payload: AnswerQuestionInput): Promise<{ status: string; detail: string }> {

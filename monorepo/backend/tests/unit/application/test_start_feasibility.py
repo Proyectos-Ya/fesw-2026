@@ -35,7 +35,7 @@ from app.domain.entities.capability import (
     ExperienceCatalog,
 )
 from app.domain.entities.proposal import DraftContent, DraftSection
-from app.domain.entities.supplier import Supplier
+from app.domain.entities.supplier import CertificationItem, Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFound
@@ -800,7 +800,7 @@ class TestCoberturaDelPerfil:
         empresa = await e.suppliers.get_by_id(e.empresa.id)
         assert empresa is not None
         empresa.description = "Constructora con 20 años en obras civiles."
-        empresa.certifications = ["ISO 9001"]
+        empresa.certifications = [CertificationItem(name="ISO 9001")]
         await e.suppliers.save(empresa)
         return e
 

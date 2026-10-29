@@ -1,3 +1,11 @@
+export interface DynamicQuestionDTO {
+  id: string;
+  question: string;
+  target_keyword: string;
+  options?: string[];
+  tender_id?: string | null;
+}
+
 export interface Question {
   id: string;
   provider_id: string;
@@ -12,4 +20,6 @@ export interface Question {
   answered_at: string | null;
   target_category: string;
   options: string[];
+  tender_id?: string | null;
+  target_keyword?: string | null;
 }

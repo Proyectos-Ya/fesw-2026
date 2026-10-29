@@ -33,6 +33,7 @@ from app.application.services.document_validator_service import (
 )
 from app.application.services.email_service import IEmailService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.smart_question_ai_service import ISmartQuestionAIService
 from app.application.services.export_background import IExportBackground
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.milestone_extraction_ai_service import (
@@ -205,6 +206,10 @@ def get_attachment_processing_notifier(request: Request) -> IAttachmentProcessin
     return request.app.state.attachment_processing_signal
 
 
+def get_smart_question_ai_service(request: Request) -> ISmartQuestionAIService:
+    return getattr(request.app.state, "smart_question_ai_service", None)
+
+
 def get_ranking_registry(request: Request) -> RecentRankingRegistry:
     return request.app.state.ranking_registry
 
@@ -257,4 +262,9 @@ AttachmentProcessingNotifierDep = Annotated[
 
 DocumentAnalysisQuotationServiceDep = Annotated[
     IDocumentAnalysisAndQuotationService, Depends(get_document_analysis_quotation_service)
+]
+
+
+SmartQuestionAIServiceDep = Annotated[
+    ISmartQuestionAIService, Depends(get_smart_question_ai_service)
 ]

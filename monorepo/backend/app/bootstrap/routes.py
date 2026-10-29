@@ -45,6 +45,11 @@ from app.bootstrap.extension import (
     get_pair_extension_use_case,
     get_report_extension_job_result_use_case,
 )
+from app.bootstrap.feedback import (
+    get_report_match_use_case,
+    get_submit_app_feedback_use_case,
+    get_submit_assistant_dislike_use_case,
+)
 from app.bootstrap.kanban import (
     get_add_tender_to_board_use_case,
     get_archive_tender_from_board_use_case,
@@ -92,6 +97,7 @@ from app.bootstrap.proposals import (
 )
 from app.bootstrap.questions import (
     get_answer_question_use_case,
+    get_generate_tender_smart_questions_use_case,
     get_smart_question_use_case,
 )
 from app.bootstrap.ranking_telemetry import (
@@ -138,6 +144,7 @@ from app.infrastructure.routers.catalog import create_catalog_router
 from app.infrastructure.routers.dev_storage import create_dev_storage_router
 from app.infrastructure.routers.exports import create_exports_router
 from app.infrastructure.routers.extension import create_extension_router
+from app.infrastructure.routers.feedback import create_feedback_router
 from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.kanban import create_kanban_router
 from app.infrastructure.routers.milestones import create_milestones_router
@@ -208,6 +215,14 @@ def register_routes(app: FastAPI) -> None:
         )
     )
     app.include_router(
+        create_feedback_router(
+            get_current_user=get_current_user,
+            get_report_match_use_case=get_report_match_use_case,
+            get_submit_app_feedback_use_case=get_submit_app_feedback_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
         create_tender_router(
             get_rank_tenders_use_case=get_rank_tenders_use_case,
             get_current_user=get_current_user,
@@ -241,6 +256,8 @@ def register_routes(app: FastAPI) -> None:
             get_smart_question_use_case=get_smart_question_use_case,
             get_answer_question_use_case=get_answer_question_use_case,
             get_current_user=get_current_user,
+            get_generate_tender_smart_questions_use_case=get_generate_tender_smart_questions_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(create_catalog_router(get_current_user=get_current_user))
@@ -253,6 +270,7 @@ def register_routes(app: FastAPI) -> None:
             get_ask_assistant_use_case=get_ask_tender_assistant_use_case,
             get_chat_history_use_case=get_tender_chat_history_use_case,
             get_create_chat_session_use_case=get_create_tender_chat_session_use_case,
+            get_submit_dislike_use_case=get_submit_assistant_dislike_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

@@ -60,9 +60,9 @@ class TestMismaEstructuraParaCualquierFuente:
         borrador = await _importar(registro)
 
         assert borrador.sectors == [
-            "Obras de Construcción e Infraestructura",
-            "Equipos e Insumos Industriales",
-            "Mantención y Reparación",
+            "Servicios de construcción y mantenimiento",
+            "Artículos de fabricación y producción",
+            "Servicios de cuidado personal y domésticos",
         ]
         assert "pintura" in borrador.keywords
         assert "reparación de electrodomésticos" in borrador.keywords
@@ -82,15 +82,39 @@ class TestMismaEstructuraParaCualquierFuente:
 
 
 class TestCodigosSinCurar:
-    async def test_el_rubro_sale_de_la_glosa_oficial_y_no_hay_palabras_clave(self):
-        # 432100: "INSTALACIONES ELÉCTRICAS" en el catálogo, sin curación fina.
-        registro = CompanyRecord(source="sre", rut=RUT, activities=[EconomicActivity(code=432100)])
+    async def test_codigo_sin_curar_usa_respaldo_de_glosa_y_subrubro(self):
+        # 451001: "VENTA AL POR MAYOR DE VEHÍCULOS AUTOMOTORES" (subrubro: "VENTA DE VEHÍCULOS AUTOMOTORES").
+        registro = CompanyRecord(source="sre", rut=RUT, activities=[EconomicActivity(code=451001)])
 
         borrador = await _importar(registro)
 
-        assert borrador.keywords == []
+        assert "vehículos automotores" in borrador.keywords
         assert borrador.sectors != []
         assert any("palabras clave" in aviso for aviso in borrador.notices)
+
+    async def test_respaldo_combina_glosa_y_subrubro_para_papeleria_y_papel(self):
+        registro = CompanyRecord(
+            source="chilerut",
+            rut="78054974-2",
+            legal_name="REBOBINADOS SPA",
+            activities=[
+                EconomicActivity(
+                    code=170200,
+                    description="FABRICACION DE PAPEL Y CARTON ONDULADO Y DE ENVASES DE PAPEL Y CARTON",
+                ),
+                EconomicActivity(
+                    code=476103,
+                    description="VENTA AL POR MENOR DE ARTICULOS DE PAPELERIA Y ESCRITORIO EN COMERCIOS ESPECIALIZADOS",
+                ),
+            ],
+        )
+
+        borrador = await _importar(registro, rut="78054974-2")
+
+        assert "papel y cartón ondulado" in borrador.keywords
+        assert "envases de papel y cartón" in borrador.keywords
+        assert "productos de papel" in borrador.keywords
+        assert "artículos de papelería y escritorio" in borrador.keywords
 
     async def test_sin_actividades_no_hay_nada_que_sugerir(self):
         registro = CompanyRecord(source="sre", rut=RUT)

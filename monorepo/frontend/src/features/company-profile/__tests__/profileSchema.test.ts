@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatRut, isValidRut, step1Schema } from "../profileSchema";
+import {
+  formatCertificationDate,
+  formatRut,
+  isValidRut,
+  normalizeCertification,
+  step1Schema,
+  step3Schema,
+} from "../profileSchema";
 
 describe("formatRut", () => {
   it("devuelve vacío para una entrada vacía", () => {
@@ -87,5 +94,92 @@ describe("step1Schema (rut)", () => {
   it("rechaza un RUT con formato inválido", () => {
     const result = step1Schema.safeParse({ ...base, rut: "76123456" });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("step3Schema (certifications)", () => {
+  const base = {
+    sectors: ["Construcción"],
+    keywords: [],
+    description: "Constructora especializada en obras civiles menores.",
+  };
+
+  it("acepta certificaciones como strings", () => {
+    const result = step3Schema.safeParse({ ...base, certifications: ["ISO 9001"] });
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta certificaciones como objeto con fecha de vencimiento", () => {
+    const result = step3Schema.safeParse({
+      ...base,
+      certifications: [{ name: "ISO 9001", expires_at: "2026-12-31" }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta un objeto sin fecha o con fecha nula", () => {
+    const result = step3Schema.safeParse({
+      ...base,
+      certifications: [{ name: "ISO 9001" }, { name: "SEC", expires_at: null }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("acepta strings y objetos mezclados", () => {
+    const result = step3Schema.safeParse({
+      ...base,
+      certifications: ["SEC", { name: "ISO 9001", expires_at: "2026-12-31" }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rechaza un objeto con nombre vacío", () => {
+    const result = step3Schema.safeParse({
+      ...base,
+      certifications: [{ name: "  " }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza una fecha que no es YYYY-MM-DD", () => {
+    const result = step3Schema.safeParse({
+      ...base,
+      certifications: [{ name: "ISO 9001", expires_at: "31/12/2026" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza elementos que no son string ni objeto", () => {
+    const result = step3Schema.safeParse({ ...base, certifications: [42] });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("helpers de certificación", () => {
+  it("normalizeCertification convierte un string en objeto sin fecha", () => {
+    expect(normalizeCertification("ISO 9001")).toEqual({ name: "ISO 9001", expires_at: null });
+  });
+
+  it("normalizeCertification conserva un objeto con fecha", () => {
+    expect(normalizeCertification({ name: "ISO 9001", expires_at: "2026-12-31" })).toEqual({
+      name: "ISO 9001",
+      expires_at: "2026-12-31",
+    });
+  });
+
+  it("normalizeCertification pone null cuando falta la fecha", () => {
+    expect(normalizeCertification({ name: "SEC" })).toEqual({ name: "SEC", expires_at: null });
+  });
+
+  it("formatCertificationDate entrega DD/MM/AAAA", () => {
+    expect(formatCertificationDate("2026-12-31")).toBe("31/12/2026");
+  });
+
+  it("formatCertificationDate acepta un datetime ISO", () => {
+    expect(formatCertificationDate("2026-03-05T00:00:00Z")).toBe("05/03/2026");
+  });
+
+  it("formatCertificationDate devuelve el texto original si no reconoce el formato", () => {
+    expect(formatCertificationDate("pronto")).toBe("pronto");
   });
 });

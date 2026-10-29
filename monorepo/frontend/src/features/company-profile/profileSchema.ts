@@ -67,10 +67,34 @@ export const step2Schema = z.object({
     .max(100000, "El valor ingresado no es válido."),
 });
 
+const certificationItemSchema = z.object({
+  name: z.string().trim().min(1, "El nombre de la certificación es obligatorio."),
+  expires_at: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe tener formato AAAA-MM-DD.")
+    .nullish(),
+});
+
+export type CertificationItem = z.infer<typeof certificationItemSchema>;
+
+/** Los registros antiguos guardan la certificación como un string con solo el nombre. */
+export type CertificationEntry = string | CertificationItem;
+
+export function normalizeCertification(entry: CertificationEntry): CertificationItem {
+  if (typeof entry === "string") return { name: entry, expires_at: null };
+  return { name: entry.name, expires_at: entry.expires_at ?? null };
+}
+
+/** Convierte AAAA-MM-DD (o un datetime ISO) a DD/MM/AAAA sin pasar por Date, que desplaza el día por zona horaria. */
+export function formatCertificationDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
 export const step3Schema = z.object({
   sectors: z.array(z.string()).min(1, "Selecciona al menos un rubro."),
   keywords: z.array(z.string()),
-  certifications: z.array(z.string()),
+  certifications: z.array(z.union([z.string(), certificationItemSchema])),
   description: z
     .string()
     .min(30, "La descripción debe tener al menos 30 caracteres.")

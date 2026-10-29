@@ -337,6 +337,18 @@ export function MatchesDashboard() {
                   isSaved={savedTenderIds.has(tenderId)}
                   onToggleSave={handleToggleSave}
                   ranking={cardRanking(m.ranking_id, position, "matches")}
+                  onReport={(reportedId) => {
+                    setState((prev) =>
+                      prev.kind === "ready"
+                        ? {
+                            ...prev,
+                            matches: prev.matches.filter(
+                              (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                            ),
+                          }
+                        : prev
+                    );
+                  }}
                 />
               );
             })}

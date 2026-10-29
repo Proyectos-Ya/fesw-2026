@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.application.repositories.feedback_repository import IMatchReportRepository
 from app.application.repositories.lexical_tender_repository import (
     ILexicalTenderRepository,
 )
@@ -32,6 +33,10 @@ from app.application.services.reranker_service import IRerankerService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
+from app.application.use_cases.questions.generate_tender_smart_questions_use_case import (
+    GenerateTenderSmartQuestionsUseCase,
+)
+from app.bootstrap.questions import get_generate_tender_smart_questions_use_case
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
@@ -48,6 +53,7 @@ from app.bootstrap.repositories import (
     AttachmentExtractionRepoDep,
     MatchingResultRepoDep,
     MatchingShadowRepoDep,
+    MatchReportRepoDep,
     SavedTenderRepoDep,
     SupplierRepoDep,
     TenderDigestRepoDep,
@@ -136,6 +142,7 @@ def build_rank_tenders_use_case(
     embedding_service: IEmbeddingService,
     item_vector_repo: ITenderItemVectorRepository,
     lexical_tender_repo: ILexicalTenderRepository,
+    match_report_repo: IMatchReportRepository | None = None,
 ) -> RankTendersUseCase:
     # Con el servicio de embeddings, una empresa sin vector en Qdrant lo recupera
     # en vez de fallar con SupplierVectorNotFound. Embeddings y partidas juntos
@@ -149,6 +156,7 @@ def build_rank_tenders_use_case(
         matching_result_repo=matching_result_repo,
         model_version=compatibility_model_version(),
         embedding_service=embedding_service,
+        match_report_repo=match_report_repo,
         item_vector_repo=item_vector_repo,
         # Tercer canal: BM25 léxico sparse (plan 256).
         lexical_tender_repo=lexical_tender_repo,
@@ -184,6 +192,7 @@ def get_rank_tenders_use_case(
     scorer: CompatibilityScorerDep,
     matching_result_repo: MatchingResultRepoDep,
     embedding_service: EmbeddingServiceDep,
+    match_report_repo: MatchReportRepoDep,
     item_vector_repo: TenderItemVectorRepoDep,
     lexical_tender_repo: LexicalTenderRepoDep,
 ) -> RankTendersUseCase:
@@ -195,6 +204,7 @@ def get_rank_tenders_use_case(
         scorer=scorer,
         matching_result_repo=matching_result_repo,
         embedding_service=embedding_service,
+        match_report_repo=match_report_repo,
         item_vector_repo=item_vector_repo,
         lexical_tender_repo=lexical_tender_repo,
     )
@@ -262,6 +272,10 @@ def get_get_or_create_deep_analysis_use_case(
         IDeepAnalysisService, Depends(get_deep_analysis_service)
     ],
     scorer: CompatibilityScorerDep,
+    generate_questions_use_case: Annotated[
+        GenerateTenderSmartQuestionsUseCase,
+        Depends(get_generate_tender_smart_questions_use_case),
+    ],
 ) -> GetOrCreateDeepAnalysisUseCase:
     return GetOrCreateDeepAnalysisUseCase(
         supplier_repo=supplier_repo,
@@ -269,6 +283,7 @@ def get_get_or_create_deep_analysis_use_case(
         matching_result_repo=matching_result_repo,
         deep_analysis_service=deep_analysis_service,
         scorer=scorer,
+        generate_questions_use_case=generate_questions_use_case,
     )
 
 

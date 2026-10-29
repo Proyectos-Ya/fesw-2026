@@ -37,6 +37,7 @@ import { TenderAttachmentsPanel } from "@/features/tender-attachments/components
 import { ExportActions } from "@/features/tender-export/components/ExportActions";
 import { ShareDialog } from "@/features/tender-sharing/components/ShareDialog";
 import { ProposalEntryCard } from "@/features/proposals/components/ProposalEntryCard";
+import { ReportModal } from "./ReportModal";
 import { MilestonesSection } from "@/features/tender-milestones/components/MilestonesSection";
 import { TenderBoardSelector } from "@/features/kanban/components/TenderBoardSelector";
 import {
@@ -119,6 +120,8 @@ export function TenderDetailView({
   const [isSaved, setIsSaved] = useState(false);
   const [digestRefreshKey, setDigestRefreshKey] = useState("");
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isReportMatchOpen, setIsReportMatchOpen] = useState(false);
+  const [isReportAnalysisOpen, setIsReportAnalysisOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const reportInteraction = useTenderInteractionReporter(
     tenderId,
@@ -506,6 +509,17 @@ export function TenderDetailView({
             <div className="flex-1" />
 
             <TenderBoardSelector tenderId={tenderId} />
+            {state.isRecommended && (
+              <button
+                type="button"
+                onClick={() => setIsReportMatchOpen(true)}
+                aria-label="Reportar mal match"
+                title="Reportar mal match"
+                className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 active:scale-95"
+              >
+                <Icon name="flag" size={18} />
+              </button>
+            )}
 
             <button
               type="button"
@@ -790,6 +804,15 @@ export function TenderDetailView({
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsReportAnalysisOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                title="Reportar análisis de compatibilidad incorrecto"
+              >
+                <Icon name="flag" size={14} />
+                Reportar
+              </button>
             </div>
 
             <div className="grid grid-cols-1 gap-6 border-t border-border-subtle pt-5 sm:grid-cols-4 items-center">
@@ -894,6 +917,43 @@ export function TenderDetailView({
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
         onDocumentsChanged={() => setMilestonesRefreshKey((k) => k + 1)}
+      />
+
+      <ReportModal
+        open={isReportMatchOpen}
+        kind="match"
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        onClose={() => setIsReportMatchOpen(false)}
+        onSuccess={() => router.push("/matches")}
+      />
+
+      <ReportModal
+        open={isReportAnalysisOpen}
+        kind="analysis"
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        onClose={() => setIsReportAnalysisOpen(false)}
+        onSuccess={async (reportedReason) => {
+          if (cerrada) return;
+          setPendingAction("analysis");
+          setActionError(null);
+          try {
+            const instruction = `El usuario reportó como imprecisa la evaluación anterior por el siguiente motivo: ${reportedReason}`.slice(0, 1000);
+            const res = await generateDeepAnalysis(
+              tenderId,
+              instruction,
+              true
+            );
+            setAnalysis(res);
+          } catch (err) {
+            setActionError(
+              err instanceof Error ? err.message : "Error al actualizar el análisis con tu reporte."
+            );
+          } finally {
+            setPendingAction(null);
+          }
+        }}
       />
     </section>
   );

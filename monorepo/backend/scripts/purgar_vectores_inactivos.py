@@ -15,6 +15,13 @@ Borra dos grupos:
   estados equivocado de 6.24), y
 - todo punto cuyo payload no diga un estado activo.
 
+Desde el plan 306 los ids inactivos se borran de las tres colecciones
+(`tenders`, `tender_items`, `tender_lexical`), no solo de `tenders`. El barrido
+por payload sigue siendo solo de `tenders`: en las otras dos el payload de una
+cerrada nunca se actualizó y sigue diciendo `publicada`. Por eso el conteo por
+colección no mira el payload, sino cuántos de los ids inactivos de Postgres
+tienen todavía un punto.
+
 **Correrlo solo después de desplegar la búsqueda por estado**
 (`SearchTendersUseCase`): con la versión anterior, la búsqueda de cerradas sin
 texto sale de Qdrant y quedaría devolviendo cero. Es idempotente: repetirlo no
@@ -45,9 +52,38 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 )
 from app.infrastructure.repositories.tender_repository import TenderRepository
 from app.shared.constants import ACTIVE_TENDER_STATUSES
+from scripts.ingesta_compartida import indices_secundarios
 from scripts.sync_diaria import verificar_destino
 
 _COLLECTION = "tenders"
+COLECCIONES = ("tenders", "tender_items", "tender_lexical")
+
+# Ids por `retrieve`. Mismo orden de magnitud que el resto de los scripts.
+_LOTE_RETRIEVE = 500
+
+
+async def contar_existentes(
+    client: AsyncQdrantClient, coleccion: str, tender_ids: list
+) -> int | None:
+    """Cuántos de `tender_ids` tienen punto en `coleccion`. `None` si no existe."""
+    existentes = {c.name for c in (await client.get_collections()).collections}
+    if coleccion not in existentes:
+        return None
+    total = 0
+    for i in range(0, len(tender_ids), _LOTE_RETRIEVE):
+        lote = [str(t) for t in tender_ids[i : i + _LOTE_RETRIEVE]]
+        puntos = await client.retrieve(
+            collection_name=coleccion, ids=lote, with_payload=False, with_vectors=False
+        )
+        total += len(puntos)
+    return total
+
+
+async def _imprimir_por_coleccion(client: AsyncQdrantClient, inactivas: list) -> None:
+    for coleccion in COLECCIONES:
+        quedan = await contar_existentes(client, coleccion, inactivas)
+        detalle = "no existe" if quedan is None else f"{quedan} puntos de inactivas"
+        print(f"  {coleccion:<33}: {detalle}")
 
 
 async def _contar_puntos(client: AsyncQdrantClient, *, inactivos: bool) -> int:
@@ -81,9 +117,11 @@ async def run(dry_run: bool) -> None:
 
         async with AsyncSession(engine) as session:
             repo = TenderRepository(session)
+            inactivas_en_sql = await repo.get_inactive_ids()
+            print(f"Inactivas en Postgres              : {len(inactivas_en_sql)}")
+            print("Puntos que les quedan por colección:")
+            await _imprimir_por_coleccion(qdrant, inactivas_en_sql)
             if dry_run:
-                inactivas = await repo.get_inactive_ids()
-                print(f"Inactivas en Postgres (a borrar)   : {len(inactivas)}")
                 print("\n[dry-run] no se borró nada.")
                 return
 
@@ -92,14 +130,17 @@ async def run(dry_run: bool) -> None:
                 tender_vector_repo=QdrantTenderRepository(
                     client=qdrant, vector_size=settings.embedding_vector_size
                 ),
+                **indices_secundarios(qdrant),
             )
             inactivas = await caso.execute()
 
         despues = await _contar_puntos(qdrant, inactivos=False)
-        print(f"Inactivas en Postgres              : {inactivas}")
+        print(f"Inactivas borradas                 : {inactivas}")
         print(
             f"Puntos en el índice tras la purga  : {despues} ({antes - despues} borrados)"
         )
+        print("Puntos que les quedan por colección:")
+        await _imprimir_por_coleccion(qdrant, inactivas_en_sql)
     finally:
         await engine.dispose()
         await qdrant.close()

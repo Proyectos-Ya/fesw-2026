@@ -1,25 +1,34 @@
-import pytest
-from uuid import uuid4
 from typing import List, Optional
+from uuid import uuid4
 
-from app.application.use_cases.ask_tender_assistant_use_case import AskTenderAssistantUseCase
+import pytest
+
 from app.application.services.tender_assistant_ai_service import (
-    ITenderAssistantAIService,
     AIResponseDTO,
     DocumentContextDTO,
+    ITenderAssistantAIService,
 )
+from app.application.use_cases.ask_tender_assistant_use_case import (
+    AskTenderAssistantUseCase,
+)
+from app.domain.entities.feedback import AssistantMessageFeedback
+from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender_chat import (
-    TenderChatMessage,
-    TenderChatDocument,
     Citation,
     DocumentDiscrepancy,
+    TenderChatDocument,
+    TenderChatMessage,
 )
 from app.domain.errors.tender_chat_errors import (
-    TenderChatQueryTooLongError,
-    TenderAssistantUnavailableError,
     InvalidPromptInstruction,
+    TenderAssistantUnavailableError,
+    TenderChatQueryTooLongError,
 )
-from tests.unit.application.fakes import InMemoryTenderChatRepository
+from tests.unit.application.fakes import (
+    InMemorySupplierRepository,
+    InMemoryTenderChatRepository,
+)
+from tests.unit.application.feedback_fakes import InMemoryAssistantFeedbackRepository
 
 
 class FakeTenderAssistantAIService(ITenderAssistantAIService):
@@ -37,6 +46,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_documents: List[List[DocumentContextDTO]] = []
         self.called_supplier_contexts: List[Optional[str]] = []
         self.called_tender_contexts: List[Optional[str]] = []
+        self.called_feedback_contexts: List[Optional[str]] = []
 
     async def generate_response(
         self,
@@ -45,6 +55,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
         pass_number: int = 1,
     ) -> AIResponseDTO:
         if self.should_fail:
@@ -55,6 +66,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         self.called_documents.append(documents)
         self.called_supplier_contexts.append(supplier_context)
         self.called_tender_contexts.append(tender_context)
+        self.called_feedback_contexts.append(feedback_context)
 
 
         if self.custom_response is not None:
@@ -207,6 +219,7 @@ async def test_ask_assistant_blocks_prompt_injection(use_case, ai_service, injec
 @pytest.mark.asyncio
 async def test_ask_assistant_injects_supplier_profile_context(repo, ai_service):
     from unittest.mock import AsyncMock
+
     from app.domain.entities.supplier import Supplier
 
     user_id = uuid4()
@@ -470,8 +483,8 @@ async def test_ask_assistant_unbacked_requirement_anti_hallucination(repo):
 async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_failing(repo):
     """CA6: Verifica que un documento corrupto en la licitación se aísle, se agregue advertencia y la consulta continúe con los archivos sanos."""
     from app.application.services.document_validator_service import (
-        IDocumentValidatorService,
         DocumentValidationResult,
+        IDocumentValidatorService,
     )
 
     tender_id = uuid4()
@@ -547,6 +560,7 @@ async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_f
 async def test_ask_tender_assistant_injects_tender_context_and_items(repo):
     """Verifica que AskTenderAssistantUseCase extraiga y formatee los metadatos e ítems de la licitación y los pase a la IA."""
     from datetime import datetime, timezone
+
     from app.domain.entities.tender import Tender, TenderItem
     from tests.unit.application.fakes import InMemoryTenderRepository
 
@@ -631,6 +645,7 @@ async def test_ask_tender_assistant_injects_tender_context_and_items(repo):
 async def test_ask_tender_assistant_handles_tender_without_items_and_null_fields(repo):
     """Verifica que AskTenderAssistantUseCase formatee licitaciones con campos opcionales o sin ítems."""
     from datetime import datetime, timezone
+
     from app.domain.entities.tender import Tender
     from tests.unit.application.fakes import InMemoryTenderRepository
 
@@ -679,6 +694,7 @@ async def test_ask_tender_assistant_handles_tender_without_items_and_null_fields
 async def test_ask_tender_assistant_resilient_to_tender_repo_exception(repo):
     """Verifica que si tender_repo falla, la consulta al asistente continúe normalmente con tender_context=None."""
     from unittest.mock import AsyncMock
+
     from app.application.repositories.tender_repository import ITenderRepository
 
     mock_ai = FakeTenderAssistantAIService()
@@ -735,3 +751,69 @@ async def test_ask_assistant_usa_el_perfil_de_la_empresa_activa(repo, ai_service
     assert supplier_ctx is not None
     assert "Activa Ltda" in supplier_ctx
     assert "Propia SpA" not in supplier_ctx
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_injects_dislike_feedback_context_on_new_chat(repo, ai_service):
+    """S5: Si el usuario dio dislike con motivos previos en esta licitación y empresa, se inyectan en el prompt."""
+    tender_id = uuid4()
+    user_id = uuid4()
+    supplier_id = uuid4()
+
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(id=supplier_id, rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    feedback_repo = InMemoryAssistantFeedbackRepository()
+    await feedback_repo.upsert(
+        AssistantMessageFeedback(
+            message_id=uuid4(),
+            user_id=user_id,
+            supplier_id=supplier_id,
+            tender_id=tender_id,
+            reason="No especificó si la garantía es con póliza o boleta bancaria",
+        )
+    )
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+        assistant_feedback_repo=feedback_repo,
+    )
+
+    await use_case.execute(
+        tender_id=tender_id,
+        user_id=user_id,
+        supplier_id=supplier_id,
+        question="¿Qué tipo de garantía piden?",
+    )
+
+    assert len(ai_service.called_feedback_contexts) == 1
+    ctx = ai_service.called_feedback_contexts[0]
+    assert ctx is not None
+    assert "No especificó si la garantía es con póliza o boleta bancaria" in ctx
+    assert "acoger explícitamente" in ctx.lower()
+
+
+@pytest.mark.asyncio
+async def test_ask_assistant_without_resolvable_supplier_does_not_fail_with_feedback_repo(repo, ai_service):
+    """Sin empresa resolvible, el asistente responde sin contexto de feedback (no UnboundLocalError)."""
+    supplier_repo = InMemorySupplierRepository()
+    feedback_repo = InMemoryAssistantFeedbackRepository()
+
+    use_case = AskTenderAssistantUseCase(
+        chat_repo=repo,
+        ai_service=ai_service,
+        supplier_repo=supplier_repo,
+        assistant_feedback_repo=feedback_repo,
+    )
+
+    await use_case.execute(
+        tender_id=uuid4(),
+        user_id=uuid4(),
+        supplier_id=None,
+        question="¿Qué tipo de garantía piden?",
+    )
+
+    assert ai_service.called_feedback_contexts == [None]

@@ -36,6 +36,11 @@ from app.infrastructure.repositories.extension_model import (
     ExtensionFetchJobModel,
     ExtensionInstallationModel,
 )
+from app.infrastructure.repositories.feedback_model import (
+    AppFeedbackModel,
+    AssistantMessageFeedbackModel,
+    MatchReportModel,
+)
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -107,6 +112,9 @@ from app.infrastructure.repositories.tender_share_link_model import (
 from app.infrastructure.repositories.user_model import UserModel
 
 __all__ = [
+    "AppFeedbackModel",
+    "AssistantMessageFeedbackModel",
+    "MatchReportModel",
     "AttachmentExtractionModel",
     "AttachmentFileModel",
     "AttachmentGeminiDailyUsageModel",
