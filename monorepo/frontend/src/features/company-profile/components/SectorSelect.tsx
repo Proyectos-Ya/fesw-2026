@@ -10,6 +10,8 @@ interface SectorSelectProps {
   onChange: (selected: string[]) => void;
   label?: string;
   error?: string;
+  /** Locks the chips (imported sectors pending review); search and groups still work. */
+  disabled?: boolean;
 }
 
 function normalize(text: string): string {
@@ -38,6 +40,7 @@ export function SectorSelect({
   onChange,
   label = "Rubros principales",
   error,
+  disabled = false,
 }: SectorSelectProps) {
   const [query, setQuery] = useState("");
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
@@ -109,6 +112,7 @@ export function SectorSelect({
                     options={group.options}
                     selected={selected}
                     onChange={onChange}
+                    disabled={disabled}
                   />
                 </div>
               ) : null}

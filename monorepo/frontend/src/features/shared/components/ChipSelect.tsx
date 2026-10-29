@@ -7,6 +7,8 @@ interface ChipSelectProps {
   onChange: (selected: string[]) => void;
   error?: string;
   hint?: string;
+  /** Solo lectura: se ve la selección pero no se puede cambiar. */
+  disabled?: boolean;
 }
 
 export function ChipSelect({
@@ -16,6 +18,7 @@ export function ChipSelect({
   onChange,
   error,
   hint,
+  disabled = false,
 }: ChipSelectProps) {
   const toggle = (option: string) => {
     if (selected.includes(option)) {
@@ -34,9 +37,10 @@ export function ChipSelect({
             <button
               key={option}
               type="button"
+              disabled={disabled}
               onClick={() => toggle(option)}
               aria-pressed={isSelected}
-              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                 isSelected
                   ? "border-primary bg-primary-soft text-primary shadow-sm"
                   : "border-border-default bg-white text-text-muted hover:border-border-strong hover:bg-bg-page"

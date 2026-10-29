@@ -33,7 +33,7 @@ def test_solo_acepta_las_fuentes_conocidas():
         _construir(company_lookup_provider="ruts-info")
 
 
-@pytest.mark.parametrize("proveedor", ["sre", "web-empresario"])
+@pytest.mark.parametrize("proveedor", ["sre", "web-empresario", "chilerut"])
 def test_una_fuente_sin_credencial_impide_arrancar(proveedor):
     with pytest.raises(ValidationError, match="COMPANY_LOOKUP_API_KEY"):
         _construir(company_lookup_provider=proveedor)
@@ -49,6 +49,7 @@ def test_credencial_en_blanco_cuenta_como_ausente():
     [
         ("sre", "https://sre.cl"),
         ("web-empresario", "https://api-sii-chile.webempresario.com"),
+        ("chilerut", "https://chilerutempresa.cl"),
     ],
 )
 def test_cada_fuente_tiene_su_host_por_defecto(proveedor, url):

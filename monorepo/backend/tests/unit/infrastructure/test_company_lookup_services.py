@@ -18,6 +18,7 @@ from app.domain.errors.company_lookup_errors import (
     CompanyNotFoundInSource,
 )
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    ChileRutLookupService,
     SreLookupService,
     WebEmpresarioLookupService,
     repair_mojibake,
@@ -28,6 +29,8 @@ WE_BASE = "https://api-sii-chile.webempresario.com"
 WE_URL = f"{WE_BASE}/v1/{RUT}"
 SRE_BASE = "https://sre.cl"
 SRE_URL = f"{SRE_BASE}/api/company_info"
+CHILERUT_BASE = "https://chilerutempresa.cl"
+CHILERUT_URL = f"{CHILERUT_BASE}/api/lookup/{RUT}"
 
 # "VALPARAÍSO" en UTF-8 leído como Latin-1, tal como llega de Web Empresario.
 VALPARAISO_ROTO = "VALPARAÍSO".encode().decode("latin-1")
@@ -76,8 +79,38 @@ def _we() -> WebEmpresarioLookupService:
     return WebEmpresarioLookupService(api_key="we-secreto", base_url=WE_BASE)
 
 
+CHILERUT_PAYLOAD = {
+    "found": True,
+    "rut": "76668304",
+    "dv": "5",
+    "razon_social": "REBOBINADOS SPA",
+    "fecha_inicio_actividades": "15-11-2024",
+    "giro": "FABRICACION DE PAPEL Y CARTON ONDULADO Y DE ENVASES DE PAPEL Y CARTON",
+    "rubro": "INDUSTRIA MANUFACTURERA",
+    "subrubro": "FABRICACION DE PAPEL Y DE PRODUCTOS DE PAPEL",
+    "categoria_tributaria": "1",
+    "afecta_iva": "S",
+    "actividades": [
+        {
+            "codigo": "476103",
+            "descripcion": "VENTA AL POR MENOR DE ARTICULOS DE PAPELERIA Y ESCRITORIO EN COMERCIOS ESPECIALIZADOS",
+            "afecta_iva": "S",
+            "categoria": "1",
+        },
+        {"codigo": "invalido", "descripcion": "SIN CODIGO"},
+    ],
+    "comuna": "LA FLORIDA",
+    "region": "XIII REGION METROPOLITANA",
+    "num_trabajadores": "0",
+}
+
+
 def _sre() -> SreLookupService:
     return SreLookupService(api_key="sre-secreto", base_url=SRE_BASE)
+
+
+def _chilerut() -> ChileRutLookupService:
+    return ChileRutLookupService(api_key="cre-secreto", base_url=CHILERUT_BASE)
 
 
 class TestReparacionDeCodificacion:
@@ -159,6 +192,39 @@ class TestSre:
         respx.post(SRE_URL).mock(return_value=httpx.Response(200, json={"rut": RUT}))
         with pytest.raises(CompanyNotFoundInSource):
             await _sre().lookup(RUT)
+
+
+class TestChileRut:
+    @respx.mock
+    async def test_consulta_por_get_con_la_key_en_la_cabecera(self):
+        ruta = respx.get(CHILERUT_URL).mock(return_value=httpx.Response(200, json=CHILERUT_PAYLOAD))
+
+        await _chilerut().lookup(RUT)
+
+        assert ruta.calls.last.request.headers["x-api-key"] == "cre-secreto"
+
+    @respx.mock
+    async def test_traduce_el_payload_al_registro_comun(self):
+        respx.get(CHILERUT_URL).mock(return_value=httpx.Response(200, json=CHILERUT_PAYLOAD))
+
+        record = await _chilerut().lookup(RUT)
+
+        assert record.source == "chilerut"
+        assert record.rut == RUT
+        assert record.legal_name == "REBOBINADOS SPA"
+        assert [a.code for a in record.activities] == [170200, 476103]
+        assert (
+            record.activities[1].description
+            == "VENTA AL POR MENOR DE ARTICULOS DE PAPELERIA Y ESCRITORIO EN COMERCIOS ESPECIALIZADOS"
+        )
+        assert record.raw_regions == ["XIII REGION METROPOLITANA"]
+        assert record.is_active is None
+
+    @respx.mock
+    async def test_found_false_es_empresa_no_encontrada(self):
+        respx.get(CHILERUT_URL).mock(return_value=httpx.Response(200, json={"found": False}))
+        with pytest.raises(CompanyNotFoundInSource):
+            await _chilerut().lookup(RUT)
 
 
 class TestErroresComunes:

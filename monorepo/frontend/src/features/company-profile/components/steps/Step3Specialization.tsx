@@ -9,6 +9,7 @@ import { Textarea } from "@/features/shared/components/Textarea";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { Button } from "@/features/shared/components/Button";
 import { WizardNavigation } from "../WizardNavigation";
+import { ImportedFieldReview, isFieldLocked, type FieldReview } from "../ImportedFieldReview";
 import { KeywordSuggestions } from "../KeywordSuggestions";
 import { CertificationListInput } from "../CertificationListInput";
 import { SectorSelect } from "../SectorSelect";
@@ -23,6 +24,11 @@ interface Step3Props {
   defaultValues: Partial<Step3Data>;
   /** Palabras clave importadas desde el RUT, ofrecidas como sugerencias. */
   suggestedKeywords?: string[];
+  sectorsReview: FieldReview;
+  /** Rubros que sumó la importación; "Borrar" quita solo estos. */
+  addedSectors: string[];
+  /** "Siguiente" queda bloqueado mientras los rubros importados no se confirman. */
+  nextBlocked: boolean;
   /** Sugerencias descartadas; el wizard las guarda para que no vuelvan al regresar a este paso. */
   dismissedKeywords?: string[];
   onDismissKeyword?: (keyword: string) => void;
@@ -33,6 +39,9 @@ interface Step3Props {
 export function Step3Specialization({
   defaultValues,
   suggestedKeywords = [],
+  sectorsReview,
+  addedSectors,
+  nextBlocked,
   dismissedKeywords = [],
   onDismissKeyword,
   onNext,
@@ -99,6 +108,12 @@ export function Step3Specialization({
     );
   };
 
+  const handleClearSectors = () => {
+    sectorsReview.onClear();
+    const remaining = (getValues("sectors") ?? []).filter((s) => !addedSectors.includes(s));
+    setValue("sectors", remaining, { shouldDirty: true });
+  };
+
   return (
     <div>
       <div className="mb-6">
@@ -114,11 +129,19 @@ export function Step3Specialization({
           name="sectors"
           control={control}
           render={({ field }) => (
-            <SectorSelect
-              selected={field.value}
-              onChange={field.onChange}
-              error={errors.sectors?.message}
-            />
+            <div className="flex flex-col gap-3">
+              <SectorSelect
+                selected={field.value}
+                onChange={field.onChange}
+                error={errors.sectors?.message}
+                disabled={isFieldLocked(sectorsReview.status)}
+              />
+              <ImportedFieldReview
+                fieldLabel="rubros"
+                {...sectorsReview}
+                onClear={handleClearSectors}
+              />
+            </div>
           )}
         />
 
@@ -210,6 +233,7 @@ export function Step3Specialization({
         onNext={handleSubmit(onNext)}
         isFirstStep={false}
         isLastStep={false}
+        nextDisabled={nextBlocked}
       />
     </div>
   );

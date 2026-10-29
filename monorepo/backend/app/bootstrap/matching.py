@@ -33,6 +33,10 @@ from app.application.services.reranker_service import IRerankerService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
+from app.application.use_cases.questions.generate_tender_smart_questions_use_case import (
+    GenerateTenderSmartQuestionsUseCase,
+)
+from app.bootstrap.questions import get_generate_tender_smart_questions_use_case
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
@@ -268,6 +272,10 @@ def get_get_or_create_deep_analysis_use_case(
         IDeepAnalysisService, Depends(get_deep_analysis_service)
     ],
     scorer: CompatibilityScorerDep,
+    generate_questions_use_case: Annotated[
+        GenerateTenderSmartQuestionsUseCase,
+        Depends(get_generate_tender_smart_questions_use_case),
+    ],
 ) -> GetOrCreateDeepAnalysisUseCase:
     return GetOrCreateDeepAnalysisUseCase(
         supplier_repo=supplier_repo,
@@ -275,6 +283,7 @@ def get_get_or_create_deep_analysis_use_case(
         matching_result_repo=matching_result_repo,
         deep_analysis_service=deep_analysis_service,
         scorer=scorer,
+        generate_questions_use_case=generate_questions_use_case,
     )
 
 

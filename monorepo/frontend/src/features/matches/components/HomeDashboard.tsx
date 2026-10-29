@@ -18,7 +18,6 @@ import { SmartQuestionsBanner } from "./SmartQuestionsBanner";
 import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
-import { answerSmartQuestion } from "../services/questionService";
 import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
 import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
@@ -44,46 +43,30 @@ export function HomeDashboard() {
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 
-  const { questions: fetchedQuestions } = useSmartQuestions(user?.id ?? "");
+  const { questions: fetchedQuestions } = useSmartQuestions(undefined, isAuthenticated);
   const [pendingQuestions, setPendingQuestions] = useState<Question[]>([]);
+  const [totalQuestionsCount, setTotalQuestionsCount] = useState<number>(0);
   const [showCard, setShowCard] = useState(false);
-  const [isAnswering, setIsAnswering] = useState(false);
 
   useEffect(() => {
     setPendingQuestions(fetchedQuestions);
   }, [fetchedQuestions]);
 
   function handleBannerOpen() {
-    if (pendingQuestions.length > 0) setShowCard(true);
-  }
-
-async function handleAnswer(questionId: string, targetField: string, answerValue: string) {
-    if (!user?.id || isAnswering) return;
-
-    setIsAnswering(true);
-    try {
-      await answerSmartQuestion({
-        supplier_id: user?.id,
-        question_id: questionId,
-        target_profile_field: targetField,
-        answer: answerValue,
-      });
-      
-      advanceQueue();
-
-      setRetryNonce((n) => n + 1);
-
-    } catch (error) {
-      console.error("Error al responder la pregunta:", error);
-    } finally {
-      setIsAnswering(false);
+    if (pendingQuestions.length > 0) {
+      setTotalQuestionsCount(pendingQuestions.length);
+      setShowCard(true);
     }
   }
 
   function advanceQueue() {
     setPendingQuestions((prev) => {
       const next = prev.slice(1);
-      if (next.length === 0) setShowCard(false);
+      if (next.length === 0) {
+        setShowCard(false);
+        setTotalQuestionsCount(0);
+        setRetryNonce((n) => n + 1);
+      }
       return next;
     });
   }
@@ -210,23 +193,21 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
       <RecentWorkspacesBar />
-      <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
-      {showCard && pendingQuestions[0] && (
+      {!showCard ? (
+        <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
+      ) : pendingQuestions[0] ? (
         <div className="mb-6">
           <SmartQuestionCard
             key={pendingQuestions[0].id}
             question={pendingQuestions[0]}
-            onSubmit={(value: string) => 
-              handleAnswer(
-                pendingQuestions[0].id, 
-                pendingQuestions[0].target_profile_field, 
-                value
-              )
-            }
-            onOmit={() => advanceQueue()}
+            progress={{
+              current: Math.max(1, totalQuestionsCount - pendingQuestions.length + 1),
+              total: Math.max(totalQuestionsCount, pendingQuestions.length),
+            }}
+            onAnswered={advanceQueue}
           />
         </div>
-      )}
+      ) : null}
       {matches.length === 0 ? (
         <EmptyGreen />
       ) : (

@@ -26,6 +26,7 @@ from app.application.repositories.saved_tender_repository import ISavedTenderRep
 from app.application.repositories.lexical_tender_repository import (
     ILexicalTenderRepository,
 )
+from app.application.repositories.question_repository import IQuestionRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
@@ -54,6 +55,10 @@ from app.application.services.email_service import EmailMessage, IEmailService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.identity_directory import IIdentityDirectory
 from app.application.services.reranker_service import IRerankerService
+from app.application.services.smart_question_ai_service import (
+    DynamicQuestionDTO,
+    ISmartQuestionAIService,
+)
 from app.domain.entities.capability import (
     CapabilityAnswer,
     CapabilityEvidence,
@@ -75,6 +80,7 @@ from app.domain.entities.ranking_telemetry import (
     TenderInteraction,
 )
 from app.domain.entities.proposal import ProposalDraft
+from app.domain.entities.question import Question
 from app.domain.entities.saved_tender import SavedTender
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -1389,3 +1395,72 @@ class InMemoryProposalDraftRepository(IProposalDraftRepository):
             raise ValueError("Ya hay un borrador para esa empresa y licitación.")
         self.filas[clave] = draft.model_copy(deep=True)
         return draft
+
+
+class InMemoryQuestionRepository(IQuestionRepository):
+    def __init__(self, initial_questions: list[Question] | None = None) -> None:
+        self.questions: dict[UUID, Question] = {}
+        if initial_questions:
+            for q in initial_questions:
+                self.questions[q.id] = q.model_copy(deep=True)
+
+    async def get_active_by_provider(self, provider_id: UUID) -> list[Question]:
+        return [
+            q.model_copy(deep=True)
+            for q in self.questions.values()
+            if q.provider_id == provider_id and not q.answered and not q.omitted
+        ]
+
+    async def get_by_id(self, question_id: UUID) -> Question | None:
+        q = self.questions.get(question_id)
+        return q.model_copy(deep=True) if q else None
+
+    async def get_by_provider_and_tender(
+        self, provider_id: UUID, tender_id: UUID
+    ) -> list[Question]:
+        return [
+            q.model_copy(deep=True)
+            for q in self.questions.values()
+            if q.provider_id == provider_id and q.tender_id == tender_id
+        ]
+
+    async def save(self, question: Question) -> Question:
+        self.questions[question.id] = question.model_copy(deep=True)
+        return self.questions[question.id]
+
+    async def save_all(self, questions: list[Question]) -> list[Question]:
+        saved: list[Question] = []
+        for q in questions:
+            self.questions[q.id] = q.model_copy(deep=True)
+            saved.append(self.questions[q.id])
+        return saved
+
+    async def update(self, question: Question) -> Question:
+        if question.id not in self.questions:
+            raise ValueError(f"Question with id {question.id} not found")
+        self.questions[question.id] = question.model_copy(deep=True)
+        return self.questions[question.id]
+
+
+class FakeSmartQuestionAIService(ISmartQuestionAIService):
+    def __init__(self, questions: list[DynamicQuestionDTO] | None = None) -> None:
+        self.questions: list[DynamicQuestionDTO] = questions or []
+        self.last_tender: Tender | None = None
+        self.last_supplier: Supplier | None = None
+        self.last_attachment_texts: list[str] = []
+        self.last_valid_negative_keywords: list[str] = []
+
+    async def generate_questions(
+        self,
+        tender: Tender,
+        supplier: Supplier,
+        attachment_texts: list[str],
+        valid_negative_keywords: list[str],
+    ) -> list[DynamicQuestionDTO]:
+        self.last_tender = tender
+        self.last_supplier = supplier
+        self.last_attachment_texts = list(attachment_texts)
+        self.last_valid_negative_keywords = list(valid_negative_keywords)
+        return list(self.questions)
+
+

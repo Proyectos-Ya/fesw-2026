@@ -1,4 +1,4 @@
-import { apiFetch } from "@/features/shared/api/client";
+import { ApiError, TimeoutError, apiFetch } from "@/features/shared/api/client";
 import type { ProfileData } from "../profileSchema";
 
 /** Proveedor tal como lo devuelve el backend tras crearlo. */
@@ -99,6 +99,28 @@ export function importCompanyProfile(rut: string): Promise<CompanyProfileImport>
   return apiFetch<CompanyProfileImport>(
     `/suppliers/profile-import?rut=${encodeURIComponent(rut)}`,
   );
+}
+
+/** `info` no es un fallo (la fuente no conoce el RUT); `warning` sí lo es. */
+export interface ImportErrorDescription {
+  kind: "info" | "warning";
+  message: string;
+}
+
+/**
+ * Traduce el error de `importCompanyProfile` a un aviso para el usuario.
+ * Ningún error bloquea el wizard: el usuario siempre puede completar a mano.
+ */
+export function describeImportError(err: unknown): ImportErrorDescription {
+  if (err instanceof ApiError) {
+    return { kind: err.status === 404 ? "info" : "warning", message: err.message };
+  }
+  if (err instanceof TimeoutError) return { kind: "warning", message: err.message };
+  return {
+    kind: "warning",
+    message:
+      "No pudimos importar los datos de tu empresa. Inténtalo nuevamente o complétalos a mano.",
+  };
 }
 
 /**

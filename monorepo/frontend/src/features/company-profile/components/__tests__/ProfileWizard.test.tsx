@@ -5,45 +5,120 @@ import { ProfileWizard } from "../ProfileWizard";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import type { Supplier } from "../../services/supplierService";
 
-// Los pasos 1 a 3 se reemplazan por un botón que entrega datos válidos: lo que
-// se prueba acá es qué hace el wizard al enviar, no los formularios.
-const { STEP1, STEP2, STEP3 } = vi.hoisted(() => ({
-  STEP1: { legal_name: "Constructora Demo SpA", rut: "76.086.428-5" },
-  STEP2: {
-    regions: ["Metropolitana de Santiago"],
-    years_experience: 5,
-    num_employees: 20,
-  },
-  STEP3: {
-    sectors: ["Construcción"],
+// Los pasos 1 a 3 se reemplazan por botones que entregan datos válidos: lo que
+// se prueba acá es qué hace el wizard al enviar y cómo reparte la revisión de lo
+// importado, no los formularios. El botón "listo" respeta `nextBlocked`, como el
+// "Siguiente" real; el botón "forzar" lo ignora para probar la guarda del envío.
+const { STEP1, STEP2, STEP3, IMPORT_A, IMPORT_B } = vi.hoisted(() => {
+  const base = {
+    source: "sre",
+    is_active: true,
     keywords: [],
-    certifications: [],
-    description: "Empresa con amplia experiencia en obras civiles y edificación.",
-  },
-}));
+    notices: [],
+  };
+  return {
+    STEP1: { legal_name: "Constructora Demo SpA", rut: "76.086.428-5" },
+    STEP2: {
+      regions: ["Metropolitana de Santiago"],
+      years_experience: 5,
+      num_employees: 20,
+    },
+    STEP3: {
+      sectors: ["Construcción"],
+      keywords: [],
+      certifications: [],
+      description: "Empresa con amplia experiencia en obras civiles y edificación.",
+    },
+    IMPORT_A: {
+      ...base,
+      rut: "76668304-5",
+      legal_name: "Empresa A SpA",
+      regions: ["Metropolitana", "Valparaíso"],
+      sectors: ["Servicios de limpieza industrial"],
+    },
+    IMPORT_B: {
+      ...base,
+      rut: "76086428-5",
+      legal_name: "Empresa B SpA",
+      regions: ["Biobío"],
+      sectors: ["Servicios de construcción y mantenimiento"],
+    },
+  };
+});
+
+interface MockReview {
+  status?: string;
+  onConfirm: () => void;
+}
 
 vi.mock("../steps/Step1Identity", () => ({
-  Step1Identity: ({ onNext }: { onNext: (data: typeof STEP1) => void }) => (
-    <button onClick={() => onNext(STEP1)}>paso 1 listo</button>
+  Step1Identity: ({
+    onNext,
+    onImported,
+    onImportDiscarded,
+    legalNameReview,
+    nextBlocked,
+  }: {
+    onNext: (data: typeof STEP1) => void;
+    onImported: (profile: typeof IMPORT_A) => void;
+    onImportDiscarded: () => void;
+    legalNameReview: MockReview;
+    nextBlocked: boolean;
+  }) => (
+    <div>
+      <button onClick={() => onImported(IMPORT_A)}>importar RUT A</button>
+      <button onClick={() => onImported(IMPORT_B)}>importar RUT B</button>
+      <button onClick={onImportDiscarded}>cambiar el RUT</button>
+      <button onClick={legalNameReview.onConfirm}>confirmar razón social</button>
+      <span>razón social: {legalNameReview.status ?? "sin revisión"}</span>
+      <button disabled={nextBlocked} onClick={() => onNext(STEP1)}>
+        paso 1 listo
+      </button>
+      <button onClick={() => onNext(STEP1)}>forzar avance del paso 1</button>
+    </div>
   ),
 }));
 vi.mock("../steps/Step2Operations", () => ({
-  Step2Operations: ({ onNext }: { onNext: (data: typeof STEP2) => void }) => (
-    <button onClick={() => onNext(STEP2)}>paso 2 listo</button>
+  Step2Operations: ({
+    onNext,
+    defaultValues,
+    regionsReview,
+    nextBlocked,
+  }: {
+    onNext: (data: typeof STEP2) => void;
+    defaultValues: { regions?: string[] };
+    regionsReview: MockReview;
+    nextBlocked: boolean;
+  }) => (
+    <div>
+      <span>regiones: {(defaultValues.regions ?? []).join(", ") || "ninguna"}</span>
+      <button onClick={regionsReview.onConfirm}>confirmar regiones</button>
+      <button disabled={nextBlocked} onClick={() => onNext(STEP2)}>
+        paso 2 listo
+      </button>
+    </div>
   ),
 }));
 vi.mock("../steps/Step3Specialization", () => ({
   Step3Specialization: ({
     onNext,
+    sectorsReview,
+    nextBlocked,
     dismissedKeywords = [],
     onDismissKeyword,
   }: {
     onNext: (data: typeof STEP3) => void;
+    sectorsReview: MockReview;
+    nextBlocked: boolean;
     dismissedKeywords?: string[];
     onDismissKeyword?: (keyword: string) => void;
   }) => (
     <div>
-      <button onClick={() => onNext(STEP3)}>paso 3 listo</button>
+      <button onClick={sectorsReview.onConfirm}>confirmar rubros</button>
+      <button disabled={nextBlocked} onClick={() => onNext(STEP3)}>
+        paso 3 listo
+      </button>
+      <button onClick={() => onNext(STEP3)}>forzar avance del paso 3</button>
       <button onClick={() => onDismissKeyword?.("pintura")}>descartar pintura</button>
       <p>descartadas: {dismissedKeywords.join(",")}</p>
     </div>
@@ -290,6 +365,93 @@ describe("ProfileWizard: la empresa encontrada tiene que ser la enviada", () => 
 
     expect(await screen.findByText(SUCCESS_TITLE)).toBeInTheDocument();
     expect(setSupplierMock).toHaveBeenCalled();
+  });
+});
+
+describe("ProfileWizard: datos importados", () => {
+  beforeEach(() => {
+    createSupplierMock.mockReset();
+    waitForMySupplierMock.mockReset();
+    setSupplierMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const click = (name: string) => fireEvent.click(screen.getByText(name));
+
+  it("no envía si un campo importado sigue sin confirmar", async () => {
+    render(<ProfileWizard />);
+    click("importar RUT A");
+    click("confirmar razón social");
+    click("paso 1 listo");
+    click("confirmar regiones");
+    click("paso 2 listo");
+    // Los rubros quedan pendientes y el paso se salta el bloqueo.
+    click("forzar avance del paso 3");
+
+    await submit();
+
+    expect(createSupplierMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/sin confirmar/i);
+  });
+
+  it("cambiar el RUT después de importar quita lo importado y desbloquea el paso", () => {
+    render(<ProfileWizard />);
+    click("importar RUT A");
+    click("confirmar razón social");
+
+    click("cambiar el RUT");
+
+    expect(screen.getByText("razón social: sin revisión")).toBeInTheDocument();
+    click("paso 1 listo");
+    expect(screen.getByText("regiones: ninguna")).toBeInTheDocument();
+    expect(screen.getByText("paso 2 listo")).not.toBeDisabled();
+  });
+
+  it("recorre el wizard: importa, confirma en cada paso, reimporta con otro RUT y guarda", async () => {
+    createSupplierMock.mockResolvedValue(SUPPLIER);
+    render(<ProfileWizard />);
+
+    // Importación con el RUT A: la razón social queda pendiente y bloquea el paso 1.
+    click("importar RUT A");
+    expect(screen.getByText("razón social: pending")).toBeInTheDocument();
+    expect(screen.getByText("paso 1 listo")).toBeDisabled();
+    click("confirmar razón social");
+    expect(screen.getByText("razón social: confirmed")).toBeInTheDocument();
+    click("paso 1 listo");
+
+    // Regiones: precargadas y pendientes.
+    expect(screen.getByText("regiones: Metropolitana, Valparaíso")).toBeInTheDocument();
+    expect(screen.getByText("paso 2 listo")).toBeDisabled();
+    click("confirmar regiones");
+    click("paso 2 listo");
+
+    // Rubros.
+    expect(screen.getByText("paso 3 listo")).toBeDisabled();
+    click("confirmar rubros");
+    click("paso 3 listo");
+
+    // Desde el resumen se vuelve al paso 1 y se reimporta con otro RUT.
+    fireEvent.click(screen.getAllByText("Editar")[0]);
+    click("importar RUT B");
+    expect(screen.getByText("razón social: pending")).toBeInTheDocument();
+    click("confirmar razón social");
+    click("paso 1 listo");
+
+    // Las regiones del RUT A se vaciaron y solo quedan las del RUT B.
+    expect(screen.getByText("regiones: Biobío")).toBeInTheDocument();
+    expect(screen.getByText("paso 2 listo")).toBeDisabled();
+    click("confirmar regiones");
+    click("paso 2 listo");
+    click("confirmar rubros");
+    click("paso 3 listo");
+
+    await submit();
+
+    expect(createSupplierMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(SUCCESS_TITLE)).toBeInTheDocument();
   });
 });
 
