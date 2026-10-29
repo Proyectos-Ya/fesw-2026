@@ -174,3 +174,19 @@ export function updateSupplier(data: UpdateSupplierData): Promise<Supplier> {
     body: JSON.stringify(data),
   });
 }
+
+/**
+ * Sube el logotipo corporativo a la nube y lo persiste en PostgreSQL.
+ */
+export async function uploadMySupplierLogo(file: File): Promise<Supplier> {
+  const validationError = validateCompanyLogoFile(file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFetch<Supplier>("/suppliers/me/logo", {
+    method: "POST",
+    body: formData,
+  });
+}

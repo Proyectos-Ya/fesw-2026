@@ -257,32 +257,30 @@ function CompanyLogoUploadSection({
   onLogoUpdated,
 }: {
   supplier: Supplier;
-  onLogoUpdated?: (logoDataUrl: string) => void;
+  onLogoUpdated?: (logoUrl: string) => void;
 }) {
-  const { logoUrl, updateCompanyLogo } = useCompany();
+  const { logoUrl, uploadLogo } = useCompany();
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const currentLogo = logoUrl ?? supplier.logo_url ?? null;
 
-  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const validationError = validateCompanyLogoFile(file);
-    if (validationError) {
-      setLogoError(validationError);
-      event.target.value = "";
-      return;
-    }
-
     setLogoError(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        updateCompanyLogo?.(reader.result);
-        onLogoUpdated?.(reader.result);
+    setIsUploading(true);
+    try {
+      const result = await uploadLogo(file);
+      if (!result.ok) {
+        setLogoError(result.error ?? "Formato inválido o archivo muy pesado");
+      } else {
+        onLogoUpdated?.(currentLogo ?? "");
       }
-    };
-    reader.readAsDataURL(file);
+    } finally {
+      setIsUploading(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -297,15 +295,20 @@ function CompanyLogoUploadSection({
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="company-logo-input"
-            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-semibold text-text-strong hover:bg-surface-hover transition-colors"
+            className={`inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-semibold text-text-strong transition-colors ${
+              isUploading
+                ? "opacity-60 cursor-not-allowed"
+                : "hover:bg-surface-hover"
+            }`}
           >
-            Subir logo
+            {isUploading ? "Subiendo..." : "Subir logo"}
             <input
               id="company-logo-input"
               data-testid="company-logo-input"
               type="file"
               accept="image/png,image/jpeg"
               onChange={handleLogoChange}
+              disabled={isUploading}
               className="sr-only"
               aria-label="Subir logo corporativo"
             />
