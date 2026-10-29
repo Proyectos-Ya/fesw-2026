@@ -20,6 +20,7 @@ import {
 } from "../services/tenderService";
 import type { Tender, DeepAnalysis } from "../tenderTypes";
 import { formatDateTime } from "../utils/format";
+import { ReportModal } from "./ReportModal";
 
 interface TenderAnalysisViewProps {
   tenderId: string;
@@ -407,6 +408,34 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
           </Button>
         </div>
       )}
+
+      <ReportModal
+        open={reportModalOpen}
+        kind="analysis"
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        onClose={() => setReportModalOpen(false)}
+        onSuccess={async (reportedReason) => {
+          if (licitacionCerrada) return;
+          setRegenerating(true);
+          setErrorMsg("");
+          try {
+            const instruction = `El usuario reportó como imprecisa la evaluación anterior por el siguiente motivo: ${reportedReason}`.slice(0, 1000);
+            const res = await generateDeepAnalysis(
+              tenderId,
+              instruction,
+              true
+            );
+            setAnalysis(res);
+          } catch (err) {
+            setErrorMsg(
+              err instanceof Error ? err.message : "Error al actualizar el análisis con tu reporte."
+            );
+          } finally {
+            setRegenerating(false);
+          }
+        }}
+      />
     </section>
   );
 }

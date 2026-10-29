@@ -66,6 +66,7 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
   };
 
   return (
+    <>
     <Link
       href={`/matches/${tender.id}`}
       className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -96,19 +97,21 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
 
           <div className="flex-1" />
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setReportOpen(true);
-            }}
-            aria-label="Reportar mal match"
-            title="Reportar mal match"
-            className="inline-flex size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
-          >
-            <Icon name="flag" size={18} />
-          </button>
+          {match && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setReportOpen(true);
+              }}
+              aria-label="Reportar mal match"
+              title="Reportar mal match"
+              className="inline-flex size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+            >
+              <Icon name="flag" size={18} />
+            </button>
+          )}
 
           {onToggleSave && (
             <button
@@ -172,6 +175,8 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
           </span>
         </div>
       </div>
+    </Link>
+    {match && (
       <ReportModal
         open={reportOpen}
         kind="match"
@@ -180,6 +185,7 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
         onClose={() => setReportOpen(false)}
         onSuccess={() => onReport?.(tender.id)}
       />
-    </Link>
+    )}
+    </>
   );
 }

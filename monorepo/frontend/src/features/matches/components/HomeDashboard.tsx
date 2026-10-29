@@ -227,7 +227,22 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
         <>
           <div className="flex flex-col gap-4">
             {matches.map((m) => (
-              <TenderCard key={m.id} match={m} />
+              <TenderCard
+                key={m.id}
+                match={m}
+                onReport={(reportedId) => {
+                  setState((prev) =>
+                    prev.kind === "ready"
+                      ? {
+                          ...prev,
+                          matches: prev.matches.filter(
+                            (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                          ),
+                        }
+                      : prev
+                  );
+                }}
+              />
             ))}
           </div>
           <div className="mt-6 text-center">

@@ -12,7 +12,7 @@ export interface ReportModalProps {
   tenderId: string;
   tenderTitle?: string;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (reason: string) => void;
 }
 
 export function ReportModal({
@@ -48,7 +48,7 @@ export function ReportModal({
     try {
       await reportMatch(tenderId, { kind, reason: trimmed });
       setReason("");
-      onSuccess?.();
+      onSuccess?.(trimmed);
       onClose();
     } catch (err) {
       setError(
