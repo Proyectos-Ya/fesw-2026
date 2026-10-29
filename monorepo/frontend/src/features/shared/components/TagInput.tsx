@@ -51,7 +51,7 @@ export function TagInput({
         ) : null}
       </label>
       <div
-        className={`flex flex-wrap gap-2 rounded-md border bg-white px-3 py-2 transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
+        className={`flex flex-wrap gap-2 rounded-md border bg-surface-card px-3 py-2 transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
           error ? "border-danger" : "border-border-default hover:border-border-strong"
         }`}
       >

@@ -20,13 +20,13 @@ interface BadgeProps {
 }
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
-  neutral: "bg-warm-100 text-warm-700 border-warm-200",
-  teal: "bg-teal-50 text-teal-700 border-teal-200",
-  coral: "bg-coral-50 text-coral-700 border-coral-200",
-  success: "bg-success-soft text-green-600 border-transparent",
-  warning: "bg-warning-soft text-amber-600 border-transparent",
-  danger: "bg-danger-soft text-red-600 border-transparent",
-  info: "bg-info-soft text-blue-500 border-transparent",
+  neutral: "bg-surface-inset text-text-body border-border-subtle",
+  teal: "bg-primary-soft text-text-link border-primary-border",
+  coral: "bg-accent-soft text-accent border-accent-border",
+  success: "bg-success-soft text-success-text border-success/30",
+  warning: "bg-warning-soft text-warning-text border-warning/30",
+  danger: "bg-danger-soft text-danger-text border-danger/30",
+  info: "bg-info-soft text-info-text border-info/30",
   solid: "bg-primary text-on-primary border-transparent",
 };
 
