@@ -117,6 +117,7 @@ class Piezas:
             conocidas=len(cambios),
             actualizadas=len(cambios),
             llamados_actualizados=2,
+            ofertas_revisadas=3,
             nuevas=1,
         )
 
@@ -199,6 +200,7 @@ class TestCorridaBuena:
         assert "2 cambios listados" in salida
         assert "2 conocidas" in salida
         assert "4 con llamado actualizado" in salida
+        assert "6 con cotizaciones revisadas" in salida
         assert "2 nuevas" in salida
         assert "Vencidas marcadas como cerradas: 3" in salida
 
@@ -464,3 +466,134 @@ class TestLineaDeResumen:
         resumen = _resumen(capsys.readouterr().out)
         assert resumen["cancelada"] is True
         assert resumen["aplicadas"] == 1
+
+
+class TestVencerElTopeEsUnaIncompleta:
+    """Vencer el tope cuenta como corrida incompleta, no como error (plan 305).
+
+    Las páginas que llegaron ya se aplicaron, y la ventana de 2 h hace que la
+    corrida siguiente cubra el resto. El 2026-10-16 a las 14:02 una corrida
+    venció el tope con 3.330 cambios aplicados y Railway mandó un correo de
+    "crashed" por algo que la superposición resolvía sola. Sale con 1 solo si
+    se juntan `--incompletas-toleradas` seguidas, como los cortes por 504.
+    """
+
+    async def test_al_vencer_avisa_cuantas_incompletas_van_seguidas(self):
+        piezas = Piezas([[_cambio("A")], [_cambio("B")]], colgar_despues=1)
+        piezas.incompletas_antes = 1
+        avisadas: list[int] = []
+
+        async def correr() -> int:
+            return await sincronizar_estados(
+                _args(),
+                listar=piezas.listar,
+                aplicar=piezas.aplicar,
+                marcar_vencidas=piezas.marcar_vencidas,
+                abrir_corrida=piezas.abrir,
+                cerrar_corrida=piezas.cerrar,
+                al_vencer=avisadas.append,
+            )
+
+        await con_tope(correr(), segundos=0.05)
+
+        assert avisadas == [2]
+
+    async def test_el_codigo_al_vencer_sale_de_la_racha(self):
+        async def colgada() -> int:
+            await asyncio.sleep(10)
+            return 0
+
+        assert await con_tope(colgada(), segundos=0.01, codigo_al_vencer=lambda: 0) == 0
+
+    def test_codigo_por_racha(self):
+        from scripts.sync_estados import codigo_por_racha
+
+        assert codigo_por_racha(1, toleradas=3) == 0
+        assert codigo_por_racha(2, toleradas=3) == 0
+        assert codigo_por_racha(3, toleradas=3) == 1
+        # Sin saber cuántas van (la fila no se pudo cerrar), se avisa.
+        assert codigo_por_racha(None, toleradas=3) == 1
+
+
+AHORA = datetime(2026, 10, 19, 16, 3)
+
+
+class TestVentanaDesdeLaUltimaCompleta:
+    """La ventana arranca en la última corrida completa (plan 305).
+
+    Con una ventana fija de 2 h, cada corrida volvía a listar la hora anterior
+    entera: el 2026-10-19 en hora punta eran ~4.000 cambios y hasta 53 min, a
+    1,7 min del tope. Desde la última completa más un margen, lo normal es
+    ~1 h 15. Si una corrida quedó incompleta, la siguiente crece sola para
+    cubrir lo que faltó, sin pasar de `--ventana-horas`. Sin ese máximo, una
+    incompleta en hora punta haría más larga la siguiente, que también vencería
+    el tope, y así sucesivamente.
+    """
+
+    def test_sin_historial_usa_el_maximo(self):
+        from scripts.sync_estados import calcular_ventana
+
+        assert calcular_ventana(None, AHORA, maximo=timedelta(hours=2)) == timedelta(
+            hours=2
+        )
+
+    def test_desde_la_ultima_completa_mas_el_margen(self):
+        from scripts.sync_estados import MARGEN_VENTANA, calcular_ventana
+
+        ventana = calcular_ventana(
+            AHORA - timedelta(hours=1), AHORA, maximo=timedelta(hours=2)
+        )
+
+        assert MARGEN_VENTANA == timedelta(minutes=15)
+        assert ventana == timedelta(hours=1, minutes=15)
+
+    def test_no_pasa_del_maximo(self):
+        from scripts.sync_estados import calcular_ventana
+
+        ventana = calcular_ventana(
+            AHORA - timedelta(hours=5), AHORA, maximo=timedelta(hours=2)
+        )
+
+        assert ventana == timedelta(hours=2)
+
+    async def test_lista_desde_la_ultima_completa(self):
+        piezas = Piezas()
+
+        async def ultima_completa() -> datetime | None:
+            return AHORA - timedelta(hours=1)
+
+        await sincronizar_estados(
+            _args(ventana_horas=2.0),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            ultima_completa=ultima_completa,
+            ahora=lambda: AHORA,
+        )
+
+        assert piezas.listar_con == (timedelta(hours=1, minutes=15), 9000)
+
+    async def test_el_resumen_dice_la_ventana_usada(self, capsys):
+        piezas = Piezas()
+
+        async def ultima_completa() -> datetime | None:
+            return AHORA - timedelta(hours=1)
+
+        await sincronizar_estados(
+            _args(ventana_horas=2.0),
+            listar=piezas.listar,
+            aplicar=piezas.aplicar,
+            marcar_vencidas=piezas.marcar_vencidas,
+            ultima_completa=ultima_completa,
+            ahora=lambda: AHORA,
+        )
+
+        assert _resumen(capsys.readouterr().out)["ventana_h"] == 1.25
+
+    async def test_tocar_el_techo_cierra_como_incompleta(self):
+        """Si no, la siguiente arrancaría desde una corrida que no vio todo."""
+        piezas = Piezas(listadas=500)
+
+        await piezas.correr(_args(limite=500))
+
+        assert piezas.cerradas[0][1] is False

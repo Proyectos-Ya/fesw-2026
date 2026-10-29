@@ -19,7 +19,7 @@ docs/
 
 ## 1. Planes Técnicos (`docs/plans/`)
 Antes de implementar cualquier historia de usuario o cambio arquitectónico no trivial, se redacta un plan técnico en esta carpeta.
-* **Convención de nombre**: `<número-issue>-<slug-descriptivo>.md` (ejemplo: `240-integracion-notificaciones.md`).
+* **Convención de nombre**: `<número-issue>-<slug-descriptivo>.md` si es un único archivo, o una carpeta `<número-issue>-<slug>/` con `plan.md` y `task.md` cuando incluye desglose de tareas (ejemplo: `312-hu-30/`).
 * **Regla**: El plan debe ser revisado por un humano antes de comenzar a escribir código de producción. Las issues de GitHub definen el **QUÉ** y los planes el **CÓMO** (siempre enlazar con `Refs #NNN`).
 * **Planes activos / registrados**:
   * [227-mejoras-cotizaciones.md](./plans/227-mejoras-cotizaciones.md): Cantidades automáticas, enteros y PDF.
@@ -31,6 +31,8 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [292-postulacion-preguntas-y-feedback.md](./plans/292-postulacion-preguntas-y-feedback.md): Preguntas basadas en las bases y feedback de carga en la postulación (mejoras a HU-20).
   * [305-ingesta-y-sync-estados.md](./plans/305-ingesta-y-sync-estados.md): Ingesta cada 2 h y sync-estados que etiqueta pendientes, aplica por página y no pierde lo listado.
   * [306-retencion-licitaciones-cerradas.md](./plans/306-retencion-licitaciones-cerradas.md): Borrado nocturno de las licitaciones cerradas sin uso (plazo configurable) y limpieza de las tres colecciones de Qdrant al cerrar.
+  * [312-hu-30/plan.md](./plans/312-hu-30/plan.md): Cotizaciones recibidas, llamado y ficha ordenada por secciones (HU-30). Tareas en [312-hu-30/task.md](./plans/312-hu-30/task.md).
+  * [294-entrega-y-documentos-detalle/plan.md](./plans/294-entrega-y-documentos-detalle/plan.md): Dirección y plazo de entrega y flags del detalle de Compra Ágil, y recomendación de bases que nombra los documentos (#294). Tareas en [294-entrega-y-documentos-detalle/task.md](./plans/294-entrega-y-documentos-detalle/task.md).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).

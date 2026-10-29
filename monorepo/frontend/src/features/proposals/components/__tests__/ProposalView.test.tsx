@@ -30,14 +30,18 @@ vi.mock("@/features/matches/services/tenderService", () => ({
 }));
 
 /** Anexos con archivo de la licitación (plan 233): los mismos que la ficha. */
-const anexos = { nombres: [] as string[] };
+// `nombres`: anexos oficiales ya subidos. `pendientes`: oficiales que nadie subió.
+const anexos = { nombres: [] as string[], pendientes: [] as string[] };
 const recargarAnexos = vi.fn();
 vi.mock("@/features/tender-attachments/hooks/useTenderAttachments", () => ({
   useTenderAttachments: () => ({
     state: {
       status: "ready",
       data: {
-        official: anexos.nombres.map((name, i) => ({ id: `a-${i}`, name, file: { id: `f-${i}` } })),
+        official: [
+          ...anexos.nombres.map((name, i) => ({ id: `a-${i}`, name, file: { id: `f-${i}` } })),
+          ...anexos.pendientes.map((name, i) => ({ id: `p-${i}`, name, file: null })),
+        ],
       },
     },
     reload: vi.fn(),
@@ -93,6 +97,7 @@ beforeEach(() => {
   permiso.activo = { id: "w" };
   permiso.puede = true;
   anexos.nombres = [];
+  anexos.pendientes = [];
 });
 
 const CONTENIDO: DraftContent = {
@@ -303,6 +308,36 @@ describe("ProposalView", () => {
 
     expect(await screen.findByText(/No has subido anexos/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Iniciar análisis/ })).toBeEnabled();
+  });
+
+  it("sin anexos subidos y con documentos oficiales, los nombra al iniciar", async () => {
+    anexos.pendientes = ["Bases.pdf", "Anexo 1.docx"];
+    svc.getProposal.mockRejectedValueOnce(new ApiError(404, "x"));
+    render(<ProposalView tenderId="t-1" />);
+
+    expect(
+      await screen.findByText(/La Compra Ágil publica Bases\.pdf y Anexo 1\.docx/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar análisis/ })).toBeEnabled();
+  });
+
+  it("un borrador hecho solo con la ficha nombra los documentos oficiales", async () => {
+    anexos.pendientes = ["Bases.pdf"];
+    svc.getProposal.mockResolvedValue(
+      vista({
+        status: "READY",
+        content: CONTENIDO,
+        requirements: [requisito({ status: "cumple" })],
+        analysis_documents: [],
+        mentions_attachments: true,
+      }),
+    );
+    render(<ProposalView tenderId="t-1" />);
+
+    const borrador = await screen.findByRole("region", { name: "Borrador de la oferta" });
+    expect(borrador).toHaveTextContent(
+      "La Compra Ágil publica Bases.pdf: súbelos y vuelve a analizar.",
+    );
   });
 
   it("con anexos subidos no recomienda subirlos al iniciar", async () => {

@@ -26,7 +26,7 @@ vez de saltarse el inválido.
 **Compatible hacia atrás**: un índice no cambia el contrato de la tabla.
 
 Revision ID: 3e7ba2172180
-Revises: 2510718f486e
+Revises: e7123e26c0be
 Create Date: 2026-10-15 01:08:40.520833
 
 """
@@ -37,7 +37,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "3e7ba2172180"
-down_revision: str | Sequence[str] | None = "2510718f486e"
+down_revision: str | Sequence[str] | None = "e7123e26c0be"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

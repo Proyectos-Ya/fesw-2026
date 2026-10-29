@@ -133,8 +133,9 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
   - **Guarda de escritura:** solo escribe si cambió `api_changed_at` o
     `api_status_code`.
 - `sync_estados_run` se inserta al empezar y se cierra al terminar. Si vence el
-  tope, queda incompleta con lo listado hasta ahí. Se corrige el texto de
-  `con_tope`.
+  tope, queda incompleta con lo listado hasta ahí y cuenta para la racha de
+  incompletas: sale con 0 hasta juntar `--incompletas-toleradas` seguidas,
+  igual que un listado cortado por 504.
 
 ### 2.4 Ingesta
 
@@ -156,8 +157,10 @@ Hay un paso de datos que pasa a terminal las 240 actuales:
      `reintentos_agotados`.
   4. **Retención, una vez por semana.** Borra las procesadas de licitaciones
      inactivas de más de 30 días y las descartadas de más de 60.
-- **Cortacircuito.** 10 errores transitorios seguidos cortan la pasada, igual
-  que hoy `cuota_agotada`. Las filas que no se alcanzaron no gastan intento.
+- **Cortacircuito.** Cuando fallan 27 de los últimos 30 detalles con error
+  transitorio, se corta la pasada, igual que con `cuota_agotada`. Las filas que
+  no se alcanzaron no gastan intento. Hasta el 2026-10-19 cortaba con 10
+  errores seguidos (ver 2.9).
 - **Presupuesto.** El cliente cuenta sus peticiones. `--max-peticiones` corta la
   corrida al llegar al tope. El total se guarda en `requests`, junto con las
   llamadas a la API de embeddings.
@@ -263,6 +266,34 @@ debería bajar a ~34. El 504 del listado quedó entre 3 y 7%.
   tope registra lo que alcanzó a procesar.
 - `preparar_destino` crea también la colección `tender_lexical` del spike 2;
   sin ella, la ingesta fallaba en cada licitación con texto nuevo.
+- El 10-16 a las 14:02 UTC sync-estados venció el tope de 50 min en la página
+  337, con 3.330 cambios aplicados, 504 al 15% y 19,7 s por página (p50).
+  Railway lo reportó como caída aunque la ventana de 2 h de la corrida
+  siguiente cubría lo que faltó. Se cambiaron tres cosas: el listado se pide de
+  a 6 páginas, el tope sube a 55 min y vencerlo cuenta como incompleta en vez
+  de salir siempre con 1.
+- El 10-19, primer día hábil con esos cambios, sync-estados completó todas las
+  corridas, pero la de las 15:03 tardó 53 min (3.868 cambios, 25% de 504 y 500
+  en el listado). Con la ventana fija de 2 h cada corrida volvía a listar la
+  hora anterior entera. Ahora la ventana va desde el inicio de la última
+  corrida completa más 15 min (~1 h 15 en lo normal) y crece sola después de
+  una incompleta, sin pasar de `SYNC_ESTADOS_VENTANA_HORAS` (2 h). Una corrida
+  que toca el techo de ítems se cierra como incompleta, para que la siguiente
+  no arranque desde ella.
+- El mismo día la ingesta de las 16:02 se cortó a los 2,8 min por el
+  cortacircuito, con 938 pendientes y procesando 1 de cada 3. Con 10 detalles
+  a la vez y la API fallando entre el 30 y el 67%, 10 errores seguidos salían
+  solos. Ahora corta cuando fallan 27 de los últimos 30.
+- El 10-20 sync-estados tuvo dos incompletas seguidas en hora punta (18:00 y
+  19:03). Con el máximo de 2 h, la completa siguiente no podía mirar hasta la
+  última completa (17:01), y una hora quedó vista solo por corridas que no
+  terminaron. El máximo de la ventana pasa a 3 h.
+- El mismo día el cortacircuito cortó la pasada de reintentos nocturna con 94
+  de 147 detalles en 504, y 130 filas no gastaron su reintento. Esa pasada toma
+  justo lo que viene fallando, así que ya no se corta: cada fila tiene su
+  límite de 5 noches.
+- La frecuente que llega a su tope cierra como `tope` en vez de `failed`. Sale
+  con 0 y lo pendiente sigue en la cola.
 
 ---
 

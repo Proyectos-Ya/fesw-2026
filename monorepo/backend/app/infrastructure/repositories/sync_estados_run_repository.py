@@ -93,6 +93,13 @@ class SyncEstadosRunRepository:
         )
         return (await self.session.exec(stmt)).one()
 
+    async def inicio_ultima_completa(self) -> datetime | None:
+        """Cuándo empezó la última corrida completa: de ahí lista la siguiente."""
+        stmt = select(func.max(SyncEstadosRunModel.started_at)).where(
+            col(SyncEstadosRunModel.complete).is_(True)
+        )
+        return (await self.session.exec(stmt)).one()
+
     async def contar(self) -> int:
         stmt = select(func.count()).select_from(SyncEstadosRunModel)
         return (await self.session.exec(stmt)).one()

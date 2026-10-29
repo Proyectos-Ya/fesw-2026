@@ -115,6 +115,7 @@ from scripts.ingesta_compartida import (
     es_local,
     imprimir_resumen,
     preparar_destino,
+    salir,
     vaciar_cola,
 )
 
@@ -248,7 +249,7 @@ def _avisos_del_vaciado(resultado: ResultadoRondas) -> None:
         )
     elif resultado.api_caida:
         print(
-            "\nAVISO: la API devolvió errores seguidos y se cortó el vaciado sin\n"
+            "\nAVISO: casi todos los últimos detalles fallaron y se cortó el vaciado sin\n"
             "cobrar intentos a lo que faltaba. Lo retoma la corrida siguiente."
         )
     elif resultado.sin_avance:
@@ -555,9 +556,11 @@ async def vaciar_frecuente(
         )
     except asyncio.CancelledError:
         # Lo que se alcanzó a hacer queda registrado aunque venza el tope.
+        # `tope` y no `failed`: la corrida sale con 0 y lo pendiente sigue en la
+        # cola para la siguiente. Con `failed` parecía una falla en el historial.
         await servicio.registrar_fin(
             run_id,
-            status="failed",
+            status="tope",
             processed=resultado.procesadas,
             failed=resultado.pendientes,
             requests=peticiones() if peticiones else None,
@@ -728,7 +731,7 @@ def main() -> None:
     minutos = args.timeout_minutos or (
         TIMEOUT_FRECUENTE_MINUTOS if frecuente else DEFAULT_TIMEOUT_MINUTOS
     )
-    sys.exit(
+    salir(
         asyncio.run(
             con_timeout(
                 _correr(args, modo),

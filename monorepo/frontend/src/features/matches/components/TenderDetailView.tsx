@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- bootstrap fetch uses the canonical effect+cancel pattern. */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
@@ -27,8 +27,10 @@ import {
 import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 import type { MatchingResult, Tender, DeepAnalysis } from "../tenderTypes";
 import { compraAgilFichaUrl } from "../utils/links";
-import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
+import { offersSummary } from "../utils/offers";
+import { callBadge } from "../utils/secondCall";
 import { CallClosingDates } from "./CallClosingDates";
+import { DeliveryInfo } from "./DeliveryInfo";
 import { TenderAssistantDrawer } from "@/features/tender-assistant/components/TenderAssistantDrawer";
 import { DigestCard } from "@/features/tender-attachments/components/DigestCard";
 import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
@@ -380,6 +382,12 @@ export function TenderDetailView({
   const { match } = state;
   const tender = match.tender as Tender;
   const closing = daysUntilClosing(tender.closing_at, tender.status_code);
+  const llamado = callBadge(tender);
+  const cotizaciones = offersSummary(tender);
+  const revisadoEl =
+    tender.received_offers_count != null && tender.offers_checked_at
+      ? `Revisado el ${formatDateTime(tender.offers_checked_at)}`
+      : undefined;
   const buyer = tender.buyer_name ?? "Organismo no especificado";
   const officialUrl = compraAgilFichaUrl(tender.code);
   // El backend ya evalúa estado y fecha de cierre; `closing` cubre el caso de
@@ -491,9 +499,6 @@ export function TenderDetailView({
             >
               {closing.label}
             </Badge>
-            {isSecondCall(tender) && (
-              <Badge tone="info">{SECOND_CALL_LABEL}</Badge>
-            )}
             <span className="font-mono text-xs text-text-subtle">
               ID {tender.code}
             </span>
@@ -567,21 +572,6 @@ export function TenderDetailView({
         </div>
       </header>
 
-      {/* Anexos oficiales (plan 233, decisión 1): bajo el header, antes de la tarjeta de análisis IA */}
-      <TenderAttachmentsPanel
-        tenderId={tenderId}
-        tenderCode={tender.code}
-        onReadyKeyChange={handleReadyKeyChange}
-        onUploadSuccess={() => {
-          reportInteraction("anexo");
-          void triggerScoreRecalculation();
-          // Subir un anexo dispara la extracción de hitos (plan 233): la sección
-          // empieza a consultar mientras la IA lee.
-          setMilestonesRefreshKey((k) => k + 1);
-        }}
-        onAnalysisFinished={handleAnalysisFinished}
-      />
-
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-5">
         <KeyValueCard
           icon="wallet"
@@ -594,23 +584,27 @@ export function TenderDetailView({
           value={formatClosingDate(tender.closing_at)}
           hint={closing.label}
         />
+        {/* El llamado y sus cotizaciones van juntos: en segundo llamado la cifra
+            suma los dos, y el desglose de la pista se lee junto al badge. */}
         <KeyValueCard
-          icon="clock"
-          eyebrow="Publicación"
-          value={formatClosingDate(tender.published_at)}
+          icon="layers"
+          eyebrow="Llamado y cotizaciones"
+          value={
+            <div className="flex flex-col items-start gap-2">
+              <Badge tone={llamado.tone}>{llamado.label}</Badge>
+              <span>{cotizaciones.value}</span>
+            </div>
+          }
+          hint={
+            [cotizaciones.detail, revisadoEl].filter(Boolean).join(" · ") ||
+            undefined
+          }
         />
       </div>
 
-      <Section title="Requisitos y descripción" icon="file-text">
-        {tender.description ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
-            {tender.description}
-          </p>
-        ) : (
-          <p className="text-sm italic text-text-subtle">
-            El organismo no incluyó una descripción detallada.
-          </p>
-        )}
+      <Section title="Entrega y requisitos" icon="package">
+        <DeliveryInfo tender={tender} />
+        <CallClosingDates tender={tender} className="mt-5" />
 
         {tender.items.length > 0 && (
           <div className="mt-5">
@@ -648,6 +642,34 @@ export function TenderDetailView({
 
           <DigestCard tenderId={tenderId} refreshKey={digestRefreshKey} />
         </div>
+      </Section>
+
+      <Section title="Documentos" icon="paperclip">
+        <TenderAttachmentsPanel
+          tenderId={tenderId}
+          tenderCode={tender.code}
+          onReadyKeyChange={handleReadyKeyChange}
+          onUploadSuccess={() => {
+            reportInteraction("anexo");
+            void triggerScoreRecalculation();
+            // Subir un anexo dispara la extracción de hitos (plan 233): la sección
+            // empieza a consultar mientras la IA lee.
+            setMilestonesRefreshKey((k) => k + 1);
+          }}
+          onAnalysisFinished={handleAnalysisFinished}
+        />
+      </Section>
+
+      <Section title="Descripción" icon="file-text">
+        {tender.description ? (
+          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
+            {tender.description}
+          </p>
+        ) : (
+          <p className="text-sm italic text-text-subtle">
+            El organismo no incluyó una descripción detallada.
+          </p>
+        )}
       </Section>
 
       <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
@@ -750,8 +772,6 @@ export function TenderDetailView({
         </div>
       )}
 
-      <CallClosingDates tender={tender} />
-
       {/* Análisis de compatibilidad IA si ya existe */}
       {analysis && (
         <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
@@ -833,6 +853,9 @@ export function TenderDetailView({
       <Section title="Hitos y fechas importantes" icon="calendar">
         <MilestonesSection tenderId={tenderId} refreshKey={milestonesRefreshKey} />
         <p className="mt-4 text-xs text-text-subtle">
+          Publicada en Mercado Público: {formatDateTime(tender.published_at)}
+        </p>
+        <p className="mt-1 text-xs text-text-subtle">
           Última modificación en Mercado Público:{" "}
           {formatDateTime(tender.last_change_at)}
         </p>
@@ -904,7 +927,7 @@ function KeyValueCard({
 }: {
   icon: string;
   eyebrow: string;
-  value: string;
+  value: ReactNode;
   hint?: string;
 }) {
   return (

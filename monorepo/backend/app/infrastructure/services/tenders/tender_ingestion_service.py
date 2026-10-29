@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -60,6 +61,7 @@ from app.infrastructure.services.tenders.documentos_mp import (
     documentos_desde_payload,
     documentos_por_codigo,
 )
+from app.infrastructure.services.tenders.entrega import leer_entrega, leer_requisitos
 from app.infrastructure.services.tenders.listado_cambios import cambio_desde_item
 from app.infrastructure.services.tenders.llamados import leer_llamado
 from app.infrastructure.services.tenders.mercado_publico_client import (
@@ -67,6 +69,7 @@ from app.infrastructure.services.tenders.mercado_publico_client import (
     ErrorTransitorioMercadoPublico,
     MercadoPublicoClient,
 )
+from app.infrastructure.services.tenders.ofertas import leer_total_ofertas
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 from app.shared.datetime_utils import fecha_mp_a_utc, leer_fecha_mp, utc_now_naive
 from app.shared.ingestion_window import calcular_ventana
@@ -102,10 +105,14 @@ MAX_REINTENTOS_NOCTURNOS = 5
 # una falla suelta se recupera dentro de unas horas.
 MAX_INTENTOS_DIURNOS = 3
 
-# Errores transitorios seguidos que cortan la pasada. Con la API caída, cada
-# licitación que se pide igual gasta sus intentos y su cuota. Diez seguidos ya no
-# son una licitación rota sino el gateway.
-UMBRAL_CORTACIRCUITO = 10
+# El cortacircuito corta la pasada cuando fallan `FALLAS_CORTACIRCUITO` de los
+# últimos `VENTANA_CORTACIRCUITO` detalles. Con la API caída, cada licitación que
+# se pide igual gasta sus intentos y su cuota. Antes cortaba con 10 errores
+# seguidos, pero con 10 detalles a la vez y la API fallando entre el 30 y el 67%
+# en hora punta, esa racha salía sola: el 2026-10-19 a las 16:02 cortó una
+# corrida a los 2,8 min con 938 pendientes, cuando aún entraba una de cada tres.
+VENTANA_CORTACIRCUITO = 30
+FALLAS_CORTACIRCUITO = 27
 
 # Retención de la cola (plan 305). Sin poda, `tender_metadata` crecía ~5.600
 # filas por día hábil para siempre.
@@ -157,7 +164,8 @@ class ResultadoProceso:
     procesadas: int = 0
     fallidas: int = 0
     cuota_agotada: bool = False
-    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    # El cortacircuito saltó: casi todos los últimos detalles dieron un error
+    # transitorio.
     api_caida: bool = False
     # El cron de estados vio un cambio posterior al pedido del detalle: no se
     # escribió y la fila quedó pendiente para la corrida siguiente.
@@ -210,19 +218,27 @@ def _cierre_ya_vencio(fecha_cierre: str | None, ahora_utc_naive: datetime) -> bo
 
 
 class _Cortacircuito:
-    """Cuenta errores transitorios seguidos entre las tareas de una pasada."""
+    """Mira los últimos resultados de detalle de una pasada, entre sus tareas.
 
-    def __init__(self) -> None:
-        self.seguidos = 0
+    `activo=False` lo deja mirando sin cortar nunca. Es lo que usa la pasada de
+    reintentos nocturna: toma justo lo que viene fallando, así que casi todo
+    falla por diseño, y cada fila ya tiene su límite de 5 noches. El 2026-10-20
+    el cortacircuito la cortó con 94 de 147 detalles en 504 y 130 filas no
+    gastaron su reintento.
+    """
+
+    def __init__(self, *, activo: bool = True) -> None:
+        self.activo = activo
+        self.ultimos: deque[bool] = deque(maxlen=VENTANA_CORTACIRCUITO)
         self.abierto = asyncio.Event()
 
     def fallo(self) -> None:
-        self.seguidos += 1
-        if self.seguidos >= UMBRAL_CORTACIRCUITO:
+        self.ultimos.append(False)
+        if self.activo and self.ultimos.count(False) >= FALLAS_CORTACIRCUITO:
             self.abierto.set()
 
     def exito(self) -> None:
-        self.seguidos = 0
+        self.ultimos.append(True)
 
 
 def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
@@ -248,13 +264,16 @@ def condiciones_cola(modo: ModoCola, antes_de: datetime | None = None) -> list:
 
 def _orden_cola(modo: ModoCola) -> list:
     if modo is ModoCola.NUEVAS:
-        # Primero lo que baja la latencia de entrada: lo que no tenemos.
+        # Primero lo que nunca falló: si una que ya dio 504 va al frente, el
+        # cortacircuito salta antes de llegar al resto. El 2026-10-15 pasó en
+        # las 12 corridas del día y 1.104 actualizar nunca se pidieron. Dentro
+        # de cada número de intentos, las nuevas antes que las actualizar.
         nueva_primero = case(
             (col(TenderMetadataModel.pending_reason) == "nueva", 0), else_=1
         )
         return [
-            nueva_primero,
             col(TenderMetadataModel.attempts).asc(),
+            nueva_primero,
             col(TenderMetadataModel.created_at).asc(),
         ]
     if modo is ModoCola.REINTENTOS:
@@ -864,7 +883,7 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         # que salir, y lo que hace falta es que las que aún no empezaron no
         # gasten sus cuatro reintentos contra una cuota que ya no existe.
         cuota_agotada = asyncio.Event()
-        cortacircuito = _Cortacircuito()
+        cortacircuito = _Cortacircuito(activo=modo is not ModoCola.REINTENTOS)
         semaforo = asyncio.Semaphore(max(1, settings.mercadopublico_detail_concurrency))
 
         await asyncio.gather(
@@ -886,9 +905,9 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         resultado.api_caida = cortacircuito.abierto.is_set()
         if resultado.api_caida:
             print(
-                f"[IngestionService] {UMBRAL_CORTACIRCUITO} errores transitorios "
-                "seguidos: se corta la pasada sin cobrar intentos a las que "
-                "faltaban."
+                f"[IngestionService] {FALLAS_CORTACIRCUITO} de los últimos "
+                f"{VENTANA_CORTACIRCUITO} detalles fallaron: se corta la pasada "
+                "sin cobrar intentos a las que faltaban."
             )
         if resultado.cuota_agotada:
             print(
@@ -1241,6 +1260,8 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
         presupuesto = detail.get("presupuesto", {}) or {}
         estado = detail.get("estado", {}) or {}
         llamado = leer_llamado(detail)
+        entrega = leer_entrega(detail)
+        requisitos = leer_requisitos(detail)
 
         # Sin las dos fechas oficiales no se ingesta: antes se rellenaban con
         # "ahora", y `_actualizar` lo leía como un cambio de cierre. El error
@@ -1273,6 +1294,11 @@ class TenderIngestionService(ITenderIngestionService, ITenderIngestionQueue):
             NumeroLlamado=llamado.numero,
             FechaCierrePrimerLlamado=llamado.cierre_primer_llamado,
             FechaCierreSegundoLlamado=llamado.cierre_segundo_llamado,
+            TotalOfertasRecibidas=leer_total_ofertas(detail),
+            DireccionEntrega=entrega.direccion,
+            PlazoEntregaDias=entrega.plazo_dias,
+            RequisitosMedioambientales=requisitos.medioambientales,
+            RequisitosImpactoSocial=requisitos.impacto_social,
             RutComprador=str(institucion.get("rut", "Sin RUT")),
             NombreOrganismo=str(institucion.get("organismo_comprador", "Desconocido")),
             UnidadCompra=str(institucion.get("unidad_compra", "Sin Unidad")),

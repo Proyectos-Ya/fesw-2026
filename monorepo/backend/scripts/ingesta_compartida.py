@@ -12,6 +12,8 @@ contra la API y no son obvias.
 """
 
 import json
+import os
+import sys
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -299,7 +301,8 @@ class ResultadoRondas:
     segundos: float = 0.0
     cuota_agotada: bool = False
     sin_avance: bool = False
-    # El cortacircuito saltó: la API devolvió errores transitorios seguidos.
+    # El cortacircuito saltó: casi todos los últimos detalles dieron un error
+    # transitorio.
     api_caida: bool = False
 
     @property
@@ -329,8 +332,8 @@ async def vaciar_cola(
     * **Cuota agotada.** Seguir gasta los cuatro reintentos del cliente contra
       una cuota que ya no existe. Se para y se retoma en la corrida siguiente:
       lo que está encolado no se pierde.
-    * **API caída.** El cortacircuito del servicio saltó con errores
-      transitorios seguidos. La ronda siguiente se los volvería a cobrar.
+    * **API caída.** El cortacircuito del servicio saltó: fallaron 27 de los
+      últimos 30 detalles. La ronda siguiente se los volvería a cobrar.
     * **Varias rondas sin avance.** Alguna licitación está fallando de forma
       reproducible, o la API está caída. Insistir para siempre bloquearía la
       cola. Una ronda que procesa menos de `EXITO_MINIMO_POR_PASADA` de lo que
@@ -392,3 +395,18 @@ async def vaciar_cola(
 
     resultado.segundos = time.perf_counter() - inicio
     return resultado
+
+
+def salir(codigo: int) -> None:
+    """Termina el proceso del cron con `codigo`, aunque quede un hilo vivo.
+
+    `sys.exit` espera a los hilos que no son daemon antes de terminar. El
+    2026-10-21 la corrida de sync-estados de las 12:03 imprimió su resumen a
+    las 12:33 y el contenedor siguió vivo sin usar CPU: Railway no arranca un
+    cron mientras el anterior siga corriendo y se saltó la corrida de las
+    13:00. A esta altura todo lo que importa ya se escribió en la base, así que
+    se vacía la salida y se termina sin esperar.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(codigo)
