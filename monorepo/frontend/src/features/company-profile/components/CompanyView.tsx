@@ -257,7 +257,7 @@ function CompanyLogoUploadSection({
   onLogoUpdated,
 }: {
   supplier: Supplier;
-  onLogoUpdated?: (logoUrl: string) => void;
+  onLogoUpdated?: (supplier: Supplier) => void;
 }) {
   const { logoUrl, uploadLogo } = useCompany();
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -274,8 +274,8 @@ function CompanyLogoUploadSection({
       const result = await uploadLogo(file);
       if (!result.ok) {
         setLogoError(result.error ?? "Formato inválido o archivo muy pesado");
-      } else {
-        onLogoUpdated?.(currentLogo ?? "");
+      } else if (result.supplier) {
+        onLogoUpdated?.(result.supplier);
       }
     } finally {
       setIsUploading(false);
@@ -360,9 +360,7 @@ function CompanyDetails({
       <div className="mb-8 pb-6 border-b border-border-subtle">
         <CompanyLogoUploadSection
           supplier={supplier}
-          onLogoUpdated={(newLogoUrl) =>
-            onSupplierChange({ ...supplier, logo_url: newLogoUrl })
-          }
+          onLogoUpdated={(updatedSupplier) => onSupplierChange(updatedSupplier)}
         />
       </div>
 

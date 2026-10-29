@@ -149,9 +149,6 @@ export function Sidebar() {
     <>
       {/* Barra superior móvil (< 768px) */}
       <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-card sticky top-0 z-30">
-        <Link href="/" className="inline-block">
-          <BrandLogo width={124} height={32} />
-        </Link>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -161,6 +158,9 @@ export function Sidebar() {
         >
           <Icon name="menu" size={20} />
         </button>
+        <Link href="/" className="inline-block">
+          <BrandLogo width={124} height={32} />
+        </Link>
       </div>
 
       {/* Fondo oscuro del Drawer móvil */}

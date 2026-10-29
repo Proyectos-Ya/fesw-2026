@@ -22,12 +22,18 @@ export type CompanyState =
   | { status: "with-company"; supplier: Supplier }
   | { status: "error" };
 
+export interface UploadLogoResult {
+  ok: boolean;
+  error?: string;
+  supplier?: Supplier;
+}
+
 export interface CompanyContextValue {
   company: CompanyState;
   /** URL del logo corporativo sincronizado en toda la app desde la nube. */
   logoUrl: string | null;
   /** Sube y persiste el logo corporativo en la nube de forma reactiva. */
-  uploadLogo: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  uploadLogo: (file: File) => Promise<UploadLogoResult>;
   /** Actualiza directamente el logo en el estado local de memoria. */
   updateCompanyLogo: (logoUrl: string | null) => void;
   /** Actualiza el estado local tras crear o editar la empresa. */
@@ -79,7 +85,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const uploadLogo = useCallback(
-    async (file: File): Promise<{ ok: boolean; error?: string }> => {
+    async (file: File): Promise<UploadLogoResult> => {
       const validationError = validateCompanyLogoFile(file);
       if (validationError) {
         return { ok: false, error: validationError };
@@ -88,7 +94,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         const updatedSupplier = await uploadMySupplierLogo(file);
         setSupplier(updatedSupplier);
         void refreshWorkspaces();
-        return { ok: true };
+        return { ok: true, supplier: updatedSupplier };
       } catch (err: unknown) {
         const msg =
           err instanceof Error
