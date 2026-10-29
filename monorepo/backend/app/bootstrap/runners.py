@@ -49,6 +49,7 @@ from app.infrastructure.repositories.calendar_repository import (
     CalendarEventLinkRepository,
 )
 from app.infrastructure.repositories.export_job_repository import ExportJobRepository
+from app.infrastructure.repositories.feedback_repository import MatchReportRepository
 from app.infrastructure.repositories.matching_result_repository import (
     MatchingResultRepository,
 )
@@ -180,6 +181,7 @@ def build_scan_rank_tenders_use_case(
         ),
         matching_result_repo=matching_results,
         embedding_service=state.embedding_service,
+        match_report_repo=MatchReportRepository(session),
     )
 
 
