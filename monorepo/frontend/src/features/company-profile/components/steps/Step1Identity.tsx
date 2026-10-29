@@ -4,22 +4,43 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { formatRut, step1Schema, type Step1Data } from "../../profileSchema";
-import { checkRutExists } from "../../services/supplierService";
+import { checkRutExists, type CompanyProfileImport } from "../../services/supplierService";
 import { Input } from "@/features/shared/components/Input";
 import { WizardNavigation } from "../WizardNavigation";
+import { CompanyImportCard } from "../CompanyImportCard";
+import { ImportedFieldReview, isFieldLocked, type FieldReview } from "../ImportedFieldReview";
 
 interface Step1Props {
   defaultValues: Partial<Step1Data>;
   adminName: string;
+  importedProfile: CompanyProfileImport | null;
+  onImported: (profile: CompanyProfileImport) => void;
+  /** El RUT cambió después de importar: lo importado ya no corresponde. */
+  onImportDiscarded: () => void;
+  legalNameReview: FieldReview;
+  /** "Siguiente" queda bloqueado mientras la razón social importada no se confirma. */
+  nextBlocked: boolean;
   onNext: (data: Step1Data) => void;
   onBack: () => void;
 }
 
-export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step1Props) {
+export function Step1Identity({
+  defaultValues,
+  adminName,
+  importedProfile,
+  onImported,
+  onImportDiscarded,
+  legalNameReview,
+  nextBlocked,
+  onNext,
+  onBack,
+}: Step1Props) {
   const {
     register,
     handleSubmit,
     setError,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
@@ -31,6 +52,32 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
   });
   const [isCheckingRut, setIsCheckingRut] = useState(false);
   const rutField = register("rut");
+  const rut = watch("rut");
+
+  const setLegalName = (value: string) =>
+    setValue("legal_name", value, { shouldDirty: true, shouldValidate: value !== "" });
+
+  const handleImported = (profile: CompanyProfileImport) => {
+    onImported(profile);
+    const legalName = profile.legal_name.trim();
+    const isOtherRut =
+      importedProfile !== null && formatRut(importedProfile.rut) !== formatRut(profile.rut);
+    // Con otro RUT el wizard vacía la razón social anterior; el campo vivo hace lo mismo.
+    if (legalName) setLegalName(legalName);
+    else if (isOtherRut) setLegalName("");
+  };
+
+  const handleRutChanged = (newRut: string) => {
+    if (!importedProfile || formatRut(importedProfile.rut) === newRut) return;
+    // Lo importado es de la empresa del RUT anterior, aunque ya se haya confirmado.
+    if (legalNameReview.status) setLegalName("");
+    onImportDiscarded();
+  };
+
+  const handleClearLegalName = () => {
+    legalNameReview.onClear();
+    setLegalName("");
+  };
 
   const handleNext = async (data: Step1Data) => {
     setIsCheckingRut(true);
@@ -72,19 +119,6 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
 
       <div className="flex flex-col gap-6">
         <Input
-          label="Nombre de la empresa"
-          placeholder="Ej: Constructora Pérez y Asociados Ltda."
-          error={errors.legal_name?.message}
-          {...register("legal_name")}
-        />
-        <Input
-          label="Nombre de fantasía (opcional)"
-          placeholder="Ej: Constructora Pérez"
-          hint="El nombre con el que se conoce comercialmente a tu empresa."
-          error={errors.trade_name?.message}
-          {...register("trade_name")}
-        />
-        <Input
           label="RUT de la empresa"
           placeholder="Ej: 76.123.456-7"
           hint="Formato: XX.XXX.XXX-X"
@@ -93,8 +127,36 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
           {...rutField}
           onChange={(e) => {
             e.target.value = formatRut(e.target.value);
+            handleRutChanged(e.target.value);
             return rutField.onChange(e);
           }}
+        />
+        <CompanyImportCard
+          rut={rut ?? ""}
+          imported={importedProfile}
+          onImported={handleImported}
+          onInvalidRut={(message) => setError("rut", { type: "manual", message })}
+        />
+        <div className="flex flex-col gap-2">
+          <Input
+            label="Nombre de la empresa"
+            placeholder="Ej: Constructora Pérez y Asociados Ltda."
+            error={errors.legal_name?.message}
+            readOnly={isFieldLocked(legalNameReview.status)}
+            {...register("legal_name")}
+          />
+          <ImportedFieldReview
+            fieldLabel="razón social"
+            {...legalNameReview}
+            onClear={handleClearLegalName}
+          />
+        </div>
+        <Input
+          label="Nombre de fantasía (opcional)"
+          placeholder="Ej: Constructora Pérez"
+          hint="El nombre con el que se conoce comercialmente a tu empresa."
+          error={errors.trade_name?.message}
+          {...register("trade_name")}
         />
       </div>
 
@@ -104,6 +166,7 @@ export function Step1Identity({ defaultValues, adminName, onNext, onBack }: Step
         isFirstStep
         isLastStep={false}
         isLoading={isCheckingRut}
+        nextDisabled={nextBlocked}
       />
     </div>
   );

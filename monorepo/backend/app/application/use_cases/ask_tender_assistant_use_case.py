@@ -85,7 +85,7 @@ def _formatear_perfil_empresa(supplier) -> str:
         f"- Número de Empleados: {supplier.num_employees or 1}\n"
         f"- Regiones de Operación: {', '.join(supplier.regions or [])}\n"
         f"- Rubros / Sectores: {', '.join(supplier.sectors or [])}\n"
-        f"- Certificaciones y Registros: {', '.join(supplier.certifications or [])}\n"
+        f"- Certificaciones y Registros: {', '.join(supplier.certification_names)}\n"
         f"- Palabras Clave de la Empresa: {', '.join(supplier.keywords or [])}\n"
         f"- Descripción de la Empresa: {supplier.description or 'Sin descripción'}\n"
     )

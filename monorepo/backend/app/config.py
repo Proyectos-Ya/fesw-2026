@@ -25,6 +25,7 @@ _URL_POR_FUENTE_DE_EMPRESAS = {
     "none": "",
     "sre": "https://sre.cl",
     "web-empresario": "https://api-sii-chile.webempresario.com",
+    "chilerut": "https://chilerutempresa.cl",
 }
 
 
@@ -187,7 +188,7 @@ class Settings(BaseSettings):
     # rubros y palabras clave en el wizard. Una sola a la vez; las dos devuelven
     # el mismo borrador (SRE no entrega regiones). "none" apaga la importación y
     # el wizard sigue funcionando a mano. Ver spikes/spike-1/1.1-onboarding.md.
-    company_lookup_provider: Literal["none", "sre", "web-empresario"] = "none"
+    company_lookup_provider: Literal["none", "sre", "web-empresario", "chilerut"] = "none"
     # Web Empresario la manda como `X-Api-Key`; SRE, como `token` en el cuerpo.
     company_lookup_api_key: str | None = None
     # Solo para apuntar a otro host. Vacío usa el oficial de la fuente elegida.

@@ -10,7 +10,8 @@ pierde lo que la glosa sí dice. Las reglas que calzan se acumulan; el comodín 
 comercio/fabricación solo aplica si ninguna otra calzó. Una glosa sin coincidencias
 no fuerza un rubro.
 
-Los rubros son los provisionales de `app/shared/sectors.py`.
+Los rubros son los de Mercado Público (`app/shared/sectors.py`), reapuntados desde
+los provisionales con la tabla de correspondencia del plan 311 (§2.1).
 """
 
 import re
@@ -19,25 +20,39 @@ import unicodedata
 # (palabras clave, excepciones, rubros). Se compara contra la glosa en mayúsculas
 # y sin tildes. Una excepción presente anula la regla aunque haya palabra clave.
 _RULES: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
-    (("REPARACION", "MANTENCION", "MANTENIMIENTO"), (), ("Mantención y Reparación",)),
+    (
+        ("REPARACION", "MANTENCION", "MANTENIMIENTO"),
+        # Esta regla apunta a un rubro de construcción, y con él la empresa recibe
+        # las preguntas MOP/MINVU del banco. La reparación de vehículos, máquinas,
+        # equipos informáticos o aparatos domésticos no es de ese rubro.
+        (
+            "VEHICULO", "AUTOMOTOR", "MOTOCICLETA", "MAQUINARIA", "MAQUINAS",
+            "ELECTRODOMESTICO", "USO DOMESTICO", "COMPUTADOR", "INFORMATIC",
+            "SOFTWARE", "EFECTOS PERSONALES",
+        ),  # fmt: skip
+        ("Servicios de construcción y mantenimiento",),
+    ),
+    (
+        ("REPARACION DE APARATOS DE USO DOMESTICO", "REPARACION DE ELECTRODOMESTICOS"),
+        (),
+        ("Servicios de cuidado personal y domésticos",),
+    ),
     (
         ("CONSTRUCCION", "EDIFICACION", "OBRA GRUESA", "TERMINACION Y ACABADO", "ALBANIL"),
         (),
-        ("Obras de Construcción e Infraestructura",),
+        ("Servicios de construcción y mantenimiento",),
     ),
-    (("ARQUITECTURA", "INGENIERIA"), (), ("Arquitectura e Ingeniería",)),
+    (
+        ("ARQUITECTURA", "INGENIERIA"),
+        (),
+        ("Servicios basados en ingeniería, ciencias sociales y tecnología de la información",),
+    ),
     (
         (
             "PROGRAMACION INFORMATICA",
             "SOFTWARE",
             "DESARROLLO DE APLICACIONES",
             "SISTEMAS INFORMATICOS",
-        ),
-        (),
-        ("Desarrollo de Software",),
-    ),
-    (
-        (
             "TELECOMUNICACION",
             "TELEFONIA",
             "RADIODIFUSION",
@@ -45,44 +60,55 @@ _RULES: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
             "PROVEEDORES DE ACCESO A INTERNET",
         ),
         (),
-        ("Tecnología y Telecomunicaciones",),
+        ("Tecnologías de la información, telecomunicaciones y radiodifusión",),
     ),
-    (("CONSULTORIA", "ASESORIA", "ASESORAMIENTO"), (), ("Consultoría y Asesoría Técnica",)),
+    (("CONSULTORIA", "ASESORIA", "ASESORAMIENTO"), (), ("Servicios profesionales, administrativos y consultorías de gestión empresarial",)),
     (
-        ("SALUD", "MEDIC", "ENFERMERIA", "HOSPITAL", "CLINICA", "ODONTOLOG", "FARMAC", "VETERINARI"),
+        ("SALUD", "MEDIC", "ENFERMERIA", "HOSPITAL", "CLINICA", "ODONTOLOG", "VETERINARI"),
         (),
-        ("Salud y Equipamiento Médico",),
+        ("Salud, servicios sanitarios y alimentación",),
     ),
+    (("FARMAC",), (), ("Medicamentos y productos farmacéuticos",)),
     (
         ("ENSENANZA", "EDUCACION", "CAPACITACION", "FORMACION TECNICA", "ACADEMIA"),
         (),
-        ("Educación y Capacitación",),
+        ("Educación, formación, entrenamiento y capacitación",),
     ),
     (
         ("TRANSPORTE", "CARGA", "FLETE", "LOGISTIC", "ALMACENAMIENTO"),
         (),
-        ("Transporte y Logística",),
+        ("Servicios de transporte, almacenaje y correo",),
+    ),
+    (
+        ("COMIDA", "RESTAURANT", "GASTRONOM", "BANQUETE", "CASINO DE ALIMENTACION"),
+        (),
+        ("Servicios de Viajes, alimentación, alojamiento y entretenimiento",),
     ),
     (
         (
-            "ALIMENT", "COMIDA", "RESTAURANT", "GASTRONOM", "PESCA", "CULTIVO",
-            "GANADERIA", "AVICOLA", "CARNE", "LACTEO", "LECHE", "PAN ", "PANADERIA",
-            "BEBIDAS", "PISCO", "VINO", "CERVEZ", "FRUTAS", "VERDURAS",
+            "ALIMENT", "PESCA", "CULTIVO", "GANADERIA", "AVICOLA", "CARNE", "LACTEO",
+            "LECHE", "PAN ", "PANADERIA", "BEBIDAS", "PISCO", "VINO", "CERVEZ",
+            "FRUTAS", "VERDURAS",
         ),  # fmt: skip
-        # 476301 vende artículos de caza y pesca, no pescado.
-        ("CAZA Y PESCA",),
-        ("Alimentación y Gastronomía",),
+        # 476301 vende artículos de caza y pesca, no pescado. Los restaurantes van
+        # a la regla anterior, que es de servicios.
+        ("CAZA Y PESCA", "RESTAURANT", "COMIDA"),
+        ("Alimentos, bebidas y tabaco",),
     ),
     (
         ("LIMPIEZA", "ASEO", "SANITIZACION", "DESINFECCION"),
         (),
-        ("Limpieza y Aseo Industrial",),
+        ("Servicios de limpieza industrial",),
     ),
-    (("SEGURIDAD", "VIGILANCIA", "GUARDIA"), (), ("Seguridad y Vigilancia",)),
+    (
+        ("SEGURIDAD", "VIGILANCIA", "GUARDIA"),
+        (),
+        ("Servicios de defensa nacional, orden público y seguridad",),
+    ),
     (
         ("RESIDUOS", "DESECHOS", "RECICLAJE", "AMBIENTAL", "DESCONTAMINACION", "AGUAS RESIDUALES"),
         (),
-        ("Medio Ambiente y Sustentabilidad",),
+        ("Servicios medioambientales",),
     ),
     (
         # Frases completas y no la raíz "ELECTRIC": esa raíz calzaba con "venta al
@@ -93,24 +119,32 @@ _RULES: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
             "SUMINISTRO DE ELECTRICIDAD",
         ),  # fmt: skip
         (),
-        ("Energía y Electricidad",),
+        ("Maquinaria para generación y distribución de energía",),
     ),
     (
         ("IMPRENTA", "IMPRESION", "EDICION", "DISENO GRAFICO", "FOTOCOPIADO", "PUBLICIDAD", "FOTOGRAFIA"),
         (),
-        ("Servicios de Imprenta y Diseño",),
+        ("Servicios editoriales, de diseño, publicidad, gráficos y artistas",),
     ),
-    (("JARDIN", "PAISAJISMO"), (), ("Jardinería y Paisajismo",)),
+    (
+        ("JARDIN", "PAISAJISMO"),
+        (),
+        ("Servicios agrícolas, pesqueros, forestales y relacionados con la fauna",),
+    ),
     (
         ("RECURSOS HUMANOS", "RECLUTAMIENTO", "SUMINISTRO DE PERSONAL", "AGENCIAS DE EMPLEO"),
         (),
-        ("Recursos Humanos",),
+        ("Servicios profesionales, administrativos y consultorías de gestión empresarial",),
     ),
-    (("CONTABILIDAD", "AUDITORIA", "TENEDURIA DE LIBROS"), (), ("Contabilidad y Auditoría",)),
+    (
+        ("CONTABILIDAD", "AUDITORIA", "TENEDURIA DE LIBROS"),
+        (),
+        ("Servicios financieros, pensiones y seguros",),
+    ),
 )
 
 _CATCHALL_WORDS = ("VENTA", "COMERCIO", "FABRICACION", "ELABORACION", "PRODUCCION", "DISTRIBUCION")
-_CATCHALL_SECTORS = ("Equipos e Insumos Industriales",)
+_CATCHALL_SECTORS = ("Artículos de fabricación y producción",)
 
 
 def _normalize(text: str) -> str:

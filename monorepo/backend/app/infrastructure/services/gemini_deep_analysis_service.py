@@ -56,7 +56,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
             f"Descripción del Perfil: {supplier.description or ''}\n"
             f"Regiones de Operación: {', '.join(supplier.regions or [])}\n"
             f"Sectores Industriales: {', '.join(supplier.sectors or [])}\n"
-            f"Certificaciones del Proveedor: {', '.join(supplier.certifications or [])}\n"
+            f"Certificaciones del Proveedor: {', '.join(supplier.certification_names)}\n"
             f"Palabras Clave: {', '.join(supplier.keywords or [])}\n"
             f"Años de Experiencia: {supplier.years_experience or 0}\n"
             f"Número de Empleados: {supplier.num_employees or 0}"

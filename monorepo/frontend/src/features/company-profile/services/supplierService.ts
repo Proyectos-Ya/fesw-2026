@@ -1,4 +1,4 @@
-import { apiFetch } from "@/features/shared/api/client";
+import { ApiError, TimeoutError, apiFetch } from "@/features/shared/api/client";
 import type { ProfileData } from "../profileSchema";
 
 /** Proveedor tal como lo devuelve el backend tras crearlo. */
@@ -99,6 +99,47 @@ export function importCompanyProfile(rut: string): Promise<CompanyProfileImport>
   return apiFetch<CompanyProfileImport>(
     `/suppliers/profile-import?rut=${encodeURIComponent(rut)}`,
   );
+}
+
+/** `info` no es un fallo (la fuente no conoce el RUT); `warning` sí lo es. */
+export interface ImportErrorDescription {
+  kind: "info" | "warning";
+  message: string;
+}
+
+/**
+ * Traduce el error de `importCompanyProfile` a un aviso para el usuario.
+ * Ningún error bloquea el wizard: el usuario siempre puede completar a mano.
+ */
+export function describeImportError(err: unknown): ImportErrorDescription {
+  if (err instanceof ApiError) {
+    return { kind: err.status === 404 ? "info" : "warning", message: err.message };
+  }
+  if (err instanceof TimeoutError) return { kind: "warning", message: err.message };
+  return {
+    kind: "warning",
+    message:
+      "No pudimos importar los datos de tu empresa. Inténtalo nuevamente o complétalos a mano.",
+  };
+}
+
+/**
+ * Palabras clave sacadas de la descripción de la empresa. Extracción léxica en el
+ * backend, sin IA; `existingKeywords` son las que el usuario ya eligió y no se
+ * vuelven a sugerir.
+ */
+export async function suggestKeywordsFromDescription(
+  description: string,
+  existingKeywords: string[],
+): Promise<string[]> {
+  const { suggested_keywords } = await apiFetch<{ suggested_keywords: string[] }>(
+    "/suppliers/suggest-keywords-from-description",
+    {
+      method: "POST",
+      body: JSON.stringify({ description, existing_keywords: existingKeywords }),
+    },
+  );
+  return suggested_keywords;
 }
 
 /** Campos editables de la empresa; el RUT no se puede modificar. */
