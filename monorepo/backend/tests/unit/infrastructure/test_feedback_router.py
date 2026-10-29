@@ -122,6 +122,18 @@ async def test_reportar_un_analisis_es_el_mismo_endpoint_con_otro_tipo(client):
 
 
 @pytest.mark.asyncio
+async def test_reportar_recorta_los_espacios_del_motivo(client, report_use_case):
+    response = await client.post(
+        f"/tenders/{uuid4()}/reports",
+        json={"kind": "match", "reason": "   No es mi rubro   "},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["reason"] == "No es mi rubro"
+    assert report_use_case.calls[0]["reason"] == "No es mi rubro"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [

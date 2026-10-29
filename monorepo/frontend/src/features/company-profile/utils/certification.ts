@@ -8,7 +8,7 @@ export interface CertificationStatus {
 }
 
 /** Días de anticipación con los que una certificación pasa a "por vencer". */
-export const EXPIRING_SOON_DAYS = 30;
+const EXPIRING_SOON_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

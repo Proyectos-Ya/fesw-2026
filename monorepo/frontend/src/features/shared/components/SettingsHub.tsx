@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, MessageSquare, Star, CheckCircle } from "lucide-react";
 import { Button } from "./Button";
+import { Icon } from "./Icon";
 import { Textarea } from "./Textarea";
 import { NotificationSettings } from "@/features/notifications/components/NotificationSettings";
 import { submitAppComment, submitAppReview } from "../services/feedbackService";
@@ -107,7 +107,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
               : "border-transparent text-text-muted hover:text-text-strong"
           }`}
         >
-          <Bell className="size-4" />
+          <Icon name="bell" className="size-4" />
           Notificaciones
         </button>
 
@@ -122,7 +122,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
               : "border-transparent text-text-muted hover:text-text-strong"
           }`}
         >
-          <MessageSquare className="size-4" />
+          <Icon name="message-square" className="size-4" />
           Comentarios y Quejas
         </button>
 
@@ -137,7 +137,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
               : "border-transparent text-text-muted hover:text-text-strong"
           }`}
         >
-          <Star className="size-4" />
+          <Icon name="star" className="size-4" />
           Dejar Reseña
         </button>
       </div>
@@ -160,7 +160,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
               role="alert"
               className="mt-6 flex items-start gap-3 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-900"
             >
-              <CheckCircle className="size-5 text-teal-600 shrink-0 mt-0.5" />
+              <Icon name="circle-check" className="size-5 text-teal-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">¡Gracias por tu mensaje!</p>
                 <p className="text-xs text-teal-700">
@@ -225,7 +225,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
               role="alert"
               className="mt-6 flex items-start gap-3 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-900"
             >
-              <CheckCircle className="size-5 text-teal-600 shrink-0 mt-0.5" />
+              <Icon name="circle-check" className="size-5 text-teal-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">¡Gracias por tu reseña!</p>
                 <p className="text-xs text-teal-700">
@@ -275,7 +275,8 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
                       aria-label={`${star} estrellas`}
                       className="p-1.5 transition-transform hover:scale-110 cursor-pointer"
                     >
-                      <Star
+                      <Icon
+                        name="star"
                         className={`size-6 ${
                           rating !== null && rating >= star
                             ? "fill-amber-400 text-amber-400"
