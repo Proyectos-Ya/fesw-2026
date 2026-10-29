@@ -174,6 +174,11 @@ class Settings(BaseSettings):
     # saliendo con 0. Una suelta la cubre la ventana de la siguiente; recién al
     # juntar estas hay horas sin mirar y vale el correo de "crashed" de Railway.
     sync_estados_incompletas_toleradas: int = Field(default=3, gt=0)
+    # Días después del cierre en que la ingesta nocturna borra una licitación no
+    # activa que nadie usó (plan 306). Sin la variable son 7. Vacía, `off`,
+    # `none` o `no` apagan el borrado (ver `_retencion_apagada`). `ge=1`: con 0
+    # se borrarían licitaciones recién cerradas.
+    retencion_cerradas_dias: int | None = Field(default=7, ge=1)
     # Región a la que acotar la ingesta (None = todas).
     target_region: str | None = None
     # Heurística de respaldo para resolver comuna del comprador
@@ -506,6 +511,16 @@ class Settings(BaseSettings):
         if faltantes:
             raise ValueError("Falta configurar para Cloudflare R2: " + ", ".join(faltantes))
         return self
+
+    @field_validator("retencion_cerradas_dias", mode="before")
+    @classmethod
+    def _retencion_apagada(cls, valor: object) -> object:
+        """Una variable vacía o `off` apaga el borrado en vez de impedir que
+        arranque la API, que comparte esta configuración con los crons."""
+        apagada = {"", "off", "none", "no"}
+        if isinstance(valor, str) and valor.strip().lower() in apagada:
+            return None
+        return valor
 
     @field_validator("attachment_local_storage_public_url", mode="after")
     @classmethod

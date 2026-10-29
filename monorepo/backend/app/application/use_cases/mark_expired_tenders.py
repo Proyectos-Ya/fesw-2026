@@ -15,10 +15,19 @@ No cuesta cuota de Mercado Público: `closing_at` ya está en Postgres y que el
 plazo haya vencido es aritmética, no una consulta a la API.
 """
 
+from uuid import UUID
+
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.services.indices_de_licitaciones import borrar_de_los_indices
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 
 
@@ -27,9 +36,21 @@ class MarkExpiredTendersUseCase:
         self,
         repository: ITenderRepository,
         tender_vector_repo: ITenderVectorRepository,
+        item_vector_repo: ITenderItemVectorRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
     ):
         self.repo = repository
         self.tender_vector_repo = tender_vector_repo
+        self.item_vector_repo = item_vector_repo
+        self.lexical_tender_repo = lexical_tender_repo
+
+    async def _borrar_de_los_indices(self, tender_ids: list[UUID]) -> None:
+        await borrar_de_los_indices(
+            tender_ids,
+            self.tender_vector_repo,
+            self.item_vector_repo,
+            self.lexical_tender_repo,
+        )
 
     async def execute(self) -> int:
         """Cierra en SQL las vencidas que aún figuran publicadas y borra su punto.
@@ -44,7 +65,7 @@ class MarkExpiredTendersUseCase:
             # corrida siguiente vuelve a encontrarlas en SQL y borrar un punto
             # que ya no existe no es un error. Al revés, quedaría en el índice
             # un punto que SQL ya no volvería a señalar.
-            await self.tender_vector_repo.delete_many(vencidas)
+            await self._borrar_de_los_indices(vencidas)
             await self.repo.mark_as_closed(vencidas)
 
         # Barrido por payload: corrige lo que quedó de antes de esta regla o de
@@ -67,13 +88,25 @@ class PurgeInactiveTenderVectorsUseCase:
         self,
         repository: ITenderRepository,
         tender_vector_repo: ITenderVectorRepository,
+        item_vector_repo: ITenderItemVectorRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
     ):
         self.repo = repository
         self.tender_vector_repo = tender_vector_repo
+        self.item_vector_repo = item_vector_repo
+        self.lexical_tender_repo = lexical_tender_repo
+
+    async def _borrar_de_los_indices(self, tender_ids: list[UUID]) -> None:
+        await borrar_de_los_indices(
+            tender_ids,
+            self.tender_vector_repo,
+            self.item_vector_repo,
+            self.lexical_tender_repo,
+        )
 
     async def execute(self) -> int:
         """Devuelve cuántas licitaciones inactivas había en SQL."""
         inactivas = await self.repo.get_inactive_ids()
-        await self.tender_vector_repo.delete_many(inactivas)
+        await self._borrar_de_los_indices(inactivas)
         await self.tender_vector_repo.delete_by_status_not_in(ACTIVE_TENDER_STATUSES)
         return len(inactivas)
