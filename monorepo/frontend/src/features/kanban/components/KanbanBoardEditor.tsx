@@ -153,7 +153,7 @@ function EditorRow({ column, onRename, onRecolor, onDelete }: EditorRowProps) {
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
-                className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100"
+                className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-surface-hover"
               >
                 Cancelar
               </button>

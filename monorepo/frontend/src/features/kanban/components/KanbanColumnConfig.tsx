@@ -78,7 +78,7 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
       className="mt-2 rounded-md bg-surface-card border border-border-default shadow-md p-3 space-y-3"
     >
       <div>
-        <label className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide mb-1 block">
+        <label className="text-[0.6875rem] font-semibold text-text-subtle uppercase tracking-wide mb-1 block">
           Nombre
         </label>
         <input
@@ -93,7 +93,7 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
       </div>
 
       <div>
-        <label className="text-[11px] font-semibold text-text-subtle uppercase tracking-wide mb-1.5 block">
+        <label className="text-[0.6875rem] font-semibold text-text-subtle uppercase tracking-wide mb-1.5 block">
           Color
         </label>
         <div className="flex items-center gap-1.5 mb-2">
@@ -146,7 +146,7 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
               type="button"
               onClick={() => onReorder("left")}
               disabled={!canMoveLeft}
-              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-warm-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Mover columna a la izquierda"
             >
               <Icon name="chevron-left" size={14} />
@@ -155,7 +155,7 @@ export function KanbanColumnConfig({ column, onRename, onRecolor, onDelete, onCl
               type="button"
               onClick={() => onReorder("right")}
               disabled={!canMoveRight}
-              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-warm-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1 rounded text-text-subtle hover:text-text-strong hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Mover columna a la derecha"
             >
               <Icon name="chevron-right" size={14} />

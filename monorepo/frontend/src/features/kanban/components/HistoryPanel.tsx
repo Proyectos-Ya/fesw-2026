@@ -91,7 +91,7 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
         />
       )}
       <aside
-        className={`fixed top-0 right-0 z-50 h-full w-[400px] bg-surface-card shadow-xl border-l border-border-subtle transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 z-50 h-full w-full max-w-[400px] bg-surface-card shadow-xl border-l border-border-subtle transform transition-transform duration-300 ease-in-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!open}
@@ -106,7 +106,7 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100 transition-colors"
+            className="p-1 text-text-subtle hover:text-text-strong rounded-md hover:bg-surface-hover transition-colors"
             aria-label="Cerrar historial"
           >
             <Icon name="x" size={18} />
@@ -134,7 +134,7 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[11px] text-text-subtle font-mono truncate">
+                  <p className="text-[0.6875rem] text-text-subtle font-mono truncate">
                     {entry.tender_external_id ?? entry.tender_id}
                   </p>
                   <p className="text-sm font-semibold text-text-strong line-clamp-2 mt-0.5">

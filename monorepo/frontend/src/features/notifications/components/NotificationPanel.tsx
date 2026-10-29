@@ -38,7 +38,7 @@ function NotificationCard({
       <Link
         href={`/matches/${item.tender_id}`}
         onClick={() => onOpen(item.id)}
-        className={`flex items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-warm-50 ${
+        className={`flex items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-surface-hover ${
           sinLeer
             ? "border-primary/30 bg-primary-soft/20"
             : "border-border-subtle bg-surface-card"
@@ -47,7 +47,7 @@ function NotificationCard({
         <span
           aria-hidden="true"
           className={`mt-1 flex size-9 flex-none items-center justify-center rounded-full ${
-            sinLeer ? "bg-primary-soft" : "bg-warm-100"
+            sinLeer ? "bg-primary-soft" : "bg-surface-inset"
           }`}
         >
           <Icon
@@ -125,7 +125,7 @@ export function NotificationPanel() {
         <div className="flex items-center gap-2">
           <Link
             href="/configuracion/notificaciones"
-            className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-warm-100 hover:text-text-strong"
+            className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-hover hover:text-text-strong"
           >
             <Icon name="settings" size={16} />
             Preferencias

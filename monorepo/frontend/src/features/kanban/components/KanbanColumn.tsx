@@ -79,10 +79,10 @@ export function KanbanColumn({
       <div className="px-3.5 pt-3 pb-2">
         <div ref={configAreaRef}>
           <div className="flex items-center gap-2">
-            <h2 className="flex-1 font-display text-[15px] font-bold text-text-strong truncate">
+            <h2 className="flex-1 font-display text-[0.9375rem] font-bold text-text-strong truncate">
               {column.name}
             </h2>
-            <span className="h-5 px-2 rounded-full text-xs font-semibold tabular-nums bg-warm-200 text-text-body flex items-center flex-none">
+            <span className="h-5 px-2 rounded-full text-xs font-semibold tabular-nums bg-surface-inset text-text-body flex items-center flex-none">
               {column.card_count}
             </span>
             <button
@@ -91,7 +91,7 @@ export function KanbanColumn({
               className={`flex-none p-1 rounded transition-colors ${
                 showConfig
                   ? "text-primary bg-primary/10"
-                  : "text-text-subtle hover:text-text-strong hover:bg-warm-100"
+                  : "text-text-subtle hover:text-text-strong hover:bg-surface-hover"
               }`}
               aria-label="Configurar columna"
             >

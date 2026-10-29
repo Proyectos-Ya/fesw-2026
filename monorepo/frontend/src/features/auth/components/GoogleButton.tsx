@@ -39,7 +39,7 @@ export function GoogleButton({
       variant="ghost"
       onClick={entrar}
       isLoading={enCurso}
-      className="w-full border border-border-default hover:bg-white hover:border-border-strong text-text-strong font-bold"
+      className="w-full border border-border-default hover:bg-surface-card hover:border-border-strong text-text-strong font-bold"
     >
       <span className="inline-flex items-center justify-center gap-2">
         <GoogleMark />

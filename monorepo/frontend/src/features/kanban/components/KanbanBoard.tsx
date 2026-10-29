@@ -163,7 +163,7 @@ export function KanbanBoard() {
           type="button"
           onClick={() => setEditorOpen(true)}
           aria-label="Editar tablero"
-          className="flex-none rounded-md p-2 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors"
+          className="flex-none rounded-md p-2 text-text-subtle hover:bg-surface-hover hover:text-text-strong transition-colors"
         >
           <Icon name="settings" size={18} />
         </button>
@@ -245,7 +245,7 @@ export function KanbanBoard() {
                         setNewColumnName("");
                         setAddingColumn(false);
                       }}
-                      className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100 transition-colors"
+                      className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-surface-hover transition-colors"
                     >
                       <Icon name="x" size={16} />
                     </button>
