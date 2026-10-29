@@ -9,17 +9,21 @@ interface SmartQuestionsState {
   loading: boolean;
 }
 
-export function useSmartQuestions(profileId: string): SmartQuestionsState {
+export function useSmartQuestions(
+  tenderId?: string,
+  enabled: boolean = true
+): SmartQuestionsState {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!profileId) return;
+    // Si enabled es falso o si se pasa una cadena vacía explícitamente, se omite la consulta
+    if (!enabled || tenderId === "") return;
 
     let cancelled = false;
     setLoading(true);
 
-    void getSmartQuestions(profileId)
+    void getSmartQuestions(tenderId)
       .then((all) => {
         if (cancelled) return;
         setQuestions(all.filter((q) => !q.answered && !q.omitted));
@@ -35,7 +39,7 @@ export function useSmartQuestions(profileId: string): SmartQuestionsState {
     return () => {
       cancelled = true;
     };
-  }, [profileId]);
+  }, [tenderId, enabled]);
 
   return { questions, loading };
 }

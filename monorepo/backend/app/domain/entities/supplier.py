@@ -118,6 +118,7 @@ class Supplier(BaseModel):
     sectors: list[str] | None = None
     certifications: list[CertificationItem] | None = None
     keywords: list[str] | None = None
+    negative_keywords: list[dict[str, str]] | None = Field(default_factory=list)
     years_experience: int | None = None
     num_employees: int | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)

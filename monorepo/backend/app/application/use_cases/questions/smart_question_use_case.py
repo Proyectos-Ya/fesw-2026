@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.services.smart_question_service import ISmartQuestionService
+from app.application.use_cases.supplier.resolver_empresa import resolver_empresa
 from app.domain.entities.question import Question  # Cambiado a la entidad de dominio
 
 # Rubros de Mercado Público (`app/shared/sectors.py`) que tienen banco de preguntas
@@ -35,13 +36,17 @@ class SmartQuestionUseCase:
         self.smart_question_service = smart_question_service
         self.supplier_repository = supplier_repository
 
-    async def execute(self, user_id: UUID) -> list[Question]:
+    async def execute(
+        self, user_id: UUID, supplier_id: UUID | None = None
+    ) -> list[Question]:
         """Analiza los sectores de la empresa del usuario y retorna sus preguntas.
 
         La empresa se resuelve desde la sesión: antes se recibía su id por query
         y no se comprobaba a quién pertenecía.
         """
-        supplier = await self.supplier_repository.get_by_user_id(user_id=user_id)
+        supplier = await resolver_empresa(
+            self.supplier_repository, user_id=user_id, supplier_id=supplier_id
+        )
 
         # Manda el primer rubro de la empresa que tenga banco propio, igual que
         # `categoria_de()` usa el primero de sus rubros.

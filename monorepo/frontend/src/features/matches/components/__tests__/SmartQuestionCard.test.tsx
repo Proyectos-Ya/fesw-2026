@@ -1,95 +1,133 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { SmartQuestionCard } from "../SmartQuestionCard";
-import type { Question } from "../../questionTypes";
+import type { DynamicQuestionDTO } from "../../questionTypes";
+import * as questionService from "../../services/questionService";
 
-const FREE_TEXT_Q: Question = {
-  id: "q1",
-  provider_id: "p1",
-  discrepancy_type: null,
-  tender_requirement: null,
-  question: "¿Cuántos años de experiencia tienes?",
-  target_profile_field: "experience_years",
-  answered: false,
-  answer: null,
-  omitted: false,
-  generated_at: "2026-06-10T00:00:00Z",
-  answered_at: null,
-  target_category: "general",
-  options: [],
+const MOCK_QUESTION: DynamicQuestionDTO = {
+  id: "q-12345",
+  question: "¿Dispones de camiones pluma con capacidad superior a 10 toneladas?",
+  target_keyword: "maquinaria:camion_pluma",
 };
 
-const CHOICE_Q: Question = {
-  ...FREE_TEXT_Q,
-  id: "q2",
-  question: "¿En qué región operas principalmente?",
-  options: ["Metropolitana", "Valparaíso", "Biobío"],
-};
-
-describe("SmartQuestionCard", () => {
-  it("renders the question text", () => {
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
-    );
-    expect(screen.getByText(FREE_TEXT_Q.question)).toBeInTheDocument();
+describe("SmartQuestionCard (Fase 4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("renders a text input for free-text questions", () => {
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
-    );
-    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  it("renderiza el texto de la pregunta, la insignia de IA y la keyword objetivo", () => {
+    render(<SmartQuestionCard question={MOCK_QUESTION} onAnswered={vi.fn()} />);
+
+    expect(screen.getByText(MOCK_QUESTION.question)).toBeInTheDocument();
+    expect(screen.getByText(/pregunta inteligente/i)).toBeInTheDocument();
+    expect(screen.getByText(MOCK_QUESTION.target_keyword)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /sí, lo tengo/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /no, descartar/i }),
+    ).toBeInTheDocument();
   });
 
-  it("renders radio options for multiple-choice questions", () => {
+  it("muestra el contador de progreso 'actual/total' en la parte inferior izquierda", () => {
     render(
-      <SmartQuestionCard question={CHOICE_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
+      <SmartQuestionCard
+        question={MOCK_QUESTION}
+        progress={{ current: 1, total: 3 }}
+        onAnswered={vi.fn()}
+      />,
     );
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
-    expect(screen.getByLabelText("Metropolitana")).toBeInTheDocument();
+
+    const progressEl = screen.getByTestId("question-progress");
+    expect(progressEl).toBeInTheDocument();
+    expect(progressEl).toHaveTextContent("1/3");
   });
 
-  it("Enviar is disabled when no answer is provided", () => {
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
+  it("envía 'Sí' al hacer clic en 'Sí, lo tengo', muestra estado de éxito y llama a onAnswered", async () => {
+    const onAnswered = vi.fn();
+    const answerSpy = vi
+      .spyOn(questionService, "answerSmartQuestion")
+      .mockResolvedValueOnce({ status: "ok", detail: "Guardado" });
+
+    render(<SmartQuestionCard question={MOCK_QUESTION} onAnswered={onAnswered} />);
+
+    const yesButton = screen.getByRole("button", { name: /sí, lo tengo/i });
+    await userEvent.click(yesButton);
+
+    expect(answerSpy).toHaveBeenCalledWith({
+      question_id: "q-12345",
+      answer: "Sí",
+    });
+
+    // Se muestra el feedback de éxito
+    await waitFor(() => {
+      expect(
+        screen.getByText(/¡respuesta registrada con éxito!/i),
+      ).toBeInTheDocument();
+    });
+
+    // Esperar a que el timeout invoque la prop de salida
+    await waitFor(
+      () => {
+        expect(onAnswered).toHaveBeenCalledWith("q-12345");
+      },
+      { timeout: 1500 },
     );
-    expect(screen.getByRole("button", { name: /enviar/i })).toBeDisabled();
   });
 
-  it("Enviar becomes enabled after typing an answer", async () => {
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
+  it("envía 'No' al hacer clic en 'No, descartar' y procesa el descarte", async () => {
+    const onAnswered = vi.fn();
+    const answerSpy = vi
+      .spyOn(questionService, "answerSmartQuestion")
+      .mockResolvedValueOnce({ status: "ok", detail: "Descartado" });
+
+    render(<SmartQuestionCard question={MOCK_QUESTION} onAnswered={onAnswered} />);
+
+    const noButton = screen.getByRole("button", { name: /no, descartar/i });
+    await userEvent.click(noButton);
+
+    expect(answerSpy).toHaveBeenCalledWith({
+      question_id: "q-12345",
+      answer: "No",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/¡respuesta registrada con éxito!/i),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(
+      () => {
+        expect(onAnswered).toHaveBeenCalledWith("q-12345");
+      },
+      { timeout: 1500 },
     );
-    await userEvent.type(screen.getByRole("textbox"), "5 años");
-    expect(screen.getByRole("button", { name: /enviar/i })).toBeEnabled();
   });
 
-  it("Enviar becomes enabled after selecting a radio option", async () => {
-    render(
-      <SmartQuestionCard question={CHOICE_Q} onSubmit={vi.fn()} onOmit={vi.fn()} />,
+  it("muestra mensaje de error y no invoca onAnswered cuando la API falla", async () => {
+    const onAnswered = vi.fn();
+    vi.spyOn(questionService, "answerSmartQuestion").mockRejectedValueOnce(
+      new Error("Fallo de red en el servidor"),
     );
-    await userEvent.click(screen.getByLabelText("Valparaíso"));
-    expect(screen.getByRole("button", { name: /enviar/i })).toBeEnabled();
-  });
 
-  it("calls onSubmit with the answer when Enviar is clicked", async () => {
-    const onSubmit = vi.fn();
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={onSubmit} onOmit={vi.fn()} />,
-    );
-    await userEvent.type(screen.getByRole("textbox"), "5 años");
-    await userEvent.click(screen.getByRole("button", { name: /enviar/i }));
-    expect(onSubmit).toHaveBeenCalledWith("5 años");
-  });
+    render(<SmartQuestionCard question={MOCK_QUESTION} onAnswered={onAnswered} />);
 
-  it("calls onOmit when Omitir is clicked", async () => {
-    const onOmit = vi.fn();
-    render(
-      <SmartQuestionCard question={FREE_TEXT_Q} onSubmit={vi.fn()} onOmit={onOmit} />,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /omitir/i }));
-    expect(onOmit).toHaveBeenCalledOnce();
+    const yesButton = screen.getByRole("button", { name: /sí, lo tengo/i });
+    await userEvent.click(yesButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/fallo de red en el servidor/i),
+      ).toBeInTheDocument();
+    });
+
+    expect(onAnswered).not.toHaveBeenCalled();
+    // Botones deben reactivarse para permitir reintentar
+    expect(
+      screen.getByRole("button", { name: /sí, lo tengo/i }),
+    ).toBeEnabled();
   });
 });

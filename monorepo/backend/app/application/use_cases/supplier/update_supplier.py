@@ -56,6 +56,17 @@ class UpdateSupplierUseCase:
         if not updates:
             return supplier
 
+        # Limpieza automática de memoria negativa si se agrega la keyword manualmente
+        if "keywords" in updates and supplier.negative_keywords:
+            new_kws = set(updates["keywords"] or [])
+            filtered_negatives = [
+                item
+                for item in supplier.negative_keywords
+                if isinstance(item, dict) and item.get("keyword") not in new_kws
+            ]
+            if len(filtered_negatives) != len(supplier.negative_keywords):
+                updates["negative_keywords"] = filtered_negatives
+
         now = utc_now_naive()
         matching_changed = bool(_MATCHING_FIELDS & updates.keys())
 

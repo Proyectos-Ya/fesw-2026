@@ -52,6 +52,9 @@ from app.infrastructure.services.gemini_milestone_extraction_service import (
     GeminiMilestoneExtractionService,
 )
 from app.infrastructure.services.gemini_proposal_service import GeminiProposalService
+from app.infrastructure.services.gemini_smart_question_ai_service import (
+    GeminiSmartQuestionAIService,
+)
 from app.infrastructure.services.gemini_tender_assistant_service import (
     GeminiTenderAssistantService,
 )
@@ -98,6 +101,10 @@ def bootstrap(app: FastAPI) -> None:
         model_name=settings.gemini_model,
     )
     app.state.document_analysis_quotation_service = GeminiDocumentAnalysisAndQuotationService(
+        api_key=settings.gemini_api_key,
+        model_name=settings.gemini_model,
+    )
+    app.state.smart_question_ai_service = GeminiSmartQuestionAIService(
         api_key=settings.gemini_api_key,
         model_name=settings.gemini_model,
     )

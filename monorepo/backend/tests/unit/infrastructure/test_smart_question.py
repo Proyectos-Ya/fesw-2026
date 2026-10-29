@@ -119,113 +119,29 @@ class TestQuestionEntity:
 class TestSmartQuestionServiceImpl:
     """Tests para app/infrastructure/services/smart_question_service.py"""
 
-    def _make_service(self, existing_questions=None, saved_questions=None):
+    def _make_service(self, existing_questions=None):
         repo = AsyncMock()
         repo.get_active_by_provider.return_value = existing_questions or []
-        repo.save_all.side_effect = lambda qs: qs  # devuelve lo mismo que recibe
         return SmartQuestionServiceImpl(question_repository=repo), repo
 
-    # — Preguntas existentes —
-
-    async def test_returns_existing_questions_without_saving(self):
-        """Si ya hay preguntas en BD, las retorna sin generar nuevas."""
+    async def test_returns_existing_questions_from_repo(self):
+        """Retorna las preguntas activas persistidas para el proveedor."""
         existing = [make_question(), make_question()]
         service, repo = self._make_service(existing_questions=existing)
 
         result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
 
         assert result == existing
-        repo.save_all.assert_not_called()
+        repo.get_active_by_provider.assert_awaited_once_with(PROVIDER_ID)
 
-    # — Categoría construccion —
-
-    async def test_generates_10_questions_for_construccion(self):
-        """Debe generar exactamente 10 preguntas para 'construccion'."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        assert len(result) == 10
-
-    async def test_generates_10_questions_for_obras_civiles(self):
-        """Debe generar exactamente 10 preguntas para 'obras_civiles'."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "obras_civiles")
-        assert len(result) == 10
-
-    async def test_category_string_is_normalized(self):
-        """Categoría con mayúsculas/espacios debe normalizarse antes de matchear."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(
-            PROVIDER_ID, "  CONSTRUCCION  "
-        )
-        assert len(result) == 10
-
-    async def test_construction_questions_have_correct_category(self):
-        """Todas las preguntas generadas deben tener target_category='construccion'."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        for q in result:
-            assert q.target_category == "construccion"
-
-    async def test_construction_questions_belong_to_provider(self):
-        """Todas las preguntas deben tener el provider_id correcto."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        for q in result:
-            assert q.provider_id == PROVIDER_ID
-
-    async def test_construction_questions_have_options(self):
-        """Todas las preguntas de construcción deben tener al menos 2 opciones."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        for q in result:
-            assert len(q.options) >= 2
-
-    async def test_mop_question_is_present(self):
-        """El pool de construcción debe incluir la pregunta sobre registro MOP."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        questions_text = [q.question for q in result]
-        assert any("MOP" in q for q in questions_text)
-
-    async def test_bim_question_is_present(self):
-        """El pool de construcción debe incluir la pregunta sobre metodología BIM."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        questions_text = [q.question for q in result]
-        assert any("BIM" in q for q in questions_text)
-
-    # — Categoría TI —
-
-    async def test_generates_questions_for_ti(self):
-        """Debe generar al menos 1 pregunta para categoría 'ti'."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "ti")
-        assert len(result) >= 1
-
-    # — Categoría general / desconocida —
-
-    async def test_generates_questions_for_unknown_category(self):
-        """Para categoría desconocida, debe generar al menos 1 pregunta."""
-        service, _ = self._make_service()
-        result = await service.get_or_generate_questions(PROVIDER_ID, "gastronomia")
-        assert len(result) >= 1
-
-    # — Persistencia —
-
-    async def test_calls_save_all_when_generating(self):
-        """Al generar preguntas nuevas debe llamar a save_all del repositorio."""
-        service, repo = self._make_service()
-        await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        repo.save_all.assert_called_once()
-
-    async def test_returns_saved_questions(self):
-        """El resultado final debe ser lo que devuelve save_all."""
-        saved = [make_question(question="Guardada")]
-        service, repo = self._make_service()
-        repo.save_all.side_effect = lambda _: saved
+    async def test_returns_empty_list_when_no_active_questions(self):
+        """No genera preguntas estáticas: si no hay preguntas activas, retorna lista vacía."""
+        service, repo = self._make_service(existing_questions=[])
 
         result = await service.get_or_generate_questions(PROVIDER_ID, "construccion")
-        assert result == saved
+
+        assert result == []
+        repo.get_active_by_provider.assert_awaited_once_with(PROVIDER_ID)
 
 
 # ─────────────────────────────────────────────
@@ -335,7 +251,7 @@ class TestSmartQuestionUseCase:
         """El use case debe buscar al supplier usando el provider_id recibido."""
         uc, _, supplier_repo = self._make_use_case(supplier_sectors=["ti"])
         await uc.execute(PROVIDER_ID)
-        supplier_repo.get_by_user_id.assert_called_once_with(user_id=PROVIDER_ID)
+        supplier_repo.get_by_user_id.assert_called_once_with(PROVIDER_ID)
 
 
 # ─────────────────────────────────────────────
@@ -354,8 +270,9 @@ class TestQuestionRepositoryMapping:
             QuestionRepositoryImpl,
         )
 
-        session = AsyncMock()
+        session = MagicMock()
         session.flush = AsyncMock()
+        session.commit = AsyncMock()
         return QuestionRepositoryImpl(session=session)
 
     def test_to_entity_roundtrip(self):
