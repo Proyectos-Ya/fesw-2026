@@ -156,9 +156,8 @@ function toPascal(name: string): string {
     .join("");
 }
 
-function resolveLucideIcon(name: string): LucideIcon | null {
-  const mappedKey = aliasMap[name] ?? toPascal(name);
-  return iconRegistry[mappedKey] ?? null;
+function iconKey(name: string): string {
+  return aliasMap[name] ?? toPascal(name);
 }
 
 interface IconProps extends Omit<LucideProps, "ref" | "name"> {
@@ -174,7 +173,9 @@ export function Icon({
   className = "",
   ...rest
 }: IconProps) {
-  const LucideComponent = resolveLucideIcon(name);
+  // Direct registry lookup: the React Compiler lint rejects a component returned by a
+  // function call during render, even when it comes from a static map.
+  const LucideComponent: LucideIcon | undefined = iconRegistry[iconKey(name)];
   if (!LucideComponent) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(`[Icon] Unknown lucide name: "${name}"`);
