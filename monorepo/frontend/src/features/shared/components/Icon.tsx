@@ -13,6 +13,7 @@ const aliasMap: Record<string, LucideName> = {
   "arrow-right": "ArrowRight",
   "arrow-left": "ArrowLeft",
   "alert-triangle": "TriangleAlert",
+  "alert-circle": "CircleAlert",
 };
 
 function toPascal(name: string): string {
