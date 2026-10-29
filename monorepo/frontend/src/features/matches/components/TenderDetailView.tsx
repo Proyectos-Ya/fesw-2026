@@ -450,7 +450,7 @@ export function TenderDetailView({
                 thresholds={DETAIL_THRESHOLDS}
                 colors={DETAIL_COLORS}
               />
-              <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <div className="mt-2 text-center text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 {scoreLabel(score)}
               </div>
             </>
@@ -459,7 +459,7 @@ export function TenderDetailView({
                doce mejores, y el resto se mide cuando el usuario lo pide. */
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-strong p-4 text-center">
               <Icon name="gauge" size={22} color="var(--text-subtle)" />
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <span className="mt-1 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 Sin puntaje
               </span>
             </div>
@@ -472,7 +472,7 @@ export function TenderDetailView({
               variant="ghost"
               onClick={handleCalculateScore}
               disabled={pendingAction !== null}
-              className="mt-2 w-full border border-border-strong bg-white text-xs hover:bg-slate-50"
+              className="mt-2 w-full border border-border-strong bg-surface-card text-xs hover:bg-surface-hover"
               id="btn-calculate-score"
             >
               {pendingAction === "score" ? (
@@ -622,7 +622,7 @@ export function TenderDetailView({
 
         {tender.items.length > 0 && (
           <div className="mt-5">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <div className="mb-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
               Ítems solicitados
             </div>
             <ul className="flex flex-col divide-y divide-border-subtle rounded-md border border-border-subtle">
@@ -650,7 +650,7 @@ export function TenderDetailView({
           </div>
         )}
         <div className="mt-5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+          <div className="mb-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
             Resumen de requisitos y documentos
           </div>
 
@@ -689,7 +689,7 @@ export function TenderDetailView({
       <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
 
       {/* AI Compatibility Analysis CTA Card */}
-      <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
             <Icon name="sparkles" size={20} />
@@ -712,7 +712,7 @@ export function TenderDetailView({
               reportInteraction("asistente");
             }}
             variant="ghost"
-            className="shrink-0 border border-border-strong bg-white hover:bg-slate-50"
+            className="shrink-0 border border-border-strong bg-surface-card hover:bg-surface-hover"
             id="btn-open-tender-assistant"
           >
             <span className="inline-flex items-center gap-2">
@@ -788,7 +788,7 @@ export function TenderDetailView({
 
       {/* Análisis de compatibilidad IA si ya existe */}
       {analysis && (
-        <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
+        <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs">
           <div className="flex flex-col gap-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
@@ -807,7 +807,7 @@ export function TenderDetailView({
               <button
                 type="button"
                 onClick={() => setIsReportAnalysisOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
                 title="Reportar análisis de compatibilidad incorrecto"
               >
                 <Icon name="flag" size={14} />
@@ -827,7 +827,7 @@ export function TenderDetailView({
                     low: "var(--red-500)",
                   }}
                 />
-                <div className="mt-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle text-center">
+                <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
                   Score de Compatibilidad
                 </div>
               </div>
@@ -992,7 +992,7 @@ function KeyValueCard({
 }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
-      <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+      <div className="mb-1 inline-flex items-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
         <Icon name={icon} size={12} color="var(--text-subtle)" />
         {eyebrow}
       </div>

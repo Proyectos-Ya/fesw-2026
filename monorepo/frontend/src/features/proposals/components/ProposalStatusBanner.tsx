@@ -7,17 +7,17 @@ import type { ProposalStatusInfo, StatusTone } from "../utils/proposal";
 const TONO: Record<StatusTone, { caja: string; titulo: string; icono: string }> = {
   danger: {
     caja: "border-danger/30 bg-danger-soft/40",
-    titulo: "text-red-700",
+    titulo: "text-danger-text",
     icono: "octagon-alert",
   },
   warning: {
     caja: "border-warning/30 bg-warning-soft/40",
-    titulo: "text-amber-700",
+    titulo: "text-warning-text",
     icono: "triangle-alert",
   },
   info: {
-    caja: "border-primary/20 bg-teal-50/60",
-    titulo: "text-teal-700",
+    caja: "border-primary/20 bg-primary-soft",
+    titulo: "text-text-link",
     icono: "info",
   },
 };

@@ -120,7 +120,7 @@ export function TenderCard({
       href={tenderDetailHref(tender.id, rankingContext)}
       ref={impressionRef}
       onClick={handleCardClick}
-      className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="group flex flex-col sm:flex-row gap-4 sm:gap-5 rounded-lg border border-border-subtle bg-surface-card p-4 sm:p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
       {/* Medidor de compatibilidad: solo visible si hay match con score */}
@@ -132,7 +132,7 @@ export function TenderCard({
             thresholds={DASHBOARD_THRESHOLDS}
             colors={DASHBOARD_COLORS}
           />
-          <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+          <div className="mt-2 text-center text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
             <ScoreLabel score={score} />
           </div>
         </div>
@@ -173,7 +173,7 @@ export function TenderCard({
               title={savedState ? "Quitar de guardadas" : "Guardar licitación"}
               className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
                 savedState
-                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
+                  ? "bg-primary-soft text-primary hover:bg-primary-border/40 hover:scale-105 active:scale-95"
                   : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
               } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
             >
@@ -213,7 +213,7 @@ export function TenderCard({
 
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <div className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
               Monto estimado
             </div>
             <div className="font-mono text-lg font-semibold text-text-strong">
@@ -221,7 +221,7 @@ export function TenderCard({
             </div>
           </div>
           <div className="flex-1" />
-          <span className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-teal-100">
+          <span className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-primary-border/40">
             Ver detalle
             <Icon name="arrow-right" size={16} />
           </span>
