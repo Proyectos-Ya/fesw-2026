@@ -16,8 +16,13 @@ import { CertificationListInput } from "./CertificationListInput";
 import { REGIONS } from "../data/regions";
 import { SectorSelect } from "./SectorSelect";
 import { useCompany } from "./CompanyProvider";
-import { updateSupplier, type Supplier } from "../services/supplierService";
+import {
+  updateSupplier,
+  validateCompanyLogoFile,
+  type Supplier,
+} from "../services/supplierService";
 import { parseApiDate } from "@/features/matches/utils/format";
+import { Avatar } from "@/features/shared/components/Avatar";
 import { Input } from "@/features/shared/components/Input";
 import { Textarea } from "@/features/shared/components/Textarea";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
@@ -247,6 +252,83 @@ function CertificationsField({
   );
 }
 
+function CompanyLogoUploadSection({
+  supplier,
+  onLogoUpdated,
+}: {
+  supplier: Supplier;
+  onLogoUpdated?: (logoDataUrl: string) => void;
+}) {
+  const { logoUrl, updateCompanyLogo } = useCompany();
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const currentLogo = logoUrl ?? supplier.logo_url ?? null;
+
+  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const validationError = validateCompanyLogoFile(file);
+    if (validationError) {
+      setLogoError(validationError);
+      event.target.value = "";
+      return;
+    }
+
+    setLogoError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        updateCompanyLogo?.(reader.result);
+        onLogoUpdated?.(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-4">
+        <Avatar
+          name={supplier.trade_name || supplier.legal_name}
+          src={currentLogo ?? undefined}
+          size="lg"
+          shape="square"
+        />
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="company-logo-input"
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-semibold text-text-strong hover:bg-surface-hover transition-colors"
+          >
+            Subir logo
+            <input
+              id="company-logo-input"
+              data-testid="company-logo-input"
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={handleLogoChange}
+              className="sr-only"
+              aria-label="Subir logo corporativo"
+            />
+          </label>
+          <span className="text-xs text-text-subtle">
+            Formatos permitidos: PNG o JPG (máx. 5MB)
+          </span>
+        </div>
+      </div>
+
+      {logoError && (
+        <div
+          role="alert"
+          data-testid="company-logo-error"
+          className="rounded-md border border-danger bg-danger-soft px-4 py-3 text-sm font-semibold text-danger-text"
+        >
+          {logoError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CompanyDetails({
   supplier,
   onEdit,
@@ -257,8 +339,8 @@ function CompanyDetails({
   onSupplierChange: (supplier: Supplier) => void;
 }) {
   return (
-    <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
-      <div className="flex items-start justify-between gap-4 mb-8">
+    <div className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-text-strong">
             {supplier.legal_name}
@@ -267,9 +349,18 @@ function CompanyDetails({
             {supplier.trade_name ?? "Sin nombre de fantasía"} · RUT {supplier.rut}
           </p>
         </div>
-        <Button variant="primary" onClick={onEdit} className="font-bold">
+        <Button variant="primary" onClick={onEdit} className="font-bold self-start">
           Editar
         </Button>
+      </div>
+
+      <div className="mb-8 pb-6 border-b border-border-subtle">
+        <CompanyLogoUploadSection
+          supplier={supplier}
+          onLogoUpdated={(newLogoUrl) =>
+            onSupplierChange({ ...supplier, logo_url: newLogoUrl })
+          }
+        />
       </div>
 
       <div className="flex flex-col gap-6">
@@ -362,7 +453,7 @@ function CompanyEditForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle flex flex-col gap-6"
+      className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle flex flex-col gap-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -373,6 +464,10 @@ function CompanyEditForm({
             RUT {supplier.rut} (no editable)
           </p>
         </div>
+      </div>
+
+      <div className="pb-4 border-b border-border-subtle">
+        <CompanyLogoUploadSection supplier={supplier} />
       </div>
 
       {error && (

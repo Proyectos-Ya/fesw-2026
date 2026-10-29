@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Icon } from "@/features/shared/components/Icon";
 import { Avatar } from "@/features/shared/components/Avatar";
+import { useOptionalCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useWorkspace } from "../WorkspaceContext";
 import { InviteMemberModal } from "./InviteMemberModal";
 import type { MemberRole } from "../types";
@@ -36,6 +37,12 @@ export function WorkspaceSelector() {
     isLoading,
     invitations,
   } = useWorkspace();
+  const companyCtx = useOptionalCompany();
+  const activeLogoUrl =
+    companyCtx?.logoUrl ??
+    (companyCtx?.company.status === "with-company"
+      ? companyCtx.company.supplier.logo_url ?? null
+      : null);
   const [isOpen, setIsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -112,6 +119,7 @@ export function WorkspaceSelector() {
         >
           <Avatar
             name={currentWorkspaceSummary.trade_name || currentWorkspaceSummary.legal_name}
+            src={activeLogoUrl ?? undefined}
             size="sm"
           />
           <div className="flex-1 min-w-0">
@@ -176,7 +184,11 @@ export function WorkspaceSelector() {
                         : "hover:bg-surface-hover text-text-strong"
                     }`}
                   >
-                    <Avatar name={w.trade_name || w.legal_name} size="xs" />
+                    <Avatar
+                      name={w.trade_name || w.legal_name}
+                      src={isCurrent ? activeLogoUrl ?? undefined : undefined}
+                      size="xs"
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-semibold truncate">

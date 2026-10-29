@@ -6,8 +6,28 @@ export interface Supplier extends Omit<ProfileData, "trade_name"> {
   id: string;
   user_id: string | null;
   trade_name: string | null;
+  logo_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export const MAX_COMPANY_LOGO_BYTES = 5 * 1024 * 1024; // 5 MB
+export const ALLOWED_COMPANY_LOGO_TYPES = ["image/png", "image/jpeg"] as const;
+export const INVALID_LOGO_ERROR_MESSAGE =
+  "Formato inválido o archivo muy pesado";
+
+/**
+ * Valida estrictamente el archivo de logo corporativo:
+ * solo permite PNG o JPG (image/png, image/jpeg) y un peso máximo de 5MB.
+ */
+export function validateCompanyLogoFile(file: File): string | null {
+  const isAllowedType = ALLOWED_COMPANY_LOGO_TYPES.includes(
+    file.type as (typeof ALLOWED_COMPANY_LOGO_TYPES)[number],
+  );
+  if (!isAllowedType || file.size > MAX_COMPANY_LOGO_BYTES) {
+    return INVALID_LOGO_ERROR_MESSAGE;
+  }
+  return null;
 }
 
 /** Crea un proveedor a partir de los datos del wizard de perfil. */

@@ -103,10 +103,15 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
   const { user, logout } = useAuth();
-  const { company } = useCompany();
+  const { company, logoUrl } = useCompany();
   const { activeWorkspace, invitations } = useWorkspace();
   const unreadCount = useUnreadCount();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const activeLogoUrl =
+    logoUrl ??
+    (company.status === "with-company"
+      ? company.supplier.logo_url ?? null
+      : null);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -219,7 +224,11 @@ export function Sidebar() {
         </div>
 
         <div className="pt-3 border-t border-border-subtle flex items-center gap-3 group">
-          <Avatar name={currentUser.name} size="md" />
+          <Avatar
+            name={currentUser.name}
+            src={activeLogoUrl ?? undefined}
+            size="md"
+          />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold text-text-strong truncate">
               {currentUser.name}
