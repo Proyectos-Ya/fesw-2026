@@ -11,13 +11,16 @@ interface WizardState {
   data: Partial<ProfileData>;
   /** Datos importados desde el RUT; las palabras clave se ofrecen como sugerencias. */
   importedProfile: CompanyProfileImport | null;
+  /** Sugerencias de palabras clave que el usuario descartó; sobreviven al cambio de paso. */
+  dismissedKeywords: string[];
 }
 
 type WizardAction =
   | { type: "NEXT"; payload: Partial<ProfileData> }
   | { type: "PREV" }
   | { type: "GO_TO"; payload: WizardStep }
-  | { type: "IMPORT"; payload: CompanyProfileImport };
+  | { type: "IMPORT"; payload: CompanyProfileImport }
+  | { type: "DISMISS_KEYWORD"; payload: string };
 
 const initialState: WizardState = {
   currentStep: 1,
@@ -28,7 +31,10 @@ const initialState: WizardState = {
     certifications: [],
   },
   importedProfile: null,
+  dismissedKeywords: [],
 };
+
+const normalizeKeyword = (keyword: string) => keyword.trim().toLocaleLowerCase("es");
 
 function union(current: string[], added: string[]): string[] {
   return [...current, ...added.filter((value) => !current.includes(value))];
@@ -57,6 +63,11 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
           sectors: union(state.data.sectors ?? [], action.payload.sectors),
         },
       };
+    case "DISMISS_KEYWORD": {
+      const taken = new Set(state.dismissedKeywords.map(normalizeKeyword));
+      if (taken.has(normalizeKeyword(action.payload))) return state;
+      return { ...state, dismissedKeywords: [...state.dismissedKeywords, action.payload] };
+    }
   }
 }
 
@@ -66,11 +77,13 @@ export function useProfileWizard() {
     currentStep: state.currentStep,
     formData: state.data,
     importedProfile: state.importedProfile,
+    dismissedKeywords: state.dismissedKeywords,
     totalSteps: 4 as const,
     nextStep: (data: Partial<ProfileData>) => dispatch({ type: "NEXT", payload: data }),
     prevStep: () => dispatch({ type: "PREV" }),
     goToStep: (step: WizardStep) => dispatch({ type: "GO_TO", payload: step }),
     applyImport: (profile: CompanyProfileImport) =>
       dispatch({ type: "IMPORT", payload: profile }),
+    dismissKeyword: (keyword: string) => dispatch({ type: "DISMISS_KEYWORD", payload: keyword }),
   };
 }

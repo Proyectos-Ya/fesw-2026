@@ -1,19 +1,26 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/features/auth/AuthContext";
 import { getRecommendedTenders, getTenderDetail } from "@/features/matches/services/tenderService";
 import type { TenderDetail } from "@/features/notifications/notificationTypes";
 import { searchTenders } from "@/features/search/services/searchService";
+import { useSavedTenders } from "@/features/saved-tenders/hooks/useSavedTenders";
 import type { Tender } from "@/features/matches/tenderTypes";
 import { daysUntilClosing } from "@/features/matches/utils/format";
 import { Badge } from "@/features/shared/components/Badge";
 import { Icon } from "@/features/shared/components/Icon";
 import { ApiError } from "@/features/shared/api/client";
 
+type Tab = "saved" | "recommended";
+
 interface Props {
   columnId: string;
   columnName: string;
+  /** IDs de licitaciones que ya están en alguna columna del tablero. Se usa para
+   *  ocultarlas del tab de guardadas y evitar duplicados sin pedir otra vez al
+   *  backend; el padre ya tiene esta información del hook useKanban. */
+  boardTenderIds: string[];
   onAdd: (tender_id: string, column_id: string, tender: Tender) => Promise<void>;
   onClose: () => void;
 }
@@ -25,7 +32,13 @@ const CLOSING_TONE_MAP = {
   expired: "neutral",
 } as const;
 
-export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) {
+export function AddTenderModal({
+  columnId,
+  columnName,
+  boardTenderIds,
+  onAdd,
+  onClose,
+}: Props) {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Tender[]>([]);
@@ -34,8 +47,23 @@ export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<Tender[]>([]);
   const [loadingRec, setLoadingRec] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>("saved");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const {
+    savedTenders,
+    loading: loadingSaved,
+  } = useSavedTenders();
+
+  const boardIdsSet = useMemo(() => new Set(boardTenderIds), [boardTenderIds]);
+
+  const savedForModal = useMemo<Tender[]>(() => {
+    return savedTenders
+      .map((m) => m.tender)
+      .filter((t): t is Tender => t !== null && t !== undefined)
+      .filter((t) => !boardIdsSet.has(t.id));
+  }, [savedTenders, boardIdsSet]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -104,6 +132,12 @@ export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) 
     }
   };
 
+  const hasQuery = query.trim().length > 0;
+
+  // Lista a renderizar en el bloque "sin query": depende del tab activo.
+  const tabList: Tender[] = activeTab === "saved" ? savedForModal : recommended;
+  const tabLoading = activeTab === "saved" ? loadingSaved : loadingRec;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
@@ -155,32 +189,64 @@ export function AddTenderModal({ columnId, columnName, onAdd, onClose }: Props) 
           )}
         </div>
 
+        {!hasQuery && (
+          <div
+            role="tablist"
+            aria-label="Fuente de licitaciones"
+            className="flex items-center gap-1 px-4 pt-3 border-b border-border-subtle"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "saved"}
+              onClick={() => setActiveTab("saved")}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === "saved"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-text-subtle hover:text-text-strong"
+              }`}
+            >
+              Guardadas
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "recommended"}
+              onClick={() => setActiveTab("recommended")}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === "recommended"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-text-subtle hover:text-text-strong"
+              }`}
+            >
+              Recomendadas
+            </button>
+          </div>
+        )}
+
         <div className="overflow-y-auto flex-1">
-          {!query.trim() && (
+          {!hasQuery && (
             <>
-              {loadingRec && (
+              {tabLoading && (
                 <div className="flex justify-center p-4">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
               )}
-              {!loadingRec && recommended.length > 0 && (
-                <p className="px-4 pt-3 pb-1 text-[11px] font-semibold text-text-subtle uppercase tracking-wide">
-                  Tus matches
-                </p>
-              )}
-              {!loadingRec && recommended.length === 0 && (
+              {!tabLoading && tabList.length === 0 && (
                 <p className="p-4 text-sm text-text-subtle text-center">
-                  Escribe para buscar licitaciones
+                  {activeTab === "saved"
+                    ? "No tienes licitaciones guardadas disponibles."
+                    : "Escribe para buscar licitaciones"}
                 </p>
               )}
             </>
           )}
-          {query.trim() && results.length === 0 && !searching && (
+          {hasQuery && results.length === 0 && !searching && (
             <p className="p-4 text-sm text-text-subtle text-center">
               Sin resultados para &quot;{query}&quot;
             </p>
           )}
-          {(query.trim() ? results : recommended).map((tender) => {
+          {(hasQuery ? results : tabList).map((tender) => {
             const closing = daysUntilClosing(tender.closing_at);
             return (
               <button

@@ -41,4 +41,28 @@ describe("useProfileWizard", () => {
     expect(result.current.currentStep).toBe(1);
     expect(result.current.formData.keywords).toEqual([]);
   });
+
+  it("empieza sin palabras clave descartadas", () => {
+    const { result } = renderHook(() => useProfileWizard());
+    expect(result.current.dismissedKeywords).toEqual([]);
+  });
+
+  it("recuerda las palabras clave descartadas al cambiar de paso", () => {
+    const { result } = renderHook(() => useProfileWizard());
+
+    act(() => result.current.dismissKeyword("pintura"));
+    act(() => result.current.nextStep({}));
+    act(() => result.current.prevStep());
+
+    expect(result.current.dismissedKeywords).toEqual(["pintura"]);
+  });
+
+  it("no repite una palabra clave descartada dos veces, sin importar mayúsculas", () => {
+    const { result } = renderHook(() => useProfileWizard());
+
+    act(() => result.current.dismissKeyword("Pintura"));
+    act(() => result.current.dismissKeyword(" pintura "));
+
+    expect(result.current.dismissedKeywords).toEqual(["Pintura"]);
+  });
 });

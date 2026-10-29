@@ -74,7 +74,7 @@ describe("CompanyView", () => {
     expect(screen.getByText(/RUT 76\.086\.428-5/)).toBeInTheDocument();
     expect(screen.getByText("Valparaíso")).toBeInTheDocument();
     expect(screen.getByText("ISO 9001")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
   });
 
   it("muestra la sección de equipo de la empresa cuando el usuario es administrador (CA1)", async () => {
@@ -129,7 +129,7 @@ describe("CompanyView", () => {
 
     render(<CompanyView />);
 
-    await user.click(screen.getByRole("button", { name: /editar/i }));
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
     // El RUT aparece como no editable en el formulario
     expect(screen.getByText(/no editable/i)).toBeInTheDocument();
 
@@ -145,7 +145,7 @@ describe("CompanyView", () => {
     expect(setSupplierMock).toHaveBeenCalledWith(updated);
     // Vuelve al modo lectura
     expect(
-      await screen.findByRole("button", { name: /editar/i }),
+      await screen.findByRole("button", { name: /^editar$/i }),
     ).toBeInTheDocument();
   });
 
@@ -155,10 +155,155 @@ describe("CompanyView", () => {
 
     render(<CompanyView />);
 
-    await user.click(screen.getByRole("button", { name: /editar/i }));
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
     await user.click(screen.getByRole("button", { name: /cancelar/i }));
 
     expect(updateSupplierMock).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
+  });
+});
+
+/** Fecha AAAA-MM-DD local a `offsetDays` días de hoy. */
+function dateFromToday(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+describe("CompanyView certificaciones", () => {
+  const withCertifications = (certifications: Supplier["certifications"]) => {
+    companyState = {
+      status: "with-company",
+      supplier: { ...SUPPLIER, certifications },
+    };
+  };
+
+  it("muestra badge rojo en una certificación vencida", () => {
+    withCertifications([{ name: "ISO 9001", expires_at: dateFromToday(-3) }]);
+
+    render(<CompanyView />);
+
+    const badge = screen.getByText("Vencida");
+    expect(badge.className).toMatch(/danger/);
+  });
+
+  it("muestra badge ámbar con los días restantes si vence en 30 días o menos", () => {
+    withCertifications([
+      { name: "ISO 9001", expires_at: dateFromToday(10) },
+      { name: "SEC", expires_at: dateFromToday(0) },
+    ]);
+
+    render(<CompanyView />);
+
+    expect(screen.getByText("Vence en 10 días").className).toMatch(/warning/);
+    expect(screen.getByText("Vence hoy").className).toMatch(/warning/);
+  });
+
+  it("no muestra badge si la certificación está vigente o no tiene fecha", () => {
+    withCertifications([
+      { name: "ISO 9001", expires_at: dateFromToday(90) },
+      { name: "SEC", expires_at: null },
+      "OHSAS 18001",
+    ]);
+
+    render(<CompanyView />);
+
+    expect(screen.getByText("ISO 9001")).toBeInTheDocument();
+    expect(screen.getByText("OHSAS 18001")).toBeInTheDocument();
+    expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Vence (en|hoy)/)).not.toBeInTheDocument();
+  });
+
+  it("edita la fecha de una certificación y guarda la lista actualizada", async () => {
+    withCertifications([
+      { name: "ISO 9001", expires_at: dateFromToday(-3) },
+      { name: "SEC", expires_at: null },
+    ]);
+    const updated = { ...SUPPLIER, certifications: [] };
+    updateSupplierMock.mockResolvedValue(updated);
+    const user = userEvent.setup();
+
+    render(<CompanyView />);
+
+    await user.click(screen.getByRole("button", { name: "Editar fecha de ISO 9001" }));
+    const input = screen.getByLabelText(/fecha de vencimiento de ISO 9001/i);
+    await user.clear(input);
+    await user.type(input, "2030-05-20");
+    await user.click(screen.getByRole("button", { name: /guardar fecha/i }));
+
+    expect(updateSupplierMock).toHaveBeenCalledOnce();
+    expect(updateSupplierMock).toHaveBeenCalledWith({
+      certifications: [
+        { name: "ISO 9001", expires_at: "2030-05-20" },
+        { name: "SEC", expires_at: null },
+      ],
+    });
+    expect(setSupplierMock).toHaveBeenCalledWith(updated);
+  });
+
+  it("agrega fecha a una certificación que no tenía", async () => {
+    withCertifications(["ISO 9001"]);
+    updateSupplierMock.mockResolvedValue(SUPPLIER);
+    const user = userEvent.setup();
+
+    render(<CompanyView />);
+
+    await user.click(screen.getByRole("button", { name: "Editar fecha de ISO 9001" }));
+    await user.type(screen.getByLabelText(/fecha de vencimiento de ISO 9001/i), "2030-01-31");
+    await user.click(screen.getByRole("button", { name: /guardar fecha/i }));
+
+    expect(updateSupplierMock).toHaveBeenCalledWith({
+      certifications: [{ name: "ISO 9001", expires_at: "2030-01-31" }],
+    });
+  });
+
+  it("elimina una certificación tras confirmar y guarda la lista sin ella", async () => {
+    withCertifications([
+      { name: "ISO 9001", expires_at: null },
+      { name: "SEC", expires_at: null },
+    ]);
+    updateSupplierMock.mockResolvedValue(SUPPLIER);
+    const user = userEvent.setup();
+
+    render(<CompanyView />);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar ISO 9001" }));
+    expect(updateSupplierMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /confirmar eliminación/i }));
+
+    expect(updateSupplierMock).toHaveBeenCalledWith({
+      certifications: [{ name: "SEC", expires_at: null }],
+    });
+    expect(setSupplierMock).toHaveBeenCalledWith(SUPPLIER);
+  });
+
+  it("cancelar la confirmación no elimina nada", async () => {
+    withCertifications([{ name: "ISO 9001", expires_at: null }]);
+    const user = userEvent.setup();
+
+    render(<CompanyView />);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar ISO 9001" }));
+    await user.click(screen.getByRole("button", { name: /cancelar/i }));
+
+    expect(updateSupplierMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/¿eliminar esta certificación/i)).not.toBeInTheDocument();
+  });
+
+  it("muestra el error si falla el guardado y no actualiza la empresa", async () => {
+    withCertifications([{ name: "ISO 9001", expires_at: null }]);
+    updateSupplierMock.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+
+    render(<CompanyView />);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar ISO 9001" }));
+    await user.click(screen.getByRole("button", { name: /confirmar eliminación/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /no se pudo guardar la certificación/i,
+    );
+    expect(setSupplierMock).not.toHaveBeenCalled();
   });
 });

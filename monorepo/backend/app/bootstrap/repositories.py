@@ -5,6 +5,18 @@ from typing import Annotated
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.application.repositories.attachment_extraction_repository import (
+    IAttachmentExtractionRepository,
+)
+from app.application.repositories.attachment_file_repository import (
+    IAttachmentFileRepository,
+)
+from app.application.repositories.attachment_processing_job_repository import (
+    IAttachmentProcessingJobRepository,
+)
+from app.application.repositories.attachment_processing_status_reader import (
+    IAttachmentProcessingStatusReader,
+)
 from app.application.repositories.calendar_repository import (
     ICalendarEventLinkRepository,
     ICalendarOAuthStateRepository,
@@ -15,10 +27,17 @@ from app.application.repositories.capability_repository import (
     ICapabilityQuestionRepository,
 )
 from app.application.repositories.export_job_repository import IExportJobRepository
+from app.application.repositories.extension_repository import (
+    IExtensionFetchJobRepository,
+    IExtensionInstallationRepository,
+)
 from app.application.repositories.feedback_repository import (
     IAppFeedbackRepository,
     IAssistantFeedbackRepository,
     IMatchReportRepository,
+)
+from app.application.repositories.gemini_usage_repository import (
+    IGeminiUsageRepository,
 )
 from app.application.repositories.kanban_repository import (
     IKanbanCardRepository,
@@ -26,6 +45,12 @@ from app.application.repositories.kanban_repository import (
 )
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
+)
+from app.application.repositories.matching_shadow_repository import (
+    IMatchingShadowRepository,
+)
+from app.application.repositories.milestone_attachment_repository import (
+    IMilestoneAttachmentRepository,
 )
 from app.application.repositories.milestone_document_repository import (
     IMilestoneDocumentRepository,
@@ -38,6 +63,9 @@ from app.application.repositories.notification_repository import (
 from app.application.repositories.proposal_repository import IProposalDraftRepository
 from app.application.repositories.question_repository import IQuestionRepository
 from app.application.repositories.quotation_repository import IQuotationRepository
+from app.application.repositories.ranking_telemetry_repository import (
+    IRankingTelemetryRepository,
+)
 from app.application.repositories.saved_tender_repository import ISavedTenderRepository
 from app.application.repositories.supplier_invitation_repository import (
     ISupplierInvitationRepository,
@@ -46,7 +74,13 @@ from app.application.repositories.supplier_member_repository import (
     ISupplierMemberRepository,
 )
 from app.application.repositories.supplier_repository import ISupplierRepository
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
 from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.repositories.tender_digest_repository import (
+    ITenderDigestRepository,
+)
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
@@ -80,13 +114,38 @@ from app.infrastructure.repositories.notification_repository import (
 )
 from app.infrastructure.repositories.question_repository import QuestionRepositoryImpl
 from app.infrastructure.repositories.quotation_repository import QuotationRepository
+from app.infrastructure.repositories.ranking_telemetry_repository import (
+    SqlRankingTelemetryRepository,
+)
 from app.infrastructure.repositories.saved_tender_repository import (
     SavedTenderRepository,
+)
+from app.infrastructure.repositories.sql_attachment_extraction_repository import (
+    SqlAttachmentExtractionRepository,
+)
+from app.infrastructure.repositories.sql_attachment_file_repository import (
+    SqlAttachmentFileRepository,
+)
+from app.infrastructure.repositories.sql_attachment_processing_job_repository import (
+    SqlAttachmentProcessingJobRepository,
+)
+from app.infrastructure.repositories.sql_attachment_processing_status_reader import (
+    SqlAttachmentProcessingStatusReader,
 )
 from app.infrastructure.repositories.sql_capability_repository import (
     SqlCapabilityAnswerRepository,
     SqlCapabilityEvidenceRepository,
     SqlCapabilityQuestionRepository,
+)
+from app.infrastructure.repositories.sql_extension_repository import (
+    SqlExtensionFetchJobRepository,
+    SqlExtensionInstallationRepository,
+)
+from app.infrastructure.repositories.sql_gemini_usage_repository import (
+    SqlGeminiUsageRepository,
+)
+from app.infrastructure.repositories.sql_matching_shadow_repository import (
+    SqlMatchingShadowRepository,
 )
 from app.infrastructure.repositories.sql_proposal_repository import (
     SqlProposalDraftRepository,
@@ -97,10 +156,19 @@ from app.infrastructure.repositories.sql_supplier_invitation_repository import (
 from app.infrastructure.repositories.sql_supplier_member_repository import (
     SqlSupplierMemberRepository,
 )
+from app.infrastructure.repositories.sql_tender_attachment_repository import (
+    SqlTenderAttachmentRepository,
+)
 from app.infrastructure.repositories.sql_tender_chat_repository import (
     SQLTenderChatRepository,
 )
+from app.infrastructure.repositories.sql_tender_digest_repository import (
+    SqlTenderDigestRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
+from app.infrastructure.repositories.tender_milestone_attachment_repository import (
+    TenderMilestoneAttachmentRepository,
+)
 from app.infrastructure.repositories.tender_milestone_document_repository import (
     TenderMilestoneDocumentRepository,
 )
@@ -208,6 +276,10 @@ def get_milestone_document_repo(session: SessionDep) -> IMilestoneDocumentReposi
     return TenderMilestoneDocumentRepository(session)
 
 
+def get_milestone_attachment_repo(session: SessionDep) -> IMilestoneAttachmentRepository:
+    return TenderMilestoneAttachmentRepository(session)
+
+
 def get_calendar_oauth_state_repo(session: SessionDep) -> ICalendarOAuthStateRepository:
     return CalendarOAuthStateRepository(session)
 
@@ -234,6 +306,56 @@ def get_app_feedback_repo(session: SessionDep) -> IAppFeedbackRepository:
 
 def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
     return KanbanCardRepository(session)
+
+
+def get_tender_attachment_repo(session: SessionDep) -> ITenderAttachmentRepository:
+    return SqlTenderAttachmentRepository(session)
+
+
+def get_attachment_file_repo(session: SessionDep) -> IAttachmentFileRepository:
+    return SqlAttachmentFileRepository(session)
+
+
+def get_tender_digest_repo(session: SessionDep) -> ITenderDigestRepository:
+    return SqlTenderDigestRepository(session)
+
+
+def get_attachment_extraction_repo(session: SessionDep) -> IAttachmentExtractionRepository:
+    return SqlAttachmentExtractionRepository(session)
+
+
+def get_gemini_usage_repo(session: SessionDep) -> IGeminiUsageRepository:
+    return SqlGeminiUsageRepository(session)
+
+
+def get_attachment_processing_job_repo(
+    session: SessionDep,
+) -> IAttachmentProcessingJobRepository:
+    return SqlAttachmentProcessingJobRepository(session)
+
+
+def get_attachment_processing_status_reader(
+    session: SessionDep,
+) -> IAttachmentProcessingStatusReader:
+    return SqlAttachmentProcessingStatusReader(session)
+
+
+def get_extension_installation_repo(
+    session: SessionDep,
+) -> IExtensionInstallationRepository:
+    return SqlExtensionInstallationRepository(session)
+
+
+def get_extension_fetch_job_repo(session: SessionDep) -> IExtensionFetchJobRepository:
+    return SqlExtensionFetchJobRepository(session)
+
+
+def get_matching_shadow_repo(session: SessionDep) -> IMatchingShadowRepository:
+    return SqlMatchingShadowRepository(session)
+
+
+def get_ranking_telemetry_repo(session: SessionDep) -> IRankingTelemetryRepository:
+    return SqlRankingTelemetryRepository(session)
 
 
 SupplierRepoDep = Annotated[ISupplierRepository, Depends(get_supplier_repo)]
@@ -304,6 +426,9 @@ TenderMilestoneRepoDep = Annotated[
 MilestoneDocumentRepoDep = Annotated[
     IMilestoneDocumentRepository, Depends(get_milestone_document_repo)
 ]
+MilestoneAttachmentRepoDep = Annotated[
+    IMilestoneAttachmentRepository, Depends(get_milestone_attachment_repo)
+]
 
 
 CalendarOAuthStateRepoDep = Annotated[
@@ -327,3 +452,48 @@ AssistantFeedbackRepoDep = Annotated[
     IAssistantFeedbackRepository, Depends(get_assistant_feedback_repo)
 ]
 AppFeedbackRepoDep = Annotated[IAppFeedbackRepository, Depends(get_app_feedback_repo)]
+TenderAttachmentRepoDep = Annotated[
+    ITenderAttachmentRepository, Depends(get_tender_attachment_repo)
+]
+
+
+AttachmentFileRepoDep = Annotated[IAttachmentFileRepository, Depends(get_attachment_file_repo)]
+
+
+TenderDigestRepoDep = Annotated[ITenderDigestRepository, Depends(get_tender_digest_repo)]
+
+
+AttachmentExtractionRepoDep = Annotated[
+    IAttachmentExtractionRepository, Depends(get_attachment_extraction_repo)
+]
+
+
+GeminiUsageRepoDep = Annotated[IGeminiUsageRepository, Depends(get_gemini_usage_repo)]
+
+
+AttachmentProcessingJobRepoDep = Annotated[
+    IAttachmentProcessingJobRepository, Depends(get_attachment_processing_job_repo)
+]
+
+
+AttachmentProcessingStatusReaderDep = Annotated[
+    IAttachmentProcessingStatusReader, Depends(get_attachment_processing_status_reader)
+]
+
+
+ExtensionInstallationRepoDep = Annotated[
+    IExtensionInstallationRepository, Depends(get_extension_installation_repo)
+]
+
+
+ExtensionFetchJobRepoDep = Annotated[
+    IExtensionFetchJobRepository, Depends(get_extension_fetch_job_repo)
+]
+
+
+MatchingShadowRepoDep = Annotated[IMatchingShadowRepository, Depends(get_matching_shadow_repo)]
+
+
+RankingTelemetryRepoDep = Annotated[
+    IRankingTelemetryRepository, Depends(get_ranking_telemetry_repo)
+]

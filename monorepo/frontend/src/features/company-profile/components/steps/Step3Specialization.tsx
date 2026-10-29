@@ -1,19 +1,31 @@
 "use client";
 
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { step3Schema, type Step3Data } from "../../profileSchema";
 import { Textarea } from "@/features/shared/components/Textarea";
-import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
+import { Button } from "@/features/shared/components/Button";
 import { WizardNavigation } from "../WizardNavigation";
 import { KeywordSuggestions } from "../KeywordSuggestions";
-import { SECTORS } from "../../data/sectors";
+import { CertificationListInput } from "../CertificationListInput";
+import { SectorSelect } from "../SectorSelect";
+import { suggestKeywordsFromDescription } from "../../services/supplierService";
+
+const SUGGEST_ERROR =
+  "No pudimos sugerir palabras clave. Inténtalo nuevamente o agrégalas a mano.";
+
+const normalize = (keyword: string) => keyword.trim().toLocaleLowerCase("es");
 
 interface Step3Props {
   defaultValues: Partial<Step3Data>;
   /** Palabras clave importadas desde el RUT, ofrecidas como sugerencias. */
   suggestedKeywords?: string[];
+  /** Sugerencias descartadas; el wizard las guarda para que no vuelvan al regresar a este paso. */
+  dismissedKeywords?: string[];
+  onDismissKeyword?: (keyword: string) => void;
   onNext: (data: Step3Data) => void;
   onBack: () => void;
 }
@@ -21,6 +33,8 @@ interface Step3Props {
 export function Step3Specialization({
   defaultValues,
   suggestedKeywords = [],
+  dismissedKeywords = [],
+  onDismissKeyword,
   onNext,
   onBack,
 }: Step3Props) {
@@ -29,6 +43,8 @@ export function Step3Specialization({
     handleSubmit,
     control,
     watch,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<Step3Data>({
     resolver: zodResolver(step3Schema),
@@ -42,6 +58,46 @@ export function Step3Specialization({
   });
 
   const description = watch("description");
+  const keywords = watch("keywords");
+
+  // Sugerencias sacadas de la descripción; las del RUT llegan por `suggestedKeywords`.
+  const [descriptionSuggestions, setDescriptionSuggestions] = useState<string[]>([]);
+  // Para avisar solo cuando la respuesta vino vacía, no cuando el usuario descartó todas.
+  const [noNewSuggestions, setNoNewSuggestions] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const handleSuggest = async () => {
+    setIsSuggesting(true);
+    setSuggestError(null);
+    try {
+      const found = await suggestKeywordsFromDescription(
+        getValues("description"),
+        getValues("keywords"),
+      );
+      setDescriptionSuggestions(found);
+      setNoNewSuggestions(found.length === 0);
+    } catch (err) {
+      console.error("[Step3Specialization] Error al sugerir palabras clave:", err);
+      setSuggestError(SUGGEST_ERROR);
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  const addKeywords = (added: string[]) => {
+    const current = getValues("keywords");
+    const taken = new Set(current.map(normalize));
+    const next = added.filter((keyword) => !taken.has(normalize(keyword)));
+    setValue("keywords", [...current, ...next], { shouldDirty: true, shouldValidate: true });
+  };
+
+  const dismissDescriptionSuggestion = (keyword: string) => {
+    onDismissKeyword?.(keyword);
+    setDescriptionSuggestions((current) =>
+      current.filter((item) => normalize(item) !== normalize(keyword)),
+    );
+  };
 
   return (
     <div>
@@ -58,9 +114,7 @@ export function Step3Specialization({
           name="sectors"
           control={control}
           render={({ field }) => (
-            <ChipSelect
-              label="Rubros principales"
-              options={SECTORS}
+            <SectorSelect
               selected={field.value}
               onChange={field.onChange}
               error={errors.sectors?.message}
@@ -84,6 +138,8 @@ export function Step3Specialization({
               <KeywordSuggestions
                 suggestions={suggestedKeywords}
                 selected={field.value}
+                dismissed={dismissedKeywords}
+                onDismiss={onDismissKeyword}
                 onAdd={(keywords) => field.onChange([...field.value, ...keywords])}
               />
             </div>
@@ -94,12 +150,11 @@ export function Step3Specialization({
           name="certifications"
           control={control}
           render={({ field }) => (
-            <TagInput
+            <CertificationListInput
               label="Certificaciones relevantes"
-              tags={field.value}
+              value={field.value}
               onChange={field.onChange}
-              placeholder="Ej: ISO 9001, OHSAS 18001, SEC..."
-              hint="Presiona Enter o coma para añadir."
+              hint="Presiona Enter en el nombre o el botón Agregar. La fecha de vencimiento es opcional."
               error={errors.certifications?.message}
               optional
             />
@@ -115,6 +170,39 @@ export function Step3Specialization({
           error={errors.description?.message}
           {...register("description")}
         />
+
+        <div className="-mt-4 flex flex-col gap-3">
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleSuggest}
+              isLoading={isSuggesting}
+              disabled={isSuggesting || !description?.trim()}
+            >
+              <Sparkles className="size-4" aria-hidden="true" />
+              Sugerir palabras clave desde la descripción
+            </Button>
+          </div>
+          {suggestError && (
+            <p role="alert" className="text-sm font-medium text-danger">
+              {suggestError}
+            </p>
+          )}
+          <KeywordSuggestions
+            suggestions={descriptionSuggestions}
+            selected={keywords}
+            dismissed={dismissedKeywords}
+            onAdd={addKeywords}
+            onDismiss={dismissDescriptionSuggestion}
+            hint="Salen de la descripción que escribiste. Agrega solo las que describan lo que realmente haces."
+          />
+          {noNewSuggestions && (
+            <p className="text-sm text-text-muted">
+              No encontramos palabras clave nuevas en la descripción.
+            </p>
+          )}
+        </div>
       </div>
 
       <WizardNavigation

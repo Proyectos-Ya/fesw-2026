@@ -49,7 +49,10 @@ class UpdateSupplierUseCase:
 
         updates = data.model_dump(exclude_unset=True)
         # Descarta campos enviados con el mismo valor actual
-        updates = {k: v for k, v in updates.items() if getattr(supplier, k) != v}
+        # Se compara contra el volcado del dominio: las certificaciones llegan
+        # como dicts y la entidad las guarda como CertificationItem.
+        current = supplier.model_dump()
+        updates = {k: v for k, v in updates.items() if current[k] != v}
         if not updates:
             return supplier
 

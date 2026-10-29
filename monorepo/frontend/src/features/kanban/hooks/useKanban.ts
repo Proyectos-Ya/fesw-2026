@@ -158,6 +158,38 @@ export function useKanban() {
     [columns],
   );
 
+  const reorderColumns = useCallback(
+    async (orderedIds: string[]) => {
+      // Optimistic: reasigna position = índice y reordena en memoria.
+      const prevSnapshot = columns;
+      const indexById = new Map(orderedIds.map((id, i) => [id, i]));
+      setColumns((cols) =>
+        [...cols]
+          .map((c) =>
+            indexById.has(c.id)
+              ? { ...c, position: indexById.get(c.id) as number }
+              : c,
+          )
+          .sort((a, b) => a.position - b.position),
+      );
+      try {
+        const fresh = await kanbanService.reorderColumns(orderedIds);
+        setColumns(
+          [...fresh].sort((a, b) => a.position - b.position).map((c) => ({
+            ...c,
+            // El backend no persiste card_count: lo preservamos del snapshot.
+            card_count:
+              prevSnapshot.find((p) => p.id === c.id)?.card_count ??
+              c.card_count,
+          })),
+        );
+      } catch {
+        setColumns(prevSnapshot);
+      }
+    },
+    [columns],
+  );
+
   const deleteColumn = useCallback(
     async (id: string) => {
       const backupColumns = columns;
@@ -276,6 +308,39 @@ export function useKanban() {
     [cards],
   );
 
+  const archiveCard = useCallback(
+    async (card_id: string) => {
+      // Optimista: la tarjeta deja el tablero activo de inmediato. Si falla,
+      // revertimos para no mentirle al usuario. El historial (panel) carga
+      // bajo demanda, así que la coherencia con el panel se da sola.
+      const card = cards.find((c) => c.id === card_id);
+      if (!card) return;
+
+      setCards((prev) => prev.filter((c) => c.id !== card_id));
+      setColumns((prev) =>
+        prev.map((c) =>
+          c.id === card.column_id
+            ? { ...c, card_count: c.card_count - 1 }
+            : c,
+        ),
+      );
+
+      try {
+        await kanbanService.archiveCard(card_id);
+      } catch {
+        setCards((prev) => [...prev, card]);
+        setColumns((prev) =>
+          prev.map((c) =>
+            c.id === card.column_id
+              ? { ...c, card_count: c.card_count + 1 }
+              : c,
+          ),
+        );
+      }
+    },
+    [cards],
+  );
+
   return {
     columns,
     cards,
@@ -287,9 +352,12 @@ export function useKanban() {
     renameColumn,
     recolorColumn,
     reorderColumn,
+    reorderColumns,
     deleteColumn,
     addCard,
     moveCard,
     removeCard,
+    archiveCard,
+    reload: load,
   };
 }

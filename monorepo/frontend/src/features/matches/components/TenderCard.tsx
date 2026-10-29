@@ -1,5 +1,14 @@
+"use client";
+
 import { useState } from "react";
 import Link from "next/link";
+import {
+  reportImpressionOnce,
+  useImpressionRef,
+} from "@/features/ranking-telemetry/hooks/useImpressionTracker";
+import { reportTenderInteraction } from "@/features/ranking-telemetry/services/rankingTelemetryService";
+import type { CardRanking, RankingContext } from "@/features/ranking-telemetry/types";
+import { tenderDetailHref } from "@/features/ranking-telemetry/utils/rankingLink";
 import { Badge, type BadgeTone } from "@/features/shared/components/Badge";
 import { Icon } from "@/features/shared/components/Icon";
 import { MatchMeter } from "@/features/shared/components/MatchMeter";
@@ -12,6 +21,7 @@ import {
   normalizeScore,
   type ClosingTone,
 } from "../utils/format";
+import { isSecondCall, SECOND_CALL_LABEL } from "../utils/secondCall";
 
 interface TenderCardProps {
   match?: MatchingResult;
@@ -19,6 +29,12 @@ interface TenderCardProps {
   isSaved?: boolean;
   onToggleSave?: (tenderId: string) => void;
   onReport?: (tenderId: string) => void;
+  /**
+   * Solo en recomendadas: ranking servido y posición MOSTRADA. Con él, la tarjeta
+   * cuenta su impresión, lleva el ranking en el enlace a la ficha y reporta
+   * "guardar". Sin él (búsqueda, guardadas) se comporta como siempre.
+   */
+  ranking?: CardRanking | null;
 }
 
 const DASHBOARD_THRESHOLDS = { high: 70, mid: 40 };
@@ -47,9 +63,28 @@ function ScoreLabel({ score }: { score: number }) {
   return "Baja compatibilidad";
 }
 
-export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, onReport }: TenderCardProps) {
+export function TenderCard({
+  match,
+  tender: rawTender,
+  isSaved,
+  onToggleSave,
+  ranking = null,
+  onReport,
+}: TenderCardProps) {
   const [reportOpen, setReportOpen] = useState(false);
   const tender: Tender | null = rawTender ?? match?.tender ?? null;
+
+  // Los hooks van antes del retorno temprano: las reglas de hooks no admiten
+  // llamarlos de forma condicional.
+  const rankingContext: RankingContext | null = ranking
+    ? { rankingId: ranking.rankingId, position: ranking.position }
+    : null;
+  const impressionRef = useImpressionRef(
+    tender && ranking && rankingContext
+      ? { tenderId: tender.id, ranking: rankingContext, source: ranking.source }
+      : null,
+  );
+
   if (!tender) return null;
 
   // Solo calcula el score si viene un match con puntaje ya medido
@@ -62,13 +97,29 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
   const handleSaveClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Optimista: se reporta al pedirlo, antes de saber si el guardado resultó. El
+    // `stopPropagation` evita que el clic llegue también al enlace.
+    if (ranking && rankingContext && !savedState) {
+      reportTenderInteraction(tender.id, "guardar", ranking.source, rankingContext);
+    }
     onToggleSave?.(tender.id);
+  };
+
+  const handleCardClick = () => {
+    // Un clic prueba que la vio aunque no alcanzara el segundo en pantalla. El
+    // `detalle` no se informa acá: lo informa la ficha al cargar, con el ranking de
+    // la URL, así se registra uno solo y también se cubren las entradas sin ranking.
+    if (ranking && rankingContext) {
+      reportImpressionOnce(tender.id, rankingContext, ranking.source);
+    }
   };
 
   return (
     <>
     <Link
-      href={`/matches/${tender.id}`}
+      href={tenderDetailHref(tender.id, rankingContext)}
+      ref={impressionRef}
+      onClick={handleCardClick}
       className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
@@ -93,6 +144,7 @@ export function TenderCard({ match, tender: rawTender, isSaved, onToggleSave, on
           <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
             {closing.label}
           </Badge>
+          {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
           <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
 
           <div className="flex-1" />

@@ -8,8 +8,9 @@ import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
+import { cardRanking } from "@/features/ranking-telemetry/utils/rankingLink";
 import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult } from "../tenderTypes";
+import type { RecommendedMatch } from "../tenderTypes";
 import type { Question } from "../questionTypes";
 import { normalizeScore } from "../utils/format";
 import { useSmartQuestions } from "../hooks/useSmartQuestions";
@@ -27,7 +28,7 @@ const GREEN_THRESHOLD = 70;
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; matches: MatchingResult[] }
+  | { kind: "ready"; matches: RecommendedMatch[] }
   | { kind: "no-supplier" }
   | { kind: "error"; message: string };
 
@@ -35,6 +36,11 @@ export function HomeDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const { workspaces, activeWorkspace } = useWorkspace();
+  // Los efectos dependen de ids y no de objetos: AuthContext y WorkspaceContext
+  // pueden entregar un objeto nuevo con los mismos datos, y eso no es motivo
+  // para volver a pedir las recomendaciones.
+  const userId = user?.id;
+  const activeSupplierId = activeWorkspace?.active_supplier_id ?? null;
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -88,13 +94,13 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       router.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const all = await getRecommendedTenders(user.id);
+        const all = await getRecommendedTenders(userId);
         if (cancelled) return;
         // Las recomendadas siempre traen puntaje; el nulo existe para las
         // licitaciones que nadie ha medido, y esas no son recomendaciones.
@@ -111,7 +117,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
           return;
         }
         if (err instanceof ApiError && err.status === 404) {
-          if (workspaces.length > 0 || activeWorkspace !== null) {
+          if (workspaces.length > 0 || activeSupplierId !== null) {
             setState({ kind: "ready", matches: [] });
             return;
           }
@@ -129,7 +135,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
+  }, [authLoading, isAuthenticated, userId, router, retryNonce, workspaces.length, activeSupplierId]);
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
@@ -226,10 +232,12 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       ) : (
         <>
           <div className="flex flex-col gap-4">
-            {matches.map((m) => (
+            {matches.map((m, index) => (
+              // La posición es la de esta lista, ya filtrada por verde: la que ve el usuario.
               <TenderCard
                 key={m.id}
                 match={m}
+                ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
                 onReport={(reportedId) => {
                   setState((prev) =>
                     prev.kind === "ready"

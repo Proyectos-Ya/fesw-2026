@@ -21,6 +21,7 @@ class TenderMilestoneModel(SQLModel, table=True):
     description: str | None = Field(default=None, sa_column=Column(Text))
     source: str = Field(max_length=40)
     source_document_id: UUID | None = Field(default=None)
+    source_file_id: UUID | None = Field(default=None, index=True)
     source_excerpt: str | None = Field(default=None, max_length=1000)
     due_at: datetime
     has_time: bool

@@ -1,11 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.domain.entities.tender_chat import (
-    TenderChatMessage,
     Citation,
     DocumentDiscrepancy,
+    TenderChatMessage,
 )
 
 
@@ -19,10 +21,14 @@ class AIResponseDTO(BaseModel):
 
 
 class DocumentContextDTO(BaseModel):
-    """Contexto de un documento cargado para el asistente."""
+    """Contexto de un documento cargado para el asistente (compatible con RAG y legacy)."""
     document_name: str
-    file_type: str  # "pdf" | "xlsx" | "png"
-    file_bytes: bytes
+    file_type: str  # "pdf" | "xlsx" | "png" | "docx" | "txt"
+    file_bytes: bytes = b""
+    text: str | None = None
+    file_ref: str | None = None
+    file_id: UUID | None = None
+    source: Literal["panel", "legacy_chat"] = "panel"
     is_corrupted: bool = False
 
 
@@ -38,6 +44,7 @@ class ITenderAssistantAIService(ABC):
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
         feedback_context: Optional[str] = None,
+        pass_number: int = 1,
     ) -> AIResponseDTO:
         """
         Genera la respuesta a la pregunta del usuario utilizando el historial de chat,

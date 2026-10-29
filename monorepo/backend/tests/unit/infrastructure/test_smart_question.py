@@ -10,6 +10,8 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.application.use_cases.questions.smart_question_use_case import (
     SmartQuestionUseCase,
 )
@@ -252,83 +254,73 @@ class TestSmartQuestionUseCase:
         )
         return uc, smart_service, supplier_repo
 
-    # — Resolución de categoría —
+    # — Resolución de categoría (plan 311, CA 1) —
+    # El use case traduce los rubros de Mercado Público a las categorías que
+    # entiende `SmartQuestionServiceImpl`: "construccion", "ti" o "general".
 
-    async def test_uses_construction_category_for_construction_sector(self):
-        """Si el supplier tiene sector 'construction', llama al servicio con 'construction'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["construction"])
+    async def _categoria_para(self, sectores):
+        uc, service, _ = self._make_use_case(supplier_sectors=sectores)
         await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="construction"
+        return service.get_or_generate_questions.call_args.kwargs["category"]
+
+    @pytest.mark.parametrize(
+        "sector", ["Obras", "Obras MINVU", "Servicios de construcción y mantenimiento"]
+    )
+    async def test_rubros_de_obras_dan_construccion(self, sector):
+        assert await self._categoria_para([sector]) == "construccion"
+
+    async def test_rubro_de_tecnologia_da_ti(self):
+        assert (
+            await self._categoria_para(
+                ["Tecnologías de la información, telecomunicaciones y radiodifusión"]
+            )
+            == "ti"
         )
 
-    async def test_uses_construction_category_for_construccion_with_accent(self):
-        """Sector 'construcción' (con tilde) también debe mapear a categoría 'construction'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["construcción"])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="construction"
+    async def test_rubro_sin_banco_propio_da_general(self):
+        assert await self._categoria_para(["Productos de papel"]) == "general"
+
+    async def test_con_rubros_de_dos_categorias_gana_el_primero(self):
+        assert (
+            await self._categoria_para(
+                [
+                    "Tecnologías de la información, telecomunicaciones y radiodifusión",
+                    "Obras",
+                ]
+            )
+            == "ti"
+        )
+        assert (
+            await self._categoria_para(
+                [
+                    "Productos de papel",
+                    "Obras",
+                    "Tecnologías de la información, telecomunicaciones y radiodifusión",
+                ]
+            )
+            == "construccion"
         )
 
-    async def test_uses_ti_category_for_ti_sector(self):
-        """Sector 'ti' mapea a categoría 'ti'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["ti"])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="ti"
-        )
+    async def test_espacios_alrededor_del_rubro_no_cambian_la_categoria(self):
+        assert await self._categoria_para(["  Obras  "]) == "construccion"
 
-    async def test_uses_ti_category_for_tecnologia(self):
-        """Sector 'tecnología' también mapea a categoría 'ti'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["tecnología"])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="ti"
+    def test_cada_rubro_del_mapa_existe_en_la_lista(self):
+        """Un nombre mal copiado caería en "general" sin aviso."""
+        from app.application.use_cases.questions.smart_question_use_case import (
+            QUESTION_CATEGORY_BY_SECTOR,
         )
+        from app.shared.sectors import PRODUCT_SECTORS
+
+        assert set(QUESTION_CATEGORY_BY_SECTOR) <= set(PRODUCT_SECTORS)
+        assert set(QUESTION_CATEGORY_BY_SECTOR.values()) == {"construccion", "ti"}
 
     async def test_uses_general_category_when_no_supplier(self):
         """Si no se encuentra el supplier, usa categoría 'general'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=None)
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="general"
-        )
+        assert await self._categoria_para(None) == "general"
 
     async def test_uses_general_category_when_empty_sectors(self):
         """Supplier sin sectores retorna categoría 'general'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=[])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="general"
-        )
-
-    async def test_uses_general_for_unknown_sector(self):
-        """Sector no reconocido debe resultar en categoría 'general'."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["gastronomia"])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="general"
-        )
-
-    # — Normalización de sectores —
-
-    async def test_sector_normalization_strips_whitespace(self):
-        """Sectores con espacios deben normalizarse correctamente."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["  construction  "])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="construction"
-        )
-
-    async def test_sector_normalization_lowercases(self):
-        """Sectores en mayúsculas deben normalizarse a minúsculas."""
-        uc, service, _ = self._make_use_case(supplier_sectors=["CONSTRUCTION"])
-        await uc.execute(PROVIDER_ID)
-        service.get_or_generate_questions.assert_called_once_with(
-            provider_id=PROVIDER_ID, category="construction"
-        )
-
-    # — Resultado final —
+        assert await self._categoria_para([]) == "general"
 
     async def test_returns_questions_from_service(self):
         """El use case debe retornar exactamente lo que devuelve el servicio."""

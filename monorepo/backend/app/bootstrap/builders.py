@@ -1,7 +1,10 @@
 """Construcción, al arrancar, de los servicios con proveedor configurable."""
 
 import logging
+import secrets
+from pathlib import Path
 
+from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.calendar_provider_client import ICalendarProviderClient
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
@@ -14,6 +17,12 @@ from app.infrastructure.services.api_embedding_service import (
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.attachments.local_attachment_storage import (
+    LocalDiskAttachmentStorage,
+)
+from app.infrastructure.services.attachments.r2_attachment_storage import (
+    R2AttachmentStorage,
+)
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
 )
@@ -46,6 +55,37 @@ def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient
             tenant=settings.microsoft_calendar_tenant,
         )
     return providers
+
+
+def build_attachment_storage() -> IAttachmentStorage | None:
+    """R2 si está configurado; disco local solo en desarrollo; si no, la subida queda apagada.
+
+    Sin R2 y fuera de desarrollo devuelve `None`: la API arranca igual y las rutas
+    de escritura responden 503 `storage_unavailable`, así se puede desplegar antes
+    de crear el bucket sin romper nada.
+    """
+    if settings.r2_enabled:
+        logger.info("Anexos en Cloudflare R2 (bucket %s).", settings.r2_bucket)
+        return R2AttachmentStorage(
+            account_id=settings.r2_account_id or "",
+            access_key_id=settings.r2_access_key_id or "",
+            secret_access_key=settings.r2_secret_access_key or "",
+            bucket=settings.r2_bucket or "",
+        )
+    if settings.is_dev:
+        logger.warning(
+            "Anexos en disco local (%s): solo para desarrollo.",
+            settings.attachment_local_storage_dir,
+        )
+        # Secreto por proceso: con --reload las URLs pendientes vencen, y el cliente
+        # pide otra.
+        return LocalDiskAttachmentStorage(
+            root=Path(settings.attachment_local_storage_dir),
+            public_base_url=settings.attachment_local_storage_public_url,
+            secret=secrets.token_bytes(32),
+        )
+    logger.warning("Sin R2 configurado: la subida de anexos queda apagada.")
+    return None
 
 
 class MockRerankerService(IRerankerService):

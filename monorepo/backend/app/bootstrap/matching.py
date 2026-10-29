@@ -5,6 +5,9 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.application.repositories.feedback_repository import IMatchReportRepository
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
 from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
@@ -12,15 +15,21 @@ from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.repositories.supplier_vector_repository import (
     ISupplierVectorRepository,
 )
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
+)
+from app.application.services.compatibility_formula import (
+    CalibrationCoefficients,
+    CompatibilityFormula,
 )
 from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.services.embedding_service import IEmbeddingService
 from app.application.services.reranker_service import IRerankerService
-from app.application.services.weighting_service import IWeightingService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
@@ -28,6 +37,7 @@ from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.application.use_cases.matching.score_tender_on_demand import (
     ScoreTenderOnDemandUseCase,
 )
+from app.application.use_cases.matching_shadow import ComputeShadowScoreUseCase
 from app.application.use_cases.saved_tenders.list_saved_tenders import (
     ListSavedTendersUseCase,
 )
@@ -36,21 +46,61 @@ from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUs
 from app.application.use_cases.tender.get_tender_detail import GetTenderDetailUseCase
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.bootstrap.repositories import (
+    AttachmentExtractionRepoDep,
     MatchingResultRepoDep,
+    MatchingShadowRepoDep,
     MatchReportRepoDep,
     SavedTenderRepoDep,
     SupplierRepoDep,
+    TenderDigestRepoDep,
     TenderRepoDep,
 )
 from app.bootstrap.services import (
+    CompatibilityFormulaDep,
     EmbeddingServiceDep,
+    LexicalTenderRepoDep,
     SupplierVectorRepoDep,
+    TenderItemVectorRepoDep,
     TenderVectorRepoDep,
     get_deep_analysis_service,
     get_reranker_service,
-    get_weighting_service,
 )
 from app.config import settings
+
+# Versión de la fórmula de compatibilidad. Se sube a mano cada vez que cambian los
+# coeficientes de `settings.compatibility_*` o las señales que los alimentan: es lo
+# que hace que los porcentajes cacheados con la fórmula anterior se recalculen.
+COMPATIBILITY_FORMULA_VERSION = "compat-calib-v1"
+
+
+def compatibility_model_version() -> str:
+    """Identifica embeddings y fórmula juntos, para `MatchingResult.model_version`.
+
+    `RankTendersUseCase` compara este valor con el de la caché de
+    recomendaciones. Antes era solo el modelo de embeddings, que no cambia
+    cuando se recalibra la fórmula: desplegar coeficientes nuevos habría dejado
+    a cada usuario viendo los porcentajes viejos hasta su próximo cambio de perfil.
+    """
+    return f"{settings.embedding_model}+{COMPATIBILITY_FORMULA_VERSION}"
+
+
+def build_compatibility_formula() -> CompatibilityFormula:
+    """Arma la fórmula calibrada con los coeficientes de la configuración."""
+    return CompatibilityFormula(
+        relevant=CalibrationCoefficients(
+            intercept=settings.compatibility_relevant_intercept,
+            reranker=settings.compatibility_relevant_reranker,
+            best_match=settings.compatibility_relevant_best_match,
+            coverage=settings.compatibility_relevant_coverage,
+        ),
+        exact=CalibrationCoefficients(
+            intercept=settings.compatibility_exact_intercept,
+            reranker=settings.compatibility_exact_reranker,
+            best_match=settings.compatibility_exact_best_match,
+            coverage=settings.compatibility_exact_coverage,
+        ),
+    )
+
 
 # Constructores compartidos por los providers de la API y por los runners del
 # scheduler. Los argumentos son obligatorios y por nombre: si alguien agrega una
@@ -61,15 +111,19 @@ from app.config import settings
 def build_compatibility_scorer(
     *,
     reranker_service: IRerankerService,
-    weighting_service: IWeightingService,
     matching_result_repo: IMatchingResultRepository,
+    embedding_service: IEmbeddingService,
+    item_vector_repo: ITenderItemVectorRepository,
+    formula: CompatibilityFormula,
 ) -> CompatibilityScorer:
     """La fórmula de compatibilidad, compartida por el ranking y el cálculo a pedido."""
     return CompatibilityScorer(
         reranker_service=reranker_service,
-        weighting_service=weighting_service,
         matching_result_repo=matching_result_repo,
-        model_version=settings.embedding_model,
+        embedding_service=embedding_service,
+        item_vector_repo=item_vector_repo,
+        formula=formula,
+        model_version=compatibility_model_version(),
     )
 
 
@@ -82,10 +136,13 @@ def build_rank_tenders_use_case(
     scorer: CompatibilityScorer,
     matching_result_repo: IMatchingResultRepository,
     embedding_service: IEmbeddingService,
+    item_vector_repo: ITenderItemVectorRepository,
+    lexical_tender_repo: ILexicalTenderRepository,
     match_report_repo: IMatchReportRepository | None = None,
 ) -> RankTendersUseCase:
     # Con el servicio de embeddings, una empresa sin vector en Qdrant lo recupera
-    # en vez de fallar con SupplierVectorNotFound.
+    # en vez de fallar con SupplierVectorNotFound. Embeddings y partidas juntos
+    # son el segundo canal de candidatas (keywords contra partidas).
     return RankTendersUseCase(
         supplier_repo=supplier_repo,
         supplier_vector_repo=supplier_vector_repo,
@@ -93,21 +150,30 @@ def build_rank_tenders_use_case(
         tender_repo=tender_repo,
         scorer=scorer,
         matching_result_repo=matching_result_repo,
-        model_version=settings.embedding_model,
+        model_version=compatibility_model_version(),
         embedding_service=embedding_service,
         match_report_repo=match_report_repo,
+        item_vector_repo=item_vector_repo,
+        # Tercer canal: BM25 léxico sparse (plan 256).
+        lexical_tender_repo=lexical_tender_repo,
+        lexical_channel_enabled=settings.matching_lexical_channel_enabled,
+        lexical_search_limit=settings.matching_lexical_search_limit,
     )
 
 
 def get_compatibility_scorer(
     reranker_service: Annotated[IRerankerService, Depends(get_reranker_service)],
-    weighting_service: Annotated[IWeightingService, Depends(get_weighting_service)],
     matching_result_repo: MatchingResultRepoDep,
+    embedding_service: EmbeddingServiceDep,
+    item_vector_repo: TenderItemVectorRepoDep,
+    formula: CompatibilityFormulaDep,
 ) -> CompatibilityScorer:
     return build_compatibility_scorer(
         reranker_service=reranker_service,
-        weighting_service=weighting_service,
         matching_result_repo=matching_result_repo,
+        embedding_service=embedding_service,
+        item_vector_repo=item_vector_repo,
+        formula=formula,
     )
 
 
@@ -123,6 +189,8 @@ def get_rank_tenders_use_case(
     matching_result_repo: MatchingResultRepoDep,
     embedding_service: EmbeddingServiceDep,
     match_report_repo: MatchReportRepoDep,
+    item_vector_repo: TenderItemVectorRepoDep,
+    lexical_tender_repo: LexicalTenderRepoDep,
 ) -> RankTendersUseCase:
     return build_rank_tenders_use_case(
         supplier_repo=supplier_repo,
@@ -133,6 +201,8 @@ def get_rank_tenders_use_case(
         matching_result_repo=matching_result_repo,
         embedding_service=embedding_service,
         match_report_repo=match_report_repo,
+        item_vector_repo=item_vector_repo,
+        lexical_tender_repo=lexical_tender_repo,
     )
 
 
@@ -141,13 +211,25 @@ def get_score_tender_on_demand_use_case(
     tender_repo: TenderRepoDep,
     matching_result_repo: MatchingResultRepoDep,
     scorer: CompatibilityScorerDep,
+    digest_repo: TenderDigestRepoDep,
+    extraction_repo: AttachmentExtractionRepoDep,
 ) -> ScoreTenderOnDemandUseCase:
     return ScoreTenderOnDemandUseCase(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
         scorer=scorer,
+        digest_repo=digest_repo,
+        extraction_repo=extraction_repo,
     )
+
+
+def get_compute_shadow_score_use_case(
+    scorer: CompatibilityScorerDep,
+    shadow_repo: MatchingShadowRepoDep,
+) -> ComputeShadowScoreUseCase:
+    # Plan 233, decisión 9. Ninguna ruta lo usa todavía: ver ADR 0005.
+    return ComputeShadowScoreUseCase(scorer=scorer, shadow_repo=shadow_repo, settings=settings)
 
 
 def get_search_tenders_use_case(

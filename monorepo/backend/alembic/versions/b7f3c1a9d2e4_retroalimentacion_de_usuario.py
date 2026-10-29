@@ -12,7 +12,7 @@ Solo tablas nuevas: la versión anterior del backend no las conoce y sigue
 funcionando con el esquema nuevo.
 
 Revision ID: b7f3c1a9d2e4
-Revises: d4e8a1b2c3f5
+Revises: e7123e26c0be
 Create Date: 2026-10-08 00:00:00.000000
 
 """
@@ -26,7 +26,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b7f3c1a9d2e4"
-down_revision: str | Sequence[str] | None = "d4e8a1b2c3f5"
+down_revision: str | Sequence[str] | None = "e7123e26c0be"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

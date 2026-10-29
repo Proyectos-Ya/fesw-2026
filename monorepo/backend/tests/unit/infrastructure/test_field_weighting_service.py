@@ -173,3 +173,96 @@ def test_sector_matching_avoids_substring_false_positives(
     # Reranker score = 0.10. No debe recibir bono de sector ni keyword
     results = service.calculate_scores([(tender, 0.10)], supplier_with_short_sectors)
     assert pytest.approx(results[0][1], rel=1e-3) == 0.05  # 0.10 * 0.50 = 0.05
+
+
+# ─── Rubros de Mercado Público (plan 311, CA 1) ───
+
+
+def _licitacion(nombre: str, descripcion: str = "") -> Tender:
+    now = datetime.now()
+    return Tender(
+        id=uuid4(),
+        code="T_ONU",
+        name=nombre,
+        description=descripcion,
+        status_id=1,
+        published_at=now,
+        closing_at=now,
+        last_change_at=now,
+        buyer_rut="11.111.111-1",
+        buyer_unit="Compras",
+        items=[],
+    )
+
+
+def _empresa(*sectores: str) -> Supplier:
+    return Supplier(
+        id=uuid4(),
+        rut="76086428-5",
+        legal_name="Empresa SpA",
+        sectors=list(sectores),
+        keywords=[],
+    )
+
+
+def _bono_de_rubro(
+    service: FieldWeightingService, empresa: Supplier, licitacion: Tender
+) -> float:
+    """Score con reranker en 0 y sin keywords: queda solo el peso de rubro."""
+    return service.calculate_scores([(licitacion, 0.0)], empresa)[0][1]
+
+
+def test_una_palabra_generica_del_rubro_no_suma(service: FieldWeightingService) -> None:
+    empresa = _empresa("Servicios de limpieza industrial")
+    licitacion = _licitacion("Servicios de transporte de pasajeros")
+    assert _bono_de_rubro(service, empresa, licitacion) == 0.0
+
+
+def test_una_palabra_significativa_del_rubro_suma(
+    service: FieldWeightingService,
+) -> None:
+    empresa = _empresa("Servicios de limpieza industrial")
+    licitacion = _licitacion("Limpieza de oficinas municipales")
+    assert _bono_de_rubro(service, empresa, licitacion) == pytest.approx(0.25 * 0.75)
+
+
+def test_el_termino_en_plural_encuentra_el_singular(
+    service: FieldWeightingService,
+) -> None:
+    empresa = _empresa(
+        "Tecnologías de la información, telecomunicaciones y radiodifusión"
+    )
+    licitacion = _licitacion("Soporte de tecnología para el hospital")
+    assert _bono_de_rubro(service, empresa, licitacion) == pytest.approx(0.25 * 0.75)
+
+
+def test_las_tildes_no_impiden_la_coincidencia(service: FieldWeightingService) -> None:
+    empresa = _empresa("Consultoria")
+    licitacion = _licitacion("Consultoría para el plan regulador")
+    assert _bono_de_rubro(service, empresa, licitacion) == pytest.approx(0.25)
+
+
+def test_la_frase_completa_sigue_sumando_entero(service: FieldWeightingService) -> None:
+    empresa = _empresa("Servicios de limpieza industrial")
+    licitacion = _licitacion("Contratación de servicios de limpieza industrial")
+    assert _bono_de_rubro(service, empresa, licitacion) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize(
+    ("sector", "nombre"),
+    [
+        ("Servicios medioambientales", "Gestión medioambiental del relleno sanitario"),
+        ("Organizaciones sociales, laborales y clubes", "Arriendo de club deportivo"),
+        (
+            "Servicios financieros, pensiones y seguros",
+            "Asesoría en pensión de invalidez",
+        ),
+        ("Muebles y mobiliario", "Adquisición de mueble de oficina"),
+    ],
+)
+def test_el_plural_en_es_encuentra_el_singular(
+    service: FieldWeightingService, sector: str, nombre: str
+) -> None:
+    assert _bono_de_rubro(
+        service, _empresa(sector), _licitacion(nombre)
+    ) == pytest.approx(0.25 * 0.75)

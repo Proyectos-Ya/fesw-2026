@@ -14,6 +14,8 @@ from app.application.repositories.supplier_vector_repository import (
 from app.application.schemas.supplier_schema import (
     CreateSupplierSchema,
     RutExistsResponse,
+    SuggestKeywordsRequest,
+    SuggestKeywordsResponse,
     UpdateSupplierSchema,
 )
 from app.application.services.company_lookup_service import ICompanyLookupService
@@ -26,6 +28,9 @@ from app.application.use_cases.supplier.get_supplier_by_user import (
 )
 from app.application.use_cases.supplier.import_company_profile import (
     ImportCompanyProfileUseCase,
+)
+from app.application.use_cases.supplier.suggest_keywords_from_description import (
+    SuggestKeywordsFromDescriptionUseCase,
 )
 from app.application.use_cases.supplier.update_supplier import UpdateSupplierUseCase
 from app.config import settings
@@ -279,6 +284,20 @@ def create_supplier_router(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
             ) from e
+
+    @router.post(
+        "/suggest-keywords-from-description",
+        response_model=SuggestKeywordsResponse,
+        summary="Sugerir palabras clave desde la descripción",
+        responses={422: {"description": "Descripción de más de 1000 caracteres"}},
+    )
+    async def suggest_keywords_from_description(data: SuggestKeywordsRequest):
+        # Extracción léxica del paso 3 del wizard (HdU 29). No guarda nada ni usa
+        # IA. Declarada antes de /{supplier_id} por orden, aunque ese es GET.
+        suggested = SuggestKeywordsFromDescriptionUseCase().execute(
+            data.description, data.existing_keywords
+        )
+        return SuggestKeywordsResponse(suggested_keywords=suggested)
 
     @router.get(
         "/{supplier_id}",

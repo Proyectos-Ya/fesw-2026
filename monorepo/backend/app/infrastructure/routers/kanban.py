@@ -5,24 +5,37 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.application.schemas.kanban_schema import (
+    KanbanArchiveResponse,
     KanbanColumnUpdate,
     KanbanColumnResponse,
     KanbanColumnCreate,
     KanbanCardResponse,
     KanbanCardMove,
     KanbanCardCreate,
+    ReorderColumnsRequest,
 )
 from app.application.use_cases.kanban.add_tender_to_board import AddTenderToBoardUseCase
+from app.application.use_cases.kanban.archive_tender_from_board import (
+    ArchiveTenderFromBoardUseCase,
+)
 from app.application.use_cases.kanban.create_kanban_column import CreateKanbanColumnUseCase
 from app.application.use_cases.kanban.delete_kanban_column import DeleteKanbanColumnUseCase
+from app.application.use_cases.kanban.list_archived_tenders import (
+    ListArchivedTendersUseCase,
+)
 from app.application.use_cases.kanban.list_kanban_cards import ListKanbanCardsUseCase
 from app.application.use_cases.kanban.list_kanban_columns import ListKanbanColumnsUseCase
 from app.application.use_cases.kanban.move_kanban_card import MoveKanbanCardUseCase
 from app.application.use_cases.kanban.remove_tender_from_board import RemoveTenderFromBoardUseCase
+from app.application.use_cases.kanban.restore_tender import RestoreTenderUseCase
+from app.application.use_cases.kanban.reorder_kanban_columns import (
+    ReorderKanbanColumnsUseCase,
+)
 from app.application.use_cases.kanban.update_kanban_column import UpdateKanbanColumnUseCase
 
 from app.domain.entities.user import User
 from app.domain.errors.kanban_errors import (
+    ArchiveNotRestorable,
     KanbanCardNotFound,
     KanbanColumnNotFound,
     TenderAlreadyOnBoard,
@@ -38,6 +51,10 @@ def create_kanban_router(
     get_add_tender_to_board_use_case: Callable,
     get_move_kanban_card_use_case: Callable,
     get_remove_tender_from_board_use_case: Callable,
+    get_archive_tender_from_board_use_case: Callable,
+    get_list_archived_tenders_use_case: Callable,
+    get_restore_tender_use_case: Callable,
+    get_reorder_kanban_columns_use_case: Callable,
 ) -> APIRouter:
     router = APIRouter(
         prefix="/kanban",
@@ -69,6 +86,39 @@ def create_kanban_router(
             card_count=0,
             created_at=column.created_at,
         )
+
+    @router.patch(
+        "/columns/reorder",
+        response_model=list[KanbanColumnResponse],
+        summary="Reordena las columnas Kanban del usuario",
+        responses={
+            400: {"description": "Lista inválida (incompleta o con duplicados)"},
+            404: {"description": "Alguna columna no pertenece al usuario"},
+        },
+    )
+    async def reorder_columns(
+        body: ReorderColumnsRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ReorderKanbanColumnsUseCase, Depends(get_reorder_kanban_columns_use_case)
+        ],
+        list_use_case: Annotated[
+            ListKanbanColumnsUseCase, Depends(get_list_kanban_columns_use_case)
+        ],
+    ):
+        try:
+            await use_case.execute(
+                user_id=current_user.id, column_ids=body.column_ids
+            )
+        except KanbanColumnNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            ) from e
+        return await list_use_case.execute(user_id=current_user.id)
 
     @router.patch(
         "/columns/{column_id}",
@@ -182,5 +232,68 @@ def create_kanban_router(
             await use_case.execute(user_id=current_user.id, tender_id=tender_id)
         except KanbanCardNotFound as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+    @router.post(
+        "/cards/{card_id}/archive",
+        response_model=KanbanCardResponse,
+        summary="Archivar una tarjeta del tablero (soft-delete)",
+        responses={404: {"description": "La tarjeta no existe"}},
+    )
+    async def archive_card(
+        card_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ArchiveTenderFromBoardUseCase,
+            Depends(get_archive_tender_from_board_use_case),
+        ],
+    ):
+        """Archiva manualmente una tarjeta.
+
+        La tarjeta deja de aparecer en el tablero activo y pasa al historial.
+        Se puede restaurar mientras la razón sea 'manual' (CA4).
+        """
+        try:
+            return await use_case.execute(user_id=current_user.id, card_id=card_id)
+        except KanbanCardNotFound as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+    @router.get(
+        "/archive",
+        response_model=list[KanbanArchiveResponse],
+        summary="Historial de tarjetas archivadas del usuario",
+    )
+    async def list_archive(
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            ListArchivedTendersUseCase,
+            Depends(get_list_archived_tenders_use_case),
+        ],
+    ):
+        return await use_case.execute(user_id=current_user.id)
+
+    @router.post(
+        "/archive/{card_id}/restore",
+        response_model=KanbanCardResponse,
+        summary="Restaurar al tablero una tarjeta archivada manualmente",
+        responses={
+            404: {"description": "La tarjeta no existe"},
+            409: {
+                "description": (
+                    "La tarjeta fue archivada automáticamente y no se puede restaurar"
+                )
+            },
+        },
+    )
+    async def restore_card(
+        card_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[RestoreTenderUseCase, Depends(get_restore_tender_use_case)],
+    ):
+        try:
+            return await use_case.execute(user_id=current_user.id, card_id=card_id)
+        except KanbanCardNotFound as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+        except ArchiveNotRestorable as e:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
 
     return router

@@ -26,6 +26,10 @@ class KanbanColumn(BaseModel):
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
 
 
+ARCHIVE_REASON_MANUAL = "manual"
+ARCHIVE_REASON_AUTO = "auto_3m"
+
+
 class KanbanCard(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
@@ -34,3 +38,9 @@ class KanbanCard(BaseModel):
     position: int
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    # Archivado (HdU 10, CA4). `board_entered_at` se setea una vez al crear la
+    # tarjeta y no cambia al moverla entre columnas; es la referencia para el
+    # auto-archivado a los 90 días.
+    board_entered_at: UtcDateTime = Field(default_factory=utc_now_naive)
+    archived_at: UtcDateTime | None = None
+    archived_reason: str | None = None

@@ -26,9 +26,9 @@ function discardedNotice(count: number): string | null {
 function unavailableNotice(count: number): string | null {
   if (count === 0) return null;
   if (count === 1) {
-    return "1 documento que subiste ya no está disponible. Vuelve a adjuntarlo en el asistente para extraer sus hitos.";
+    return "1 documento que subiste ya no está disponible. Vuelve a subirlo en Anexos para extraer sus hitos.";
   }
-  return `${count} documentos que subiste ya no están disponibles. Vuelve a adjuntarlos en el asistente para extraer sus hitos.`;
+  return `${count} documentos que subiste ya no están disponibles. Vuelve a subirlos en Anexos para extraer sus hitos.`;
 }
 
 function failedNotice(count: number): string | null {
@@ -71,7 +71,7 @@ function extractionNotice(data: MilestoneList): string | null {
 }
 
 /**
- * @param refreshKey Al cambiar (p. ej. tras subir bases en el asistente) recarga
+ * @param refreshKey Al cambiar (p. ej. tras subir un anexo en la ficha) recarga
  *   sin pasar por "cargando".
  */
 export function useTenderMilestones(tenderId: string, refreshKey = 0) {

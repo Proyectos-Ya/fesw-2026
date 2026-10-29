@@ -6,6 +6,13 @@ vez de recibirlos por parámetro. Cada router recibe solo lo que usa.
 
 from fastapi import FastAPI
 
+from app.bootstrap.attachments import (
+    get_complete_attachment_upload_use_case,
+    get_delete_attachment_file_use_case,
+    get_request_attachment_upload_use_case,
+    get_tender_attachments_use_case,
+    get_tender_digest_use_case,
+)
 from app.bootstrap.calendar import (
     get_calendar_connections_use_case,
     get_complete_calendar_authorization_use_case,
@@ -31,6 +38,13 @@ from app.bootstrap.exports import (
     get_revoke_share_link_use_case,
     get_shared_tender_use_case,
 )
+from app.bootstrap.extension import (
+    get_check_extension_attachments_use_case,
+    get_extension_capabilities_use_case,
+    get_lease_extension_jobs_use_case,
+    get_pair_extension_use_case,
+    get_report_extension_job_result_use_case,
+)
 from app.bootstrap.feedback import (
     get_report_match_use_case,
     get_submit_app_feedback_use_case,
@@ -38,12 +52,16 @@ from app.bootstrap.feedback import (
 )
 from app.bootstrap.kanban import (
     get_add_tender_to_board_use_case,
+    get_archive_tender_from_board_use_case,
     get_create_kanban_column_use_case,
     get_delete_kanban_column_use_case,
+    get_list_archived_tenders_use_case,
     get_list_kanban_cards_use_case,
     get_list_kanban_columns_use_case,
     get_move_kanban_card_use_case,
     get_remove_tender_from_board_use_case,
+    get_reorder_kanban_columns_use_case,
+    get_restore_tender_use_case,
     get_update_kanban_column_use_case,
 )
 from app.bootstrap.matching import (
@@ -81,7 +99,12 @@ from app.bootstrap.questions import (
     get_answer_question_use_case,
     get_smart_question_use_case,
 )
+from app.bootstrap.ranking_telemetry import (
+    get_ranking_impression_logger,
+    get_record_tender_interaction_use_case,
+)
 from app.bootstrap.repositories import (
+    get_extension_installation_repo,
     get_supplier_invitation_repo,
     get_supplier_member_repo,
     get_supplier_repo,
@@ -93,6 +116,7 @@ from app.bootstrap.services import (
     get_embedding_service,
     get_identity_directory,
     get_milestone_extraction_background,
+    get_ranking_registry,
     get_supplier_vector_repo,
     get_token_verifier,
 )
@@ -116,7 +140,9 @@ from app.infrastructure.routers.calendar import (
 )
 from app.infrastructure.routers.capability import create_capability_router
 from app.infrastructure.routers.catalog import create_catalog_router
+from app.infrastructure.routers.dev_storage import create_dev_storage_router
 from app.infrastructure.routers.exports import create_exports_router
+from app.infrastructure.routers.extension import create_extension_router
 from app.infrastructure.routers.feedback import create_feedback_router
 from app.infrastructure.routers.health import create_health_router
 from app.infrastructure.routers.kanban import create_kanban_router
@@ -131,8 +157,15 @@ from app.infrastructure.routers.sharing import (
 )
 from app.infrastructure.routers.supplier import create_supplier_router
 from app.infrastructure.routers.tender import create_tender_router
+from app.infrastructure.routers.tender_attachments import (
+    create_tender_attachments_router,
+)
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
+from app.infrastructure.routers.tender_digest import create_tender_digest_router
 from app.infrastructure.routers.workspace import create_workspace_router
+from app.infrastructure.services.attachments.local_attachment_storage import (
+    LocalDiskAttachmentStorage,
+)
 
 
 def register_routes(app: FastAPI) -> None:
@@ -200,6 +233,9 @@ def register_routes(app: FastAPI) -> None:
             get_tender_detail_use_case=get_tender_detail_use_case,
             get_current_workspace_context=get_optional_workspace_context,
             get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
+            get_ranking_impression_logger=get_ranking_impression_logger,
+            get_ranking_registry=get_ranking_registry,
+            get_record_tender_interaction_use_case=get_record_tender_interaction_use_case,
         )
     )
     app.include_router(
@@ -246,6 +282,10 @@ def register_routes(app: FastAPI) -> None:
             get_add_tender_to_board_use_case=get_add_tender_to_board_use_case,
             get_move_kanban_card_use_case=get_move_kanban_card_use_case,
             get_remove_tender_from_board_use_case=get_remove_tender_from_board_use_case,
+            get_archive_tender_from_board_use_case=get_archive_tender_from_board_use_case,
+            get_list_archived_tenders_use_case=get_list_archived_tenders_use_case,
+            get_restore_tender_use_case=get_restore_tender_use_case,
+            get_reorder_kanban_columns_use_case=get_reorder_kanban_columns_use_case,
         )
     )
     app.include_router(
@@ -306,6 +346,7 @@ def register_routes(app: FastAPI) -> None:
             get_extract_tender_milestones_use_case,
             get_set_milestone_reminder_use_case,
             get_milestone_extraction_background,
+            get_optional_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(
@@ -320,4 +361,37 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(
         create_milestone_sync_router(get_current_user, get_sync_milestones_use_case)
     )
-
+    app.include_router(
+        create_tender_attachments_router(
+            get_current_user,
+            get_tender_attachments_use_case,
+            get_optional_workspace_context=get_optional_workspace_context,
+            get_current_workspace_context=get_current_workspace_context,
+            get_request_upload_use_case=get_request_attachment_upload_use_case,
+            get_complete_upload_use_case=get_complete_attachment_upload_use_case,
+            get_delete_file_use_case=get_delete_attachment_file_use_case,
+        )
+    )
+    app.include_router(
+        create_tender_digest_router(
+            get_current_user,
+            get_tender_digest_use_case,
+            get_optional_workspace_context=get_optional_workspace_context,
+        )
+    )
+    app.include_router(
+        create_extension_router(
+            capabilities_use_case=get_extension_capabilities_use_case,
+            pair_extension_use_case=get_pair_extension_use_case,
+            check_attachments_use_case=get_check_extension_attachments_use_case,
+            lease_jobs_use_case=get_lease_extension_jobs_use_case,
+            report_job_result_use_case=get_report_extension_job_result_use_case,
+            installation_repo=get_extension_installation_repo,
+            get_current_user=get_current_user,
+            get_optional_workspace_context=get_optional_workspace_context,
+        )
+    )
+    # El receptor de subidas del disco local solo existe cuando de verdad se usa
+    # el disco local: nunca con R2 ni en producción.
+    if isinstance(app.state.attachment_storage, LocalDiskAttachmentStorage):
+        app.include_router(create_dev_storage_router(app.state.attachment_storage))

@@ -1,23 +1,31 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { MatchingResult, DeepAnalysis, TenderScore } from "../tenderTypes";
+import type { RecommendedMatch, DeepAnalysis, TenderScore } from "../tenderTypes";
 import type { TenderDetail } from "@/features/notifications/notificationTypes";
 import { ApiError } from "@/features/shared/api/client";
 
 interface GetRecommendedOptions {
   forceRefresh?: boolean;
+  /**
+   * `false` para que el backend no registre la lista como un ranking servido
+   * (`ranking_id: null`). La ficha lo manda: pide la lista solo para encontrar
+   * una licitación, y sin esto cada apertura crearía un ranking fantasma.
+   */
+  track?: boolean;
 }
 
 /**
  * Backend route: GET /tenders/recommended
- * Returns matches sorted by final_score desc.
+ * Returns matches sorted by final_score desc, cada uno con el `ranking_id` de la
+ * lista servida (salvo con `track: false`).
  */
 export function getRecommendedTenders(
   userId: string,
   options: GetRecommendedOptions = {},
-): Promise<MatchingResult[]> {
+): Promise<RecommendedMatch[]> {
   const params = new URLSearchParams({ profile_id: userId });
   if (options.forceRefresh) params.set("force_refresh", "true");
-  return apiFetch<MatchingResult[]>(`/tenders/recommended?${params.toString()}`);
+  if (options.track === false) params.set("track", "false");
+  return apiFetch<RecommendedMatch[]>(`/tenders/recommended?${params.toString()}`);
 }
 
 /**

@@ -1,10 +1,16 @@
 import re
 from uuid import UUID
 
+from app.application.repositories.attachment_file_repository import (
+    IAttachmentFileRepository,
+)
 from app.application.repositories.proposal_repository import IProposalDraftRepository
 from app.application.repositories.supplier_repository import ISupplierRepository
-from app.application.repositories.tender_chat_repository import ITenderChatRepository
+from app.application.repositories.tender_attachment_repository import (
+    ITenderAttachmentRepository,
+)
 from app.application.repositories.tender_repository import ITenderRepository
+from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.document_validator_service import (
     IDocumentValidatorService,
 )
@@ -18,7 +24,7 @@ from app.application.services.proposal_ai_service import (
 from app.application.use_cases.capabilities.build_experience_catalog import (
     BuildExperienceCatalogUseCase,
 )
-from app.application.use_cases.proposals._documentos import adjuntos_del_usuario
+from app.application.use_cases.proposals._documentos import anexos_de_la_empresa
 from app.application.use_cases.proposals._postulacion import postulacion_abierta
 from app.domain.entities.capability import ExperienceCatalog, ExperienceItem
 from app.domain.entities.proposal import (
@@ -185,7 +191,9 @@ class GenerateProposalUseCase:
         tender_repo: ITenderRepository,
         draft_repo: IProposalDraftRepository,
         catalog_use_case: BuildExperienceCatalogUseCase,
-        chat_repo: ITenderChatRepository,
+        files: IAttachmentFileRepository,
+        attachments: ITenderAttachmentRepository,
+        storage: IAttachmentStorage | None,
         ai_service: IProposalAIService,
         validator_service: IDocumentValidatorService | None = None,
     ):
@@ -193,7 +201,9 @@ class GenerateProposalUseCase:
         self.tender_repo = tender_repo
         self.draft_repo = draft_repo
         self.catalog_use_case = catalog_use_case
-        self.chat_repo = chat_repo
+        self.files = files
+        self.attachments = attachments
+        self.storage = storage
         self.ai_service = ai_service
         self.validator_service = validator_service
 
@@ -227,8 +237,13 @@ class GenerateProposalUseCase:
         catalog = await self.catalog_use_case.execute(
             user_id=user_id, supplier_id=postulacion.supplier.id
         )
-        documentos = await adjuntos_del_usuario(
-            self.chat_repo, self.validator_service, user_id, tender_id
+        documentos = await anexos_de_la_empresa(
+            self.files,
+            self.attachments,
+            self.storage,
+            self.validator_service,
+            tender_id=tender_id,
+            workspace_id=postulacion.supplier.id,
         )
         redaccion = await self.ai_service.generate_draft(
             tender=postulacion.tender,

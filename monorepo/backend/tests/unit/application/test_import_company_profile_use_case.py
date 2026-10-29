@@ -60,9 +60,9 @@ class TestMismaEstructuraParaCualquierFuente:
         borrador = await _importar(registro)
 
         assert borrador.sectors == [
-            "Obras de Construcción e Infraestructura",
-            "Equipos e Insumos Industriales",
-            "Mantención y Reparación",
+            "Servicios de construcción y mantenimiento",
+            "Artículos de fabricación y producción",
+            "Servicios de cuidado personal y domésticos",
         ]
         assert "pintura" in borrador.keywords
         assert "reparación de electrodomésticos" in borrador.keywords
@@ -83,8 +83,9 @@ class TestMismaEstructuraParaCualquierFuente:
 
 class TestCodigosSinCurar:
     async def test_el_rubro_sale_de_la_glosa_oficial_y_no_hay_palabras_clave(self):
-        # 432100: "INSTALACIONES ELÉCTRICAS" en el catálogo, sin curación fina.
-        registro = CompanyRecord(source="sre", rut=RUT, activities=[EconomicActivity(code=432100)])
+        # 451001: "VENTA AL POR MAYOR DE VEHÍCULOS AUTOMOTORES" en el catálogo, sin
+        # curación fina. Si se cura, hay que elegir otro código que no lo esté.
+        registro = CompanyRecord(source="sre", rut=RUT, activities=[EconomicActivity(code=451001)])
 
         borrador = await _importar(registro)
 

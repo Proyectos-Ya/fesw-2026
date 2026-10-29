@@ -117,7 +117,7 @@ describe("MilestonesSection", () => {
 
     const boton = await screen.findByRole("button", { name: /extraer hitos de las bases/i });
     expect(boton).toBeDisabled();
-    expect(screen.getByText(/sube las bases en el asistente/i)).toBeInTheDocument();
+    expect(screen.getByText(/sube los anexos de la licitación/i)).toBeInTheDocument();
   });
 
   it("con todas las bases ya leídas no deja volver a extraer y explica cómo releer una", async () => {
@@ -129,7 +129,7 @@ describe("MilestonesSection", () => {
     render(<MilestonesSection tenderId="t-1" now={AHORA} />);
 
     expect(await screen.findByRole("button", { name: /extraer hitos de las bases/i })).toBeDisabled();
-    expect(screen.getByText(/ya se extrajeron los hitos de todas las bases subidas/i)).toBeInTheDocument();
+    expect(screen.getByText(/ya se extrajeron los hitos de todos los anexos subidos/i)).toBeInTheDocument();
   });
 
   it("con una base pendiente permite extraer", async () => {

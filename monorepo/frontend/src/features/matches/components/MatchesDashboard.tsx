@@ -9,8 +9,9 @@ import { useAuth } from "@/features/auth/AuthContext";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
+import { cardRanking } from "@/features/ranking-telemetry/utils/rankingLink";
 import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult } from "../tenderTypes";
+import type { RecommendedMatch } from "../tenderTypes";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import {
@@ -38,7 +39,7 @@ import { getSaveErrorMessage } from "@/features/saved-tenders/constants";
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; matches: MatchingResult[] }
+  | { kind: "ready"; matches: RecommendedMatch[] }
   | { kind: "no-supplier" }
   | { kind: "error"; message: string };
 
@@ -50,6 +51,11 @@ export function MatchesDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const { workspaces, activeWorkspace } = useWorkspace();
+  // Los efectos dependen de ids y no de objetos: AuthContext y WorkspaceContext
+  // pueden entregar un objeto nuevo con los mismos datos, y eso no es motivo
+  // para volver a pedir las recomendaciones.
+  const userId = user?.id;
+  const activeSupplierId = activeWorkspace?.active_supplier_id ?? null;
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
   const [budget, setBudget] = useState<BudgetRange>(EMPTY_BUDGET_RANGE);
@@ -62,7 +68,7 @@ export function MatchesDashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !userId) return;
       fetchSavedTenders()
         .then((saved) => {
           const ids = saved.map(
@@ -71,7 +77,7 @@ export function MatchesDashboard() {
           setSavedTenderIds(new Set(ids));
         })
         .catch((err) => console.error("Error al cargar guardadas:", err));
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, userId]);
 
   const handleRegionChange = (next: string | null) => {
     setRegion(next);
@@ -94,14 +100,14 @@ export function MatchesDashboard() {
       window.location.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
 
     const fetchMatches = async (isBackground = false) => {
       try {
-        const matches = await getRecommendedTenders(user.id);
+        const matches = await getRecommendedTenders(userId);
         if (cancelled) return;
         setState({ kind: "ready", matches });
       } catch (err) {
@@ -114,7 +120,7 @@ export function MatchesDashboard() {
         }
         if (!isBackground) {
           if (err instanceof ApiError && isSupplierMissing(err)) {
-            if (workspaces.length > 0 || activeWorkspace !== null) {
+            if (workspaces.length > 0 || activeSupplierId !== null) {
               setState({ kind: "ready", matches: [] });
               return;
             }
@@ -143,7 +149,7 @@ export function MatchesDashboard() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
+  }, [authLoading, isAuthenticated, userId, router, retryNonce, workspaces.length, activeSupplierId]);
 
   const handleToggleSave = async (tenderId: string) => {
     const isCurrentlySaved = savedTenderIds.has(tenderId);
@@ -319,14 +325,18 @@ export function MatchesDashboard() {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4">
-            {paginatedVisible.map((m) => {
+            {paginatedVisible.map((m, index) => {
               const tenderId = m.tender?.id ?? m.id;
+              // La posición es la de `visible`, o sea después de filtros y paginación
+              // (la que ve el usuario), y no la servida: esa viaja en `ranking_position`.
+              const position = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
               return (
                 <TenderCard
                   key={m.id}
                   match={m}
                   isSaved={savedTenderIds.has(tenderId)}
                   onToggleSave={handleToggleSave}
+                  ranking={cardRanking(m.ranking_id, position, "matches")}
                   onReport={(reportedId) => {
                     setState((prev) =>
                       prev.kind === "ready"

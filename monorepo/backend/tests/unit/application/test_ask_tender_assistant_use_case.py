@@ -1,28 +1,34 @@
-import pytest
-from uuid import uuid4
 from typing import List, Optional
+from uuid import uuid4
 
-from app.application.use_cases.ask_tender_assistant_use_case import AskTenderAssistantUseCase
+import pytest
+
 from app.application.services.tender_assistant_ai_service import (
-    ITenderAssistantAIService,
     AIResponseDTO,
     DocumentContextDTO,
+    ITenderAssistantAIService,
 )
-from app.domain.entities.tender_chat import (
-    TenderChatMessage,
-    TenderChatDocument,
-    Citation,
-    DocumentDiscrepancy,
+from app.application.use_cases.ask_tender_assistant_use_case import (
+    AskTenderAssistantUseCase,
 )
-from app.domain.errors.tender_chat_errors import (
-    TenderChatQueryTooLongError,
-    TenderAssistantUnavailableError,
-    InvalidPromptInstruction,
-)
-from tests.unit.application.fakes import InMemoryTenderChatRepository, InMemorySupplierRepository
-from tests.unit.application.feedback_fakes import InMemoryAssistantFeedbackRepository
 from app.domain.entities.feedback import AssistantMessageFeedback
 from app.domain.entities.supplier import Supplier
+from app.domain.entities.tender_chat import (
+    Citation,
+    DocumentDiscrepancy,
+    TenderChatDocument,
+    TenderChatMessage,
+)
+from app.domain.errors.tender_chat_errors import (
+    InvalidPromptInstruction,
+    TenderAssistantUnavailableError,
+    TenderChatQueryTooLongError,
+)
+from tests.unit.application.fakes import (
+    InMemorySupplierRepository,
+    InMemoryTenderChatRepository,
+)
+from tests.unit.application.feedback_fakes import InMemoryAssistantFeedbackRepository
 
 
 class FakeTenderAssistantAIService(ITenderAssistantAIService):
@@ -50,6 +56,7 @@ class FakeTenderAssistantAIService(ITenderAssistantAIService):
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
         feedback_context: Optional[str] = None,
+        pass_number: int = 1,
     ) -> AIResponseDTO:
         if self.should_fail:
             raise TenderAssistantUnavailableError("Error simulado de conexión con Gemini")
@@ -212,6 +219,7 @@ async def test_ask_assistant_blocks_prompt_injection(use_case, ai_service, injec
 @pytest.mark.asyncio
 async def test_ask_assistant_injects_supplier_profile_context(repo, ai_service):
     from unittest.mock import AsyncMock
+
     from app.domain.entities.supplier import Supplier
 
     user_id = uuid4()
@@ -475,8 +483,8 @@ async def test_ask_assistant_unbacked_requirement_anti_hallucination(repo):
 async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_failing(repo):
     """CA6: Verifica que un documento corrupto en la licitación se aísle, se agregue advertencia y la consulta continúe con los archivos sanos."""
     from app.application.services.document_validator_service import (
-        IDocumentValidatorService,
         DocumentValidationResult,
+        IDocumentValidatorService,
     )
 
     tender_id = uuid4()
@@ -552,6 +560,7 @@ async def test_ask_assistant_handles_corrupted_attachment_with_warning_without_f
 async def test_ask_tender_assistant_injects_tender_context_and_items(repo):
     """Verifica que AskTenderAssistantUseCase extraiga y formatee los metadatos e ítems de la licitación y los pase a la IA."""
     from datetime import datetime, timezone
+
     from app.domain.entities.tender import Tender, TenderItem
     from tests.unit.application.fakes import InMemoryTenderRepository
 
@@ -636,6 +645,7 @@ async def test_ask_tender_assistant_injects_tender_context_and_items(repo):
 async def test_ask_tender_assistant_handles_tender_without_items_and_null_fields(repo):
     """Verifica que AskTenderAssistantUseCase formatee licitaciones con campos opcionales o sin ítems."""
     from datetime import datetime, timezone
+
     from app.domain.entities.tender import Tender
     from tests.unit.application.fakes import InMemoryTenderRepository
 
@@ -684,6 +694,7 @@ async def test_ask_tender_assistant_handles_tender_without_items_and_null_fields
 async def test_ask_tender_assistant_resilient_to_tender_repo_exception(repo):
     """Verifica que si tender_repo falla, la consulta al asistente continúe normalmente con tender_context=None."""
     from unittest.mock import AsyncMock
+
     from app.application.repositories.tender_repository import ITenderRepository
 
     mock_ai = FakeTenderAssistantAIService()

@@ -8,6 +8,16 @@ Importar desde acá evita que eso dependa de qué módulos haya cargado la
 aplicación por casualidad. Al agregar un modelo nuevo, agregarlo también aquí.
 """
 
+from app.infrastructure.repositories.attachment_file_model import (
+    AttachmentFileModel,
+    AttachmentUploadQuotaModel,
+)
+from app.infrastructure.repositories.attachment_processing_model import (
+    AttachmentExtractionModel,
+    AttachmentGeminiDailyUsageModel,
+    AttachmentProcessingJobModel,
+    TenderDigestModel,
+)
 from app.infrastructure.repositories.calendar_model import (
     CalendarConnectionModel,
     CalendarEventLinkModel,
@@ -22,6 +32,10 @@ from app.infrastructure.repositories.deep_analysis_model import (
     DeepAnalysisModel,
 )
 from app.infrastructure.repositories.export_job_model import ExportJobModel
+from app.infrastructure.repositories.extension_model import (
+    ExtensionFetchJobModel,
+    ExtensionInstallationModel,
+)
 from app.infrastructure.repositories.feedback_model import (
     AppFeedbackModel,
     AssistantMessageFeedbackModel,
@@ -34,6 +48,10 @@ from app.infrastructure.repositories.kanban_model import (
 from app.infrastructure.repositories.matching_result_model import (
     MatchingResultModel,
 )
+from app.infrastructure.repositories.matching_shadow_model import (
+    MatchingShadowScoreModel,
+    TenderAttachmentItemModel,
+)
 from app.infrastructure.repositories.notification_model import (
     NotificationDeliveryModel,
     NotificationModel,
@@ -44,6 +62,12 @@ from app.infrastructure.repositories.question_model import QuestionModel
 from app.infrastructure.repositories.quotation_model import (
     QuotationMaterialModel,
     QuotationModel,
+)
+from app.infrastructure.repositories.ranking_telemetry_model import (
+    AttachmentPriorityShadowModel,
+    RankingImpressionModel,
+    RankingMetricDailyModel,
+    TenderInteractionModel,
 )
 from app.infrastructure.repositories.saved_tender_model import SavedTenderModel
 from app.infrastructure.repositories.supplier_invitation_model import (
@@ -56,16 +80,22 @@ from app.infrastructure.repositories.supplier_model import SupplierModel
 from app.infrastructure.repositories.sync_estados_run_model import (
     SyncEstadosRunModel,
 )
+from app.infrastructure.repositories.tender_attachment_model import (
+    TenderAttachmentModel,
+)
 from app.infrastructure.repositories.tender_chat_model import (
     TenderChatDocumentModel,
     TenderChatMessageModel,
     TenderChatSessionModel,
 )
-from app.infrastructure.repositories.tender_milestone_model import (
-    TenderMilestoneModel,
+from app.infrastructure.repositories.tender_milestone_attachment_model import (
+    TenderMilestoneAttachmentModel,
 )
 from app.infrastructure.repositories.tender_milestone_document_model import (
     TenderMilestoneDocumentModel,
+)
+from app.infrastructure.repositories.tender_milestone_model import (
+    TenderMilestoneModel,
 )
 from app.infrastructure.repositories.tender_model import (
     BuyerInstitutionModel,
@@ -85,6 +115,12 @@ __all__ = [
     "AppFeedbackModel",
     "AssistantMessageFeedbackModel",
     "MatchReportModel",
+    "AttachmentExtractionModel",
+    "AttachmentFileModel",
+    "AttachmentGeminiDailyUsageModel",
+    "AttachmentPriorityShadowModel",
+    "AttachmentProcessingJobModel",
+    "AttachmentUploadQuotaModel",
     "SyncEstadosRunModel",
     "CapabilityAnswerModel",
     "CapabilityEvidenceModel",
@@ -92,7 +128,10 @@ __all__ = [
     "CalendarConnectionModel",
     "CalendarEventLinkModel",
     "CalendarOAuthStateModel",
+    "ExtensionFetchJobModel",
+    "ExtensionInstallationModel",
     "TenderMilestoneModel",
+    "TenderMilestoneAttachmentModel",
     "TenderMilestoneDocumentModel",
     "QuotationModel",
     "QuotationMaterialModel",
@@ -102,17 +141,22 @@ __all__ = [
     "KanbanCardModel",
     "KanbanColumnModel",
     "MatchingResultModel",
+    "MatchingShadowScoreModel",
     "NotificationDeliveryModel",
     "NotificationModel",
     "NotificationPreferenceModel",
     "ProposalDraftModel",
     "QuestionModel",
+    "RankingImpressionModel",
+    "RankingMetricDailyModel",
     "RegionModel",
     "SavedTenderModel",
     "SupplierModel",
     "SupplierMemberModel",
     "SupplierInvitationModel",
     "TenderAIAnalysisModel",
+    "TenderAttachmentItemModel",
+    "TenderAttachmentModel",
     "TenderItemModel",
     "TenderMetadataModel",
     "TenderModel",
@@ -120,6 +164,8 @@ __all__ = [
     "TenderChatDocumentModel",
     "TenderChatMessageModel",
     "TenderChatSessionModel",
+    "TenderDigestModel",
+    "TenderInteractionModel",
     "TenderShareLinkModel",
     "UserModel",
 ]
