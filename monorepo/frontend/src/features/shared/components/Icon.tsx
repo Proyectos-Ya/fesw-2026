@@ -1,17 +1,151 @@
-import { icons, type LucideProps } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  BookOpen,
+  Bookmark,
+  BookmarkCheck,
+  Building2,
+  Calendar,
+  CalendarCheck,
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CircleAlert,
+  CircleCheck,
+  Clock,
+  Copy,
+  Download,
+  ExternalLink,
+  FilePlus,
+  FileSpreadsheet,
+  FileText,
+  Flag,
+  Gauge,
+  Info,
+  Kanban,
+  Lightbulb,
+  Link,
+  Link2Off,
+  LoaderCircle,
+  Lock,
+  LogOut,
+  Mail,
+  MapPin,
+  MessageCircle,
+  MessageSquare,
+  OctagonAlert,
+  Paperclip,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Search,
+  Settings,
+  Share2,
+  ShieldAlert,
+  ShieldCheck,
+  SlidersHorizontal,
+  SlidersVertical,
+  Sparkles,
+  Target,
+  Trash2,
+  TrendingUp,
+  TriangleAlert,
+  UserMinus,
+  UserPlus,
+  Wallet,
+  X,
+  type LucideIcon,
+  type LucideProps,
+} from "lucide-react";
 
-type LucideName = keyof typeof icons;
+const iconRegistry: Record<string, LucideIcon> = {
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  BookOpen,
+  Bookmark,
+  BookmarkCheck,
+  Building2,
+  Calendar,
+  CalendarCheck,
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CircleAlert,
+  CircleCheck,
+  Clock,
+  Copy,
+  Download,
+  ExternalLink,
+  FilePlus,
+  FileSpreadsheet,
+  FileText,
+  Flag,
+  Gauge,
+  Info,
+  Kanban,
+  Lightbulb,
+  Link,
+  Link2Off,
+  LoaderCircle,
+  Lock,
+  LogOut,
+  Mail,
+  MapPin,
+  MessageCircle,
+  MessageSquare,
+  OctagonAlert,
+  Paperclip,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Search,
+  Settings,
+  Share2,
+  ShieldAlert,
+  ShieldCheck,
+  SlidersHorizontal,
+  SlidersVertical,
+  Sparkles,
+  Target,
+  Trash2,
+  TrendingUp,
+  TriangleAlert,
+  UserMinus,
+  UserPlus,
+  Wallet,
+  X,
+};
 
-const aliasMap: Record<string, LucideName> = {
+const aliasMap: Record<string, keyof typeof iconRegistry> = {
+  "alert-circle": "CircleAlert",
+  "alert-triangle": "TriangleAlert",
+  "arrow-left": "ArrowLeft",
+  "arrow-right": "ArrowRight",
   "building-2": "Building2",
   "check-circle-2": "CircleCheck",
   "circle-check": "CircleCheck",
-  "map-pin": "MapPin",
   "file-text": "FileText",
+  "link-2-off": "Link2Off",
+  "map-pin": "MapPin",
+  "share-2": "Share2",
   "shield-check": "ShieldCheck",
+  sliders: "SlidersVertical",
+  "trash-2": "Trash2",
   "trending-up": "TrendingUp",
-  "arrow-right": "ArrowRight",
-  "arrow-left": "ArrowLeft",
 };
 
 function toPascal(name: string): string {
@@ -22,10 +156,9 @@ function toPascal(name: string): string {
     .join("");
 }
 
-function resolveLucideName(name: string): LucideName | null {
-  if (name in aliasMap) return aliasMap[name];
-  const pascal = toPascal(name) as LucideName;
-  return pascal in icons ? pascal : null;
+function resolveLucideIcon(name: string): LucideIcon | null {
+  const mappedKey = aliasMap[name] ?? toPascal(name);
+  return iconRegistry[mappedKey] ?? null;
 }
 
 interface IconProps extends Omit<LucideProps, "ref" | "name"> {
@@ -41,16 +174,15 @@ export function Icon({
   className = "",
   ...rest
 }: IconProps) {
-  const key = resolveLucideName(name);
-  if (!key) {
+  const LucideComponent = resolveLucideIcon(name);
+  if (!LucideComponent) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(`[Icon] Unknown lucide name: "${name}"`);
     }
     return null;
   }
-  const LucideIcon = icons[key];
   return (
-    <LucideIcon
+    <LucideComponent
       size={size}
       color={color}
       strokeWidth={strokeWidth}
