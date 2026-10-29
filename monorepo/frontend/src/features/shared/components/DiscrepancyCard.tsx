@@ -49,7 +49,7 @@ export function DiscrepancyCard({
 
       {conflicting_sources && conflicting_sources.length > 0 && (
         <div className="mt-1 flex flex-col gap-1.5 border-t border-amber-200/60 pt-2">
-          <span className="text-[11px] font-medium tracking-wide text-amber-800/90 uppercase">
+          <span className="text-[0.6875rem] font-medium tracking-wide text-amber-800/90 uppercase">
             Fuentes en conflicto:
           </span>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -58,18 +58,18 @@ export function DiscrepancyCard({
                 key={`${src.document_name}-${index}`}
                 className="flex flex-col gap-1 rounded-md border border-amber-200/80 bg-white/80 p-2 text-slate-800 shadow-2xs"
               >
-                <div className="flex items-center justify-between gap-1 text-[11px] font-semibold text-slate-700">
+                <div className="flex items-center justify-between gap-1 text-[0.6875rem] font-semibold text-slate-700">
                   <div className="flex items-center gap-1 truncate" title={src.document_name}>
                     <FileText className="h-3.5 w-3.5 shrink-0 text-amber-600" />
                     <span className="truncate">{src.document_name}</span>
                   </div>
                   {src.page_or_sheet && (
-                    <span className="shrink-0 rounded-sm bg-amber-100/70 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+                    <span className="shrink-0 rounded-sm bg-amber-100/70 px-1 py-0.5 text-[0.625rem] font-medium text-amber-800">
                       {src.page_or_sheet}
                     </span>
                   )}
                 </div>
-                <blockquote className="border-l-2 border-amber-400 pl-1.5 text-[11px] italic text-slate-600">
+                <blockquote className="border-l-2 border-amber-400 pl-1.5 text-[0.6875rem] italic text-slate-600">
                   &quot;{src.quote}&quot;
                 </blockquote>
               </div>

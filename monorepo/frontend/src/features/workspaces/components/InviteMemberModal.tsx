@@ -135,7 +135,7 @@ export function InviteMemberModal({
                 placeholder="ejemplo@empresa.cl"
                 className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
               />
-              <p className="mt-1 text-[11px] text-text-subtle">
+              <p className="mt-1 text-[0.6875rem] text-text-subtle">
                 El usuario recibirá una notificación directa dentro de su cuenta en Chiripa.
               </p>
             </div>

@@ -120,12 +120,12 @@ export function WorkspaceSelector() {
                 {currentWorkspaceSummary.trade_name || currentWorkspaceSummary.legal_name}
               </span>
               <span
-                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold border ${roleBadge.className}`}
+                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[0.625rem] font-semibold border ${roleBadge.className}`}
               >
                 {roleBadge.label}
               </span>
             </div>
-            <p className="text-[11px] text-text-subtle truncate">
+            <p className="text-[0.6875rem] text-text-subtle truncate">
               {currentWorkspaceSummary.rut}
             </p>
           </div>
@@ -139,7 +139,7 @@ export function WorkspaceSelector() {
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1.5 w-full min-w-[240px] rounded-xl border border-border-subtle bg-white p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150">
+          <div className="absolute top-full left-0 mt-1.5 w-full min-w-[240px] rounded-xl border border-border-subtle bg-surface-card p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150">
             {invitations && invitations.length > 0 && (
               <div className="mb-1.5 pb-1 border-b border-border-subtle">
                 <Link
@@ -156,7 +156,7 @@ export function WorkspaceSelector() {
               </div>
             )}
 
-            <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-subtle border-b border-border-subtle mb-1">
+            <div className="px-2 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-subtle border-b border-border-subtle mb-1">
               Espacios de trabajo
             </div>
 
@@ -173,7 +173,7 @@ export function WorkspaceSelector() {
                     className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors cursor-pointer ${
                       isCurrent
                         ? "bg-primary-soft text-primary font-medium"
-                        : "hover:bg-warm-100 text-text-strong"
+                        : "hover:bg-surface-hover text-text-strong"
                     }`}
                   >
                     <Avatar name={w.trade_name || w.legal_name} size="xs" />
@@ -183,12 +183,12 @@ export function WorkspaceSelector() {
                           {w.trade_name || w.legal_name}
                         </span>
                         <span
-                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold border ${badge.className}`}
+                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[0.5625rem] font-semibold border ${badge.className}`}
                         >
                           {badge.label}
                         </span>
                       </div>
-                      <p className="text-[10px] text-text-subtle truncate">{w.rut}</p>
+                      <p className="text-[0.625rem] text-text-subtle truncate">{w.rut}</p>
                     </div>
                     {isCurrent && (
                       <Icon name="check" size={14} className="text-primary flex-none" />
