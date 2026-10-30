@@ -27,6 +27,7 @@ interface Props {
    *  duplicadas. El padre (KanbanBoard) lo construye desde `cards`. */
   boardTenderIds: string[];
   onArchiveCard?: (card_id: string) => void;
+  isMobileView?: boolean;
 }
 
 export function KanbanColumn({
@@ -43,6 +44,7 @@ export function KanbanColumn({
   onRemoveCard,
   boardTenderIds,
   onArchiveCard,
+  isMobileView = false,
 }: Props) {
   const [showConfig, setShowConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -72,7 +74,11 @@ export function KanbanColumn({
     <section
       aria-label={column.name}
       style={columnStyle}
-      className={`group flex flex-col w-[302px] flex-none h-full rounded-lg border transition-all duration-200 ${
+      className={`group flex flex-col ${
+        isMobileView
+          ? "w-full flex-1 min-h-[calc(100dvh-15rem)]"
+          : "w-[302px] flex-none min-h-[calc(100dvh-16rem)] h-full"
+      } rounded-lg border transition-all duration-200 ${
         isOver ? "border-primary ring-[3px] ring-primary/20" : ""
       }`}
     >
@@ -129,13 +135,23 @@ export function KanbanColumn({
             />
           ))}
         </SortableContext>
+
+        {cards.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-text-subtle">
+            <Icon name="layers" size={24} className="opacity-40 mb-2" />
+            <p className="text-xs">No hay licitaciones en esta etapa</p>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="opacity-0 group-hover:opacity-100 flex items-center gap-1 py-1.5 px-1 text-sm text-text-muted hover:text-primary rounded-md hover:bg-surface-card w-full transition-all duration-200"
+          className={`${
+            isMobileView ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          } flex items-center gap-1 py-1.5 px-2 text-sm text-text-muted hover:text-primary rounded-md hover:bg-surface-card w-full transition-all duration-200 cursor-pointer`}
         >
           <Icon name="plus" size={14} />
-          Agregar
+          Agregar licitación
         </button>
       </div>
 

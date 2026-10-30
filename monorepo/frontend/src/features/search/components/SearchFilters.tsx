@@ -418,30 +418,32 @@ export function SearchFilters({
                 </button>
               )}
             </div>
-            <form onSubmit={handleApplyDates} className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 flex-1 min-w-[140px]">
-                <span className="text-xs text-text-muted font-medium">Desde:</span>
-                <input
-                  type="date"
-                  aria-label="Fecha de cierre desde"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div className="flex items-center gap-2 flex-1 min-w-[140px]">
-                <span className="text-xs text-text-muted font-medium">Hasta:</span>
-                <input
-                  type="date"
-                  aria-label="Fecha de cierre hasta"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+            <form onSubmit={handleApplyDates} className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="grid grid-cols-2 gap-3 flex-1 sm:flex sm:items-center">
+                <div className="flex items-center gap-2 flex-1 min-w-0 sm:min-w-[140px]">
+                  <span className="text-xs text-text-muted font-medium shrink-0">Desde:</span>
+                  <input
+                    type="date"
+                    aria-label="Fecha de cierre desde"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="w-full min-w-0 rounded-md border border-border-subtle bg-surface-card px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0 sm:min-w-[140px]">
+                  <span className="text-xs text-text-muted font-medium shrink-0">Hasta:</span>
+                  <input
+                    type="date"
+                    aria-label="Fecha de cierre hasta"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="w-full min-w-0 rounded-md border border-border-subtle bg-surface-card px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary-border/40 transition-colors cursor-pointer"
+                className="w-full sm:w-auto justify-center inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary-border/40 transition-colors cursor-pointer"
               >
                 Aplicar fechas
               </button>

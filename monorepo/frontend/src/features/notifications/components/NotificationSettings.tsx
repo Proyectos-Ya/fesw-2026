@@ -222,11 +222,18 @@ export function NotificationSettings() {
         </div>
       </div>
 
-      <fieldset className="rounded-lg border border-border-subtle bg-surface-card p-6">
-        <legend className="px-1 text-sm font-semibold text-text-strong">
+      <div
+        role="group"
+        aria-labelledby="frecuencia-label"
+        className="rounded-lg border border-border-subtle bg-surface-card p-6"
+      >
+        <h3
+          id="frecuencia-label"
+          className="text-sm font-semibold text-text-strong mb-3"
+        >
           Frecuencia
-        </legend>
-        <div className="mt-2 flex flex-col gap-3">
+        </h3>
+        <div className="flex flex-col gap-3">
           {MODOS.map((modo) => (
             <label
               key={modo.value}
@@ -254,7 +261,7 @@ export function NotificationSettings() {
             </label>
           ))}
         </div>
-      </fieldset>
+      </div>
 
       <DeliveryOutbox />
     </section>
