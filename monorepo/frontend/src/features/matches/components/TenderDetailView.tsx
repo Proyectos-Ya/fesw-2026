@@ -557,7 +557,7 @@ export function TenderDetailView({
             </div>
 
             {/* Segunda línea en móvil: ID de licitación y Agregar al tablero */}
-            <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start gap-2.5 order-2">
+            <div className="w-full sm:w-auto flex flex-wrap items-center justify-between sm:justify-start gap-2.5 order-2">
               <span className="font-mono text-xs text-text-subtle shrink-0">
                 ID {tender.code}
               </span>
@@ -570,22 +570,23 @@ export function TenderDetailView({
           {tender.name}
         </h1>
 
-        <div className="col-span-2 sm:col-span-1 sm:col-start-2 mt-1 sm:mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-          <span className="inline-flex items-center gap-1.5">
-            <Icon name="building-2" size={15} color="var(--text-subtle)" />
+        {/* En móvil cada dato va en su propia línea; desde sm, en una fila con separadores. */}
+        <div className="col-span-2 sm:col-span-1 sm:col-start-2 mt-1 sm:mt-2 flex flex-col gap-y-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 text-sm text-text-muted">
+          <span className="inline-flex items-start gap-1.5">
+            <Icon name="building-2" size={15} color="var(--text-subtle)" className="mt-0.5" />
             <span>{buyer}</span>
           </span>
           {tender.buyer_unit && (
             <>
-              <span className="text-border-strong">·</span>
+              <span className="hidden text-border-strong sm:inline">·</span>
               <span>{tender.buyer_unit}</span>
             </>
           )}
           {tender.region && (
             <>
-              <span className="text-border-strong">·</span>
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name="map-pin" size={15} color="var(--text-subtle)" />
+              <span className="hidden text-border-strong sm:inline">·</span>
+              <span className="inline-flex items-start gap-1.5">
+                <Icon name="map-pin" size={15} color="var(--text-subtle)" className="mt-0.5" />
                 <span>{tender.region}</span>
               </span>
             </>
@@ -687,7 +688,7 @@ export function TenderDetailView({
 
       <Section title="Descripción" icon="file-text">
         {tender.description ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-text-body">
             {tender.description}
           </p>
         ) : (
