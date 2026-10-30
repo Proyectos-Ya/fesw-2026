@@ -3,7 +3,22 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.domain.entities.feedback import MAX_REASON_CHARS, MatchReportKind
+from app.domain.entities.feedback import (
+    MAX_MESSAGE_CHARS,
+    MAX_RATING,
+    MAX_REASON_CHARS,
+    MIN_RATING,
+    AppFeedbackKind,
+    MatchReportKind,
+)
+
+
+def _strip_required(value: str, error: str) -> str:
+    """Recorta el texto y rechaza el que queda vacío."""
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(error)
+    return stripped
 
 
 class ReportMatchRequest(BaseModel):
@@ -21,9 +36,7 @@ class ReportMatchRequest(BaseModel):
     @field_validator("reason")
     @classmethod
     def _reason_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("El motivo no puede estar vacío.")
-        return value
+        return _strip_required(value, "El motivo no puede estar vacío.")
 
 
 class MatchReportResponse(BaseModel):
@@ -45,9 +58,7 @@ class DislikeMessageRequest(BaseModel):
     @field_validator("reason")
     @classmethod
     def _reason_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("El motivo no puede estar vacío.")
-        return value.strip()
+        return _strip_required(value, "El motivo no puede estar vacío.")
 
 
 class AssistantFeedbackResponse(BaseModel):
@@ -56,8 +67,6 @@ class AssistantFeedbackResponse(BaseModel):
     tender_id: UUID
     reason: str
     created_at: datetime
-
-from app.domain.entities.feedback import AppFeedbackKind, MAX_MESSAGE_CHARS, MIN_RATING
 
 
 class CreateCommentRequest(BaseModel):
@@ -71,9 +80,7 @@ class CreateCommentRequest(BaseModel):
     @field_validator("message")
     @classmethod
     def _message_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("El mensaje no puede estar vacío.")
-        return value.strip()
+        return _strip_required(value, "El mensaje no puede estar vacío.")
 
 
 class CreateReviewRequest(BaseModel):
@@ -82,7 +89,7 @@ class CreateReviewRequest(BaseModel):
     rating: int | None = Field(
         default=None,
         ge=MIN_RATING,
-        le=5,
+        le=MAX_RATING,
         description="Cantidad de estrellas de 0 a 5.",
     )
     message: str | None = Field(

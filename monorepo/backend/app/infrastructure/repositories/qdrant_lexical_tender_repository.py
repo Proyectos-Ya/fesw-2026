@@ -34,6 +34,9 @@ class QdrantLexicalTenderRepository(ILexicalTenderRepository):
     _COLLECTION_NAME = "tender_lexical"
     _VECTOR_NAME = "lexical"
 
+    # Ids por petición de borrado, igual que en `QdrantTenderRepository`.
+    _DELETE_BATCH_SIZE = 1_000
+
     def __init__(self, client: AsyncQdrantClient) -> None:
         self._client = client
 
@@ -104,6 +107,15 @@ class QdrantLexicalTenderRepository(ILexicalTenderRepository):
             collection_name=self._COLLECTION_NAME,
             points_selector=PointIdsList(points=[str(tender_id)]),
         )
+
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina los puntos en lotes de `_DELETE_BATCH_SIZE`."""
+        for i in range(0, len(tender_ids), self._DELETE_BATCH_SIZE):
+            lote = tender_ids[i : i + self._DELETE_BATCH_SIZE]
+            await self._client.delete(
+                collection_name=self._COLLECTION_NAME,
+                points_selector=PointIdsList(points=[str(t) for t in lote]),
+            )
 
     async def search_lexical(
         self,

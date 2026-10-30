@@ -31,6 +31,7 @@ from app.infrastructure.services.tenders.tender_ingestion_service import (
 )
 from scripts.sync_diaria import (
     con_timeout,
+    construir_parser,
     elegir_modo,
     partir_en_tramos,
     sincronizar,
@@ -783,6 +784,74 @@ class TestRetencion:
 
         assert codigo == 0
         assert "AVISO" in capsys.readouterr().out
+
+
+class TestRetencionDeLicitaciones:
+    """La nocturna borra las cerradas sin uso (plan 306), al final y aislado,
+    igual que la poda de la cola."""
+
+    async def _correr(self, servicio: ServicioFalso, **extra) -> int:
+        async def contar(*_) -> int:
+            return 0
+
+        return await sincronizar(_args(), servicio, contar=contar, **extra)
+
+    async def test_borra_despues_de_cerrar_la_corrida(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+        cierres_al_borrar: list[int] = []
+
+        async def retener() -> int:
+            cierres_al_borrar.append(len(servicio.cierres_de("nocturna")))
+            return 340
+
+        codigo = await self._correr(servicio, retener=retener)
+
+        assert cierres_al_borrar == [1]
+        assert "340 licitaciones cerradas sin uso borradas" in capsys.readouterr().out
+        assert codigo == 0
+
+    async def test_si_falla_la_corrida_sale_igual(self, capsys):
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+
+        async def retener() -> int:
+            raise RuntimeError("sin base")
+
+        codigo = await self._correr(servicio, retener=retener)
+
+        assert codigo == 0
+        assert "AVISO: no se pudieron borrar" in capsys.readouterr().out
+
+    async def test_va_antes_que_la_poda_de_la_cola(self):
+        """La poda borra la fila de la cola de una licitación que ya no existe:
+        así la misma noche limpia lo que la retención acaba de borrar."""
+        servicio = ServicioFalso(ResultadoListado(completo=True))
+        orden: list[str] = []
+
+        async def retener() -> int:
+            orden.append("retener")
+            return 0
+
+        async def purgar() -> int:
+            orden.append("purgar")
+            return 0
+
+        await self._correr(servicio, retener=retener, purgar=purgar)
+
+        assert orden == ["retener", "purgar"]
+
+    def test_el_script_acepta_los_dias_de_retencion(self):
+        args = construir_parser().parse_args(["--retencion-dias", "3"])
+
+        assert args.retencion_dias == 3
+
+    def test_sin_el_argumento_usa_la_configuracion(self):
+        assert construir_parser().parse_args([]).retencion_dias is None
+
+    @pytest.mark.parametrize("valor", ["0", "-1"])
+    def test_menos_de_un_dia_no_se_acepta(self, valor):
+        """Con 0 se borrarían licitaciones recién cerradas."""
+        with pytest.raises(SystemExit):
+            construir_parser().parse_args(["--retencion-dias", valor])
 
 
 class TestLlamadasDeEmbeddings:

@@ -67,7 +67,7 @@ export const step2Schema = z.object({
     .max(100000, "El valor ingresado no es válido."),
 });
 
-export const certificationItemSchema = z.object({
+const certificationItemSchema = z.object({
   name: z.string().trim().min(1, "El nombre de la certificación es obligatorio."),
   expires_at: z
     .string()
@@ -83,10 +83,6 @@ export type CertificationEntry = string | CertificationItem;
 export function normalizeCertification(entry: CertificationEntry): CertificationItem {
   if (typeof entry === "string") return { name: entry, expires_at: null };
   return { name: entry.name, expires_at: entry.expires_at ?? null };
-}
-
-export function certificationName(entry: CertificationEntry): string {
-  return typeof entry === "string" ? entry : entry.name;
 }
 
 /** Convierte AAAA-MM-DD (o un datetime ISO) a DD/MM/AAAA sin pasar por Date, que desplaza el día por zona horaria. */
