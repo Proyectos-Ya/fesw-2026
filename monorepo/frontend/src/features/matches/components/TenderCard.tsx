@@ -203,9 +203,9 @@ export function TenderCard({
         </h3>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
             <Icon name="building-2" size={15} color="var(--text-subtle)" />
-            <span className="truncate">{buyer}</span>
+            <span className="truncate" title={buyer}>{buyer}</span>
           </span>
           {tender.region && (
             <>
