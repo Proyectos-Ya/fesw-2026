@@ -125,7 +125,7 @@ function LoginFormInner() {
 
           <div className="flex items-center gap-4 my-8">
             <div className="h-px flex-1 bg-border-subtle" />
-            <span className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <span className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
               o continúa con
             </span>
             <div className="h-px flex-1 bg-border-subtle" />

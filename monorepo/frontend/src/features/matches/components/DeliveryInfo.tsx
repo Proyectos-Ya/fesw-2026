@@ -16,7 +16,7 @@ export function DeliveryInfo({ tender }: DeliveryInfoProps) {
       aria-label="Entrega"
       className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs"
     >
-      <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+      <div className="mb-2 inline-flex items-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
         <Icon name="map-pin" size={12} color="var(--text-subtle)" />
         Entrega
       </div>
