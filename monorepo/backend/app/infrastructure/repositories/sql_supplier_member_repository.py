@@ -173,6 +173,7 @@ class SqlSupplierMemberRepository(ISupplierMemberRepository):
                     role=MemberRole(member_model.role),
                     status=MemberStatus(member_model.status),
                     is_active_context=False,
+                    logo_url=supplier_model.logo_url,
                 )
             )
         return workspaces

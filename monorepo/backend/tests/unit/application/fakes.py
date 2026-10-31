@@ -290,6 +290,7 @@ class InMemorySupplierMemberRepository(ISupplierMemberRepository):
                         role=m.role,
                         status=m.status,
                         is_active_context=False,
+                        logo_url=sup.logo_url if sup else None,
                     )
                 )
         return summaries

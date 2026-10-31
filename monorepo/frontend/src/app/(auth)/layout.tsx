@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "../globals.css";
 import { AuthProvider } from "@/features/auth/AuthContext";
 import { RedirectIfAuthenticated } from "@/features/auth/components/RedirectIfAuthenticated";
+import { PreferencesProvider } from "@/features/shared/context/PreferencesContext";
 
 export const metadata: Metadata = {
   title: "Chiripa - Autenticación",
@@ -15,10 +16,12 @@ export default function AuthLayout({
 }>) {
   return (
     <html lang="es" className="h-full antialiased">
-      <body className="h-full bg-white font-sans selection:bg-teal-200 selection:text-warm-900">
-        <AuthProvider>
-          <RedirectIfAuthenticated>{children}</RedirectIfAuthenticated>
-        </AuthProvider>
+      <body className="h-full bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong">
+        <PreferencesProvider>
+          <AuthProvider>
+            <RedirectIfAuthenticated>{children}</RedirectIfAuthenticated>
+          </AuthProvider>
+        </PreferencesProvider>
       </body>
     </html>
   );

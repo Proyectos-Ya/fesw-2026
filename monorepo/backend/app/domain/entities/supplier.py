@@ -121,6 +121,7 @@ class Supplier(BaseModel):
     negative_keywords: list[dict[str, str]] | None = Field(default_factory=list)
     years_experience: int | None = None
     num_employees: int | None = None
+    logo_url: str | None = None
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     # Última vez que cambió el contenido que alimenta el matching (embedding)

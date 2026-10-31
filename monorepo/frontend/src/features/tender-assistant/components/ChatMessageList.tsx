@@ -55,13 +55,13 @@ export function ChatMessageList({
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
       {messages.length === 0 && !isAsking && (
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-info-soft text-info-text">
             <Bot className="h-6 w-6" />
           </div>
-          <h4 className="text-sm font-semibold text-slate-800">
+          <h4 className="text-sm font-semibold text-text-strong">
             Asistente de Licitaciones
           </h4>
-          <p className="mt-1 max-w-xs text-xs text-slate-500">
+          <p className="mt-1 max-w-xs text-xs text-text-muted">
             Haz preguntas sobre las bases, requisitos técnicos, plazos de entrega o garantías de esta licitación.
           </p>
         </div>
@@ -81,7 +81,7 @@ export function ChatMessageList({
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${
                 isUser
                   ? "bg-blue-600 text-white"
-                  : "bg-slate-200 text-slate-700"
+                  : "bg-surface-inset text-text-body"
               }`}
             >
               {isUser ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -91,15 +91,15 @@ export function ChatMessageList({
               className={`flex max-w-[85%] flex-col gap-2 rounded-2xl px-4 py-2.5 text-sm ${
                 isUser
                   ? "rounded-tr-none bg-blue-600 text-white"
-                  : "rounded-tl-none border border-slate-200 bg-white text-slate-800 shadow-xs"
+                  : "rounded-tl-none border border-border-subtle bg-surface-card text-text-strong shadow-xs"
               }`}
             >
               {/* Warnings de archivos dañados o corruptos (CA6) */}
               {msg.warnings && msg.warnings.length > 0 && (
-                <div className="flex flex-col gap-1 rounded-lg border border-amber-200/80 bg-amber-50/90 p-2 text-xs text-amber-900 shadow-2xs">
+                <div className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning-soft p-2 text-xs text-text-strong shadow-2xs">
                   {msg.warnings.map((w, wi) => (
                     <div key={wi} className="flex items-start gap-1.5">
-                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                       <span className="leading-snug">{w}</span>
                     </div>
                   ))}
@@ -132,29 +132,29 @@ export function ChatMessageList({
 
               {/* Citas textuales exactas por documento (CA1) */}
               {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-1 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
-                  <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-                    <Quote className="h-3 w-3 text-blue-500" />
+                <div className="mt-1 flex flex-col gap-1.5 border-t border-border-subtle pt-2">
+                  <span className="flex items-center gap-1 text-[0.6875rem] font-semibold text-text-muted">
+                    <Quote className="h-3 w-3 text-info" />
                     Citas textuales de respaldo:
                   </span>
 
                   {msg.citations.map((c, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border border-slate-200/80 bg-slate-50/90 p-2 text-xs text-slate-700"
+                      className="rounded-lg border border-border-subtle bg-surface-inset p-2 text-xs text-text-body"
                     >
-                      <div className="flex items-center gap-1 font-semibold text-slate-900 text-[11px]">
+                      <div className="flex items-center gap-1 font-semibold text-text-strong text-[0.6875rem]">
                         {getDocumentIcon(c.document_name)}
                         <span className="truncate" title={c.document_name}>
                           {c.document_name}
                         </span>
                         {c.page_or_sheet && (
-                          <span className="shrink-0 rounded bg-slate-200 px-1 py-0.2 text-[10px] font-normal text-slate-600">
+                          <span className="shrink-0 rounded bg-surface-card px-1 py-0.2 text-[0.625rem] font-normal text-text-muted">
                             {c.page_or_sheet}
                           </span>
                         )}
                       </div>
-                      <blockquote className="mt-1 border-l-2 border-blue-400 pl-2 italic text-slate-600">
+                      <blockquote className="mt-1 border-l-2 border-info pl-2 italic text-text-muted">
                         &quot;{c.quote}&quot;
                       </blockquote>
                     </div>
@@ -164,7 +164,7 @@ export function ChatMessageList({
 
               {/* Botón de Dislike / Feedback para respuestas del asistente (HU-24, S4) */}
               {!isUser && tenderId && (
-                <div className="mt-1 flex items-center justify-end border-t border-slate-100 pt-1.5">
+                <div className="mt-1 flex items-center justify-end border-t border-border-subtle pt-1.5">
                   <button
                     type="button"
                     onClick={() => setDislikeMessageId(msg.id)}
@@ -174,10 +174,10 @@ export function ChatMessageList({
                         ? "Descontento reportado"
                         : "Reportar respuesta errónea o inadecuada"
                     }
-                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[0.6875rem] font-medium transition-colors cursor-pointer ${
                       dislikedIds.has(msg.id)
-                        ? "bg-rose-50 text-rose-600"
-                        : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        ? "bg-danger-soft text-danger-text"
+                        : "text-text-muted hover:bg-surface-hover hover:text-text-body"
                     }`}
                   >
                     <ThumbsDown className="h-3 w-3" />
@@ -191,8 +191,8 @@ export function ChatMessageList({
       })}
 
       {isAsking && (
-        <div className="flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium text-slate-500">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+        <div className="flex w-fit items-center gap-2 rounded-xl border border-border-subtle bg-surface-inset p-2.5 text-xs font-medium text-text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
           <span>Analizando documentos y generando respuesta con citas...</span>
         </div>
       )}
@@ -200,9 +200,9 @@ export function ChatMessageList({
       {error && (
         <div
           role="alert"
-          className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+          className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft p-3 text-xs text-text-strong"
         >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
           <span>{error}</span>
         </div>
       )}

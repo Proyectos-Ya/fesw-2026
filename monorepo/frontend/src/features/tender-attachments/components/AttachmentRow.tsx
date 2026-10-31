@@ -216,7 +216,7 @@ export function AttachmentRow({
           aria-valuenow={percent}
           aria-valuemin={0}
           aria-valuemax={100}
-          className="h-1.5 w-full overflow-hidden rounded-full bg-warm-100"
+          className="h-1.5 w-full overflow-hidden rounded-full bg-surface-inset"
         >
           <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
         </div>
@@ -225,7 +225,7 @@ export function AttachmentRow({
         <p className="text-sm font-medium text-danger">{upload.message}</p>
       )}
       {!failed && notice !== null && (
-        <p role="note" className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-700">
+        <p role="note" className="mt-1 flex items-start gap-1.5 text-xs font-medium text-warning-text">
           <Icon name="triangle-alert" size={14} />
           <span>{notice}</span>
         </p>

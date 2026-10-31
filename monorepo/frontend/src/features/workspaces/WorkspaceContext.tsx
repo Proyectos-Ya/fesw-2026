@@ -356,7 +356,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           aria-labelledby="revoked-workspace-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border-subtle">
+          <div className="w-full max-w-md rounded-xl bg-surface-card p-6 shadow-xl border border-border-subtle">
             <div className="flex items-center gap-3 text-danger">
               <Icon name="shield-alert" size={22} />
               <h2

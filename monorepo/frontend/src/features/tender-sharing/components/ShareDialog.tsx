@@ -139,7 +139,7 @@ export function ShareDialog({ open, tenderId, onClose }: ShareDialogProps) {
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="cursor-pointer rounded-lg p-1.5 text-text-subtle transition-colors hover:bg-warm-100 hover:text-text-strong"
+            className="cursor-pointer rounded-lg p-1.5 text-text-subtle transition-colors hover:bg-surface-hover hover:text-text-strong"
           >
             <Icon name="x" size={18} />
           </button>
@@ -163,7 +163,7 @@ export function ShareDialog({ open, tenderId, onClose }: ShareDialogProps) {
                   readOnly
                   value={created.url}
                   onFocus={(event) => event.currentTarget.select()}
-                  className="min-w-0 flex-1 rounded-md border border-border-subtle bg-white px-3 py-2 font-mono text-xs text-text-strong"
+                  className="min-w-0 flex-1 rounded-md border border-border-subtle bg-surface-card px-3 py-2 font-mono text-xs text-text-strong"
                 />
                 <Button type="button" onClick={() => void copy()} className="shrink-0 px-3 py-2">
                   <Icon name={copied ? "check" : "copy"} size={14} />
@@ -184,7 +184,7 @@ export function ShareDialog({ open, tenderId, onClose }: ShareDialogProps) {
 
           {links.length > 0 && (
             <div>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <h3 className="mb-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 Enlaces vigentes
               </h3>
               <ul aria-label="Enlaces vigentes" className="divide-y divide-border-subtle rounded-lg border border-border-subtle">
@@ -208,7 +208,7 @@ export function ShareDialog({ open, tenderId, onClose }: ShareDialogProps) {
                         <button
                           type="button"
                           onClick={() => setConfirmingId(null)}
-                          className="cursor-pointer rounded-md px-2 py-1 text-text-muted hover:bg-warm-100"
+                          className="cursor-pointer rounded-md px-2 py-1 text-text-muted hover:bg-surface-hover"
                         >
                           Cancelar
                         </button>

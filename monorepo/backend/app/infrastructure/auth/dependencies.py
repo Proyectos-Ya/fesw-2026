@@ -185,6 +185,7 @@ def build_get_current_workspace_context(
                     role=MemberRole.ADMIN,
                     permissions=all_perms,
                     is_admin=True,
+                    logo_url=supplier.logo_url,
                 )
             if optional:
                 return None
@@ -218,6 +219,7 @@ def build_get_current_workspace_context(
             role=member.role,
             permissions=perms,
             is_admin=member.is_admin(),
+            logo_url=supplier.logo_url,
         )
 
     return get_current_workspace_context

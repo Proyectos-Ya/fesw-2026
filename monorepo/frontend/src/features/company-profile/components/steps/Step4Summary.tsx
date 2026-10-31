@@ -34,7 +34,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-border-default bg-white p-5 shadow-xs transition-all hover:shadow-sm">
+    <div className="rounded-md border border-border-default bg-surface-card p-5 shadow-xs transition-all hover:shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-bold uppercase tracking-caps text-primary">{title}</h3>
         <button
@@ -56,7 +56,7 @@ function Row({ label, value }: { label: string; value: string }) {
     // contenido salvo que se diga, así que sin esto un valor largo sin espacios
     // —un correo, una URL— desborda la tarjeta en vez de partirse.
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">{label}</span>
+      <span className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">{label}</span>
       <span className="text-sm font-medium text-text-strong break-words">{value || "—"}</span>
     </div>
   );
@@ -98,7 +98,7 @@ export function Step4Summary({
 
       <div className="flex flex-col gap-4">
         <Section title="Identidad" step={1} onEdit={onGoToStep}>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Row label="Nombre de la empresa" value={data.legal_name ?? ""} />
             <Row label="Nombre de fantasía" value={data.trade_name?.trim() || "—"} />
             <Row label="RUT" value={data.rut ?? ""} />
@@ -108,10 +108,10 @@ export function Step4Summary({
         <Section title="Operación" step={2} onEdit={onGoToStep}>
           <div className="flex flex-col gap-4">
             <div>
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Regiones</span>
+              <span className="mb-2 block text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">Regiones</span>
               <TagList tags={data.regions ?? []} />
             </div>
-            <div className="grid grid-cols-2 gap-4 border-t border-border-subtle pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border-subtle pt-4">
               <Row
                 label="Años de experiencia"
                 value={data.years_experience?.toString() ?? ""}
@@ -127,23 +127,23 @@ export function Step4Summary({
         <Section title="Especialización" step={3} onEdit={onGoToStep}>
           <div className="flex flex-col gap-4">
             <div>
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Rubros</span>
+              <span className="mb-2 block text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">Rubros</span>
               <TagList tags={data.sectors ?? []} />
             </div>
             {(data.keywords?.length ?? 0) > 0 && (
               <div>
-                <span className="mb-2 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Palabras clave</span>
+                <span className="mb-2 block text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">Palabras clave</span>
                 <TagList tags={data.keywords ?? []} />
               </div>
             )}
             {(data.certifications?.length ?? 0) > 0 && (
               <div>
-                <span className="mb-2 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Certificaciones</span>
+                <span className="mb-2 block text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">Certificaciones</span>
                 <TagList tags={(data.certifications ?? []).map(certificationLabel)} />
               </div>
             )}
             <div className="border-t border-border-subtle pt-4">
-              <span className="mb-1 block text-[10px] font-bold uppercase tracking-caps text-text-subtle">Descripción</span>
+              <span className="mb-1 block text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">Descripción</span>
               <p className="text-sm leading-relaxed text-text-body mt-1 break-words whitespace-pre-wrap">
                 {data.description}
               </p>

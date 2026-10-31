@@ -51,6 +51,7 @@ class SwitchWorkspaceUseCase:
                     role=MemberRole.ADMIN,
                     permissions=all_perms,
                     is_admin=True,
+                    logo_url=supplier.logo_url,
                 )
             raise UnauthorizedWorkspaceAction(
                 "No tienes acceso a este espacio de trabajo."
@@ -75,4 +76,5 @@ class SwitchWorkspaceUseCase:
             role=member.role,
             permissions=active_perms,
             is_admin=member.is_admin(),
+            logo_url=supplier.logo_url,
         )

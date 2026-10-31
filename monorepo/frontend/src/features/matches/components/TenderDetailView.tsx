@@ -440,8 +440,8 @@ export function TenderDetailView({
         </div>
       )}
 
-      <header className="mb-6 flex flex-col gap-5 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-start">
-        <div className="flex-none sm:w-28">
+      <header className="mb-6 grid grid-cols-[6.5rem_1fr] sm:grid-cols-[7rem_1fr] gap-x-3.5 sm:gap-x-5 gap-y-3 sm:gap-y-2 rounded-lg border border-border-subtle bg-surface-card p-4 sm:p-6 shadow-xs">
+        <div className="flex-none w-26 sm:w-28 flex flex-col items-center sm:row-span-4">
           {score !== null ? (
             <>
               <MatchMeter
@@ -450,16 +450,16 @@ export function TenderDetailView({
                 thresholds={DETAIL_THRESHOLDS}
                 colors={DETAIL_COLORS}
               />
-              <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <div className="mt-2 text-center text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 {scoreLabel(score)}
               </div>
             </>
           ) : (
             /* Sin puntaje no es lo mismo que cero: el ranking solo calcula sus
                doce mejores, y el resto se mide cuando el usuario lo pide. */
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-strong p-4 text-center">
+            <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-border-strong p-3 text-center">
               <Icon name="gauge" size={22} color="var(--text-subtle)" />
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <span className="mt-1 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 Sin puntaje
               </span>
             </div>
@@ -472,7 +472,7 @@ export function TenderDetailView({
               variant="ghost"
               onClick={handleCalculateScore}
               disabled={pendingAction !== null}
-              className="mt-2 w-full border border-border-strong bg-white text-xs hover:bg-slate-50"
+              className="mt-2 w-full border border-border-strong bg-surface-card text-xs hover:bg-surface-hover"
               id="btn-calculate-score"
             >
               {pendingAction === "score" ? (
@@ -493,96 +493,108 @@ export function TenderDetailView({
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge tone="teal">Compra Ágil</Badge>
-            <Badge
-              tone={closingBadgeTone(closing.tone)}
-              dot={closing.tone === "danger"}
-            >
-              {closing.label}
-            </Badge>
-            <span className="font-mono text-xs text-text-subtle">
-              ID {tender.code}
-            </span>
+        <div className="min-w-0 flex flex-col justify-center sm:justify-start">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Grupo Badges: Compra Ágil y Cierra en... */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <Badge tone="teal">Compra Ágil</Badge>
+              <Badge
+                tone={closingBadgeTone(closing.tone)}
+                dot={closing.tone === "danger"}
+              >
+                {closing.label}
+              </Badge>
+            </div>
 
-            <div className="flex-1" />
+            {/* Espaciador flexible en móvil para empujar acciones a la derecha */}
+            <div className="flex-1 sm:hidden" />
 
-            <TenderBoardSelector tenderId={tenderId} />
-            {state.isRecommended && (
+            {/* Acciones en primera línea a la derecha (móvil y desktop) */}
+            <div className="flex items-center gap-0.5 sm:gap-1 order-1 sm:order-3 sm:ml-auto shrink-0">
+              {state.isRecommended && (
+                <button
+                  type="button"
+                  onClick={() => setIsReportMatchOpen(true)}
+                  aria-label="Reportar mal match"
+                  title="Reportar mal match"
+                  className="inline-flex size-8 sm:size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 active:scale-95"
+                >
+                  <Icon name="flag" size={17} />
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => setIsReportMatchOpen(true)}
-                aria-label="Reportar mal match"
-                title="Reportar mal match"
-                className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 active:scale-95"
+                onClick={() => setIsShareOpen(true)}
+                aria-label="Compartir licitación"
+                title="Compartir con un enlace de 7 días"
+                className="inline-flex size-8 sm:size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95"
               >
-                <Icon name="flag" size={18} />
+                <Icon name="share-2" size={17} />
               </button>
-            )}
 
-            <button
-              type="button"
-              onClick={() => setIsShareOpen(true)}
-              aria-label="Compartir licitación"
-              title="Compartir con un enlace de 7 días"
-              className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-text-subtle transition-all duration-200 hover:scale-105 hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95"
-            >
-              <Icon name="share-2" size={18} />
-            </button>
+              <button
+                type="button"
+                onClick={handleToggleSave}
+                aria-label={
+                  isSaved
+                    ? "Quitar de licitaciones guardadas"
+                    : "Guardar licitación"
+                }
+                title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
+                className={`inline-flex size-8 sm:size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
+                  isSaved
+                    ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
+                    : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+              >
+                <Icon
+                  name={isSaved ? "bookmark-check" : "bookmark"}
+                  size={18}
+                  color={isSaved ? "var(--primary)" : "currentColor"}
+                />
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={handleToggleSave}
-              aria-label={
-                isSaved
-                  ? "Quitar de licitaciones guardadas"
-                  : "Guardar licitación"
-              }
-              title={isSaved ? "Quitar de guardadas" : "Guardar licitación"}
-              className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
-                isSaved
-                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
-                  : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
-              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
-            >
-              <Icon
-                name={isSaved ? "bookmark-check" : "bookmark"}
-                size={19}
-                color={isSaved ? "var(--primary)" : "currentColor"}
-              />
-            </button>
+            {/* Segunda línea en móvil: ID de licitación y Agregar al tablero */}
+            <div className="w-full sm:w-auto flex flex-wrap items-center justify-between sm:justify-start gap-2.5 order-2">
+              <span className="font-mono text-xs text-text-subtle shrink-0">
+                ID {tender.code}
+              </span>
+              <TenderBoardSelector tenderId={tenderId} />
+            </div>
           </div>
+        </div>
 
-          <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-text-strong">
-            {tender.name}
-          </h1>
+        <h1 className="col-span-2 sm:col-span-1 sm:col-start-2 font-display text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-text-strong mt-1 sm:mt-0">
+          {tender.name}
+        </h1>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-            <span className="inline-flex items-center gap-1.5">
-              <Icon name="building-2" size={15} color="var(--text-subtle)" />
-              <span>{buyer}</span>
-            </span>
-            {tender.buyer_unit && (
-              <>
-                <span className="text-border-strong">·</span>
-                <span>{tender.buyer_unit}</span>
-              </>
-            )}
-            {tender.region && (
-              <>
-                <span className="text-border-strong">·</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name="map-pin" size={15} color="var(--text-subtle)" />
-                  <span>{tender.region}</span>
-                </span>
-              </>
-            )}
-          </div>
+        {/* En móvil cada dato va en su propia línea; desde sm, en una fila con separadores. */}
+        <div className="col-span-2 sm:col-span-1 sm:col-start-2 mt-1 sm:mt-2 flex flex-col gap-y-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 text-sm text-text-muted">
+          <span className="inline-flex items-start gap-1.5">
+            <Icon name="building-2" size={15} color="var(--text-subtle)" className="mt-0.5" />
+            <span>{buyer}</span>
+          </span>
+          {tender.buyer_unit && (
+            <>
+              <span className="hidden text-border-strong sm:inline">·</span>
+              <span>{tender.buyer_unit}</span>
+            </>
+          )}
+          {tender.region && (
+            <>
+              <span className="hidden text-border-strong sm:inline">·</span>
+              <span className="inline-flex items-start gap-1.5">
+                <Icon name="map-pin" size={15} color="var(--text-subtle)" className="mt-0.5" />
+                <span>{tender.region}</span>
+              </span>
+            </>
+          )}
+        </div>
 
-          <div className="mt-4">
-            <ExportActions tenderId={tenderId} />
-          </div>
+        <div className="col-span-2 sm:col-span-1 sm:col-start-2 mt-3 sm:mt-4">
+          <ExportActions tenderId={tenderId} />
         </div>
       </header>
 
@@ -622,7 +634,7 @@ export function TenderDetailView({
 
         {tender.items.length > 0 && (
           <div className="mt-5">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <div className="mb-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
               Ítems solicitados
             </div>
             <ul className="flex flex-col divide-y divide-border-subtle rounded-md border border-border-subtle">
@@ -650,7 +662,7 @@ export function TenderDetailView({
           </div>
         )}
         <div className="mt-5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+          <div className="mb-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
             Resumen de requisitos y documentos
           </div>
 
@@ -676,7 +688,7 @@ export function TenderDetailView({
 
       <Section title="Descripción" icon="file-text">
         {tender.description ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text-body">
+          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-text-body">
             {tender.description}
           </p>
         ) : (
@@ -689,7 +701,7 @@ export function TenderDetailView({
       <ShareDialog open={isShareOpen} tenderId={tenderId} onClose={() => setIsShareOpen(false)} />
 
       {/* AI Compatibility Analysis CTA Card */}
-      <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="mb-6 rounded-lg border border-primary/20 bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
             <Icon name="sparkles" size={20} />
@@ -712,7 +724,7 @@ export function TenderDetailView({
               reportInteraction("asistente");
             }}
             variant="ghost"
-            className="shrink-0 border border-border-strong bg-white hover:bg-slate-50"
+            className="shrink-0 border border-border-strong bg-surface-card hover:bg-surface-hover"
             id="btn-open-tender-assistant"
           >
             <span className="inline-flex items-center gap-2">
@@ -788,7 +800,7 @@ export function TenderDetailView({
 
       {/* Análisis de compatibilidad IA si ya existe */}
       {analysis && (
-        <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
+        <div className="mt-5 rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs">
           <div className="flex flex-col gap-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
@@ -807,7 +819,7 @@ export function TenderDetailView({
               <button
                 type="button"
                 onClick={() => setIsReportAnalysisOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
                 title="Reportar análisis de compatibilidad incorrecto"
               >
                 <Icon name="flag" size={14} />
@@ -827,7 +839,7 @@ export function TenderDetailView({
                     low: "var(--red-500)",
                   }}
                 />
-                <div className="mt-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle text-center">
+                <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
                   Score de Compatibilidad
                 </div>
               </div>
@@ -992,7 +1004,7 @@ function KeyValueCard({
 }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
-      <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+      <div className="mb-1 inline-flex items-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
         <Icon name={icon} size={12} color="var(--text-subtle)" />
         {eyebrow}
       </div>

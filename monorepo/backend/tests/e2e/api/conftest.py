@@ -22,6 +22,7 @@ from app.bootstrap.repositories import (
     get_user_repo,
 )
 from app.bootstrap.services import (
+    get_attachment_storage,
     get_email_service,
     get_embedding_service,
     get_ranking_registry,
@@ -29,6 +30,7 @@ from app.bootstrap.services import (
 )
 from app.main import app
 from tests.support.api_auth import preparar_auth
+from tests.unit.application.attachment_file_fakes import FakeAttachmentStorage
 from tests.unit.application.fakes import (
     FakeEmailService,
     FakeEmbeddingService,
@@ -57,6 +59,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
     vectors = FakeSupplierVectorRepository()
     emails = FakeEmailService()
     impresiones = FakeRankingImpressionLogger()
+    storage = FakeAttachmentStorage()
     # Uno por test: el de `app.state` se compartiría entre tests.
     registro = RecentRankingRegistry()
 
@@ -69,6 +72,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         FakeEmbeddingService()
     )
     app.dependency_overrides[get_email_service] = lambda: emails
+    app.dependency_overrides[get_attachment_storage] = lambda: storage
     # Sin estos overrides, los tests de `/tenders/recommended` intentarían escribir
     # las impresiones en la base de desarrollo.
     app.dependency_overrides[get_ranking_impression_logger] = lambda: impresiones
@@ -92,6 +96,7 @@ async def api() -> AsyncGenerator[AsyncClient, None]:
         ac.miembros = members
         ac.correos = emails
         ac.rankings_registrados = impresiones
+        ac.storage = storage
         yield ac
 
     app.dependency_overrides.clear()

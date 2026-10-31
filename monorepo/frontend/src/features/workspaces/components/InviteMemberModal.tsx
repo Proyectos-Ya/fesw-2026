@@ -87,7 +87,7 @@ export function InviteMemberModal({
             type="button"
             onClick={onClose}
             aria-label="Cerrar modal"
-            className="rounded-lg p-1.5 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors cursor-pointer"
+            className="rounded-lg p-1.5 text-text-subtle hover:bg-surface-hover hover:text-text-strong transition-colors cursor-pointer"
           >
             <Icon name="x" size={18} />
           </button>
@@ -95,7 +95,7 @@ export function InviteMemberModal({
 
         {successMessage ? (
           <div className="py-6 text-center space-y-4">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-success-soft text-success-text">
               <Icon name="check" size={24} />
             </div>
             <p className="text-sm text-text-strong">{successMessage}</p>
@@ -133,9 +133,9 @@ export function InviteMemberModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ejemplo@empresa.cl"
-                className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                className="w-full rounded-lg border border-border-subtle bg-surface-card px-3.5 py-2.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
               />
-              <p className="mt-1 text-[11px] text-text-subtle">
+              <p className="mt-1 text-[0.6875rem] text-text-subtle">
                 El usuario recibirá una notificación directa dentro de su cuenta en Chiripa.
               </p>
             </div>
@@ -151,7 +151,7 @@ export function InviteMemberModal({
                 id="invite-role"
                 value={role}
                 onChange={(e) => setRole(e.target.value as MemberRole)}
-                className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                className="w-full rounded-lg border border-border-subtle bg-surface-card px-3.5 py-2.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
               >
                 <option value="member">Representante (Visualización y postulación)</option>
                 <option value="admin">Administrador (Gestión total y miembros)</option>
@@ -163,7 +163,7 @@ export function InviteMemberModal({
                 type="button"
                 onClick={onClose}
                 disabled={isLoading}
-                className="flex-1 rounded-lg border border-border-subtle bg-white py-2.5 text-sm font-medium text-text-muted hover:bg-warm-100 hover:text-text-strong transition-colors cursor-pointer"
+                className="flex-1 rounded-lg border border-border-subtle bg-surface-card py-2.5 text-sm font-medium text-text-muted hover:bg-surface-hover hover:text-text-strong transition-colors cursor-pointer"
               >
                 Cancelar
               </button>

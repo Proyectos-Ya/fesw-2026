@@ -34,22 +34,22 @@ export function ChatInput({ onSend, isAsking = false, disabled = false }: ChatIn
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full border-t border-slate-200 bg-white p-3">
+    <form onSubmit={handleSubmit} className="w-full border-t border-border-subtle bg-surface-card p-3">
       {isOverLimit && (
         <div
           role="alert"
-          className="mb-2 flex items-center gap-2 rounded-lg bg-red-50 p-2 text-xs font-medium text-red-700"
+          className="mb-2 flex items-center gap-2 rounded-lg bg-danger-soft p-2 text-xs font-medium text-danger-text"
         >
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+          <AlertCircle className="h-4 w-4 shrink-0 text-danger" />
           <span>La consulta supera los 1000 caracteres. Por favor, acorta tu pregunta.</span>
         </div>
       )}
 
       <div
-        className={`relative flex flex-col rounded-xl border bg-slate-50 transition-colors focus-within:bg-white ${
+        className={`relative flex flex-col rounded-xl border bg-surface-inset transition-colors focus-within:bg-surface-card ${
           isOverLimit
-            ? "border-red-500 focus-within:ring-2 focus-within:ring-red-200"
-            : "border-slate-300 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100"
+            ? "border-danger focus-within:ring-2 focus-within:ring-danger/20"
+            : "border-border-default focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
         }`}
       >
         <textarea
@@ -59,13 +59,13 @@ export function ChatInput({ onSend, isAsking = false, disabled = false }: ChatIn
           onKeyDown={handleKeyDown}
           placeholder="Haz una pregunta sobre esta licitación o sus bases adjuntas..."
           disabled={disabled || isAsking}
-          className="w-full resize-none bg-transparent px-3.5 pt-3 pb-8 text-sm text-slate-800 placeholder-slate-400 focus:outline-none disabled:opacity-50"
+          className="w-full resize-none bg-transparent px-3.5 pt-3 pb-8 text-sm text-text-strong placeholder:text-text-muted focus:outline-none disabled:opacity-50"
         />
 
         <div className="absolute right-3 bottom-2.5 flex items-center gap-3">
           <span
             className={`text-xs font-medium transition-colors ${
-              isOverLimit ? "font-semibold text-red-600" : "text-slate-400"
+              isOverLimit ? "font-semibold text-danger" : "text-text-muted"
             }`}
           >
             {charCount} / {MAX_CHARACTERS}
@@ -75,7 +75,7 @@ export function ChatInput({ onSend, isAsking = false, disabled = false }: ChatIn
             type="submit"
             disabled={isSubmitDisabled}
             aria-label={isAsking ? "Enviando..." : "Enviar pregunta"}
-            className="flex h-8 items-center justify-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="flex min-h-8 py-1.5 items-center justify-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-border-default"
           >
             {isAsking ? (
               <>

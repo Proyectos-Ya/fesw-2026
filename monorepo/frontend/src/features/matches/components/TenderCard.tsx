@@ -120,7 +120,7 @@ export function TenderCard({
       href={tenderDetailHref(tender.id, rankingContext)}
       ref={impressionRef}
       onClick={handleCardClick}
-      className="group flex gap-5 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="group flex flex-row items-start gap-3.5 sm:gap-5 rounded-lg border border-border-subtle bg-surface-card p-4 sm:p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
       {/* Medidor de compatibilidad: solo visible si hay match con score */}
@@ -132,58 +132,70 @@ export function TenderCard({
             thresholds={DASHBOARD_THRESHOLDS}
             colors={DASHBOARD_COLORS}
           />
-          <div className="mt-2 text-center text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+          <div className="mt-2 text-center text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
             <ScoreLabel score={score} />
           </div>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge tone="teal">Compra Ágil</Badge>
-          <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
-            {closing.label}
-          </Badge>
-          {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
-          <span className="font-mono text-xs text-text-subtle">ID {tender.code}</span>
+        {/* Cabecera con badges y acciones */}
+        <div className="mb-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+          <div className="flex items-center justify-between gap-1 w-full">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <Badge tone="teal">Compra Ágil</Badge>
+              <Badge tone={closingBadgeTone(closing.tone)} dot={closing.tone === "danger"}>
+                {closing.label}
+              </Badge>
+              {isSecondCall(tender) && <Badge tone="info">{SECOND_CALL_LABEL}</Badge>}
+              <span className="hidden sm:inline font-mono text-xs text-text-subtle">
+                ID {tender.code}
+              </span>
+            </div>
 
-          <div className="flex-1" />
+            <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+              {match && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setReportOpen(true);
+                  }}
+                  aria-label="Reportar mal match"
+                  title="Reportar mal match"
+                  className="inline-flex size-8 sm:size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+                >
+                  <Icon name="flag" size={17} />
+                </button>
+              )}
 
-          {match && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setReportOpen(true);
-              }}
-              aria-label="Reportar mal match"
-              title="Reportar mal match"
-              className="inline-flex size-9 items-center justify-center rounded-full text-text-subtle hover:bg-danger-soft hover:text-danger hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
-            >
-              <Icon name="flag" size={18} />
-            </button>
-          )}
+              {onToggleSave && (
+                <button
+                  type="button"
+                  onClick={handleSaveClick}
+                  aria-label={savedState ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
+                  title={savedState ? "Quitar de guardadas" : "Guardar licitación"}
+                  className={`inline-flex size-8 sm:size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
+                    savedState
+                      ? "bg-primary-soft text-primary hover:bg-primary-border/40 hover:scale-105 active:scale-95"
+                      : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
+                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+                >
+                  <Icon
+                    name={savedState ? "bookmark-check" : "bookmark"}
+                    size={18}
+                    color={savedState ? "var(--primary)" : "currentColor"}
+                  />
+                </button>
+              )}
+            </div>
+          </div>
 
-          {onToggleSave && (
-            <button
-              type="button"
-              onClick={handleSaveClick}
-              aria-label={savedState ? "Quitar de licitaciones guardadas" : "Guardar licitación"}
-              title={savedState ? "Quitar de guardadas" : "Guardar licitación"}
-              className={`inline-flex size-9 items-center justify-center rounded-full transition-all duration-200 cursor-pointer ${
-                savedState
-                  ? "bg-primary-soft text-primary hover:bg-teal-100 hover:scale-105 active:scale-95"
-                  : "text-text-subtle hover:bg-surface-hover hover:text-primary hover:scale-105 active:scale-95"
-              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
-            >
-              <Icon
-                name={savedState ? "bookmark-check" : "bookmark"}
-                size={19}
-                color={savedState ? "var(--primary)" : "currentColor"}
-              />
-            </button>
-          )}
+          {/* En móvil: ID de licitación en segunda línea */}
+          <span className="sm:hidden font-mono text-xs text-text-subtle">
+            ID {tender.code}
+          </span>
         </div>
 
         <h3 className="font-display text-xl font-semibold leading-tight tracking-tight text-text-strong">
@@ -191,9 +203,9 @@ export function TenderCard({
         </h3>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
             <Icon name="building-2" size={15} color="var(--text-subtle)" />
-            <span className="truncate">{buyer}</span>
+            <span className="truncate" title={buyer}>{buyer}</span>
           </span>
           {tender.region && (
             <>
@@ -213,7 +225,7 @@ export function TenderCard({
 
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+            <div className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
               Monto estimado
             </div>
             <div className="font-mono text-lg font-semibold text-text-strong">
@@ -221,7 +233,7 @@ export function TenderCard({
             </div>
           </div>
           <div className="flex-1" />
-          <span className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-teal-100">
+          <span className="inline-flex items-center gap-2 rounded-md bg-primary-soft px-4 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-primary-border/40">
             Ver detalle
             <Icon name="arrow-right" size={16} />
           </span>

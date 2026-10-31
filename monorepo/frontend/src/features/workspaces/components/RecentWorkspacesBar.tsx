@@ -82,21 +82,21 @@ export function RecentWorkspacesBar() {
                 {isSwitchingThis ? (
                   <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 ) : isActive ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.625rem] font-bold text-primary">
                     <Icon name="circle-check" size={11} />
                     Activo
                   </span>
                 ) : null}
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-[11px] pt-2 border-t border-border-subtle/60">
+              <div className="mt-3 flex items-center justify-between text-[0.6875rem] pt-2 border-t border-border-subtle/60">
                 <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${badge.className}`}
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold border ${badge.className}`}
                 >
                   {badge.label}
                 </span>
                 {!isActive && (
-                  <span className="text-text-subtle group-hover:text-primary text-[11px] font-medium transition-colors flex items-center gap-0.5">
+                  <span className="text-text-subtle group-hover:text-primary text-[0.6875rem] font-medium transition-colors flex items-center gap-0.5">
                     Seleccionar
                     <Icon name="arrow-right" size={11} />
                   </span>

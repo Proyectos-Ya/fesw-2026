@@ -141,7 +141,7 @@ export function TenderBoardSelector({ tenderId, onNavigateToBoard }: Props) {
       <button
         type="button"
         onClick={handleCreateBoard}
-        className="inline-flex items-center gap-2 rounded-md border border-border-strong bg-white px-3 py-2 text-sm font-semibold text-text-strong transition-colors hover:bg-slate-50"
+        className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-border-strong bg-surface-card px-3 py-2 text-sm font-semibold text-text-strong transition-colors hover:bg-surface-hover"
       >
         <Icon name="plus" size={14} />
         <span>Crear tablero</span>
@@ -153,29 +153,29 @@ export function TenderBoardSelector({ tenderId, onNavigateToBoard }: Props) {
   const triggerLabel = currentColumn ? currentColumn.name : "Agregar al tablero";
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className="relative inline-block max-w-full">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
+        className={`inline-flex max-w-full items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
           currentColumn
-            ? "border-border-strong bg-primary-soft text-primary hover:bg-teal-100"
-            : "border-border-strong bg-white text-text-strong hover:bg-slate-50"
+            ? "border-border-strong bg-primary-soft text-primary hover:bg-primary-border/40"
+            : "border-border-strong bg-surface-card text-text-strong hover:bg-surface-hover"
         } disabled:cursor-not-allowed disabled:opacity-60`}
       >
         {currentColumn ? (
           <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
+            className="inline-block h-2.5 w-2.5 flex-none rounded-full"
             style={{ backgroundColor: currentColumn.color }}
             aria-hidden="true"
           />
         ) : (
           <Icon name="plus" size={14} />
         )}
-        <span>{triggerLabel}</span>
+        <span className="truncate" title={triggerLabel}>{triggerLabel}</span>
         <Icon name="chevron-down" size={14} />
       </button>
 
@@ -193,7 +193,7 @@ export function TenderBoardSelector({ tenderId, onNavigateToBoard }: Props) {
                   type="button"
                   role="menuitem"
                   onClick={() => void handlePickColumn(col.id)}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-warm-100 ${
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover ${
                     isCurrent ? "font-semibold text-primary" : "text-text-body"
                   }`}
                 >

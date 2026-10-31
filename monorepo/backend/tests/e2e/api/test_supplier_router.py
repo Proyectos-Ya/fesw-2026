@@ -9,6 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.bootstrap.services import get_company_lookup_service
+from app.config import settings
 from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
 from app.domain.errors.company_lookup_errors import (
     CompanyLookupUnavailable,
@@ -391,3 +392,101 @@ async def test_embedding_no_disponible_responde_503_sin_crear_la_empresa(
     assert resp.status_code == 503
     assert resp.json()["detail"]
     assert (await api.get("/suppliers/me")).status_code == 404
+
+
+PNG_TEST_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 30
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_without_session_returns_401(api: AsyncClient):
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_without_company_returns_404(api: AsyncClient):
+    await _login(api)
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_invalid_format_returns_400(api: AsyncClient):
+    await _login(api)
+    await api.post("/suppliers", json=SUPPLIER)
+
+    files = {"file": ("documento.pdf", b"%PDF-1.4 sample", "application/pdf")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Formato inválido o archivo muy pesado"
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_too_large_returns_400(api: AsyncClient):
+    await _login(api)
+    await api.post("/suppliers", json=SUPPLIER)
+
+    oversized = b"\x89PNG\r\n\x1a\n" + b"A" * (5 * 1024 * 1024 + 10)
+    files = {"file": ("huge.png", oversized, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Formato inválido o archivo muy pesado"
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_success_and_public_retrieval(api: AsyncClient):
+    await _login(api)
+    created = await api.post("/suppliers", json=SUPPLIER)
+    assert created.status_code == 201
+    supplier_id = created.json()["id"]
+
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["logo_url"] is not None
+    assert f"/api/suppliers/{supplier_id}/logo/" in body["logo_url"]
+
+    # Verify persisted in GET /suppliers/me
+    me_resp = await api.get("/suppliers/me")
+    assert me_resp.status_code == 200
+    assert me_resp.json()["logo_url"] == body["logo_url"]
+
+    # Verify public retrieval without session (no cookies, no headers)
+    # The URL in body["logo_url"] is e.g. /api/suppliers/{id}/logo/{filename}
+    filename = body["logo_url"].split("/")[-1]
+    raw_api = AsyncClient(transport=api._transport, base_url="http://test")
+    public_resp = await raw_api.get(f"/suppliers/{supplier_id}/logo/{filename}")
+    assert public_resp.status_code == 200
+    assert public_resp.headers["content-type"] == "image/png"
+    assert public_resp.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert public_resp.content == PNG_TEST_BYTES
+
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_with_r2_public_url_still_uses_backend_route(
+    api: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    # The R2 public domain is reserved for `shared/`; logos are always served by
+    # the backend so they do not depend on how that domain is configured.
+    monkeypatch.setattr(settings, "r2_account_id", "account")
+    monkeypatch.setattr(settings, "r2_access_key_id", "key")
+    monkeypatch.setattr(settings, "r2_secret_access_key", "secret")
+    monkeypatch.setattr(settings, "r2_bucket", "bucket")
+    monkeypatch.setattr(settings, "r2_public_base_url", "https://cdn.example.com")
+    assert settings.r2_enabled
+
+    await _login(api)
+    created = await api.post("/suppliers", json=SUPPLIER)
+    supplier_id = created.json()["id"]
+
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+
+    assert resp.status_code == 200
+    logo_url = resp.json()["logo_url"]
+    assert logo_url.startswith(f"/api/suppliers/{supplier_id}/logo/")
+    assert (await api.get("/suppliers/me")).json()["logo_url"] == logo_url

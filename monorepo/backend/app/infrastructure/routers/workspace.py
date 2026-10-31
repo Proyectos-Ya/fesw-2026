@@ -145,6 +145,7 @@ def create_workspace_router(
                         role=MemberRole.ADMIN,
                         status=MemberStatus.ACTIVE,
                         is_active_context=True,
+                        logo_url=legacy_supplier.logo_url,
                     )
                 )
         return workspaces

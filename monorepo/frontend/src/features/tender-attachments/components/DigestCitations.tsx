@@ -20,12 +20,12 @@ export function DigestCitations({ citas }: DigestCitationsProps) {
         {citas.map((c, index) => (
           <div
             key={`${c.documento}-${index}`}
-            className="rounded-md border border-warm-200 bg-warm-50 p-2"
+            className="rounded-md border border-border-subtle bg-surface-inset p-2"
           >
-            <blockquote className="border-l-2 border-primary/40 pl-2 italic text-slate-700">
+            <blockquote className="border-l-2 border-primary/40 pl-2 italic text-text-body">
               &quot;{c.cita}&quot;
             </blockquote>
-            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[11px] text-text-muted">
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[0.6875rem] text-text-muted">
               <span>
                 {c.documento}
                 {c.pagina_u_hoja ? ` · ${c.pagina_u_hoja}` : ""}

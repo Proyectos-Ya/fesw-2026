@@ -18,7 +18,7 @@ export function Input({ label, error, hint, id, className = "", ...rest }: Input
         className={`w-full rounded-md border px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-subtle transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
           error
             ? "border-danger bg-danger-soft/30"
-            : "border-border-default bg-white hover:border-border-strong"
+            : "border-border-default bg-surface-card hover:border-border-strong"
         } ${className}`}
         {...rest}
       />

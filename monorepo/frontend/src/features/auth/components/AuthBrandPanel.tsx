@@ -28,10 +28,10 @@ export function AuthBrandPanel() {
         </p>
 
         {/* Floating match card */}
-        <div className="max-w-xs bg-white rounded-xl p-4 flex gap-4 items-center shadow-lg border border-teal-500/10">
+        <div className="max-w-xs bg-surface-card rounded-xl p-4 flex gap-4 items-center shadow-lg border border-primary-border/20">
           <MatchMeter value={94} size="md" />
           <div className="flex-1 min-w-0">
-            <span className="inline-block bg-primary-soft text-primary text-[10px] font-bold uppercase tracking-caps px-2 py-0.5 rounded-full mb-1">
+            <span className="inline-block bg-primary-soft text-primary text-[0.625rem] font-bold uppercase tracking-caps px-2 py-0.5 rounded-full mb-1">
               Nuevo match
             </span>
             <div className="font-display font-semibold text-sm text-text-strong truncate">

@@ -164,7 +164,7 @@ export function SearchDashboard() {
       ) : total === 0 ? (
         /* Empty State (HdU 07.3) */
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-warm-100">
+          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-surface-inset">
             <Icon name="search" size={22} color="var(--text-subtle)" />
           </div>
           <h2 className="font-display text-xl font-semibold text-text-strong">
@@ -179,7 +179,7 @@ export function SearchDashboard() {
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-teal-100 transition-colors cursor-pointer"
+              className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-primary-border/40 transition-colors cursor-pointer"
             >
               <Icon name="rotate-ccw" size={15} />
               Limpiar filtros

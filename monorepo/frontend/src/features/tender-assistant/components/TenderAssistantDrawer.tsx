@@ -52,20 +52,20 @@ export function TenderAssistantDrawer({
   return (
     <aside
       aria-label="Asistente virtual de licitación"
-      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl transition-transform duration-300 ease-in-out border-l border-slate-200"
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-surface-card shadow-2xl transition-transform duration-300 ease-in-out border-l border-border-subtle"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface-inset px-4 py-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
             <Sparkles className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900 truncate">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-text-strong truncate">
               <span>Asistente Virtual IA</span>
             </h3>
             {tenderTitle && (
-              <p className="text-xs text-slate-500 truncate" title={tenderTitle}>
+              <p className="text-xs text-text-muted truncate" title={tenderTitle}>
                 {tenderTitle}
               </p>
             )}
@@ -78,7 +78,7 @@ export function TenderAssistantDrawer({
             onClick={() => void startNewChat()}
             disabled={isStartingNewChat || isAsking}
             aria-label="Nuevo Chat"
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 rounded-lg border border-border-subtle bg-surface-card px-2.5 py-1.5 text-xs font-medium text-text-body shadow-2xs hover:border-primary-border hover:bg-surface-hover hover:text-text-strong transition-colors disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Nuevo Chat</span>
@@ -88,7 +88,7 @@ export function TenderAssistantDrawer({
             type="button"
             onClick={onClose}
             aria-label="Cerrar asistente"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-hover hover:text-text-strong transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -96,7 +96,7 @@ export function TenderAssistantDrawer({
       </div>
 
       {/* Attachments Section */}
-      <div className="p-3 border-b border-slate-100 bg-white">
+      <div className="p-3 border-b border-border-subtle bg-surface-card">
         <DocumentAttachmentManager
           documents={documents}
           onDelete={removeDocument}
@@ -109,10 +109,10 @@ export function TenderAssistantDrawer({
       {historyError && (
         <div
           role="alert"
-          className="mx-4 mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-2xs"
+          className="mx-4 mt-3 flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning-soft p-3 text-xs text-text-strong shadow-2xs"
         >
           <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
             <span className="font-medium leading-relaxed">{historyError}</span>
           </div>
           <div className="flex items-center gap-2 pl-6">
@@ -127,7 +127,7 @@ export function TenderAssistantDrawer({
             <button
               type="button"
               onClick={() => void startNewChat()}
-              className="flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100/50 transition-colors"
+              className="flex items-center gap-1 rounded-md border border-warning/40 bg-surface-card px-2.5 py-1 font-semibold text-warning-text hover:bg-surface-hover transition-colors"
             >
               <Plus className="h-3 w-3" />
               <span>Nuevo Chat</span>

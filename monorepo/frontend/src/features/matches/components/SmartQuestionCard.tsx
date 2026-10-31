@@ -74,8 +74,8 @@ export function SmartQuestionCard({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border border-border-subtle bg-white p-6 shadow-xs transition-all duration-200 hover:shadow-sm ${
-        isSuccess ? "border-green-200 bg-green-50/30" : ""
+      className={`relative overflow-hidden rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs transition-all duration-200 hover:shadow-sm ${
+        isSuccess ? "border-success/30 bg-success-soft/40" : ""
       } ${className}`}
     >
       <div
@@ -85,12 +85,12 @@ export function SmartQuestionCard({
       >
         {/* Encabezado con insignia IA y requisito objetivo */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <Badge tone="teal" iconLeft={<Sparkles className="size-3.5 text-teal-600" />}>
+          <Badge tone="teal" iconLeft={<Sparkles className="size-3.5 text-primary" />}>
             Pregunta Inteligente
           </Badge>
 
           {question.target_keyword && (
-            <span className="inline-flex items-center rounded-md bg-warm-100 px-2 py-0.5 text-xs font-medium text-text-subtle">
+            <span className="inline-flex items-center rounded-md bg-surface-inset px-2 py-0.5 text-xs font-medium text-text-subtle">
               <span className="sr-only">Requisito detectado: </span>
               {question.target_keyword}
             </span>
@@ -128,18 +128,18 @@ export function SmartQuestionCard({
 
         {/* Estado de Éxito / Feedback */}
         {isSuccess ? (
-          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-800">
+          <div className="flex items-center justify-between rounded-lg border border-success/30 bg-success-soft px-4 py-3 text-success-text">
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="size-5 shrink-0 text-green-600" />
+              <CheckCircle2 className="size-5 shrink-0 text-success" />
               <div className="text-sm">
                 <p className="font-semibold">¡Respuesta registrada con éxito!</p>
-                <p className="text-xs text-green-700">
+                <p className="text-xs text-success-text">
                   Refinando recomendaciones de licitaciones...
                 </p>
               </div>
             </div>
             {progress && (
-              <span className="font-mono text-xs font-semibold text-green-700">
+              <span className="font-mono text-xs font-semibold text-success-text">
                 {progress.current}/{progress.total}
               </span>
             )}
@@ -169,7 +169,7 @@ export function SmartQuestionCard({
                   }
                 }}
                 disabled={isSubmitting || isSuccess}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-border-default bg-white px-4 py-2 text-sm font-semibold text-text-default transition-all duration-200 hover:bg-warm-50 hover:text-text-strong disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-400"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-border-default bg-surface-card px-4 py-2 text-sm font-semibold text-text-default transition-all duration-200 hover:bg-surface-hover hover:text-text-strong disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               >
                 {isSubmitting && submittingAction === "No" ? (
                   <Loader2 className="size-4 animate-spin text-text-muted" />

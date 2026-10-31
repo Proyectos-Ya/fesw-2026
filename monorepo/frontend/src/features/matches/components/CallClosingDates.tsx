@@ -21,7 +21,7 @@ export function CallClosingDates({ tender, className = "" }: CallClosingDatesPro
       aria-label="Cierre por llamado"
       className={`rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs ${className}`}
     >
-      <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+      <div className="mb-2 inline-flex items-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
         <Icon name="calendar-clock" size={12} color="var(--text-subtle)" />
         Cierre por llamado
       </div>
