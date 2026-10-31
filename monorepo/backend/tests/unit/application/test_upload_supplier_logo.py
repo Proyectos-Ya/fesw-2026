@@ -42,11 +42,7 @@ async def test_upload_png_logo_success():
     supplier = _build_supplier(user_id=user_id)
     await repo.save(supplier)
 
-    use_case = UploadSupplierLogoUseCase(
-        repo=repo,
-        storage=storage,
-        public_base_url="https://cdn.chiripa.cl",
-    )
+    use_case = UploadSupplierLogoUseCase(repo=repo, storage=storage)
 
     result = await use_case.execute(
         user_id=user_id,
@@ -58,27 +54,24 @@ async def test_upload_png_logo_success():
     sha16 = hashlib.sha256(PNG_HEADER).hexdigest()[:16]
     expected_key = f"logos/{supplier.id}/{sha16}.png"
     assert storage.objetos.get(expected_key) == PNG_HEADER
-    assert result.logo_url == f"https://cdn.chiripa.cl/{expected_key}"
+    expected_url = f"/api/suppliers/{supplier.id}/logo/{sha16}.png"
+    assert result.logo_url == expected_url
 
     # Verify persisted in repository
     persisted = await repo.get_by_id(supplier.id)
     assert persisted is not None
-    assert persisted.logo_url == f"https://cdn.chiripa.cl/{expected_key}"
+    assert persisted.logo_url == expected_url
 
 
 @pytest.mark.asyncio
-async def test_upload_jpg_logo_without_public_url_uses_api_endpoint():
+async def test_upload_jpg_logo_uses_api_endpoint():
     repo = InMemorySupplierRepository()
     storage = FakeAttachmentStorage()
     user_id = uuid4()
     supplier = _build_supplier(user_id=user_id)
     await repo.save(supplier)
 
-    use_case = UploadSupplierLogoUseCase(
-        repo=repo,
-        storage=storage,
-        public_base_url=None,
-    )
+    use_case = UploadSupplierLogoUseCase(repo=repo, storage=storage)
 
     result = await use_case.execute(
         user_id=user_id,

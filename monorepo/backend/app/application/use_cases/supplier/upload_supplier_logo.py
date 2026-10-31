@@ -60,17 +60,20 @@ def detect_valid_logo_extension(
 
 
 class UploadSupplierLogoUseCase:
-    """Valida, sube a la nube y persiste el logo de la empresa en PostgreSQL."""
+    """Valida, sube a la nube y persiste el logo de la empresa en PostgreSQL.
+
+    El logo siempre se sirve por la ruta pública del backend, nunca por el dominio
+    público de R2: ese dominio está reservado para `shared/` y no se puede asumir
+    que exponga `logos/`.
+    """
 
     def __init__(
         self,
         repo: ISupplierRepository,
         storage: IAttachmentStorage | None,
-        public_base_url: str | None = None,
     ):
         self.repo = repo
         self.storage = storage
-        self.public_base_url = public_base_url
 
     async def execute(
         self,
@@ -103,10 +106,7 @@ class UploadSupplierLogoUseCase:
         if supplier.logo_url:
             await self._cleanup_old_logo_best_effort(supplier.id, supplier.logo_url, object_name)
 
-        if self.public_base_url:
-            logo_url = f"{self.public_base_url.rstrip('/')}/{key}"
-        else:
-            logo_url = f"/api/suppliers/{supplier.id}/logo/{object_name}"
+        logo_url = f"/api/suppliers/{supplier.id}/logo/{object_name}"
 
         now = utc_now_naive()
         updated_supplier = supplier.model_copy(

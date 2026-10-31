@@ -1,7 +1,7 @@
 """logo_url en supplier
 
 Revision ID: a3f9c8e1d402
-Revises: b7f3c1a9d2e4
+Revises: 3e7ba2172180
 Create Date: 2026-10-29 19:15:00.000000
 
 HU-31: Agrega columna logo_url nullable a la tabla supplier para persistir

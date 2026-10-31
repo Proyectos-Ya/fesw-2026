@@ -284,13 +284,9 @@ def create_supplier_router(
 
         try:
             file_bytes = await file.read()
-            public_base_url = (
-                settings.r2_public_base_url if settings.r2_enabled else None
-            )
             return await UploadSupplierLogoUseCase(
                 repo=repo,
                 storage=storage,
-                public_base_url=public_base_url,
             ).execute(
                 user_id=current_user.id,
                 file_bytes=file_bytes,

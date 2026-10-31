@@ -9,6 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.bootstrap.services import get_company_lookup_service
+from app.config import settings
 from app.domain.entities.company_profile import CompanyRecord, EconomicActivity
 from app.domain.errors.company_lookup_errors import (
     CompanyLookupUnavailable,
@@ -463,3 +464,29 @@ async def test_upload_supplier_logo_success_and_public_retrieval(api: AsyncClien
     assert public_resp.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert public_resp.content == PNG_TEST_BYTES
 
+
+
+@pytest.mark.asyncio
+async def test_upload_supplier_logo_with_r2_public_url_still_uses_backend_route(
+    api: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    # The R2 public domain is reserved for `shared/`; logos are always served by
+    # the backend so they do not depend on how that domain is configured.
+    monkeypatch.setattr(settings, "r2_account_id", "account")
+    monkeypatch.setattr(settings, "r2_access_key_id", "key")
+    monkeypatch.setattr(settings, "r2_secret_access_key", "secret")
+    monkeypatch.setattr(settings, "r2_bucket", "bucket")
+    monkeypatch.setattr(settings, "r2_public_base_url", "https://cdn.example.com")
+    assert settings.r2_enabled
+
+    await _login(api)
+    created = await api.post("/suppliers", json=SUPPLIER)
+    supplier_id = created.json()["id"]
+
+    files = {"file": ("logo.png", PNG_TEST_BYTES, "image/png")}
+    resp = await api.post("/suppliers/me/logo", files=files)
+
+    assert resp.status_code == 200
+    logo_url = resp.json()["logo_url"]
+    assert logo_url.startswith(f"/api/suppliers/{supplier_id}/logo/")
+    assert (await api.get("/suppliers/me")).json()["logo_url"] == logo_url
