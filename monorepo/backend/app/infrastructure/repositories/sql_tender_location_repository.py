@@ -27,6 +27,7 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.shared.constants import PUBLICADA_STATUS_ID
 from app.shared.datetime_utils import utc_now_naive
+from app.shared.regions import UNKNOWN_REGION_ID
 
 
 class SqlTenderLocationRepository(ITenderGeocodingRepository, ITenderMapRepository):
@@ -58,6 +59,11 @@ class SqlTenderLocationRepository(ITenderGeocodingRepository, ITenderMapReposito
                 col(TenderModel.delivery_geocoded_at).is_(None),
                 col(TenderModel.status_id) == PUBLICADA_STATUS_ID,
                 col(TenderModel.closing_at) > utc_now_naive(),
+                # Sin región informada no hay zona en la que mostrarla: el mapa
+                # filtra por las 16 reales. Geocodificarla gastaría cuota de
+                # Nominatim en algo invisible, y mandaría "Desconocida" como si
+                # fuera el nombre de una región.
+                col(BuyerInstitutionModel.region_id) != UNKNOWN_REGION_ID,
             )
             .order_by(col(TenderModel.closing_at).asc())
             .limit(limit)

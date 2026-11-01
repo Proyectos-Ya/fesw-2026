@@ -24,7 +24,11 @@ from app.infrastructure.repositories.tender_model import (
 )
 from app.shared.constants import CERRADA_STATUS_ID, PUBLICADA_STATUS_ID
 from app.shared.datetime_utils import utc_now_naive
-from app.shared.regions import CHILE_REGIONS
+from app.shared.regions import (
+    CHILE_REGIONS,
+    UNKNOWN_REGION_ID,
+    UNKNOWN_REGION_NAME,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -96,6 +100,24 @@ async def _guardar(session: AsyncSession, *tenders: TenderModel) -> list[UUID]:
     return ids
 
 
+async def _organismo_sin_region(session: AsyncSession) -> str:
+    """Un comprador cuya región Mercado Público no informó (`region_id` 0)."""
+    rut = "64.444.444-4"
+    ahora = utc_now_naive()
+    session.add(RegionModel(id=UNKNOWN_REGION_ID, name=UNKNOWN_REGION_NAME))
+    session.add(
+        BuyerInstitutionModel(
+            rut=rut,
+            name="Servicio sin región informada",
+            region_id=UNKNOWN_REGION_ID,
+            created_at=ahora,
+            updated_at=ahora,
+        )
+    )
+    await session.commit()
+    return rut
+
+
 class TestCola:
     async def test_trae_solo_abiertas_con_direccion_y_sin_intento(
         self, db_session: AsyncSession
@@ -141,6 +163,22 @@ class TestCola:
 
         assert [p.tender_id for p in cola] == [pronto, medio]
         assert tarde not in [p.tender_id for p in cola]
+
+
+    async def test_no_encola_las_de_region_desconocida(
+        self, db_session: AsyncSession
+    ):
+        """`region_id` 0 es "no informada", no una región.
+
+        El mapa filtra por las 16 reales, así que estas licitaciones no pueden
+        aparecer nunca: geocodificarlas gasta cuota de Nominatim en algo que no
+        se va a mostrar, y manda la palabra "Desconocida" dentro de la consulta.
+        """
+        await _sembrar(db_session)
+        sin_region = await _organismo_sin_region(db_session)
+        await _guardar(db_session, _tender(comprador=sin_region))
+
+        assert await SqlTenderLocationRepository(db_session).list_pending(10) == []
 
 
 class TestGuardarUbicacion:
