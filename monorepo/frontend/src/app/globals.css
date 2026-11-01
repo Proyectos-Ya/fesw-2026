@@ -2,6 +2,8 @@
 
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* ---- Warm neutrals (off-white → warm near-black) ---- */
   --warm-50:  #FBF8F3;
@@ -127,6 +129,98 @@
   --radius-md:   12px;
   --radius-lg:   16px;
   --radius-xl:   22px;
+
+  /* Semantic aliases & extended status tokens */
+  --surface:          var(--surface-card);
+  --surface-base:     var(--bg-sunken);
+  --surface-elevated: var(--surface-raised);
+  --surface-hover:    var(--warm-100);
+  --border:           var(--border-subtle);
+  --text-default:     var(--text-body);
+  --text-primary:     var(--text-strong);
+  --text-link-hover:  var(--teal-700);
+  --focus-ring:       var(--teal-500);
+  --success-text:     var(--green-600);
+  --warning-text:     var(--amber-600);
+  --danger-text:      var(--red-600);
+  --info-text:        var(--blue-500);
+}
+
+.dark,
+[data-theme="dark"] {
+  --bg-page:        #12110E;
+  --bg-sunken:      #1B1814;
+  --surface-card:   #1F1C18;
+  --surface-raised: #28241E;
+  --surface-inset:  #161411;
+  --surface-teal:   rgba(109, 134, 87, 0.16);
+  --surface-coral:  rgba(217, 107, 67, 0.16);
+  --surface:          var(--surface-card);
+  --surface-base:     var(--bg-sunken);
+  --surface-elevated: var(--surface-raised);
+  --surface-hover:    #2C2721;
+
+  --text-strong:     #F5F2EB;
+  --text-body:       #DFD9CE;
+  --text-muted:      #A69E90;
+  --text-subtle:     #7D7567;
+  --text-on-teal:    #12110E;
+  --text-on-coral:   #FFFFFF;
+  --text-link:       #A5BF8B;
+  --text-link-hover: #C2D4B0;
+  --text-default:    var(--text-body);
+  --text-primary:    var(--text-strong);
+
+  --border-subtle:  #2E2A23;
+  --border-default: #3D382F;
+  --border-strong:  #544D41;
+  --divider:        #2E2A23;
+  --border:         var(--border-subtle);
+
+  --primary:        #87A46B;
+  --primary-hover:  #A5BF8B;
+  --primary-active: #6D8657;
+  --primary-soft:   rgba(109, 134, 87, 0.20);
+  --primary-border: rgba(135, 164, 107, 0.35);
+  --on-primary:     #12110E;
+
+  --accent:        #E48A69;
+  --accent-hover:  #EDA990;
+  --accent-active: #D96B43;
+  --accent-soft:   rgba(217, 107, 67, 0.20);
+  --accent-border: rgba(228, 138, 105, 0.35);
+  --on-accent:     #12110E;
+
+  --focus-ring:    #87A46B;
+
+  --success:      #4ADE80;
+  --success-soft: rgba(20, 83, 45, 0.45);
+  --success-text: #86EFAC;
+  --warning:      #FBBF24;
+  --warning-soft: rgba(120, 53, 15, 0.45);
+  --warning-text: #FCD34D;
+  --danger:       #F87171;
+  --danger-soft:  rgba(127, 29, 29, 0.45);
+  --danger-text:  #FCA5A5;
+  --info:         #60A5FA;
+  --info-soft:    rgba(23, 37, 84, 0.45);
+  --info-text:    #93C5FD;
+}
+
+html {
+  font-size: 100%;
+}
+
+html[data-font-scale="normal"] {
+  font-size: 100%; /* 16px */
+}
+
+html[data-font-scale="large"] {
+  font-size: 112.5%; /* 18px */
+}
+
+html[data-font-scale="xlarge"] {
+  font-size: 125%; /* 20px */
 }
 
 @theme {
@@ -198,6 +292,10 @@
   --color-surface-inset: var(--surface-inset);
   --color-surface-teal: var(--surface-teal);
   --color-surface-coral: var(--surface-coral);
+  --color-surface: var(--surface);
+  --color-surface-base: var(--surface-base);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-hover: var(--surface-hover);
 
   --color-text-strong: var(--text-strong);
   --color-text-body: var(--text-body);
@@ -206,20 +304,29 @@
   --color-text-on-teal: var(--text-on-teal);
   --color-text-on-coral: var(--text-on-coral);
   --color-text-link: var(--text-link);
+  --color-text-link-hover: var(--text-link-hover);
+  --color-text-default: var(--text-default);
+  --color-text-primary: var(--text-primary);
 
   --color-border-subtle: var(--border-subtle);
   --color-border-default: var(--border-default);
   --color-border-strong: var(--border-strong);
   --color-divider: var(--divider);
+  --color-border: var(--border);
+  --color-focus-ring: var(--focus-ring);
 
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-warning-text: var(--warning-text);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-info-text: var(--info-text);
 
   /* ---- Typography ---- */
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;

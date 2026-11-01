@@ -337,6 +337,18 @@ export function MatchesDashboard() {
                   isSaved={savedTenderIds.has(tenderId)}
                   onToggleSave={handleToggleSave}
                   ranking={cardRanking(m.ranking_id, position, "matches")}
+                  onReport={(reportedId) => {
+                    setState((prev) =>
+                      prev.kind === "ready"
+                        ? {
+                            ...prev,
+                            matches: prev.matches.filter(
+                              (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                            ),
+                          }
+                        : prev
+                    );
+                  }}
                 />
               );
             })}
@@ -375,7 +387,7 @@ export function MatchesDashboard() {
 function EmptyForFilter({ onClear }: { onClear: () => void }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-warm-100">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-surface-inset">
         <Icon name="sliders-horizontal" size={22} color="var(--text-subtle)" />
       </div>
       <h2 className="font-display text-xl font-semibold text-text-strong">
@@ -388,7 +400,7 @@ function EmptyForFilter({ onClear }: { onClear: () => void }) {
       <button
         type="button"
         onClick={onClear}
-        className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-teal-100 transition-colors"
+        className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-primary-border/40 transition-colors"
       >
         Limpiar filtros
       </button>
@@ -411,7 +423,7 @@ function DashboardHeader({ countLine }: { countLine: string }) {
 function EmptyMatches() {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-warm-100">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-surface-inset">
         <Icon name="search" size={22} color="var(--text-subtle)" />
       </div>
       <h2 className="font-display text-xl font-semibold text-text-strong">

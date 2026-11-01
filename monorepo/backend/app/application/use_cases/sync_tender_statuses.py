@@ -24,12 +24,19 @@ llamado no cambia lo que se pide.
 from collections.abc import Callable
 from datetime import datetime
 
+from app.application.repositories.lexical_tender_repository import (
+    ILexicalTenderRepository,
+)
+from app.application.repositories.tender_item_vector_repository import (
+    ITenderItemVectorRepository,
+)
 from app.application.repositories.tender_status_sync_repository import (
     ITenderStatusSyncRepository,
 )
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
+from app.application.services.indices_de_licitaciones import borrar_de_los_indices
 from app.application.services.tender_ingestion_queue import ITenderIngestionQueue
 from app.domain.models.cambio_estado import (
     CambioDeEstado,
@@ -80,11 +87,15 @@ class SyncTenderStatusesUseCase:
         tender_vector_repo: ITenderVectorRepository,
         cola: ITenderIngestionQueue,
         reloj: Callable[[], datetime] = utc_now_naive,
+        item_vector_repo: ITenderItemVectorRepository | None = None,
+        lexical_tender_repo: ILexicalTenderRepository | None = None,
     ) -> None:
         self.repo = repository
         self.tender_vector_repo = tender_vector_repo
         self.cola = cola
         self.reloj = reloj
+        self.item_vector_repo = item_vector_repo
+        self.lexical_tender_repo = lexical_tender_repo
 
     async def execute(self, cambios: list[CambioDeEstado]) -> ResultadoSyncEstados:
         resultado = ResultadoSyncEstados()
@@ -161,7 +172,12 @@ class SyncTenderStatusesUseCase:
         # Qdrant antes que SQL, igual que en la ingesta: las dos escrituras no
         # comparten transacción. Si SQL falla después, la corrida siguiente ve el
         # mismo cambio en el listado y vuelve a escribir las dos.
-        await self.tender_vector_repo.delete_many(a_borrar)
+        await borrar_de_los_indices(
+            a_borrar,
+            self.tender_vector_repo,
+            self.item_vector_repo,
+            self.lexical_tender_repo,
+        )
         await self.tender_vector_repo.set_payloads(payloads)
         resultado.sacadas_del_indice = len(a_borrar)
 

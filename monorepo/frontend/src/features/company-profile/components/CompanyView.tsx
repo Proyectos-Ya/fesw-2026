@@ -5,17 +5,30 @@ import Link from "next/link";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { profileSchema } from "../profileSchema";
+import {
+  formatCertificationDate,
+  normalizeCertification,
+  profileSchema,
+  type CertificationItem,
+} from "../profileSchema";
+import { getCertificationStatus } from "../utils/certification";
+import { CertificationListInput } from "./CertificationListInput";
 import { REGIONS } from "../data/regions";
-import { SECTORS } from "../data/sectors";
+import { SectorSelect } from "./SectorSelect";
 import { useCompany } from "./CompanyProvider";
-import { updateSupplier, type Supplier } from "../services/supplierService";
+import {
+  updateSupplier,
+  validateCompanyLogoFile,
+  type Supplier,
+} from "../services/supplierService";
 import { parseApiDate } from "@/features/matches/utils/format";
+import { Avatar } from "@/features/shared/components/Avatar";
 import { Input } from "@/features/shared/components/Input";
 import { Textarea } from "@/features/shared/components/Textarea";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
 import { TagInput } from "@/features/shared/components/TagInput";
 import { Button } from "@/features/shared/components/Button";
+import { Badge } from "@/features/shared/components/Badge";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { CompanyTeamSection } from "./CompanyTeamSection";
 import { ExtensionPairingSection } from "./ExtensionPairingSection";
@@ -56,16 +69,281 @@ function ChipList({ items }: { items: string[] | undefined }) {
   );
 }
 
+const STATUS_BADGE_TONE = {
+  expired: "danger",
+  expiring_soon: "warning",
+} as const;
+
+function CertificationsField({
+  supplier,
+  onSaved,
+}: {
+  supplier: Supplier;
+  onSaved: (supplier: Supplier) => void;
+}) {
+  const items = (supplier.certifications ?? []).map(normalizeCertification);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+  const [draftDate, setDraftDate] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const closeControls = () => {
+    setEditingIndex(null);
+    setDeletingIndex(null);
+    setError(null);
+  };
+
+  const save = async (certifications: CertificationItem[]) => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const updated = await updateSupplier({ certifications });
+      onSaved(updated);
+      setEditingIndex(null);
+      setDeletingIndex(null);
+    } catch (err) {
+      if (err instanceof ApiError || err instanceof TimeoutError) {
+        setError(err.message);
+      } else {
+        setError("No se pudo guardar la certificación. Inténtalo nuevamente.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const startEditing = (index: number) => {
+    setDeletingIndex(null);
+    setError(null);
+    setDraftDate(items[index].expires_at ?? "");
+    setEditingIndex(index);
+  };
+
+  const startDeleting = (index: number) => {
+    setEditingIndex(null);
+    setError(null);
+    setDeletingIndex(index);
+  };
+
+  const saveDate = (index: number) =>
+    save(
+      items.map((item, i) =>
+        i === index ? { ...item, expires_at: draftDate || null } : item,
+      ),
+    );
+
+  const remove = (index: number) => save(items.filter((_, i) => i !== index));
+
+  if (items.length === 0) return <span className="text-text-subtle">—</span>;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
+        {items.map((item, index) => {
+          const certStatus = getCertificationStatus(item.expires_at);
+          const tone =
+            certStatus.status === "expired" || certStatus.status === "expiring_soon"
+              ? STATUS_BADGE_TONE[certStatus.status]
+              : null;
+          return (
+            <li
+              key={`${item.name}-${index}`}
+              className="rounded-md border border-border-default bg-surface-card px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="font-medium text-text-strong break-words">
+                    {item.name}
+                  </span>
+                  {item.expires_at && (
+                    <span className="text-xs text-text-muted">
+                      Vence: {formatCertificationDate(item.expires_at)}
+                    </span>
+                  )}
+                  {tone && <Badge tone={tone}>{certStatus.label}</Badge>}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => startEditing(index)}
+                    disabled={isSaving}
+                    aria-label={`Editar fecha de ${item.name}`}
+                  >
+                    Editar fecha
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => startDeleting(index)}
+                    disabled={isSaving}
+                    aria-label={`Eliminar ${item.name}`}
+                  >
+                    Eliminar
+                  </Button>
+                </div>
+              </div>
+
+              {editingIndex === index && (
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <Input
+                    type="date"
+                    label={`Fecha de vencimiento de ${item.name}`}
+                    value={draftDate}
+                    onChange={(e) => setDraftDate(e.target.value)}
+                    disabled={isSaving}
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => saveDate(index)}
+                    isLoading={isSaving}
+                  >
+                    Guardar fecha
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={closeControls}
+                    disabled={isSaving}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
+
+              {deletingIndex === index && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-text-strong">
+                    ¿Eliminar esta certificación?
+                  </span>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => remove(index)}
+                    isLoading={isSaving}
+                  >
+                    Confirmar eliminación
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={closeControls}
+                    disabled={isSaving}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {error && (
+        <div
+          role="alert"
+          className="p-3 rounded-md bg-danger-soft/30 border border-danger/20 text-danger text-sm font-medium"
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompanyLogoUploadSection({
+  supplier,
+  onLogoUpdated,
+}: {
+  supplier: Supplier;
+  onLogoUpdated?: (supplier: Supplier) => void;
+}) {
+  const { logoUrl, uploadLogo } = useCompany();
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const currentLogo = logoUrl ?? supplier.logo_url ?? null;
+
+  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLogoError(null);
+    setIsUploading(true);
+    try {
+      const result = await uploadLogo(file);
+      if (!result.ok) {
+        setLogoError(result.error ?? "Formato inválido o archivo muy pesado");
+      } else if (result.supplier) {
+        onLogoUpdated?.(result.supplier);
+      }
+    } finally {
+      setIsUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-4">
+        <Avatar
+          name={supplier.trade_name || supplier.legal_name}
+          src={currentLogo ?? undefined}
+          size="lg"
+          shape="square"
+        />
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="company-logo-input"
+            className={`inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-semibold text-text-strong transition-colors ${
+              isUploading
+                ? "opacity-60 cursor-not-allowed"
+                : "hover:bg-surface-hover"
+            }`}
+          >
+            {isUploading ? "Subiendo..." : "Subir logo"}
+            <input
+              id="company-logo-input"
+              data-testid="company-logo-input"
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={handleLogoChange}
+              disabled={isUploading}
+              className="sr-only"
+              aria-label="Subir logo corporativo"
+            />
+          </label>
+          <span className="text-xs text-text-subtle">
+            Formatos permitidos: PNG o JPG (máx. 5MB)
+          </span>
+        </div>
+      </div>
+
+      {logoError && (
+        <div
+          role="alert"
+          data-testid="company-logo-error"
+          className="rounded-md border border-danger bg-danger-soft px-4 py-3 text-sm font-semibold text-danger-text"
+        >
+          {logoError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CompanyDetails({
   supplier,
   onEdit,
+  onSupplierChange,
 }: {
   supplier: Supplier;
   onEdit: () => void;
+  onSupplierChange: (supplier: Supplier) => void;
 }) {
   return (
-    <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
-      <div className="flex items-start justify-between gap-4 mb-8">
+    <div className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-text-strong">
             {supplier.legal_name}
@@ -74,9 +352,16 @@ function CompanyDetails({
             {supplier.trade_name ?? "Sin nombre de fantasía"} · RUT {supplier.rut}
           </p>
         </div>
-        <Button variant="primary" onClick={onEdit} className="font-bold">
+        <Button variant="primary" onClick={onEdit} className="font-bold self-start">
           Editar
         </Button>
+      </div>
+
+      <div className="mb-8 pb-6 border-b border-border-subtle">
+        <CompanyLogoUploadSection
+          supplier={supplier}
+          onLogoUpdated={(updatedSupplier) => onSupplierChange(updatedSupplier)}
+        />
       </div>
 
       <div className="flex flex-col gap-6">
@@ -97,7 +382,7 @@ function CompanyDetails({
           <ChipList items={supplier.keywords} />
         </Field>
         <Field label="Certificaciones">
-          <ChipList items={supplier.certifications} />
+          <CertificationsField supplier={supplier} onSaved={onSupplierChange} />
         </Field>
         <Field label="Miembro desde">
           {parseApiDate(supplier.created_at)?.toLocaleDateString("es-CL", {
@@ -169,7 +454,7 @@ function CompanyEditForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle flex flex-col gap-6"
+      className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle flex flex-col gap-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -180,6 +465,10 @@ function CompanyEditForm({
             RUT {supplier.rut} (no editable)
           </p>
         </div>
+      </div>
+
+      <div className="pb-4 border-b border-border-subtle">
+        <CompanyLogoUploadSection supplier={supplier} />
       </div>
 
       {error && (
@@ -243,9 +532,7 @@ function CompanyEditForm({
         name="sectors"
         control={control}
         render={({ field }) => (
-          <ChipSelect
-            label="Rubros principales"
-            options={SECTORS}
+          <SectorSelect
             selected={field.value}
             onChange={field.onChange}
             error={errors.sectors?.message}
@@ -272,11 +559,10 @@ function CompanyEditForm({
         name="certifications"
         control={control}
         render={({ field }) => (
-          <TagInput
+          <CertificationListInput
             label="Certificaciones"
-            tags={field.value}
+            value={field.value}
             onChange={field.onChange}
-            placeholder="Ej: ISO 9001"
             optional
             error={errors.certifications?.message}
           />
@@ -358,6 +644,7 @@ export function CompanyView() {
           <CompanyDetails
             supplier={company.supplier}
             onEdit={() => setIsEditing(true)}
+            onSupplierChange={setSupplier}
           />
           <CompanyTeamSection
             supplierId={company.supplier.id}

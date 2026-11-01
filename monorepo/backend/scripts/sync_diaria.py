@@ -109,6 +109,7 @@ from scripts.ingesta_compartida import (
     EmbeddingsContados,
     ResultadoRondas,
     aplicar_documentos_oficiales,
+    borrar_cerradas_sin_uso,
     construir_servicio,
     contar_pendientes,
     es_local,
@@ -271,11 +272,13 @@ async def sincronizar(
     purgar: Callable[[], Awaitable[int]] | None = None,
     embeddings: Callable[[], int] | None = None,
     metricas: Callable[[], dict[str, Any]] | None = None,
+    retener: Callable[[], Awaitable[int]] | None = None,
 ) -> int:
     """La corrida nocturna: lista por tramos, vacía la cola y reintenta.
 
-    `purgar`, si viene, poda la cola al final: `_correr` lo pasa una vez por
-    semana.
+    `retener`, si viene, borra al final las licitaciones cerradas sin uso
+    (plan 306). `purgar`, si viene, poda la cola después: `_correr` lo pasa una
+    vez por semana.
 
     Recibe sus colaboradores en vez de construirlos: lo que decide si un tramo
     es `ok` o `partial` —y con eso, si el cursor avanza— es lógica que conviene
@@ -453,7 +456,21 @@ async def sincronizar(
         raise
 
     # Al final y aislado: la corrida ya quedó registrada. Un fallo acá no cambia
-    # el código de salida; la poda de la semana siguiente lo cubre.
+    # el código de salida; la noche siguiente lo vuelve a intentar. Va antes de
+    # la poda para que la cola suelte en la misma noche lo que se borró.
+    if retener is not None:
+        try:
+            print(
+                f"Retención de licitaciones: {await retener()} licitaciones cerradas"
+                " sin uso borradas."
+            )
+        except Exception as error:
+            print(
+                "\nAVISO: no se pudieron borrar las licitaciones cerradas sin uso"
+                f" ({type(error).__name__}: {error})."
+            )
+
+    # Igual de aislado; la poda de la semana siguiente lo cubre.
     if purgar is not None:
         try:
             print(f"Retención de la cola: {await purgar()} filas viejas borradas.")
@@ -604,10 +621,25 @@ async def _correr(args: argparse.Namespace, modo: str) -> int:
             purgar=servicio.purgar_cola
             if utc_now_naive().weekday() == DIA_RETENCION
             else None,
+            retener=lambda: borrar_cerradas_sin_uso(
+                engine,
+                qdrant,
+                args.retencion_dias
+                if args.retencion_dias is not None
+                else settings.retencion_cerradas_dias,
+            ),
         )
     finally:
         await engine.dispose()
         await qdrant.close()
+
+
+def _dias_de_retencion(valor: str) -> int:
+    """Con 0 se borrarían licitaciones recién cerradas."""
+    dias = int(valor)
+    if dias < 1:
+        raise argparse.ArgumentTypeError("tiene que ser al menos 1 día")
+    return dias
 
 
 def construir_parser() -> argparse.ArgumentParser:
@@ -658,6 +690,15 @@ def construir_parser() -> argparse.ArgumentParser:
         "--forzar",
         action="store_true",
         help="cerrar cualquier corrida en 'running' y correr igual",
+    )
+    p.add_argument(
+        "--retencion-dias",
+        type=_dias_de_retencion,
+        default=None,
+        help=(
+            "días después del cierre en que la nocturna borra las cerradas sin "
+            "uso (RETENCION_CERRADAS_DIAS, 7 por defecto)"
+        ),
     )
     p.add_argument(
         "--timeout-minutos",

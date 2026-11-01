@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TenderCard } from "../TenderCard";
@@ -100,6 +100,18 @@ describe("TenderCard", () => {
 
     expect(screen.getByText("Desierta")).toBeInTheDocument();
     expect(screen.queryByText(/Cierra en/)).not.toBeInTheDocument();
+  });
+
+  it("renderiza el modal de reporte fuera del Link para que hacer clic en el textarea no dispare navegación (CA1)", () => {
+    render(<TenderCard match={mockMatch} onReport={vi.fn()} />);
+
+    const reportBtn = screen.getByRole("button", { name: "Reportar mal match" });
+    fireEvent.click(reportBtn);
+
+    const dialog = screen.getByRole("dialog");
+    const link = screen.getByRole("link", { name: /Ver detalle de/i });
+
+    expect(link.contains(dialog)).toBe(false);
   });
 });
 

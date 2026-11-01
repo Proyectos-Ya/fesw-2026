@@ -41,13 +41,13 @@ function LocationSelect({
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <label
         htmlFor={id}
-        className="text-[10px] font-bold uppercase tracking-caps text-text-subtle"
+        className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle"
       >
         {label}
       </label>
       <div
         className={[
-          "flex min-w-0 items-center rounded-md border bg-white px-3 py-2 transition-all",
+          "flex min-w-0 items-center rounded-md border bg-surface-card px-3 py-2 transition-all",
           disabled
             ? "border-border-subtle opacity-50 cursor-not-allowed"
             : "border-border-default focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15",

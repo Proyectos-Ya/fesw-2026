@@ -590,3 +590,59 @@ async def test_analiza_para_la_empresa_activa_y_no_la_propia():
     assert resultado.analysis is not None
     assert resultado.analysis.supplier_id == activa.id
     assert esc.ai_service.calls[0][1] == activa.id
+
+
+@pytest.mark.asyncio
+async def test_genera_preguntas_en_la_creacion_inicial_del_analisis():
+    """Al generar análisis por primera vez (sin custom prompt), dispara generación de preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    await esc.use_case.execute(tender_id=esc.tender_id, user_id=esc.user_id)
+
+    mock_questions_uc.execute.assert_awaited_once_with(
+        user_id=esc.user_id,
+        tender_id=esc.tender_id,
+        supplier_id=esc.supplier.id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_genera_preguntas_si_el_analisis_ya_existia_actualizacion():
+    """Al actualizar o regenerar un análisis preexistente, NO vuelve a generar preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    # Guardar análisis preexistente
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
+
+    # Forzar regeneración (Actualizar análisis)
+    await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, force_regenerate=True
+    )
+
+    mock_questions_uc.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_genera_preguntas_al_regenerar_con_enfoque_personalizado():
+    """Si se pasa prompt_instruction (enfoque personalizado), NO se generan preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    await esc.use_case.execute(
+        tender_id=esc.tender_id,
+        user_id=esc.user_id,
+        prompt_instruction="Enfocarse en ISO 14001 y plazos",
+    )
+
+    mock_questions_uc.execute.assert_not_called()

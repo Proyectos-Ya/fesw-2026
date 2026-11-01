@@ -24,17 +24,17 @@ function TenderListPlaceholder({ companyName }: { companyName: string }) {
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="rounded-lg border border-border-subtle bg-white p-6 shadow-xs"
+            className="rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs"
           >
             <div className="flex items-center gap-3">
               <div className="flex size-10 flex-none items-center justify-center rounded-full bg-primary-soft">
                 <Icon name="file-text" size={20} color="var(--primary)" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="h-4 w-2/3 rounded bg-warm-100" />
-                <div className="mt-2 h-3 w-1/3 rounded bg-warm-100" />
+                <div className="h-4 w-2/3 rounded bg-surface-inset" />
+                <div className="mt-2 h-3 w-1/3 rounded bg-surface-inset" />
               </div>
-              <span className="rounded-full bg-warm-100 px-3 py-1 text-xs font-bold text-text-subtle">
+              <span className="rounded-full bg-surface-inset px-3 py-1 text-xs font-bold text-text-subtle">
                 Próximamente
               </span>
             </div>

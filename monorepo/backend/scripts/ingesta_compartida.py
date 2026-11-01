@@ -162,6 +162,27 @@ def construir_servicio(
     return servicio, engine, qdrant
 
 
+def indices_secundarios(qdrant: AsyncQdrantClient) -> dict[str, Any]:
+    """Partidas y léxico, para que el cierre saque la licitación de las tres
+    colecciones y no solo de `tenders` (plan 306).
+
+    Se pasan como argumentos con nombre a los casos de uso que borran puntos.
+    """
+    from app.infrastructure.repositories.qdrant_lexical_tender_repository import (
+        QdrantLexicalTenderRepository,
+    )
+    from app.infrastructure.repositories.qdrant_tender_item_vector_repository import (
+        QdrantTenderItemVectorRepository,
+    )
+
+    return {
+        "item_vector_repo": QdrantTenderItemVectorRepository(
+            client=qdrant, vector_size=settings.embedding_vector_size
+        ),
+        "lexical_tender_repo": QdrantLexicalTenderRepository(client=qdrant),
+    }
+
+
 async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int:
     """Pasa a `cerrada` lo que venció y sigue figurando publicado.
 
@@ -183,8 +204,35 @@ async def marcar_vencidas(engine: AsyncEngine, qdrant: AsyncQdrantClient) -> int
             tender_vector_repo=QdrantTenderRepository(
                 client=qdrant, vector_size=settings.embedding_vector_size
             ),
+            **indices_secundarios(qdrant),
         )
         return await caso.execute()
+
+
+async def borrar_cerradas_sin_uso(
+    engine: AsyncEngine, qdrant: AsyncQdrantClient, dias: int | None
+) -> int:
+    """Borra de Postgres y de las tres colecciones las licitaciones no activas
+    que cerraron hace más de `dias` y que nadie usó (plan 306)."""
+    from app.application.use_cases.purgar_licitaciones_cerradas import (
+        PurgarLicitacionesCerradasUseCase,
+    )
+    from app.infrastructure.repositories.qdrant_tender_repository import (
+        QdrantTenderRepository,
+    )
+    from app.infrastructure.repositories.sql_tender_retention_repository import (
+        SqlTenderRetentionRepository,
+    )
+
+    caso = PurgarLicitacionesCerradasUseCase(
+        repository=SqlTenderRetentionRepository(engine),
+        tender_vector_repo=QdrantTenderRepository(
+            client=qdrant, vector_size=settings.embedding_vector_size
+        ),
+        retencion_dias=dias,
+        **indices_secundarios(qdrant),
+    )
+    return await caso.execute()
 
 
 async def aplicar_documentos_oficiales(

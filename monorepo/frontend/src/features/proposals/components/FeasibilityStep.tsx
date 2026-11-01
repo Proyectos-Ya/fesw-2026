@@ -78,7 +78,7 @@ function Pregunta({
             <Button
               key={opcion.label}
               variant="ghost"
-              className="border border-border-strong bg-white"
+              className="border border-border-strong bg-surface-card"
               disabled={!editable || busy}
               isLoading={
                 answering?.questionId === pregunta.id && answering.label === opcion.label
@@ -103,7 +103,7 @@ function Lista({ titulo, items }: { titulo: string; items: Requirement[] }) {
         {items.map((r) => (
           <li
             key={r.id}
-            className="flex items-start justify-between gap-3 rounded-md border border-border-subtle bg-white px-3 py-2 text-sm"
+            className="flex items-start justify-between gap-3 rounded-md border border-border-subtle bg-surface-card px-3 py-2 text-sm"
           >
             <span className="text-text-body">{r.text}</span>
           </li>
@@ -155,7 +155,7 @@ function Evaluada({
     actual?.polarity === "afirmativa";
 
   return (
-    <li className="rounded-md border border-border-subtle bg-white px-3 py-2 text-sm">
+    <li className="rounded-md border border-border-subtle bg-surface-card px-3 py-2 text-sm">
       <div className="flex items-start justify-between gap-3">
         <span className="text-text-body">
           {r.text}
@@ -192,7 +192,7 @@ function Evaluada({
         </div>
       )}
       {pregunta && puedeCambiar && abierta && (
-        <div className="mt-2 rounded-md bg-warm-100/50 p-3">
+        <div className="mt-2 rounded-md bg-surface-inset p-3">
           <p className="text-xs font-semibold text-text-strong">{pregunta.question}</p>
           {deOtraLicitacion && (
             <p className="mt-1 text-xs text-text-muted">
@@ -210,7 +210,7 @@ function Evaluada({
                   key={opcion.label}
                   variant="ghost"
                   aria-pressed={elegida}
-                  className={`border bg-white ${
+                  className={`border bg-surface-card ${
                     elegida ? "border-primary text-primary ring-1 ring-primary/30" : "border-border-strong"
                   }`}
                   disabled={busy}
@@ -292,7 +292,7 @@ export function FeasibilityStep({
         <section
           role="status"
           aria-label="Agregar un proyecto"
-          className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/20 bg-teal-50/60 p-4 text-sm text-teal-700"
+          className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary/20 bg-primary-soft p-4 text-sm text-text-link"
         >
           <p className="flex items-start gap-2">
             <Icon name="info" size={16} className="mt-0.5 shrink-0" />
@@ -345,7 +345,7 @@ export function FeasibilityStep({
             Preguntas por responder ({pendientes.length})
           </h3>
           {motivoBloqueo && (
-            <p className="mb-2 flex items-start gap-2 text-xs font-semibold text-amber-700">
+            <p className="mb-2 flex items-start gap-2 text-xs font-semibold text-warning-text">
               <Icon name="lock" size={14} className="mt-px shrink-0" />
               {motivoBloqueo}
             </p>
@@ -355,7 +355,7 @@ export function FeasibilityStep({
               <Pregunta
                 key={r.id}
                 requisito={r}
-                className="border-primary/20 bg-teal-50/40"
+                className="border-primary/20 bg-primary-soft/50"
                 {...preguntaProps}
               />
             ))}
@@ -401,7 +401,7 @@ export function FeasibilityStep({
         view.technical_document_ambiguous) && (
         // Solo si las bases lo solicitan, con sus palabras: nada sobre cuándo se
         // entrega, que las bases rara vez aclaran (plan 292, §2.8).
-        <p className="mb-5 flex items-start gap-2 rounded-md border border-border-subtle bg-warm-100/50 px-3 py-2 text-sm text-text-body">
+        <p className="mb-5 flex items-start gap-2 rounded-md border border-border-subtle bg-surface-inset px-3 py-2 text-sm text-text-body">
           <Icon name="file-text" size={16} className="mt-0.5 shrink-0" />
           <span>
             {view.technical_document_reason ||

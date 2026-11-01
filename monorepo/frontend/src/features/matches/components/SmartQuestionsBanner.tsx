@@ -21,16 +21,16 @@ export function SmartQuestionsBanner({ questions, onOpen }: Props) {
   return (
     <div
       role="alert"
-      className="mb-6 flex items-center gap-4 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 shadow-xs"
+      className="mb-6 flex items-center gap-4 rounded-lg border border-warning/30 bg-warning-soft px-5 py-4 shadow-xs"
     >
-      <div className="flex size-9 flex-none items-center justify-center rounded-full bg-amber-100">
-        <span className="text-base font-extrabold text-amber-600" aria-hidden>
+      <div className="flex size-9 flex-none items-center justify-center rounded-full bg-surface-card/80">
+        <span className="text-base font-extrabold text-warning" aria-hidden>
           !
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-900">{label}</p>
-        <p className="text-xs text-amber-700">
+        <p className="text-sm font-semibold text-text-strong">{label}</p>
+        <p className="text-xs text-warning-text">
           Respóndelas para afinar tus recomendaciones.
         </p>
       </div>

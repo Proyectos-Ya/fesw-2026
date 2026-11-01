@@ -26,6 +26,7 @@ from app.application.use_cases.upload_tender_chat_document_use_case import (
     UploadTenderChatDocumentUseCase,
 )
 from app.bootstrap.repositories import (
+    AssistantFeedbackRepoDep,
     AttachmentExtractionRepoDep,
     AttachmentFileRepoDep,
     GeminiUsageRepoDep,
@@ -73,6 +74,7 @@ def get_ask_tender_assistant_use_case(
     supplier_repo: SupplierRepoDep,
     tender_repo: TenderRepoDep,
     validator_service: DocumentValidatorDep,
+    assistant_feedback_repo: AssistantFeedbackRepoDep,
     digest_repo: TenderDigestRepoDep,
     extraction_repo: AttachmentExtractionRepoDep,
     attachment_file_repo: AttachmentFileRepoDep,
@@ -86,6 +88,7 @@ def get_ask_tender_assistant_use_case(
         supplier_repo=supplier_repo,
         tender_repo=tender_repo,
         validator_service=validator_service,
+        assistant_feedback_repo=assistant_feedback_repo,
         digest_repo=digest_repo,
         extraction_repo=extraction_repo,
         attachment_file_repo=attachment_file_repo,

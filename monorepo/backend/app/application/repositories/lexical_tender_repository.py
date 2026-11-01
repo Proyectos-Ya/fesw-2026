@@ -38,6 +38,16 @@ class ILexicalTenderRepository(ABC):
         """Elimina el vector léxico disperso de una licitación."""
         ...
 
+    async def delete_many(self, tender_ids: list[UUID]) -> None:
+        """Elimina los puntos de varias licitaciones (plan 306).
+
+        La usan el cierre (sync-estados, barrido de vencidas) y la retención
+        nocturna. Borrar un id que no existe no es un error. Esta versión borra
+        de a uno; la de Qdrant la reemplaza por lotes.
+        """
+        for tender_id in tender_ids:
+            await self.delete(tender_id)
+
     @abstractmethod
     async def search_lexical(
         self,

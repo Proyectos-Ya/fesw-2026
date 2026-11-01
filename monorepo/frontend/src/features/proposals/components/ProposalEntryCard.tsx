@@ -55,7 +55,7 @@ export function ProposalEntryCard({ tenderId, isClosed }: ProposalEntryCardProps
   }
 
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border-subtle bg-white p-6 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
         <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
           <Icon name="file-text" size={20} />

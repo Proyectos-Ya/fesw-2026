@@ -45,11 +45,11 @@ function BudgetInput({
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <label
         htmlFor={id}
-        className="text-[10px] font-bold uppercase tracking-caps text-text-subtle"
+        className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle"
       >
         {label}
       </label>
-      <div className="flex items-center rounded-md border border-border-default bg-white px-3 py-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 transition-all">
+      <div className="flex items-center rounded-md border border-border-default bg-surface-card px-3 py-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 transition-all">
         <span className="font-mono text-sm text-text-subtle">$</span>
         <input
           id={id}

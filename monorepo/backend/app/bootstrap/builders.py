@@ -31,6 +31,7 @@ from app.infrastructure.services.calendar.outlook_calendar_client import (
     OutlookCalendarClient,
 )
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    ChileRutLookupService,
     HttpCompanyLookupService,
     SreLookupService,
     WebEmpresarioLookupService,
@@ -231,6 +232,7 @@ def build_reranker_service() -> IRerankerService:
 _FUENTE_DE_EMPRESAS_POR_PROVEEDOR: dict[str, type[HttpCompanyLookupService]] = {
     "sre": SreLookupService,
     "web-empresario": WebEmpresarioLookupService,
+    "chilerut": ChileRutLookupService,
 }
 
 

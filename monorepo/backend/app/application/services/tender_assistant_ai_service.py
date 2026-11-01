@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import List, Literal, Optional, Tuple
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.domain.entities.tender_chat import (
-    TenderChatMessage,
     Citation,
     DocumentDiscrepancy,
+    TenderChatMessage,
 )
 
 
@@ -42,6 +43,7 @@ class ITenderAssistantAIService(ABC):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
         pass_number: int = 1,
     ) -> AIResponseDTO:
         """

@@ -11,7 +11,7 @@ class ExportJobModel(SQLModel, table=True):
     id: UUID = Field(primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
     supplier_id: UUID = Field(foreign_key="supplier.id", ondelete="CASCADE")
-    tender_id: UUID = Field(foreign_key="tender.id", ondelete="CASCADE")
+    tender_id: UUID = Field(foreign_key="tender.id", ondelete="CASCADE", index=True)
     format: str = Field(max_length=8)
     sections: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     # El arranque busca los que quedaron en proceso tras un reinicio.

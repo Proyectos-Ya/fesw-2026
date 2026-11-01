@@ -24,6 +24,7 @@ from app.infrastructure.services.attachments.checksums import (
     sha256_hex_a_base64,
 )
 from app.infrastructure.services.attachments.sigv4 import (
+    EMPTY_PAYLOAD_SHA256,
     SigV4Credentials,
     presign_url,
     sign_request_headers,
@@ -93,12 +94,19 @@ class R2AttachmentStorage(IAttachmentStorage):
         headers: dict[str, str] | None = None,
         content: bytes | None = None,
     ) -> httpx.Response:
+        # Con cuerpo se firma su hash: R2 lo compara con lo que recibe y, si no
+        # coincide, rechaza con XAmzContentSHA256Mismatch.
         firmadas = sign_request_headers(
             credentials=self._credentials,
             method=method,
             host=self._host,
             canonical_uri=self._ruta(key),
             headers=headers,
+            payload_hash=(
+                hashlib.sha256(content).hexdigest()
+                if content is not None
+                else EMPTY_PAYLOAD_SHA256
+            ),
             now=self._clock(),
         )
         try:

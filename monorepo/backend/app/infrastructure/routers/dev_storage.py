@@ -94,4 +94,28 @@ def create_dev_storage_router(
             )
         return Response(status_code=status.HTTP_200_OK)
 
+    @router.get(
+        "/dev-storage/{key:path}",
+        summary="Servir un archivo del disco local (solo desarrollo)",
+        status_code=status.HTTP_200_OK,
+        response_class=Response,
+    )
+    async def serve_dev_file(key: str) -> Response:
+        try:
+            data = await storage.get_bytes(key)
+        except Exception:
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+        media_type = "application/octet-stream"
+        if key.endswith(".png"):
+            media_type = "image/png"
+        elif key.endswith((".jpg", ".jpeg")):
+            media_type = "image/jpeg"
+
+        return Response(
+            content=data,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
     return router

@@ -100,7 +100,7 @@ export function WorkspaceSelectionScreen() {
                     <span>Activo</span>
                   </span>
                 ) : (
-                  <span className="p-2 rounded-lg text-text-subtle group-hover:bg-warm-100 group-hover:text-text-strong transition-colors">
+                  <span className="p-2 rounded-lg text-text-subtle group-hover:bg-surface-hover group-hover:text-text-strong transition-colors">
                     <Icon name="chevron-right" size={20} />
                   </span>
                 )}
@@ -116,7 +116,7 @@ export function WorkspaceSelectionScreen() {
         </p>
         <Link
           href="/empresa/crear"
-          className="inline-flex items-center gap-2 rounded-lg bg-white border border-border-subtle px-4 py-2.5 text-xs font-semibold text-text-strong hover:border-primary hover:text-primary transition-colors shadow-2xs whitespace-nowrap"
+          className="inline-flex items-center gap-2 rounded-lg bg-surface-card border border-border-subtle px-4 py-2.5 text-xs font-semibold text-text-strong hover:border-primary hover:text-primary transition-colors shadow-2xs whitespace-nowrap"
         >
           <Icon name="plus" size={15} />
           <span>Registrar nueva empresa</span>

@@ -14,13 +14,19 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.application.services.lexical_tokenizer import SparseTermVector
 from app.application.use_cases.mark_expired_tenders import (
     MarkExpiredTendersUseCase,
     PurgeInactiveTenderVectorsUseCase,
 )
 from app.shared.constants import ACTIVE_TENDER_STATUSES
 
-from .fakes import FakeTenderVectorRepository, InMemoryTenderRepository
+from .fakes import (
+    FakeTenderVectorRepository,
+    InMemoryLexicalTenderRepository,
+    InMemoryTenderItemVectorRepository,
+    InMemoryTenderRepository,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -112,3 +118,73 @@ class TestPurgaUnica:
         assert borradas == 0
         assert vec.deleted == []
         assert len(vec.status_sweeps) == 1
+
+
+async def _indices_con(ids: list[UUID]):
+    """Partidas y léxico con un punto por licitación, como los deja la ingesta."""
+    partidas = InMemoryTenderItemVectorRepository()
+    lexico = InMemoryLexicalTenderRepository()
+    for i in ids:
+        await partidas.upsert(i, [[1.0, 0.0]], {"status_code": "publicada"})
+        await lexico.upsert(i, SparseTermVector(indices=[1], values=[1.0]))
+    return partidas, lexico
+
+
+class TestLasTresColecciones:
+    """Plan 306: `tender_items` y `tender_lexical` se quedaban con las cerradas,
+    con el payload todavía en `publicada`, y le quitaban cupos de candidata al
+    matching hasta que SQL las descartaba."""
+
+    async def test_marcar_vencidas_las_saca_de_partidas_y_lexico(self):
+        vencida, vigente = uuid4(), uuid4()
+        partidas, lexico = await _indices_con([vencida, vigente])
+        repo, vec = RepoConVencidas([vencida]), FakeTenderVectorRepository()
+
+        await MarkExpiredTendersUseCase(
+            repo, vec, item_vector_repo=partidas, lexical_tender_repo=lexico
+        ).execute()
+
+        assert set(partidas.vectors) == {vigente}
+        assert set(lexico.vectors) == {vigente}
+
+    async def test_marcar_vencidas_borra_las_tres_antes_de_cerrar_en_sql(self):
+        partidas, lexico = await _indices_con([])
+        repo, vec = RepoConVencidas([uuid4()]), FakeTenderVectorRepository()
+        orden: list[str] = []
+
+        def espia(nombre: str):
+            async def delete_many(ids):
+                orden.append(nombre)
+
+            return delete_many
+
+        vec.delete_many = espia("tenders")  # type: ignore[method-assign]
+        partidas.delete_many = espia("tender_items")  # type: ignore[method-assign]
+        lexico.delete_many = espia("tender_lexical")  # type: ignore[method-assign]
+
+        async def mark_as_closed_espia(ids):
+            orden.append("sql")
+
+        repo.mark_as_closed = mark_as_closed_espia  # type: ignore[method-assign]
+
+        await MarkExpiredTendersUseCase(
+            repo, vec, item_vector_repo=partidas, lexical_tender_repo=lexico
+        ).execute()
+
+        assert orden[-1] == "sql"
+        assert set(orden[:-1]) == {"tenders", "tender_items", "tender_lexical"}
+
+    async def test_purga_unica_las_saca_de_partidas_y_lexico(self):
+        inactiva, activa = uuid4(), uuid4()
+        partidas, lexico = await _indices_con([inactiva, activa])
+        repo = RepoConVencidas([], inactivas=[inactiva])
+
+        await PurgeInactiveTenderVectorsUseCase(
+            repo,
+            FakeTenderVectorRepository(),
+            item_vector_repo=partidas,
+            lexical_tender_repo=lexico,
+        ).execute()
+
+        assert set(partidas.vectors) == {activa}
+        assert set(lexico.vectors) == {activa}

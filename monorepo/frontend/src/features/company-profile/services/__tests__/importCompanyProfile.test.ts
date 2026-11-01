@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { importCompanyProfile, type CompanyProfileImport } from "../supplierService";
-import { ApiError } from "@/features/shared/api/client";
+import {
+  describeImportError,
+  importCompanyProfile,
+  type CompanyProfileImport,
+} from "../supplierService";
+import { ApiError, TimeoutError } from "@/features/shared/api/client";
 
 const IMPORTED: CompanyProfileImport = {
   source: "web-empresario",
@@ -42,5 +46,35 @@ describe("importCompanyProfile", () => {
     );
 
     await expect(importCompanyProfile("76.668.304-5")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("describeImportError", () => {
+  it("muestra el 404 como aviso informativo con el detalle del backend", () => {
+    const err = new ApiError(404, "No encontramos datos para el RUT 76668304-5.");
+
+    expect(describeImportError(err)).toEqual({
+      kind: "info",
+      message: "No encontramos datos para el RUT 76668304-5.",
+    });
+  });
+
+  it.each([400, 502, 503])("muestra el %s como advertencia con el detalle del backend", (status) => {
+    const err = new ApiError(status, "Detalle en español");
+
+    expect(describeImportError(err)).toEqual({ kind: "warning", message: "Detalle en español" });
+  });
+
+  it("muestra el timeout como advertencia", () => {
+    const err = new TimeoutError();
+
+    expect(describeImportError(err)).toEqual({ kind: "warning", message: err.message });
+  });
+
+  it("usa un mensaje genérico para cualquier otro error", () => {
+    const result = describeImportError(new TypeError("Failed to fetch"));
+
+    expect(result.kind).toBe("warning");
+    expect(result.message).toMatch(/no pudimos importar/i);
   });
 });

@@ -140,7 +140,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         {actionError && (
           <div
             role="alert"
-            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-red-700 shadow-lg"
+            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger-text shadow-lg"
           >
             <span>{actionError}</span>
             <button
@@ -156,7 +156,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         {notice && (
           <div
             role="status"
-            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-primary/20 bg-teal-50 p-4 text-sm text-teal-700 shadow-lg"
+            className="pointer-events-auto flex w-full max-w-xl items-start justify-between gap-3 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link shadow-lg"
           >
             <span>{notice}</span>
             <button
@@ -200,7 +200,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       )}
 
       {state.kind === "error" && (
-        <div className="rounded-lg border border-border-subtle bg-white p-6 text-sm">
+        <div className="rounded-lg border border-border-subtle bg-surface-card p-6 text-sm">
           <p className="mb-3 text-text-body">{state.message}</p>
           <Button onClick={() => void proposal.reload()}>Reintentar</Button>
         </div>
@@ -210,7 +210,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         <Seccion id="analisis" titulo="Análisis de las bases">
           <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
             <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card p-4">
                 <p className="text-sm text-text-body">
                   {view
                     ? "Si subiste bases nuevas o cambiaste el perfil de tu empresa, vuelve a analizar."
@@ -239,7 +239,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                   ))}
                 {puedeAvanzar && !view && sinBases && (
                   // Informativo y sin diálogo: iniciar sin bases es válido.
-                  <p className="flex basis-full items-start gap-2 text-xs text-teal-700">
+                  <p className="flex basis-full items-start gap-2 text-xs text-text-link">
                     <Icon name="info" size={14} className="mt-px shrink-0" />
                     {anexosPendientes.length > 0
                       ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
@@ -256,7 +256,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
 
               {view &&
                 (view.status === "READY" ? (
-                  <details className="rounded-lg border border-border-subtle bg-white p-4">
+                  <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
                     <summary className="cursor-pointer text-sm font-semibold text-text-strong">
                       Ver exigencias evaluadas ({view.requirements.length})
                     </summary>
@@ -298,7 +298,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
       {view && (
         <Seccion id="borrador" titulo="Borrador de la oferta">
           {avisoBases && (
-            <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-teal-50/60 p-4 text-sm text-teal-700">
+            <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link">
               <Icon name="info" size={16} className="mt-0.5 shrink-0" />
               <span>{avisoBases}</span>
             </p>
@@ -315,7 +315,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
               onRequestTechnical={() => void proposal.requestTechnical()}
             />
           ) : (
-            <p className="rounded-lg border border-dashed border-border-default bg-white p-6 text-sm text-text-muted">
+            <p className="rounded-lg border border-dashed border-border-default bg-surface-card p-6 text-sm text-text-muted">
               {estado?.detail ?? 'Cuando quieras, usa "Redactar borrador" en el análisis.'}
             </p>
           )}

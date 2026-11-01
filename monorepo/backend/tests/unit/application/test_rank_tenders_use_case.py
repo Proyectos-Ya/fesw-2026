@@ -17,11 +17,15 @@ from app.application.repositories.tender_repository import (
 from app.application.repositories.tender_vector_repository import (
     ITenderVectorRepository,
 )
-from app.application.services.lexical_tokenizer import LexicalTokenizer, SparseTermVector
 from app.application.schemas.tender_schema import TenderFilterCriteria
 from app.application.services.compatibility_scorer import CompatibilityScorer
+from app.application.services.lexical_tokenizer import (
+    LexicalTokenizer,
+    SparseTermVector,
+)
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.domain.entities.deep_analysis import DeepAnalysis
+from app.domain.entities.feedback import MatchReport, MatchReportKind
 from app.domain.entities.matching_result import MatchingResult
 from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
@@ -45,6 +49,7 @@ from tests.unit.application.fakes import (
     InMemorySupplierRepository,
     armar_scorer,
 )
+from tests.unit.application.feedback_fakes import InMemoryMatchReportRepository
 
 
 class InMemoryTenderRepository(ITenderRepository):
@@ -1507,3 +1512,92 @@ async def test_canal_lexico_encendido_recupera_candidatos_y_limpia_huerfanos() -
     assert huerfano_lex_id in fake_lexical_repo.deleted
 
 
+# ---------------------------------------------------------------------------
+# HU-24: las licitaciones reportadas como mal match dejan de recomendarse
+# ---------------------------------------------------------------------------
+
+
+async def _armar_con_reportes(kind: MatchReportKind, *, con_cache: bool):
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    buena, mala = uuid4(), uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[buena] = create_dummy_tender(buena)
+    tender_repo.tenders[mala] = create_dummy_tender(mala)
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(mala, 0.9), (buena, 0.8)]
+    if con_cache:
+        await matching_result_repo.save_bulk(
+            [
+                MatchingResult(
+                    supplier_id=supplier.id,
+                    tender_id=tid,
+                    similarity_score=0.8,
+                    reranker_score=0.9,
+                    final_score=score,
+                    model_version="bge-m3-v1",
+                )
+                for tid, score in ((mala, 0.95), (buena, 0.9))
+            ]
+        )
+
+    reportes = InMemoryMatchReportRepository()
+    await reportes.upsert(
+        MatchReport(
+            supplier_id=supplier.id,
+            user_id=user_id,
+            tender_id=mala,
+            kind=kind,
+            reason="No es lo que vendemos",
+        )
+    )
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(matching_result_repo=matching_result_repo),
+        matching_result_repo=matching_result_repo,
+        match_report_repo=reportes,
+    )
+    return use_case, user_id, buena, mala
+
+
+@pytest.mark.asyncio
+async def test_el_ranking_en_cache_excluye_las_licitaciones_reportadas() -> None:
+    use_case, user_id, buena, mala = await _armar_con_reportes(
+        MatchReportKind.MATCH, con_cache=True
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert [r.tender_id for r in results] == [buena]
+
+
+@pytest.mark.asyncio
+async def test_el_ranking_recalculado_excluye_las_licitaciones_reportadas() -> None:
+    use_case, user_id, buena, mala = await _armar_con_reportes(
+        MatchReportKind.MATCH, con_cache=False
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert [r.tender_id for r in results] == [buena]
+
+
+@pytest.mark.asyncio
+async def test_reportar_un_analisis_no_oculta_la_licitacion() -> None:
+    use_case, user_id, buena, mala = await _armar_con_reportes(
+        MatchReportKind.ANALYSIS, con_cache=True
+    )
+
+    results = await use_case.execute(user_id=user_id)
+
+    assert {r.tender_id for r in results} == {buena, mala}

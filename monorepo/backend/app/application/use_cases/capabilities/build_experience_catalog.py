@@ -55,7 +55,10 @@ def _items_del_perfil(supplier: Supplier) -> Iterator[ExperienceItem]:
             supplier.description.strip(),
         )
     yield from _items_de_lista(
-        "certificacion", "certificacion", "Certificación", supplier.certifications
+        "certificacion",
+        "certificacion",
+        "Certificación",
+        supplier.certification_names,
     )
     yield from _items_de_lista("sector", "sector", "Rubro", supplier.sectors)
     # Las regiones son las que permiten detectar una contradicción de cobertura

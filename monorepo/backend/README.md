@@ -155,6 +155,12 @@ con él la corrida termina `partial` (código 1), que es lo esperado en una
 prueba. El script se niega a correr contra una base que no sea local salvo con
 `--confirmar-produccion`.
 
+Al final de la corrida nocturna borra las licitaciones no activas que cerraron
+hace más de `RETENCION_CERRADAS_DIAS` días (7 si falta) y que nadie usó, de
+Postgres y de las tres colecciones de Qdrant. Con la variable vacía u `off` no
+borra nada. `--retencion-dias` cambia el plazo en una corrida. Qué cuenta como
+uso: `docs/plans/306-retencion-licitaciones-cerradas.md`.
+
 Las licitaciones **ya guardadas** las mantiene al día otro cron,
 `sync_estados`, que corre cada hora:
 

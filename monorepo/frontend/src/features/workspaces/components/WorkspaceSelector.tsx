@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Icon } from "@/features/shared/components/Icon";
 import { Avatar } from "@/features/shared/components/Avatar";
+import { useOptionalCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useWorkspace } from "../WorkspaceContext";
 import { InviteMemberModal } from "./InviteMemberModal";
 import type { MemberRole } from "../types";
@@ -13,17 +14,17 @@ export function getRoleBadge(role: MemberRole) {
     case "admin":
       return {
         label: "Admin",
-        className: "bg-purple-100 text-purple-700 border-purple-200",
+        className: "bg-primary-soft text-primary border-primary-border",
       };
     case "member":
       return {
         label: "Representante",
-        className: "bg-blue-100 text-blue-700 border-blue-200",
+        className: "bg-info-soft text-info-text border-info/30",
       };
     case "viewer":
       return {
         label: "Lector",
-        className: "bg-gray-100 text-gray-700 border-gray-200",
+        className: "bg-surface-inset text-text-body border-border-subtle",
       };
   }
 }
@@ -36,6 +37,12 @@ export function WorkspaceSelector() {
     isLoading,
     invitations,
   } = useWorkspace();
+  const companyCtx = useOptionalCompany();
+  const activeLogoUrl =
+    companyCtx?.logoUrl ??
+    (companyCtx?.company.status === "with-company"
+      ? companyCtx.company.supplier.logo_url ?? null
+      : null);
   const [isOpen, setIsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -53,11 +60,11 @@ export function WorkspaceSelector() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-3 p-2 rounded-lg border border-border-subtle bg-white animate-pulse">
-        <div className="size-8 rounded-md bg-warm-200" />
+      <div className="flex items-center gap-3 p-2 rounded-lg border border-border-subtle bg-surface-card animate-pulse">
+        <div className="size-8 rounded-md bg-surface-inset" />
         <div className="flex-1 space-y-1">
-          <div className="h-3 w-24 rounded bg-warm-200" />
-          <div className="h-2 w-16 rounded bg-warm-200" />
+          <div className="h-3 w-24 rounded bg-surface-inset" />
+          <div className="h-2 w-16 rounded bg-surface-inset" />
         </div>
       </div>
     );
@@ -105,13 +112,14 @@ export function WorkspaceSelector() {
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
-          className="flex w-full items-center gap-2.5 rounded-lg border border-border-subtle bg-white p-2 text-left hover:border-border-strong hover:shadow-2xs transition-all cursor-pointer group"
+          className="flex w-full items-center gap-2.5 rounded-lg border border-border-subtle bg-surface-card p-2 text-left hover:border-border-strong hover:shadow-2xs transition-all cursor-pointer group"
           aria-expanded={isOpen}
           aria-haspopup="true"
           aria-label="Seleccionar espacio de trabajo"
         >
           <Avatar
             name={currentWorkspaceSummary.trade_name || currentWorkspaceSummary.legal_name}
+            src={activeLogoUrl ?? undefined}
             size="sm"
           />
           <div className="flex-1 min-w-0">
@@ -120,12 +128,12 @@ export function WorkspaceSelector() {
                 {currentWorkspaceSummary.trade_name || currentWorkspaceSummary.legal_name}
               </span>
               <span
-                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold border ${roleBadge.className}`}
+                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[0.625rem] font-semibold border ${roleBadge.className}`}
               >
                 {roleBadge.label}
               </span>
             </div>
-            <p className="text-[11px] text-text-subtle truncate">
+            <p className="text-[0.6875rem] text-text-subtle truncate">
               {currentWorkspaceSummary.rut}
             </p>
           </div>
@@ -139,7 +147,7 @@ export function WorkspaceSelector() {
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1.5 w-full min-w-[240px] rounded-xl border border-border-subtle bg-white p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150">
+          <div className="absolute top-full left-0 mt-1.5 w-full min-w-[240px] rounded-xl border border-border-subtle bg-surface-card p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150">
             {invitations && invitations.length > 0 && (
               <div className="mb-1.5 pb-1 border-b border-border-subtle">
                 <Link
@@ -156,7 +164,7 @@ export function WorkspaceSelector() {
               </div>
             )}
 
-            <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-subtle border-b border-border-subtle mb-1">
+            <div className="px-2 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-subtle border-b border-border-subtle mb-1">
               Espacios de trabajo
             </div>
 
@@ -173,22 +181,26 @@ export function WorkspaceSelector() {
                     className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors cursor-pointer ${
                       isCurrent
                         ? "bg-primary-soft text-primary font-medium"
-                        : "hover:bg-warm-100 text-text-strong"
+                        : "hover:bg-surface-hover text-text-strong"
                     }`}
                   >
-                    <Avatar name={w.trade_name || w.legal_name} size="xs" />
+                    <Avatar
+                      name={w.trade_name || w.legal_name}
+                      src={isCurrent ? activeLogoUrl ?? undefined : undefined}
+                      size="xs"
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-semibold truncate">
                           {w.trade_name || w.legal_name}
                         </span>
                         <span
-                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold border ${badge.className}`}
+                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[0.5625rem] font-semibold border ${badge.className}`}
                         >
                           {badge.label}
                         </span>
                       </div>
-                      <p className="text-[10px] text-text-subtle truncate">{w.rut}</p>
+                      <p className="text-[0.625rem] text-text-subtle truncate">{w.rut}</p>
                     </div>
                     {isCurrent && (
                       <Icon name="check" size={14} className="text-primary flex-none" />
@@ -206,7 +218,7 @@ export function WorkspaceSelector() {
                     setIsOpen(false);
                     setIsInviteModalOpen(true);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-warm-100 hover:text-primary transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors cursor-pointer"
                 >
                   <Icon name="user-plus" size={15} />
                   <span>Invitar miembro</span>
@@ -216,7 +228,7 @@ export function WorkspaceSelector() {
               <Link
                 href="/empresa/crear"
                 onClick={() => setIsOpen(false)}
-                className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-warm-100 hover:text-primary transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors"
               >
                 <Icon name="plus" size={15} />
                 <span>Registrar nueva empresa</span>

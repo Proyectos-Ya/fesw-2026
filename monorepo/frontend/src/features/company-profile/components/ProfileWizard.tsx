@@ -68,10 +68,18 @@ export function ProfileWizard() {
     currentStep,
     formData,
     importedProfile,
+    importReview,
+    confirmField,
+    editField,
+    clearField,
+    discardImport,
+    isStepBlocked,
+    dismissedKeywords,
     nextStep,
     prevStep,
     goToStep,
     applyImport,
+    dismissKeyword,
     totalSteps,
   } = useProfileWizard();
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -94,6 +102,12 @@ export function ProfileWizard() {
 
   const handleSubmit = async () => {
     setError(null);
+
+    // Los pasos ya bloquean "Siguiente"; esto cubre cualquier otro camino al resumen.
+    if (([1, 2, 3] as const).some(isStepBlocked)) {
+      setError("Hay datos importados sin confirmar. Revisa los pasos anteriores.");
+      return;
+    }
 
     // Se valida antes de mostrar la espera: con datos inválidos la petición ni
     // siquiera sale, y la pantalla de carga solo parpadearía.
@@ -132,7 +146,7 @@ export function ProfileWizard() {
   if (submitState === "success") {
     return (
       <div className="mx-auto w-full max-w-2xl">
-        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+        <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
           <SuccessView onRedirect={() => { window.location.href = "/"; }} />
         </div>
       </div>
@@ -142,7 +156,7 @@ export function ProfileWizard() {
   if (submitState === "creating" || submitState === "verifying") {
     return (
       <div className="mx-auto w-full max-w-2xl">
-        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+        <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
           <CreatingCompanyView phase={submitState} />
         </div>
       </div>
@@ -152,11 +166,21 @@ export function ProfileWizard() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <WizardProgress currentStep={currentStep} totalSteps={totalSteps} />
-      <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+      <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
         {currentStep === 1 && (
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}
             adminName={adminName}
+            importedProfile={importedProfile}
+            onImported={applyImport}
+            onImportDiscarded={discardImport}
+            legalNameReview={{
+              status: importReview.status.legal_name,
+              onConfirm: () => confirmField("legal_name"),
+              onEdit: () => editField("legal_name"),
+              onClear: () => clearField("legal_name"),
+            }}
+            nextBlocked={isStepBlocked(1)}
             onNext={(data: Step1Data) => nextStep(data)}
             onBack={prevStep}
           />
@@ -168,9 +192,14 @@ export function ProfileWizard() {
               years_experience: formData.years_experience,
               num_employees: formData.num_employees,
             }}
-            rut={formData.rut}
-            importedProfile={importedProfile}
-            onImported={applyImport}
+            regionsReview={{
+              status: importReview.status.regions,
+              onConfirm: () => confirmField("regions"),
+              onEdit: () => editField("regions"),
+              onClear: () => clearField("regions"),
+            }}
+            addedRegions={importReview.added.regions}
+            nextBlocked={isStepBlocked(2)}
             onNext={(data: Step2Data) => nextStep(data)}
             onBack={prevStep}
           />
@@ -184,6 +213,16 @@ export function ProfileWizard() {
               description: formData.description,
             }}
             suggestedKeywords={importedProfile?.keywords}
+            sectorsReview={{
+              status: importReview.status.sectors,
+              onConfirm: () => confirmField("sectors"),
+              onEdit: () => editField("sectors"),
+              onClear: () => clearField("sectors"),
+            }}
+            addedSectors={importReview.added.sectors}
+            nextBlocked={isStepBlocked(3)}
+            dismissedKeywords={dismissedKeywords}
+            onDismissKeyword={dismissKeyword}
             onNext={(data: Step3Data) => nextStep(data)}
             onBack={prevStep}
           />

@@ -117,7 +117,9 @@ class TextBuilder:
             sections.append(f"Capacidades: {', '.join(supplier.keywords)}")
 
         if supplier.certifications:
-            sections.append(f"Certificaciones: {', '.join(supplier.certifications)}")
+            sections.append(
+                f"Certificaciones: {', '.join(supplier.certification_names)}"
+            )
 
         return ". ".join(sections) + "."
 

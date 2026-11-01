@@ -304,3 +304,26 @@ async def test_get_history_maps_discrepancies_and_unbacked_aspects(repo, mock_se
     assert msg.has_sufficient_info is False
 
 
+@pytest.mark.asyncio
+async def test_get_message_by_id_returns_mapped_entity(repo, mock_session):
+    message_id = uuid4()
+    model = TenderChatMessageModel(
+        id=message_id,
+        tender_id=uuid4(),
+        user_id=uuid4(),
+        role="assistant",
+        content="Respuesta del asistente",
+        citations=[],
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    mock_exec_result = MagicMock()
+    mock_exec_result.first.return_value = model
+    mock_session.exec.return_value = mock_exec_result
+
+    msg = await repo.get_message_by_id(message_id)
+
+    assert msg is not None
+    assert msg.id == message_id
+    assert msg.content == "Respuesta del asistente"
+
+

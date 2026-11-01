@@ -29,14 +29,14 @@ export function Toast({ message, onClose, durationMs = 4000 }: ToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-4 bottom-4 z-50 flex items-center gap-3 rounded-lg border border-primary/20 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-700 shadow-lg sm:inset-x-auto sm:right-6 sm:bottom-6 sm:max-w-sm"
+      className="fixed inset-x-4 bottom-4 z-50 flex items-center gap-3 rounded-lg border border-primary-border bg-primary-soft px-4 py-3 text-sm font-semibold text-text-link shadow-lg sm:inset-x-auto sm:right-6 sm:bottom-6 sm:max-w-sm"
     >
       <Icon name="circle-check" size={16} className="shrink-0" />
       <span className="flex-1">{message}</span>
       <button
         type="button"
         aria-label="Cerrar aviso"
-        className="rounded p-0.5 hover:bg-teal-100"
+        className="rounded p-0.5 hover:bg-primary-border/40"
         onClick={onClose}
       >
         <Icon name="x" size={14} />

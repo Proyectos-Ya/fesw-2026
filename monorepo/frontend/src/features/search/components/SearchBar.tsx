@@ -36,7 +36,7 @@ export function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label="Buscar licitaciones"
-        className="w-full rounded-lg border border-border-subtle bg-surface-card py-3.5 pl-12 pr-11 text-base text-text-strong placeholder:text-text-muted transition-all duration-200 focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
+        className="w-full rounded-lg border border-border-subtle bg-surface-card py-3.5 pl-12 pr-11 text-base text-text-strong placeholder:text-text-muted transition-all duration-200 focus:border-primary focus:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs"
       />
 
       {value.trim().length > 0 && (
@@ -46,7 +46,7 @@ export function SearchBar({
           aria-label="Limpiar búsqueda"
           className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-text-subtle hover:text-text-strong transition-colors cursor-pointer"
         >
-          <div className="flex size-7 items-center justify-center rounded-full hover:bg-warm-100">
+          <div className="flex size-7 items-center justify-center rounded-full hover:bg-surface-hover">
             <Icon name="x" size={16} />
           </div>
         </button>
