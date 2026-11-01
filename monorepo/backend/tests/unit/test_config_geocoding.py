@@ -58,3 +58,18 @@ def test_nominatim_usa_el_host_publico_y_se_puede_sobrescribir():
         geocoding_base_url_override="https://nominatim.local/",
     )
     assert otro.geocoding_base_url == "https://nominatim.local"
+
+
+def test_el_ritmo_por_defecto_respeta_la_politica_de_nominatim():
+    """4 peticiones por minuto: lo que permite a un script que corre siempre.
+
+    El máximo de 1 por segundo que encabeza la política es para uso interactivo;
+    un scheduler a intervalos regulares cae en el tramo de 4 por minuto, y
+    pasarse de ahí hace que bloqueen al proyecto.
+    """
+    assert _construir().geocoding_min_interval_seconds == 15.0
+
+
+def test_un_ritmo_no_positivo_impide_arrancar():
+    with pytest.raises(ValidationError):
+        _construir(geocoding_min_interval_seconds=0)

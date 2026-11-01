@@ -220,10 +220,13 @@ def build_kanban_archive_runner(age_days: int = 90) -> Callable[[], Awaitable[li
 def build_geocoding_runner(app: FastAPI) -> Callable[[], Awaitable[int]]:
     """Arma la función que ejecuta `GeocodingScheduler` (HU-22, #314).
 
-    El límite de 1 req/s se arma una sola vez, fuera de la vuelta: así también
+    El límite de ritmo se arma una sola vez, fuera de la vuelta: así también
     separa la última petición de un lote de la primera del siguiente.
     """
-    geocoder = ThrottledGeocodingService(app.state.geocoding_service)
+    geocoder = ThrottledGeocodingService(
+        app.state.geocoding_service,
+        min_interval_seconds=settings.geocoding_min_interval_seconds,
+    )
 
     async def geocode() -> int:
         async with async_session_maker() as session:

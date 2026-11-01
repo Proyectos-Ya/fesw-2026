@@ -208,6 +208,11 @@ class Settings(BaseSettings):
     # 50 tarda menos de un minuto; la caché acorta las vueltas siguientes.
     geocoding_batch_size: int = Field(default=50, gt=0)
     geocoding_interval_seconds: int = Field(default=300, gt=0)
+    # Segundos entre dos consultas que salen a la red; los aciertos de caché no
+    # esperan. 15 s son 4 por minuto, que es lo que la política de Nominatim
+    # permite a un proceso que corre siempre. Subirlo solo tiene sentido contra
+    # una instancia propia; ver `throttled_geocoding_service.py`.
+    geocoding_min_interval_seconds: float = Field(default=15.0, gt=0)
 
     # --- Matching ---
     # Canal léxico sparse BM25 (plan 256): complementa el matching denso con
