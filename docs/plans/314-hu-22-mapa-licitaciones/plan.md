@@ -125,7 +125,7 @@ de uso de Nominatim pide no repetir consultas. RLS la activa el event trigger
     no nulas. Devuelve entidades de dominio, como pide la nota del puerto.
   - Respuesta `TenderMapResponse{region, items, total, is_truncated}`, con
     `id, name, buyer_name, delivery_address, closing_at, lat, lng, precision`
-    por ítem. El tope es 500 marcadores, como el máximo de `/search`.
+    por ítem. El tope es 3.000 marcadores (decisión 6).
   - Un error de base de datos da 503, como en `/search`. Es lo que la UI
     traduce en el criterio 8.
 
@@ -263,3 +263,24 @@ del equipo. El criterio 7 lo cubre #294 (§2).
    la ingesta no se frena y el mapa responde con una sola consulta SQL.
 5. **La zona es la región del organismo**, igual que en la búsqueda. El punto
    geocodificado no decide la región.
+6. **Tope de 3.000 marcadores por zona** (2026-11-01, revisando el primero de
+   500). El criterio 1 pide un marcador por licitación, y un tope que se
+   alcanza esconde la mayoría justo en la región con más licitaciones. El
+   corpus vigente completo es de ~9.000 en todo Chile y no crece (spike 2.1),
+   así que con 3.000 ninguna región se acerca. Se mantiene un tope porque la
+   consulta no pagina; cuando recorta, `is_truncated` lo dice en la UI.
+
+   Medido en el navegador el 2026-11-01, con el mapa montado solo sobre Vite en
+   modo desarrollo (sin minificar) y en escritorio:
+
+   | | 500 marcadores | 3.000 marcadores |
+   |---|---|---|
+   | Dibujo estable desde la respuesta | 762 ms | 1.327 ms |
+   | Nodos en el DOM | 5 | 14 |
+   | Bloqueo del hilo principal al hacer zoom | ≤ 5 ms | ≤ 5 ms |
+   | Memoria del heap | — | 66 MB |
+
+   La agrupación mantiene el DOM en unos pocos nodos pase lo que pase, y las
+   etiquetas de los grupos suman exactamente 3.000: no se pierde ninguno. El
+   peso en la red son ~0,9 MB de JSON, unos 130 KB comprimidos. **Falta medirlo
+   en un celular de gama baja**, que es donde podría notarse.

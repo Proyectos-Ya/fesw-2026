@@ -5,9 +5,19 @@ from app.application.schemas.tender_map_schema import TenderMapResponse
 from app.domain.errors.tender_errors import InvalidSearchCriteria
 from app.shared.regions import CHILE_REGIONS, normalize_region_name
 
-# El mismo tope absoluto que la búsqueda: más marcadores en una región ya no se
-# leen ni agrupados, y el payload por marcador es chico (~250 bytes).
-MAP_RESULT_LIMIT = 500
+# Cubre la región más cargada del país con holgura, en vez de acotar el payload:
+# el criterio 1 pide un marcador por licitación, y un tope que se alcanza esconde
+# la mayoría justo donde más licitaciones hay.
+#
+# El corpus vigente completo es de ~9.000 licitaciones en todo Chile y no crece,
+# porque lo que entra iguala a lo que cierra (spike 2.1, medido el 2026-09-10).
+# Ni siquiera la Metropolitana se acerca a este tope. Son ~340 bytes por
+# marcador: 3.000 son ~0,9 MB de JSON, unos 130 KB ya comprimidos.
+#
+# El tope se mantiene igual porque la consulta no pagina: sin él, un corpus que
+# creciera de forma inesperada se traería entero en una sola respuesta. Cuando
+# recorta, `is_truncated` deja que la UI lo diga en vez de mentir con el total.
+MAP_RESULT_LIMIT = 3000
 
 
 class GetTendersMapUseCase:

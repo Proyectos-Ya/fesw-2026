@@ -312,7 +312,7 @@ def create_tender_router(
             """Marcadores del mapa de licitaciones (HU-22, #314).
 
             Solo publicadas con cierre futuro y con la dirección de entrega ya
-            ubicada; las que cierran antes primero, hasta 500. `precision`
+            ubicada; las que cierran antes primero, hasta 3.000. `precision`
             `comuna` es un punto aproximado: la dirección no se encontró y se usó
             la comuna del organismo.
             """

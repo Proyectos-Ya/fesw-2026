@@ -261,7 +261,7 @@ Antes de reportar algo, revisa si está en esta lista. Son decisiones tomadas, n
 | El mapa sale casi vacío con datos reales | Las licitaciones anteriores al 2026-10-26 no tienen dirección guardada. Se completan solas cuando la ingesta vuelve a bajar su detalle |
 | Un marcador dice "ubicación aproximada" | Nominatim no encontró esa dirección y se usó la comuna del organismo |
 | Una licitación con dirección no aparece | No se pudo ubicar y su organismo no tiene comuna. La issue pide explícitamente no inventar una ubicación |
-| En una región con muchas, dice "Se muestran 500 de N" | Hay un tope de 500 marcadores por zona. Se muestran las que cierran antes |
+| Dice "Se muestran 3.000 de N" | Hay un tope de 3.000 marcadores por zona. Se muestran las que cierran antes. Con el corpus actual (~9.000 en todo Chile) no debería alcanzarse nunca: si lo ves, repórtalo |
 | Al elegir "Elige una zona" vuelve a la zona del perfil | El selector vacío no borra la zona: cae de nuevo en la de tu empresa |
 | Una licitación desaparece del mapa | Solo se muestran las abiertas. Al cerrarse, su marcador se va solo |
 | Los marcadores no se mueven al cambiar la dirección en la base | Si editas `delivery_address` a mano, pon también las cuatro columnas de ubicación en `NULL`, como hace el SQL del paso 2 |
