@@ -177,6 +177,25 @@ pnpm run test && pnpm run lint && pnpm run build
 jsdom no tiene canvas, así que las pruebas de Vitest mockean `TenderMap`. La
 agrupación y el centrado se prueban a mano.
 
+Resultado tras sincronizar con develop (2026-11-01), que trajo la HU-31 (modo
+oscuro y accesibilidad), retroalimentación de usuario y cuatro migraciones:
+
+- **Backend**: 3.492 pruebas unitarias en verde. Las 22 de integración y API del
+  mapa y de migraciones, también. `alembic upgrade head` aplica las 57
+  migraciones sobre una base limpia, `alembic check` no detecta deriva entre
+  modelos y migraciones, y queda **una sola cabeza** (`7c1fa735a495`, repuntada
+  a `a3f9c8e1d402`).
+- **Frontend**: 1.346 pruebas en 165 archivos, todas en verde. `eslint` da 0
+  errores y 29 advertencias, ninguna en archivos de esta rama. `next build`
+  compila, pasa TypeScript e incluye `/mapa`.
+- Dos adaptaciones que exigió el merge: registrar el ícono `map`, que el
+  `Icon.tsx` nuevo de develop ya no resolvía solo —el ítem del menú quedaba sin
+  ícono, en silencio—, y cambiar el `bg-white` del selector de zona por
+  `bg-surface-card`, que en modo oscuro salía blanco.
+- **Pendiente de modo oscuro**: las teselas del mapa son las claras de
+  OpenStreetMap, así que el mapa sigue claro con el tema oscuro. Cambiarlo
+  requiere otro proveedor de teselas.
+
 Resultado tras el bloque 7 (2026-11-01): la suite de CI da **3.249 pasadas y 0
 fallidas**, las 17 de integración y API del mapa pasan, y `scripts.migraciones`
 sigue dando una sola cabeza (`7c1fa735a495`). El frontend no cambió en esa
