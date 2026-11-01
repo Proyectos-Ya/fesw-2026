@@ -1,7 +1,7 @@
 """coordenadas de entrega y cache de geocodificacion
 
 Revision ID: 7c1fa735a495
-Revises: e7123e26c0be
+Revises: a3f9c8e1d402
 Create Date: 2026-10-28 15:59:25.771486
 
 Plan #314 (HU-22). Compatible con la versión anterior durante el despliegue:
@@ -23,7 +23,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "7c1fa735a495"
-down_revision: str | Sequence[str] | None = "e7123e26c0be"
+down_revision: str | Sequence[str] | None = "a3f9c8e1d402"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
