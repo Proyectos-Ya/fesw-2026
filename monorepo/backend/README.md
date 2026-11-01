@@ -435,6 +435,8 @@ scheduler del lifespan geocodifica `tender.delivery_address` con
 [Nominatim](https://nominatim.org/) (OpenStreetMap) y las guarda en `tender`.
 El mapa lee lo guardado con `GET /tenders/map?region=`. Plan técnico:
 [`docs/plans/314-hu-22-mapa-licitaciones/plan.md`](../../docs/plans/314-hu-22-mapa-licitaciones/plan.md).
+Para probarlo a mano, con el recorrido por cada criterio:
+[`docs/guides/testing-hu22.md`](../../docs/guides/testing-hu22.md).
 
 | Variable | Default | Qué es |
 |---|---|---|
