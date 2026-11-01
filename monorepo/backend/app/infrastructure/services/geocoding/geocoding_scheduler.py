@@ -51,7 +51,7 @@ class GeocodingScheduler:
                     "Error al geocodificar direcciones de entrega: %s", error
                 )
             # Un lote lleno indica que queda cola: se sigue sin esperar el
-            # intervalo, porque el ritmo ya lo limita el servicio (1 req/s).
+            # intervalo: el ritmo ya lo limita `ThrottledGeocodingService`.
             if self.batch_size and ubicadas >= self.batch_size:
                 await asyncio.sleep(0)
                 continue

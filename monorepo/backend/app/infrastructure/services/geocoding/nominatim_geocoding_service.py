@@ -2,8 +2,10 @@
 
 Sin key ni costo, con dos condiciones de su política de uso
 (https://operations.osmfoundation.org/policies/nominatim/): identificar la
-aplicación en el `User-Agent` y no pasar de una petición por segundo. Lo
-segundo lo respeta el scheduler, que es el único que llama a este cliente.
+aplicación en el `User-Agent` y respetar el límite de ritmo. Lo segundo lo
+resuelve `ThrottledGeocodingService`, que envuelve a este cliente y explica
+por qué el límite que nos aplica es de 4 peticiones por minuto, no de una por
+segundo.
 
 Sin reintentos: una caída deja la licitación pendiente y la vuelta siguiente
 la vuelve a intentar.

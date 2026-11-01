@@ -445,13 +445,19 @@ Para probarlo a mano, con el recorrido por cada criterio:
 | `GEOCODING_BASE_URL` | host público | Solo para apuntar a otra instancia de Nominatim |
 | `GEOCODING_BATCH_SIZE` | `50` | Licitaciones por vuelta |
 | `GEOCODING_INTERVAL_SECONDS` | `300` | Espera entre vueltas cuando la cola quedó vacía |
+| `GEOCODING_MIN_INTERVAL_SECONDS` | `15` | Segundos entre dos consultas que salen a la red (4 por minuto). Bajarlo solo contra una instancia propia |
 
 - Primero se busca la dirección con la comuna y la región del organismo; si no
   aparece, la comuna sola, y el marcador se muestra como **ubicación
   aproximada**. Sin comuna no se inventa un punto (`no_encontrada`).
-- Nominatim permite **una petición por segundo**. `ThrottledGeocodingService` lo
-  respeta, y la tabla `geocoding_cache` evita repetir consultas, también las que
-  no encontraron nada. Como los demás schedulers, asume una sola instancia de la API.
+- Su política limita a un proceso permanente como este a **4 peticiones por
+  minuto**; el máximo de una por segundo que encabeza esa política es para uso
+  interactivo. `ThrottledGeocodingService` lo respeta, y la tabla
+  `geocoding_cache` evita repetir consultas, también las que no encontraron
+  nada: solo las direcciones *distintas* gastan cuota. El log de cada vuelta
+  separa las consultas de red de los aciertos de caché, que es lo que dice si
+  la instancia pública alcanza. Como los demás schedulers, asume una sola
+  instancia de la API.
 - Si la ingesta trae otra dirección, la licitación pierde su punto y vuelve a la cola.
 
 ---

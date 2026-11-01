@@ -148,3 +148,25 @@
   sesión reales.
 - [x] **6.3 Documentación.** Plan en estado Completado y enlazado en
   `docs/README.md`; variables `GEOCODING_*` en `monorepo/backend/README.md`.
+
+## Bloque 7. Correcciones para la ingesta real (2026-11-01)
+
+Salieron de revisar si el código aguanta el volumen y la variedad de los datos
+reales de Mercado Público. Ver las decisiones 7 y 8 del [plan](./plan.md).
+
+- [x] **7.1 El ritmo respeta la política de Nominatim.**
+  - Red: el default de `geocoding_min_interval_seconds` son 15 s y el runner
+    arma el throttle con el valor configurado, no con el suyo.
+  - Green: `config.py`, `bootstrap/runners.py` y el default del throttle.
+  - Commit: `fix(geocodificacion): respetar el ritmo que permite nominatim`
+- [x] **7.2 La cola ignora las de región desconocida.**
+  - Red: en `TestCola`, un organismo con `region_id = 0` no entra a la cola.
+  - Green: la condición en `list_pending`.
+  - Commit: `fix(geocodificacion): no encolar las de región desconocida`
+- [x] **7.3 El log separa la red de la caché.**
+  - Red: `TestContadores` en `test_geocodificar_licitaciones.py`.
+  - Green: `GeocodingRun` y el log del scheduler.
+  - Commit: `feat(geocodificacion): contar las consultas de red y los aciertos de caché`
+- [x] **7.4 Verificación contra el Nominatim real.** Cuatro consultas a mano
+  (decisión 7). De paso se descartó limpiar el `#` de las direcciones: no
+  cambia el resultado.

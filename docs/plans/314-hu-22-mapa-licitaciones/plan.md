@@ -103,7 +103,7 @@ de uso de Nominatim pide no repetir consultas. RLS la activa el event trigger
 - **Scheduler** `GeocodingScheduler`, como `MilestoneRefreshScheduler`. Un
   lote lleno sigue sin esperar el intervalo, porque queda cola. El límite de
   Nominatim lo pone `ThrottledGeocodingService`, que envuelve al cliente y
-  separa las llamadas reales por al menos 1 s; los aciertos de la caché no
+  separa las llamadas reales por al menos 15 s (decisión 7); los de la caché no
   llegan a él.
 - **Settings**, como `company_lookup_*`: `geocoding_provider` (default
   `"none"`, apagado en local y en tests), `geocoding_contact_email`,
@@ -248,8 +248,9 @@ del equipo. El criterio 7 lo cubre #294 (§2).
 
 1. **Precisión.** Nominatim es aproximado con direcciones chilenas. El
    respaldo por comuna y la marca "ubicación aproximada" lo dejan visible.
-2. **Cola inicial lenta.** Con 1 req/s, miles de abiertas tardan horas la
-   primera vez. La caché lo acorta en las vueltas siguientes.
+2. **Cola inicial lenta.** A 4 consultas por minuto son 5.760 al día, así que
+   una cola inicial de varios miles tarda cerca de un día. Solo las
+   direcciones distintas gastan cuota, y la caché acorta el resto.
 3. **Una sola instancia.** El scheduler, como los demás, asume una sola
    instancia de la API; con dos se duplicarían llamadas a Nominatim.
 
@@ -284,3 +285,21 @@ del equipo. El criterio 7 lo cubre #294 (§2).
    etiquetas de los grupos suman exactamente 3.000: no se pierde ninguno. El
    peso en la red son ~0,9 MB de JSON, unos 130 KB comprimidos. **Falta medirlo
    en un celular de gama baja**, que es donde podría notarse.
+7. **El ritmo es de 4 consultas por minuto, no de una por segundo**
+   (2026-11-01). El máximo de 1/s que encabeza la política de Nominatim es
+   para uso interactivo; un proceso que consulta a intervalos regulares y
+   corre más de un día cae en el tramo de 4 por minuto, y pasarse hace que
+   bloqueen al proyecto sin que nada falle de forma visible. Configurable con
+   `GEOCODING_MIN_INTERVAL_SECONDS`, para poder subirlo contra una instancia
+   propia. Verificado contra el Nominatim real el 2026-11-01: encuentra la
+   dirección del fixture (`"Yerbas Buenas #915, Ancud, Los Lagos, Chile"`) a
+   nivel de calle, no encuentra una dirección mal escrita como
+   `"SERVIU REGION DE AYSEN RAMON FREIRE 5"` —que entonces cae al respaldo por
+   comuna— y reconoce tanto las comunas como nuestros nombres canónicos de
+   región. El `#` de las direcciones chilenas no le estorba: con y sin él
+   devuelve el mismo punto, así que no se limpia.
+8. **No se encolan las licitaciones sin región informada** (2026-11-01). La
+   ingesta guarda `region_id = 0` ("Desconocida") cuando Mercado Público no la
+   informa. El mapa filtra por las 16 reales, así que esas licitaciones no
+   pueden verse nunca: geocodificarlas gastaba cuota y mandaba la palabra
+   "Desconocida" dentro de la consulta.

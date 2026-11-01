@@ -138,8 +138,12 @@ recrea el contenedor.
 docker compose logs -f api | grep -i "ubicadas en el mapa"
 ```
 
-Debería aparecer `8 licitaciones ubicadas en el mapa`. Tarda unos 8 segundos: Nominatim
-permite una consulta por segundo y el sistema lo respeta.
+Debería aparecer `8 licitaciones ubicadas en el mapa`, con el detalle de cuántas
+consultas salieron a la red y cuántas resolvió la caché.
+
+**Tarda unos dos minutos**, y es lo esperado: la política de Nominatim limita a un
+proceso como este a 4 consultas por minuto, o sea una cada 15 segundos. Las
+direcciones repetidas no esperan, porque las resuelve la caché.
 
 El estado completo:
 
