@@ -39,6 +39,15 @@ describe("Sidebar", () => {
     );
   });
 
+  it("el ítem del mapa dibuja su ícono", () => {
+    // `Icon` devuelve null si el nombre no está en su registro, así que un ícono
+    // sin registrar desaparece sin romper nada: solo deja un aviso en consola.
+    render(<Sidebar />);
+
+    const mapa = screen.getByRole("link", { name: /mapa de licitaciones/i });
+    expect(mapa.querySelector("svg")).not.toBeNull();
+  });
+
   it("marca el mapa como la página actual en /mapa", () => {
     pathname = "/mapa";
 

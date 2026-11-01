@@ -78,6 +78,15 @@ describe("TenderMapView", () => {
     expect(screen.queryByTestId("mapa")).not.toBeInTheDocument();
   });
 
+  it("si no se pudo cargar la empresa no la manda al perfil", () => {
+    companyState = { status: "error" };
+
+    render(<TenderMapView />);
+
+    expect(screen.getByText(/no pudimos cargar los datos de tu empresa/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /completa tu zona/i })).not.toBeInTheDocument();
+  });
+
   it("sin empresa enlaza a crear el perfil", () => {
     companyState = { status: "without-company" };
 

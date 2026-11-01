@@ -55,7 +55,7 @@ export function TenderMapView() {
           >
             Zona
           </label>
-          <div className="flex items-center rounded-md border border-border-default bg-white px-3 py-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
+          <div className="flex items-center rounded-md border border-border-default bg-surface-card px-3 py-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
             <Icon name="map-pin" size={15} color="var(--text-subtle)" />
             <select
               id="zona-mapa"
@@ -79,16 +79,24 @@ export function TenderMapView() {
           <p className="text-sm font-medium text-text-strong">
             Elige una zona para ver las licitaciones en el mapa.
           </p>
-          <p className="mt-1 text-sm text-text-muted">
-            Tu perfil de empresa todavía no tiene una región.{" "}
-            <Link
-              href={company.status === "with-company" ? "/empresa" : "/perfil"}
-              className="font-semibold text-primary hover:text-primary-hover hover:underline"
-            >
-              Completa tu zona en el perfil
-            </Link>{" "}
-            para que el mapa la abra directamente.
-          </p>
+          {company.status === "error" ? (
+            // No sabemos si tiene zona o no: mandarla al perfil sería adivinar.
+            <p className="mt-1 text-sm text-text-muted">
+              No pudimos cargar los datos de tu empresa, así que no sabemos cuál es
+              tu zona.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-text-muted">
+              Tu perfil de empresa todavía no tiene una región.{" "}
+              <Link
+                href={company.status === "with-company" ? "/empresa" : "/perfil"}
+                className="font-semibold text-primary hover:text-primary-hover hover:underline"
+              >
+                Completa tu zona en el perfil
+              </Link>{" "}
+              para que el mapa la abra directamente.
+            </p>
+          )}
         </div>
       )}
 
