@@ -177,6 +177,11 @@ pnpm run test && pnpm run lint && pnpm run build
 jsdom no tiene canvas, así que las pruebas de Vitest mockean `TenderMap`. La
 agrupación y el centrado se prueban a mano.
 
+Resultado tras el bloque 7 (2026-11-01): la suite de CI da **3.249 pasadas y 0
+fallidas**, las 17 de integración y API del mapa pasan, y `scripts.migraciones`
+sigue dando una sola cabeza (`7c1fa735a495`). El frontend no cambió en esa
+ronda.
+
 Resultado de la tarea 6.1 (2026-10-28, Postgres local en Docker, sin `.env`):
 
 - **Backend.**
