@@ -3,6 +3,7 @@
 import asyncio
 
 from app.application.services.geocoding_service import IGeocodingService
+from app.application.use_cases.tender.geocode_pending_tenders import GeocodingRun
 from app.domain.entities.tender_map import GeoPoint
 from app.infrastructure.services.geocoding.geocoding_scheduler import (
     GeocodingScheduler,
@@ -16,12 +17,12 @@ class TestScheduler:
     async def test_un_error_no_detiene_el_loop(self):
         llamadas = 0
 
-        async def geocodificar() -> int:
+        async def geocodificar() -> GeocodingRun:
             nonlocal llamadas
             llamadas += 1
             if llamadas == 1:
                 raise RuntimeError("base caída")
-            return 0
+            return GeocodingRun()
 
         tarea = asyncio.create_task(
             GeocodingScheduler(geocodificar, interval_seconds=0).start_loop()
@@ -36,10 +37,10 @@ class TestScheduler:
         """Mientras haya cola, cada vuelta procesa un lote completo seguido."""
         llamadas = 0
 
-        async def geocodificar() -> int:
+        async def geocodificar() -> GeocodingRun:
             nonlocal llamadas
             llamadas += 1
-            return 10 if llamadas < 3 else 0
+            return GeocodingRun(ubicadas=10) if llamadas < 3 else GeocodingRun()
 
         tarea = asyncio.create_task(
             GeocodingScheduler(

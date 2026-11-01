@@ -105,9 +105,9 @@ async def test_la_direccion_encontrada_queda_con_precision_de_direccion():
         {"Yerbas Buenas #915, Ancud, Los Lagos, Chile": YERBAS_BUENAS}
     )
 
-    guardadas = await _caso(repo, geocoder).execute()
+    resultado = await _caso(repo, geocoder).execute()
 
-    assert guardadas == 1
+    assert resultado.ubicadas == 1
     assert repo.saved[pendiente.tender_id] == (YERBAS_BUENAS, GeoPrecision.DIRECCION)
 
 
@@ -186,9 +186,9 @@ async def test_con_el_servicio_caido_corta_el_lote_y_deja_todo_pendiente():
     geocoder = FakeGeocoder()
     geocoder.caido = True
 
-    guardadas = await _caso(repo, geocoder).execute()
+    resultado = await _caso(repo, geocoder).execute()
 
-    assert guardadas == 0
+    assert resultado.ubicadas == 0
     assert repo.saved == {}
     assert repo.cache_rows == {}
     # Una sola llamada: insistir con el servicio caído solo gasta la cuota.
@@ -198,7 +198,41 @@ async def test_con_el_servicio_caido_corta_el_lote_y_deja_todo_pendiente():
 async def test_pide_a_la_cola_solo_el_tamano_del_lote():
     repo = FakeGeocodingRepository([_pendiente() for _ in range(5)])
 
-    guardadas = await _caso(repo, FakeGeocoder(), lote=3).execute()
+    resultado = await _caso(repo, FakeGeocoder(), lote=3).execute()
 
     assert repo.pedidos_limite == [3]
-    assert guardadas == 3
+    assert resultado.ubicadas == 3
+
+
+class TestContadores:
+    """Con la cuota de Nominatim tan ajustada hay que poder ver si la caché sirve."""
+
+    async def test_separa_las_consultas_de_red_de_los_aciertos_de_cache(self):
+        repo = FakeGeocodingRepository([_pendiente(), _pendiente()])
+        geocoder = FakeGeocoder(
+            {"Yerbas Buenas #915, Ancud, Los Lagos, Chile": YERBAS_BUENAS}
+        )
+
+        resultado = await _caso(repo, geocoder).execute()
+
+        assert resultado.ubicadas == 2
+        # La segunda repite dirección: la resuelve la caché sin salir a la red.
+        assert resultado.consultas == 1
+        assert resultado.cacheadas == 1
+
+    async def test_el_respaldo_por_comuna_cuenta_como_dos_consultas(self):
+        repo = FakeGeocodingRepository([_pendiente()])
+        geocoder = FakeGeocoder({"Ancud, Los Lagos, Chile": ANCUD})
+
+        resultado = await _caso(repo, geocoder).execute()
+
+        assert (resultado.consultas, resultado.cacheadas) == (2, 0)
+
+    async def test_con_el_servicio_caido_no_cuenta_la_consulta_que_fallo(self):
+        repo = FakeGeocodingRepository([_pendiente()])
+        geocoder = FakeGeocoder()
+        geocoder.caido = True
+
+        resultado = await _caso(repo, geocoder).execute()
+
+        assert (resultado.ubicadas, resultado.consultas) == (0, 0)

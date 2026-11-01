@@ -9,13 +9,15 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from app.application.use_cases.tender.geocode_pending_tenders import GeocodingRun
+
 logger = logging.getLogger(__name__)
 
 
 class GeocodingScheduler:
     def __init__(
         self,
-        geocode: Callable[[], Awaitable[int]],
+        geocode: Callable[[], Awaitable[GeocodingRun]],
         interval_seconds: int,
         batch_size: int | None = None,
     ):
@@ -29,11 +31,20 @@ class GeocodingScheduler:
             self.interval_seconds,
         )
         while True:
-            guardadas = 0
+            ubicadas = 0
             try:
-                guardadas = await self.geocode()
-                if guardadas:
-                    logger.info("%s licitaciones ubicadas en el mapa", guardadas)
+                run = await self.geocode()
+                ubicadas = run.ubicadas
+                if ubicadas:
+                    # Las consultas son las que gastan cuota de Nominatim; si la
+                    # caché no absorbe la mayoría, la instancia pública no alcanza.
+                    logger.info(
+                        "%s licitaciones ubicadas en el mapa "
+                        "(%s consultas a la red, %s resueltas por la caché)",
+                        ubicadas,
+                        run.consultas,
+                        run.cacheadas,
+                    )
             except Exception as error:
                 # Un fallo no puede matar el loop: la próxima vuelta lo reintenta.
                 logger.warning(
@@ -41,7 +52,7 @@ class GeocodingScheduler:
                 )
             # Un lote lleno indica que queda cola: se sigue sin esperar el
             # intervalo, porque el ritmo ya lo limita el servicio (1 req/s).
-            if self.batch_size and guardadas >= self.batch_size:
+            if self.batch_size and ubicadas >= self.batch_size:
                 await asyncio.sleep(0)
                 continue
             await asyncio.sleep(self.interval_seconds)

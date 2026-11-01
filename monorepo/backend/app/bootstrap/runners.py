@@ -55,6 +55,7 @@ from app.application.use_cases.ranking_telemetry.run_ranking_telemetry_cycle imp
 )
 from app.application.use_cases.tender.geocode_pending_tenders import (
     GeocodePendingTendersUseCase,
+    GeocodingRun,
 )
 from app.application.use_cases.tender_attachments.analyze_tender_attachments import (
     AnalyzeTenderAttachmentsUseCase,
@@ -217,7 +218,7 @@ def build_kanban_archive_runner(age_days: int = 90) -> Callable[[], Awaitable[li
     return auto_archive
 
 
-def build_geocoding_runner(app: FastAPI) -> Callable[[], Awaitable[int]]:
+def build_geocoding_runner(app: FastAPI) -> Callable[[], Awaitable[GeocodingRun]]:
     """Arma la función que ejecuta `GeocodingScheduler` (HU-22, #314).
 
     El límite de ritmo se arma una sola vez, fuera de la vuelta: así también
@@ -228,7 +229,7 @@ def build_geocoding_runner(app: FastAPI) -> Callable[[], Awaitable[int]]:
         min_interval_seconds=settings.geocoding_min_interval_seconds,
     )
 
-    async def geocode() -> int:
+    async def geocode() -> GeocodingRun:
         async with async_session_maker() as session:
             return await GeocodePendingTendersUseCase(
                 repo=SqlTenderLocationRepository(session),
