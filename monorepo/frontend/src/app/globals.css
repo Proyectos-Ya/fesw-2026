@@ -5,6 +5,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  color-scheme: light;
+
   /* ---- Warm neutrals (off-white → warm near-black) ---- */
   --warm-50:  #FBF8F3;
   --warm-100: #F3EEE6;
@@ -148,6 +150,8 @@
 
 .dark,
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --bg-page:        #12110E;
   --bg-sunken:      #1B1814;
   --surface-card:   #1F1C18;
@@ -384,5 +388,35 @@ html[data-font-scale="xlarge"] {
 
   a:not([class]):hover {
     text-decoration: underline;
+  }
+
+  /* Barras de desplazamiento delgadas y semánticas (Modo Claro y Modo Oscuro) */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border-default);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--border-strong);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-default) transparent;
+    }
   }
 }
