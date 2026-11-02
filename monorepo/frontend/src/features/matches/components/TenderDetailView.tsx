@@ -826,27 +826,37 @@ export function TenderDetailView({
         <aside className="order-1 lg:order-2 w-full lg:w-[320px] shrink-0 lg:sticky lg:top-6 flex flex-col gap-5">
           <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
-          {/* Acordeón Responsivo: Inteligencia Artificial */}
-          <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
+          {/* Acordeón Responsivo: Análisis y Asistencia IA */}
+          <div className="flex flex-col rounded-lg border border-border-subtle bg-surface-card shadow-xs">
             <button
               type="button"
               onClick={() => setIsAiSectionExpanded((prev) => !prev)}
               aria-expanded={isAiSectionExpanded}
-              className="flex w-full items-center justify-between py-1 text-sm font-semibold text-text-strong cursor-pointer transition-colors hover:text-primary"
+              className="flex w-full items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-surface-hover/50 rounded-lg"
             >
-              <span className="inline-flex items-center gap-2">
-                <Icon name="sparkles" size={16} color="var(--primary)" />
-                Inteligencia Artificial
+              <Icon
+                name="sparkles"
+                size={18}
+                color="var(--primary)"
+                className="shrink-0"
+              />
+              <span className="flex-1 flex flex-col text-left min-w-0">
+                <span className="text-sm font-semibold text-text-strong">
+                  Análisis y Asistencia IA
+                </span>
+                <span className="text-xs text-text-muted font-normal mt-0.5 leading-snug">
+                  Evaluación de compatibilidad, resumen de anexos y chat virtual.
+                </span>
               </span>
               <Icon
                 name={isAiSectionExpanded ? "chevron-up" : "chevron-down"}
                 size={16}
-                className="text-text-muted"
+                className="shrink-0 text-text-muted"
               />
             </button>
 
             {isAiSectionExpanded && (
-              <div className="flex flex-col gap-5 pt-1">
+              <div className="flex flex-col gap-5 border-t border-border-subtle px-4 pb-4 pt-4">
                 {/* AI Compatibility Analysis CTA Card */}
                 <div className="rounded-lg border border-primary/20 bg-gradient-to-b from-primary-soft/50 to-surface-card p-5 shadow-xs flex flex-col gap-4">
                   <div className="flex items-start gap-3">
