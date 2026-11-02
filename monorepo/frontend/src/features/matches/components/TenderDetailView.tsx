@@ -126,10 +126,17 @@ export function TenderDetailView({
   const [isReportAnalysisOpen, setIsReportAnalysisOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TenderDetailTab>("bases");
+  const [isAiSectionExpanded, setIsAiSectionExpanded] = useState(true);
   const reportInteraction = useTenderInteractionReporter(
     tenderId,
     rankingContext,
   );
+
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setIsAiSectionExpanded(false);
+    }
+  }, []);
 
   const userId = user?.id;
 
@@ -819,195 +826,219 @@ export function TenderDetailView({
         <aside className="order-1 lg:order-2 w-full lg:w-[320px] shrink-0 lg:sticky lg:top-6 flex flex-col gap-5">
           <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
-          {/* AI Compatibility Analysis CTA Card */}
-          <div className="rounded-lg border border-primary/20 bg-gradient-to-b from-primary-soft/50 to-surface-card p-5 shadow-xs flex flex-col gap-4">
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary shadow-sm">
-                <Icon name="sparkles" size={20} />
-              </span>
-              <div className="min-w-0">
-                <h3 className="font-display text-base font-bold text-text-strong mb-1">
-                  Análisis de compatibilidad IA
-                </h3>
-                <p className="text-xs leading-relaxed text-text-muted mb-0">
-                  {cerrada
-                    ? "Esta licitación ya cerró: puedes revisar el análisis generado, pero no generar uno nuevo."
-                    : "Obtén una evaluación detallada de esta licitación según el perfil de tu empresa."}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {/* Una licitación cerrada no genera nada: si no hay análisis
-                  guardado, no hay a dónde ir. */}
-              {(!cerrada || analysis) && (
-                <Button
-                  onClick={() => {
-                    reportInteraction("analisis");
-                    router.push(`/matches/${tenderId}/analisis`);
-                  }}
-                  variant="primary"
-                  className="w-full justify-center"
-                  id="btn-generate-ai-analysis"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Icon name="sparkles" size={16} />
-                    {cerrada || analysis
-                      ? "Ver análisis de compatibilidad IA"
-                      : "Generar análisis de compatibilidad IA"}
-                  </span>
-                </Button>
-              )}
-
-              <Button
-                onClick={() => {
-                  setIsAssistantOpen(true);
-                  reportInteraction("asistente");
-                }}
-                variant="ghost"
-                className="w-full justify-center border border-border-strong bg-surface-card hover:bg-surface-hover"
-                id="btn-open-tender-assistant"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Icon name="message-square" size={16} />
-                  Consultar asistente virtual
-                </span>
-              </Button>
-            </div>
-          </div>
-
-          {/* El desfase se avisa, no se corrige solo: regenerar cuesta una llamada
-              a la IA, así que la decisión es del usuario. */}
-          {analysis?.is_outdated && !cerrada && (
-            <div
-              role="status"
-              className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4"
+          {/* Acordeón Responsivo: Inteligencia Artificial */}
+          <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setIsAiSectionExpanded((prev) => !prev)}
+              aria-expanded={isAiSectionExpanded}
+              className="flex w-full items-center justify-between py-1 text-sm font-semibold text-text-strong cursor-pointer transition-colors hover:text-primary"
             >
-              <div className="flex items-start gap-2.5">
-                <Icon
-                  name="triangle-alert"
-                  size={18}
-                  color="var(--amber-500)"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-text-strong">
-                    Este análisis está desactualizado
-                  </p>
-                  <p className="mt-1 text-xs text-text-body mb-0">
-                    Tu perfil o la licitación cambiaron después de generarlo.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                onClick={handleRegenerateAnalysis}
-                disabled={pendingAction !== null}
-                className="w-full justify-center"
-                id="btn-refresh-analysis"
-              >
-                {pendingAction === "analysis" ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Icon
-                      name="loader-circle"
-                      className="animate-spin"
-                      size={16}
-                    />
-                    Actualizando…
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2">
-                    <Icon name="rotate-cw" size={16} />
-                    Actualizar análisis
-                  </span>
-                )}
-              </Button>
-            </div>
-          )}
+              <span className="inline-flex items-center gap-2">
+                <Icon name="sparkles" size={16} color="var(--primary)" />
+                Inteligencia Artificial
+              </span>
+              <Icon
+                name={isAiSectionExpanded ? "chevron-up" : "chevron-down"}
+                size={16}
+                className="text-text-muted"
+              />
+            </button>
 
-          {/* Análisis de compatibilidad IA si ya existe */}
-          {analysis && (
-            <div className="rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-5 shadow-xs">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary shadow-sm">
-                      <Icon name="sparkles" size={16} />
+            {isAiSectionExpanded && (
+              <div className="flex flex-col gap-5 pt-1">
+                {/* AI Compatibility Analysis CTA Card */}
+                <div className="rounded-lg border border-primary/20 bg-gradient-to-b from-primary-soft/50 to-surface-card p-5 shadow-xs flex flex-col gap-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary shadow-sm">
+                      <Icon name="sparkles" size={20} />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="font-display text-sm font-bold text-text-strong mb-0.5">
-                        Resumen IA
+                      <h3 className="font-display text-base font-bold text-text-strong mb-1">
+                        Análisis de compatibilidad IA
                       </h3>
-                      <p className="text-[0.6875rem] text-text-muted mb-0 truncate">
-                        {formatDateTime(analysis.updated_at)}
+                      <p className="text-xs leading-relaxed text-text-muted mb-0">
+                        {cerrada
+                          ? "Esta licitación ya cerró: puedes revisar el análisis generado, pero no generar uno nuevo."
+                          : "Obtén una evaluación detallada de esta licitación según el perfil de tu empresa."}
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsReportAnalysisOpen(true)}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border-subtle bg-surface-card px-2.5 py-1 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
-                    title="Reportar análisis de compatibilidad incorrecto"
-                  >
-                    <Icon name="flag" size={13} />
-                    Reportar
-                  </button>
-                </div>
+                  <div className="flex flex-col gap-2">
+                    {/* Una licitación cerrada no genera nada: si no hay análisis
+                        guardado, no hay a dónde ir. */}
+                    {(!cerrada || analysis) && (
+                      <Button
+                        onClick={() => {
+                          reportInteraction("analisis");
+                          router.push(`/matches/${tenderId}/analisis`);
+                        }}
+                        variant="primary"
+                        className="w-full justify-center"
+                        id="btn-generate-ai-analysis"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Icon name="sparkles" size={16} />
+                          {cerrada || analysis
+                            ? "Ver análisis de compatibilidad IA"
+                            : "Generar análisis de compatibilidad IA"}
+                        </span>
+                      </Button>
+                    )}
 
-                <div className="flex flex-col items-center justify-center border-y border-border-subtle py-3">
-                  <MatchMeter
-                    value={analysis.compatibility_score}
-                    size="md"
-                    thresholds={{ high: 70, mid: 40 }}
-                    colors={{
-                      high: "var(--green-500)",
-                      mid: "var(--amber-500)",
-                      low: "var(--red-500)",
-                    }}
-                  />
-                  <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
-                    Score de Compatibilidad
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-text-muted">
-                      Recomendación:
-                    </span>
-                    <Badge
-                      tone={
-                        analysis.recommendation === "Postular"
-                          ? "success"
-                          : analysis.recommendation === "Evaluar con cautela"
-                            ? "warning"
-                            : "danger"
-                      }
-                      iconLeft={
-                        <Icon
-                          name={
-                            analysis.recommendation === "Postular"
-                              ? "circle-check"
-                              : analysis.recommendation ===
-                                  "Evaluar con cautela"
-                                ? "alert-triangle"
-                                : "alert-circle"
-                          }
-                          size={12}
-                        />
-                      }
+                    <Button
+                      onClick={() => {
+                        setIsAssistantOpen(true);
+                        reportInteraction("asistente");
+                      }}
+                      variant="ghost"
+                      className="w-full justify-center border border-border-strong bg-surface-card hover:bg-surface-hover"
+                      id="btn-open-tender-assistant"
                     >
-                      {analysis.recommendation}
-                    </Badge>
-                  </div>
-                  <div className="text-xs leading-relaxed text-text-body whitespace-pre-line break-words">
-                    <h4 className="text-[0.6875rem] font-bold uppercase tracking-caps text-text-subtle mb-1">
-                      Justificación del Análisis
-                    </h4>
-                    {analysis.justification}
+                      <span className="inline-flex items-center gap-2">
+                        <Icon name="message-square" size={16} />
+                        Consultar asistente virtual
+                      </span>
+                    </Button>
                   </div>
                 </div>
+
+                {/* El desfase se avisa, no se corrige solo: regenerar cuesta una llamada
+                    a la IA, así que la decisión es del usuario. */}
+                {analysis?.is_outdated && !cerrada && (
+                  <div
+                    role="status"
+                    className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning-soft/40 p-4"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <Icon
+                        name="triangle-alert"
+                        size={18}
+                        color="var(--amber-500)"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-text-strong">
+                          Este análisis está desactualizado
+                        </p>
+                        <p className="mt-1 text-xs text-text-body mb-0">
+                          Tu perfil o la licitación cambiaron después de generarlo.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="primary"
+                      onClick={handleRegenerateAnalysis}
+                      disabled={pendingAction !== null}
+                      className="w-full justify-center"
+                      id="btn-refresh-analysis"
+                    >
+                      {pendingAction === "analysis" ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Icon
+                            name="loader-circle"
+                            className="animate-spin"
+                            size={16}
+                          />
+                          Actualizando…
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-2">
+                          <Icon name="rotate-cw" size={16} />
+                          Actualizar análisis
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Análisis de compatibilidad IA si ya existe */}
+                {analysis && (
+                  <div className="rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-5 shadow-xs">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary shadow-sm">
+                            <Icon name="sparkles" size={16} />
+                          </span>
+                          <div className="min-w-0">
+                            <h3 className="font-display text-sm font-bold text-text-strong mb-0.5">
+                              Resumen IA
+                            </h3>
+                            <p className="text-[0.6875rem] text-text-muted mb-0 truncate">
+                              {formatDateTime(analysis.updated_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsReportAnalysisOpen(true)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border-subtle bg-surface-card px-2.5 py-1 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                          title="Reportar análisis de compatibilidad incorrecto"
+                        >
+                          <Icon name="flag" size={13} />
+                          Reportar
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center border-y border-border-subtle py-3">
+                        <MatchMeter
+                          value={analysis.compatibility_score}
+                          size="md"
+                          thresholds={{ high: 70, mid: 40 }}
+                          colors={{
+                            high: "var(--green-500)",
+                            mid: "var(--amber-500)",
+                            low: "var(--red-500)",
+                          }}
+                        />
+                        <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
+                          Score de Compatibilidad
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-text-muted">
+                            Recomendación:
+                          </span>
+                          <Badge
+                            tone={
+                              analysis.recommendation === "Postular"
+                                ? "success"
+                                : analysis.recommendation === "Evaluar con cautela"
+                                  ? "warning"
+                                  : "danger"
+                            }
+                            iconLeft={
+                              <Icon
+                                name={
+                                  analysis.recommendation === "Postular"
+                                    ? "circle-check"
+                                    : analysis.recommendation ===
+                                        "Evaluar con cautela"
+                                      ? "alert-triangle"
+                                      : "alert-circle"
+                                }
+                                size={12}
+                              />
+                            }
+                          >
+                            {analysis.recommendation}
+                          </Badge>
+                        </div>
+                        <div className="text-xs leading-relaxed text-text-body whitespace-pre-line break-words">
+                          <h4 className="text-[0.6875rem] font-bold uppercase tracking-caps text-text-subtle mb-1">
+                            Justificación del Análisis
+                          </h4>
+                          {analysis.justification}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </aside>
       </div>
 
