@@ -23,6 +23,7 @@ import {
 } from "../services/supplierService";
 import { parseApiDate } from "@/features/matches/utils/format";
 import { Avatar } from "@/features/shared/components/Avatar";
+import { Icon } from "@/features/shared/components/Icon";
 import { Input } from "@/features/shared/components/Input";
 import { Textarea } from "@/features/shared/components/Textarea";
 import { ChipSelect } from "@/features/shared/components/ChipSelect";
@@ -255,9 +256,11 @@ function CertificationsField({
 function CompanyLogoUploadSection({
   supplier,
   onLogoUpdated,
+  compact = false,
 }: {
   supplier: Supplier;
   onLogoUpdated?: (supplier: Supplier) => void;
+  compact?: boolean;
 }) {
   const { logoUrl, uploadLogo } = useCompany();
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -282,6 +285,52 @@ function CompanyLogoUploadSection({
       event.target.value = "";
     }
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-col items-start gap-2 shrink-0">
+        <div className="relative">
+          <Avatar
+            name={supplier.trade_name || supplier.legal_name}
+            src={currentLogo ?? undefined}
+            size="lg"
+            shape="square"
+          />
+        </div>
+        <label
+          htmlFor="company-logo-input"
+          title="Formatos permitidos: PNG o JPG (máx. 5MB)"
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border-default bg-surface-inset px-2.5 py-1 text-xs font-semibold text-text-strong transition-colors ${
+            isUploading
+              ? "opacity-60 cursor-not-allowed"
+              : "hover:bg-surface-hover"
+          }`}
+        >
+          <Icon name="upload" size={12} />
+          {isUploading ? "Subiendo..." : "Subir logo"}
+          <input
+            id="company-logo-input"
+            data-testid="company-logo-input"
+            type="file"
+            accept="image/png,image/jpeg"
+            onChange={handleLogoChange}
+            disabled={isUploading}
+            className="sr-only"
+            aria-label="Subir logo corporativo"
+          />
+        </label>
+        {logoError && (
+          <div
+            role="alert"
+            data-testid="company-logo-error"
+            className="max-w-xs rounded-md border border-danger bg-danger-soft px-3 py-2 text-xs font-semibold text-danger-text"
+          >
+            {logoError}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -332,7 +381,7 @@ function CompanyLogoUploadSection({
   );
 }
 
-function CompanyDetails({
+function CompanyHeroCard({
   supplier,
   onEdit,
   onSupplierChange,
@@ -341,29 +390,56 @@ function CompanyDetails({
   onEdit: () => void;
   onSupplierChange: (supplier: Supplier) => void;
 }) {
+  const memberSince =
+    parseApiDate(supplier.created_at)?.toLocaleDateString("es-CL", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }) ?? "—";
+
   return (
-    <div className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-text-strong">
-            {supplier.legal_name}
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            {supplier.trade_name ?? "Sin nombre de fantasía"} · RUT {supplier.rut}
-          </p>
+    <div className="mb-6 rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-5">
+        <div className="flex flex-col md:flex-row md:items-start gap-5 min-w-0 flex-1">
+          <CompanyLogoUploadSection
+            supplier={supplier}
+            onLogoUpdated={(updatedSupplier) => onSupplierChange(updatedSupplier)}
+            compact
+          />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-strong break-words">
+              {supplier.legal_name}
+            </h1>
+            <p className="text-sm text-text-muted mt-1 break-words">
+              {supplier.trade_name ?? "Sin nombre de fantasía"} · RUT {supplier.rut}
+            </p>
+            <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-text-subtle">
+              <Icon name="calendar" size={14} />
+              <span>Miembro desde {memberSince}</span>
+            </div>
+          </div>
         </div>
-        <Button variant="primary" onClick={onEdit} className="font-bold self-start">
+        <Button
+          variant="primary"
+          onClick={onEdit}
+          className="font-bold self-start shrink-0"
+        >
           Editar
         </Button>
       </div>
+    </div>
+  );
+}
 
-      <div className="mb-8 pb-6 border-b border-border-subtle">
-        <CompanyLogoUploadSection
-          supplier={supplier}
-          onLogoUpdated={(updatedSupplier) => onSupplierChange(updatedSupplier)}
-        />
-      </div>
-
+function CompanyDetails({
+  supplier,
+  onSupplierChange,
+}: {
+  supplier: Supplier;
+  onSupplierChange: (supplier: Supplier) => void;
+}) {
+  return (
+    <div className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
       <div className="flex flex-col gap-6">
         <Field label="Descripción">
           {supplier.description || <span className="text-text-subtle">—</span>}
@@ -383,13 +459,6 @@ function CompanyDetails({
         </Field>
         <Field label="Certificaciones">
           <CertificationsField supplier={supplier} onSaved={onSupplierChange} />
-        </Field>
-        <Field label="Miembro desde">
-          {parseApiDate(supplier.created_at)?.toLocaleDateString("es-CL", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          }) ?? "—"}
         </Field>
       </div>
     </div>
@@ -591,9 +660,12 @@ function CompanyEditForm({
   );
 }
 
+export type CompanyTab = "informacion" | "equipo";
+
 export function CompanyView() {
   const { company, setSupplier } = useCompany();
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<CompanyTab>("informacion");
 
   if (company.status === "loading") return null;
 
@@ -620,7 +692,7 @@ export function CompanyView() {
         </p>
         <Link
           href="/empresa/crear"
-          className="mt-8 rounded-full bg-primary px-8 py-3 text-sm font-bold text-white transition-all hover:bg-primary-hover"
+          className="mt-8 rounded-full bg-primary px-8 py-3 text-sm font-bold text-on-primary transition-all hover:bg-primary-hover"
         >
           Crear mi empresa
         </Link>
@@ -629,7 +701,7 @@ export function CompanyView() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className="mx-auto w-full max-w-3xl">
       {isEditing ? (
         <CompanyEditForm
           supplier={company.supplier}
@@ -641,18 +713,66 @@ export function CompanyView() {
         />
       ) : (
         <>
-          <CompanyDetails
+          <CompanyHeroCard
             supplier={company.supplier}
             onEdit={() => setIsEditing(true)}
             onSupplierChange={setSupplier}
           />
-          <CompanyTeamSection
-            supplierId={company.supplier.id}
-            supplierName={
-              company.supplier.trade_name || company.supplier.legal_name
-            }
-          />
-          <ExtensionPairingSection supplierId={company.supplier.id} />
+
+          <div
+            role="tablist"
+            aria-label="Secciones del perfil de empresa"
+            className="mb-6 flex gap-2 border-b border-border-subtle"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "informacion"}
+              onClick={() => setActiveTab("informacion")}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === "informacion"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-text-muted hover:text-text-strong"
+              }`}
+            >
+              <Icon name="building-2" className="size-4" />
+              Información
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "equipo"}
+              onClick={() => setActiveTab("equipo")}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === "equipo"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-text-muted hover:text-text-strong"
+              }`}
+            >
+              <Icon name="users" className="size-4" />
+              Equipo
+            </button>
+          </div>
+
+          {activeTab === "informacion" && (
+            <>
+              <CompanyDetails
+                supplier={company.supplier}
+                onSupplierChange={setSupplier}
+              />
+              <ExtensionPairingSection supplierId={company.supplier.id} />
+            </>
+          )}
+
+          {activeTab === "equipo" && (
+            <CompanyTeamSection
+              supplierId={company.supplier.id}
+              supplierName={
+                company.supplier.trade_name || company.supplier.legal_name
+              }
+            />
+          )}
         </>
       )}
     </div>

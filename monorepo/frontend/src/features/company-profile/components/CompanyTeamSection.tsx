@@ -200,7 +200,7 @@ export function CompanyTeamSection({
   };
 
   return (
-    <section className="mt-8 rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
+    <section className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-text-strong">
