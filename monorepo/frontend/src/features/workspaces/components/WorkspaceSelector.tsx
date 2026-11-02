@@ -117,7 +117,12 @@ export function WorkspaceSelector() {
         >
           <Avatar
             name={currentWorkspaceSummary.trade_name || currentWorkspaceSummary.legal_name}
-            src={activeLogoUrl ?? undefined}
+            src={
+              (activeLogoUrl ??
+                currentWorkspaceSummary.logo_url ??
+                activeWorkspace?.logo_url) ??
+              undefined
+            }
             size="sm"
           />
           <div className="flex-1 min-w-0">
@@ -184,7 +189,12 @@ export function WorkspaceSelector() {
                   >
                     <Avatar
                       name={w.trade_name || w.legal_name}
-                      src={isCurrent ? activeLogoUrl ?? undefined : undefined}
+                      src={
+                        ((isCurrent ? activeLogoUrl : null) ??
+                          w.logo_url ??
+                          (isCurrent ? activeWorkspace?.logo_url : null)) ??
+                        undefined
+                      }
                       size="xs"
                     />
                     <div className="flex-1 min-w-0">
