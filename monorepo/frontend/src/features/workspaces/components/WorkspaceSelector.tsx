@@ -6,7 +6,6 @@ import { Icon } from "@/features/shared/components/Icon";
 import { Avatar } from "@/features/shared/components/Avatar";
 import { useOptionalCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useWorkspace } from "../WorkspaceContext";
-import { InviteMemberModal } from "./InviteMemberModal";
 import type { MemberRole } from "../types";
 
 export function getRoleBadge(role: MemberRole) {
@@ -44,7 +43,6 @@ export function WorkspaceSelector() {
       ? companyCtx.company.supplier.logo_url ?? null
       : null);
   const [isOpen, setIsOpen] = useState(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -211,19 +209,14 @@ export function WorkspaceSelector() {
             </div>
 
             <div className="mt-1 pt-1 border-t border-border-subtle space-y-0.5">
-              {activeWorkspace?.is_admin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsOpen(false);
-                    setIsInviteModalOpen(true);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors cursor-pointer"
-                >
-                  <Icon name="user-plus" size={15} />
-                  <span>Invitar miembro</span>
-                </button>
-              )}
+              <Link
+                href="/workspaces"
+                onClick={() => setIsOpen(false)}
+                className="flex w-full items-center gap-2 rounded-lg p-2 text-xs font-semibold text-text-strong hover:bg-surface-hover hover:text-primary transition-colors"
+              >
+                <Icon name="layers" size={15} />
+                <span>Ver todos los espacios</span>
+              </Link>
 
               <Link
                 href="/empresa/crear"
@@ -237,15 +230,6 @@ export function WorkspaceSelector() {
           </div>
         )}
       </div>
-
-      {activeWorkspace && (
-        <InviteMemberModal
-          isOpen={isInviteModalOpen}
-          onClose={() => setIsInviteModalOpen(false)}
-          supplierId={activeWorkspace.active_supplier_id}
-          supplierName={activeWorkspace.active_supplier_name}
-        />
-      )}
     </>
   );
 }
