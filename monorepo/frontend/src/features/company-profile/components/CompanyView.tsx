@@ -288,26 +288,28 @@ function CompanyLogoUploadSection({
 
   if (compact) {
     return (
-      <div className="flex flex-col items-start gap-2 shrink-0">
-        <div className="relative">
+      <div className="flex flex-col items-center md:items-start gap-2 shrink-0">
+        <label
+          htmlFor="company-logo-input"
+          title="Cambiar logo corporativo (PNG o JPG, máx. 5MB)"
+          className={`relative group size-24 rounded-xl overflow-hidden block ${
+            isUploading ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+          }`}
+        >
           <Avatar
             name={supplier.trade_name || supplier.legal_name}
             src={currentLogo ?? undefined}
-            size="lg"
+            size="xl"
             shape="square"
+            className="w-full h-full"
           />
-        </div>
-        <label
-          htmlFor="company-logo-input"
-          title="Formatos permitidos: PNG o JPG (máx. 5MB)"
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border-default bg-surface-inset px-2.5 py-1 text-xs font-semibold text-text-strong transition-colors ${
-            isUploading
-              ? "opacity-60 cursor-not-allowed"
-              : "hover:bg-surface-hover"
-          }`}
-        >
-          <Icon name="upload" size={12} />
-          {isUploading ? "Subiendo..." : "Subir logo"}
+          <div
+            className={`absolute inset-0 flex items-center justify-center bg-black/50 text-white transition-opacity duration-200 ${
+              isUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <Icon name="camera" size={24} color="#FFFFFF" />
+          </div>
           <input
             id="company-logo-input"
             data-testid="company-logo-input"
@@ -438,6 +440,9 @@ function CompanyDetails({
   supplier: Supplier;
   onSupplierChange: (supplier: Supplier) => void;
 }) {
+  const [showKeywords, setShowKeywords] = useState(false);
+  const keywordsCount = supplier.keywords?.length ?? 0;
+
   return (
     <div className="rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
       <div className="flex flex-col gap-6">
@@ -454,12 +459,31 @@ function CompanyDetails({
         <Field label="Rubros">
           <ChipList items={supplier.sectors} />
         </Field>
-        <Field label="Palabras clave">
-          <ChipList items={supplier.keywords} />
-        </Field>
         <Field label="Certificaciones">
           <CertificationsField supplier={supplier} onSaved={onSupplierChange} />
         </Field>
+        <div className="border-t border-border-subtle pt-4">
+          <button
+            type="button"
+            onClick={() => setShowKeywords((prev) => !prev)}
+            aria-expanded={showKeywords}
+            className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md py-1 text-left transition-colors hover:text-text-strong"
+          >
+            <span className="text-xs font-bold uppercase tracking-caps text-text-subtle">
+              Palabras clave ({keywordsCount})
+            </span>
+            <Icon
+              name={showKeywords ? "chevron-up" : "chevron-down"}
+              size={16}
+              className="text-text-subtle"
+            />
+          </button>
+          {showKeywords && (
+            <div className="mt-3">
+              <ChipList items={supplier.keywords} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
