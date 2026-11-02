@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/features/shared/components/Icon";
 import { createInvitation } from "../services/workspaceService";
 import type { MemberRole } from "../types";
@@ -20,13 +21,18 @@ export function InviteMemberModal({
   supplierName,
   onSuccess,
 }: InviteMemberModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MemberRole>("member");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +67,7 @@ export function InviteMemberModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs animate-in fade-in duration-200"
       role="dialog"
@@ -178,6 +184,7 @@ export function InviteMemberModal({
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -103,7 +103,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 flex-none bg-white border-r border-border-subtle flex flex-col p-4 gap-1 sticky top-0 h-screen shadow-xs">
+    <aside className="w-64 flex-none bg-white border-r border-border-subtle flex flex-col p-4 gap-1 sticky top-0 h-screen shadow-xs z-30">
       <div className="px-2 py-3 mb-1">
         <Link href="/" className="inline-block">
           <Image
