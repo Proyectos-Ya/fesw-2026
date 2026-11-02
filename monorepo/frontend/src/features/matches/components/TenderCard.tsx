@@ -125,7 +125,7 @@ export function TenderCard({
     >
       {/* Medidor de compatibilidad: solo visible si hay match con score */}
       {score !== null && (
-        <div className="flex flex-none flex-col items-center justify-center self-stretch h-full">
+        <div className="flex flex-none flex-col items-center justify-center self-center">
           <MatchMeter
             value={score}
             size="lg"
