@@ -210,14 +210,14 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         <div
           role="tablist"
           aria-label="Pasos de la postulación"
-          className="mb-6 flex flex-wrap border-b border-border-subtle gap-8"
+          className="mb-6 flex overflow-x-auto whitespace-nowrap scrollbar-hide border-b border-border-subtle gap-8"
         >
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === "analisis"}
             onClick={() => setActiveTab("analisis")}
-            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
               activeTab === "analisis"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
@@ -230,7 +230,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             role="tab"
             aria-selected={activeTab === "borrador"}
             onClick={() => setActiveTab("borrador")}
-            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
               activeTab === "borrador"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
@@ -243,7 +243,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             role="tab"
             aria-selected={activeTab === "cotizacion"}
             onClick={() => setActiveTab("cotizacion")}
-            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
               activeTab === "cotizacion"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
