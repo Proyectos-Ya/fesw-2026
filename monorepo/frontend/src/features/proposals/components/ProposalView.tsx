@@ -10,7 +10,6 @@ import { Button } from "@/features/shared/components/Button";
 import { Dialog } from "@/features/shared/components/Dialog";
 import { Icon } from "@/features/shared/components/Icon";
 import { Toast } from "@/features/shared/components/Toast";
-import { TenderAttachmentsPanel } from "@/features/tender-attachments/components/TenderAttachmentsPanel";
 import { useTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
 import { useProposal } from "../hooks/useProposal";
@@ -61,6 +60,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
   const [confirmarAnalisis, setConfirmarAnalisis] = useState(false);
+  const [activeTab, setActiveTab] = useState<"analisis" | "borrador" | "cotizacion">("analisis");
 
   useEffect(() => {
     let cancelado = false;
@@ -206,96 +206,135 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         </div>
       )}
 
-      {(state.kind === "not-started" || view) && (
-        <Seccion id="analisis" titulo="Análisis de las bases">
-          <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card p-4">
-                <p className="text-sm text-text-body">
-                  {view
-                    ? "Si subiste bases nuevas o cambiaste el perfil de tu empresa, vuelve a analizar."
-                    : "Cruzamos las bases con el perfil de tu empresa. Si falta algún dato, te lo preguntamos."}
-                </p>
-                {puedeAvanzar &&
-                  (view ? (
-                    <Button
-                      variant="ghost"
-                      className="border border-border-strong"
-                      disabled={busy}
-                      onClick={volverAAnalizar}
-                    >
-                      <Icon name="refresh-cw" size={16} />
-                      Volver a analizar
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => void proposal.start()}
-                      disabled={busy}
-                      isLoading={busy}
-                    >
-                      <Icon name="sparkles" size={16} />
-                      Iniciar análisis
-                    </Button>
-                  ))}
-                {puedeAvanzar && !view && sinBases && (
-                  // Informativo y sin diálogo: iniciar sin bases es válido.
-                  <p className="flex basis-full items-start gap-2 text-xs text-text-link">
-                    <Icon name="info" size={14} className="mt-px shrink-0" />
-                    {anexosPendientes.length > 0
-                      ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
-                      : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
-                  </p>
-                )}
-                {!canWrite && !view && (
-                  <p className="text-sm text-text-muted">
-                    Solo quienes pueden generar postulaciones en esta empresa pueden
-                    iniciarla.
-                  </p>
-                )}
-              </div>
+      {(state.kind === "not-started" || view || tender) && (
+        <div
+          role="tablist"
+          aria-label="Pasos de la postulación"
+          className="mb-6 flex flex-wrap border-b border-border-subtle gap-8"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "analisis"}
+            onClick={() => setActiveTab("analisis")}
+            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+              activeTab === "analisis"
+                ? "border-primary text-text-strong font-medium"
+                : "border-transparent text-text-muted hover:text-text-strong"
+            }`}
+          >
+            1. Factibilidad y Exigencias
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "borrador"}
+            onClick={() => setActiveTab("borrador")}
+            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+              activeTab === "borrador"
+                ? "border-primary text-text-strong font-medium"
+                : "border-transparent text-text-muted hover:text-text-strong"
+            }`}
+          >
+            2. Borrador de Oferta
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "cotizacion"}
+            onClick={() => setActiveTab("cotizacion")}
+            className={`border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+              activeTab === "cotizacion"
+                ? "border-primary text-text-strong font-medium"
+                : "border-transparent text-text-muted hover:text-text-strong"
+            }`}
+          >
+            3. Cotización Financiera
+          </button>
+        </div>
+      )}
 
-              {view &&
-                (view.status === "READY" ? (
-                  <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
-                    <summary className="cursor-pointer text-sm font-semibold text-text-strong">
-                      Ver exigencias evaluadas ({view.requirements.length})
-                    </summary>
-                    <div className="mt-4">
-                      <FeasibilityStep
-                        view={view}
-                        canWrite={canWrite}
-                        busy={busy}
-                        answering={answering}
-                        onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
-                        onGenerate={() => void proposal.generate()}
-                        {...evidencia}
-                      />
-                    </div>
-                  </details>
+      {activeTab === "analisis" && (state.kind === "not-started" || view) && (
+        <Seccion id="analisis" titulo="Análisis de las bases">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card p-4">
+              <p className="text-sm text-text-body">
+                {view
+                  ? "Si subiste bases nuevas o cambiaste el perfil de tu empresa, vuelve a analizar."
+                  : "Cruzamos las bases con el perfil de tu empresa. Si falta algún dato, te lo preguntamos."}
+              </p>
+              {puedeAvanzar &&
+                (view ? (
+                  <Button
+                    variant="ghost"
+                    className="border border-border-strong"
+                    disabled={busy}
+                    onClick={volverAAnalizar}
+                  >
+                    <Icon name="refresh-cw" size={16} />
+                    Volver a analizar
+                  </Button>
                 ) : (
-                  <FeasibilityStep
-                    view={view}
-                    canWrite={canWrite}
-                    busy={busy}
-                    answering={answering}
-                    onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
-                    onGenerate={() => void proposal.generate()}
-                    {...evidencia}
-                  />
+                  <Button
+                    onClick={() => void proposal.start()}
+                    disabled={busy}
+                    isLoading={busy}
+                  >
+                    <Icon name="sparkles" size={16} />
+                    Iniciar análisis
+                  </Button>
                 ))}
+              {puedeAvanzar && !view && sinBases && (
+                // Informativo y sin diálogo: iniciar sin bases es válido.
+                <p className="flex basis-full items-start gap-2 text-xs text-text-link">
+                  <Icon name="info" size={14} className="mt-px shrink-0" />
+                  {anexosPendientes.length > 0
+                    ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
+                    : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
+                </p>
+              )}
+              {!canWrite && !view && (
+                <p className="text-sm text-text-muted">
+                  Solo quienes pueden generar postulaciones en esta empresa pueden
+                  iniciarla.
+                </p>
+              )}
             </div>
-            {tender && (
-              <TenderAttachmentsPanel
-                tenderId={tenderId}
-                tenderCode={tender.data.code}
-                onUploadSuccess={() => void anexos.refresh()}
-              />
-            )}
+
+            {view &&
+              (view.status === "READY" ? (
+                <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-text-strong">
+                    Ver exigencias evaluadas ({view.requirements.length})
+                  </summary>
+                  <div className="mt-4">
+                    <FeasibilityStep
+                      view={view}
+                      canWrite={canWrite}
+                      busy={busy}
+                      answering={answering}
+                      onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
+                      onGenerate={() => void proposal.generate()}
+                      {...evidencia}
+                    />
+                  </div>
+                </details>
+              ) : (
+                <FeasibilityStep
+                  view={view}
+                  canWrite={canWrite}
+                  busy={busy}
+                  answering={answering}
+                  onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
+                  onGenerate={() => void proposal.generate()}
+                  {...evidencia}
+                />
+              ))}
           </div>
         </Seccion>
       )}
 
-      {view && (
+      {activeTab === "borrador" && view && (
         <Seccion id="borrador" titulo="Borrador de la oferta">
           {avisoBases && (
             <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link">
@@ -322,7 +361,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         </Seccion>
       )}
 
-      {tender && (
+      {activeTab === "cotizacion" && tender && (
         <Seccion id="cotizacion" titulo="Cotización">
           <QuotationEditor
             tenderId={tenderId}
