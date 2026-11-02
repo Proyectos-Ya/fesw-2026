@@ -670,7 +670,7 @@ export function TenderDetailView({
               }`}
             >
               <Icon name="paperclip" className="size-4" />
-              Anexos y Resumen IA
+              Anexos
             </button>
 
             <button
