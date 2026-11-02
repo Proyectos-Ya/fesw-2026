@@ -185,7 +185,7 @@ export function TenderAttachmentsPanel({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative overflow-hidden mb-6 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs ${
+      className={`relative overflow-hidden rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs ${
         dragging ? "ring-2 ring-primary/30" : ""
       }`}
     >
@@ -236,7 +236,7 @@ export function TenderAttachmentsPanel({
           href={compraAgilFichaUrl(tenderCode)}
           target="_blank"
           rel="noreferrer noopener"
-          className="inline-flex items-center gap-2 self-start rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-teal-100 transition-colors sm:self-center"
+          className="inline-flex items-center gap-2 self-start rounded-md bg-primary-soft px-4 py-2 text-sm font-bold text-primary hover:bg-surface-hover transition-colors sm:self-center"
         >
           Ver documentos en Mercado Público
           <Icon name="external-link" size={14} />
