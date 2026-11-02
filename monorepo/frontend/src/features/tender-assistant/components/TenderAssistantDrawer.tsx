@@ -3,6 +3,7 @@ import { Sparkles, X, Plus, MessageSquarePlus, AlertTriangle, RefreshCw } from "
 
 import { useTenderChat } from "../hooks/useTenderChat";
 import { useTenderDocuments } from "../hooks/useTenderDocuments";
+import { getCachedTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { DocumentAttachmentManager } from "./DocumentAttachmentManager";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatInput } from "./ChatInput";
@@ -39,6 +40,14 @@ export function TenderAssistantDrawer({
     error: documentError,
     removeDocument,
   } = useTenderDocuments(isOpen ? tenderId : "", onDocumentsChanged);
+
+  const cachedAttachments = getCachedTenderAttachments(tenderId);
+  const hasOfficialAttachments = Boolean(
+    cachedAttachments?.official.some(
+      (att) => att.status === "stored" || Boolean(att.file)
+    )
+  );
+  const hasAttachments = documents.length > 0 || hasOfficialAttachments;
 
   return (
     <>
@@ -105,6 +114,7 @@ export function TenderAssistantDrawer({
         <div className="p-3 border-b border-border-subtle bg-surface-card">
           <DocumentAttachmentManager
             documents={documents}
+            hasAttachments={hasAttachments}
             onDelete={removeDocument}
             externalError={documentError}
           />
