@@ -225,10 +225,10 @@ export function Sidebar() {
           {navSections.map((section, sectionIndex) => (
             <div
               key={section.title ?? `section-${sectionIndex}`}
-              className="flex flex-col gap-1"
+              className="flex flex-col gap-0.5"
             >
               {section.title && (
-                <div className="mt-4 mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                <div className="mt-2 mb-0 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
                   {section.title}
                 </div>
               )}
