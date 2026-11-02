@@ -55,20 +55,20 @@ export function ProposalEntryCard({ tenderId, isClosed }: ProposalEntryCardProps
   }
 
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-card p-6 shadow-xs sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-md bg-primary text-white shadow-sm">
+    <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-card p-5 shadow-xs">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary shadow-sm">
           <Icon name="file-text" size={20} />
         </span>
-        <div>
-          <h3 className="mb-1 font-display text-lg font-bold text-text-strong">{titulo}</h3>
-          <p className="mb-0 text-sm text-text-muted">{detalle}</p>
+        <div className="min-w-0">
+          <h3 className="mb-1 font-display text-base font-bold text-text-strong">{titulo}</h3>
+          <p className="mb-0 text-xs leading-relaxed text-text-muted">{detalle}</p>
         </div>
       </div>
       {accion && (
         <Link
           href={href}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-on-primary shadow-teal hover:bg-primary-hover"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary shadow-teal transition-colors hover:bg-primary-hover"
         >
           {accion}
         </Link>

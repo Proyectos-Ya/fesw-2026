@@ -336,7 +336,7 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     expect(onCloseMock).toHaveBeenCalledOnce();
   });
 
-  it("no se renderiza en el DOM cuando isOpen es false", () => {
+  it("se oculta con translate-x-full cuando isOpen es false", () => {
     render(
       <TenderAssistantDrawer
         tenderId="tender-1"
@@ -346,18 +346,14 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
       />
     );
 
-    expect(screen.queryByText(/Asistente Virtual IA/i)).not.toBeInTheDocument();
+    const drawer = screen.getByLabelText("Asistente virtual de licitación");
+    expect(drawer).toHaveAttribute("aria-hidden", "true");
+    expect(drawer).toHaveClass("translate-x-full");
   });
 
-  it("al hacer clic en 'Ver panel' cierra el drawer y hace scroll al panel de anexos", async () => {
+  it("llama a onClose al hacer clic en el backdrop", async () => {
     const user = userEvent.setup();
     const onCloseMock = vi.fn();
-    const scrollMock = vi.fn();
-
-    const panelEl = document.createElement("div");
-    panelEl.id = "tender-attachments-panel";
-    panelEl.scrollIntoView = scrollMock;
-    document.body.appendChild(panelEl);
 
     vi.mocked(useTenderChatModule.useTenderChat).mockReturnValue({
       sessionId: "session-1",
@@ -394,12 +390,9 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
       />
     );
 
-    const verPanelBtn = screen.getByRole("button", { name: "Ver panel" });
-    await user.click(verPanelBtn);
+    const backdrop = screen.getByTestId("assistant-drawer-backdrop");
+    await user.click(backdrop);
 
     expect(onCloseMock).toHaveBeenCalledOnce();
-    expect(scrollMock).toHaveBeenCalledWith({ behavior: "smooth" });
-
-    document.body.removeChild(panelEl);
   });
 });

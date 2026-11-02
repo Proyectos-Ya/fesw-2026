@@ -18,6 +18,10 @@ export function clearTenderAttachmentsCache() {
   attachmentsCache.clear();
 }
 
+export function getCachedTenderAttachments(tenderId: string): TenderAttachments | undefined {
+  return attachmentsCache.get(tenderId);
+}
+
 function messageFrom(error: unknown): string {
   return error instanceof ApiError || error instanceof TimeoutError
     ? error.message

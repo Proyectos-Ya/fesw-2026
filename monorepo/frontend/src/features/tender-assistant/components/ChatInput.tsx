@@ -75,7 +75,7 @@ export function ChatInput({ onSend, isAsking = false, disabled = false }: ChatIn
             type="submit"
             disabled={isSubmitDisabled}
             aria-label={isAsking ? "Enviando..." : "Enviar pregunta"}
-            className="flex min-h-8 py-1.5 items-center justify-center rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-border-default"
+            className="flex min-h-8 py-1.5 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary transition-all hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-border-default disabled:text-text-muted"
           >
             {isAsking ? (
               <>

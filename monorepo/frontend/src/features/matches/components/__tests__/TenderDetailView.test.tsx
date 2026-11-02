@@ -543,14 +543,13 @@ describe("TenderDetailView: anexos oficiales", () => {
     vi.mocked(tenderService.getTenderDetail).mockResolvedValue(detalleDe(mockMatch));
   });
 
-  it("muestra el panel de anexos en la sección Documentos, antes de la tarjeta de análisis IA", async () => {
+  it("muestra el panel de anexos y el digest en la pestaña Anexos y Resumen IA, antes de la tarjeta de análisis IA", async () => {
     render(<TenderDetailView tenderId="tender-50" />);
 
     const panel = await screen.findByTestId("tender-attachments-panel");
     expect(panel).toHaveTextContent("tender-50|555-66-COT26");
-    // Desde la HU-30 los anexos viven en su propia sección, bajo la grilla de métricas.
-    const documentos = screen.getByText("Documentos").parentElement as HTMLElement;
-    expect(documentos).toContainElement(panel);
+    expect(screen.queryByText("Documentos")).not.toBeInTheDocument();
+    expect(screen.getByTestId("digest-card")).toBeInTheDocument();
     expect(
       panel.compareDocumentPosition(
         screen.getByRole("heading", { name: "Análisis de compatibilidad IA" }),
@@ -758,7 +757,7 @@ describe("TenderDetailView: grilla de métricas", () => {
       unit_of_measure: "unidad",
     } as unknown as Tender["items"][number];
 
-    it("entrega y requisitos agrupa los cierres por llamado, los ítems y el resumen de anexos", async () => {
+    it("entrega y requisitos agrupa los cierres por llamado y los ítems solicitados", async () => {
       conTender({
         call_number: 1,
         first_call_closing_at: "2026-10-06T16:30:00Z",
@@ -771,7 +770,8 @@ describe("TenderDetailView: grilla de métricas", () => {
       const entrega = (await screen.findByText("Entrega y requisitos")).parentElement as HTMLElement;
       expect(within(entrega).getByRole("region", { name: "Cierre por llamado" })).toBeInTheDocument();
       expect(within(entrega).getByText("Firewall perimetral")).toBeInTheDocument();
-      expect(within(entrega).getByTestId("digest-card")).toBeInTheDocument();
+      expect(within(entrega).queryByTestId("digest-card")).not.toBeInTheDocument();
+      expect(screen.getByTestId("digest-card")).toBeInTheDocument();
       expect(within(entrega).queryByText("Ciberseguridad integral")).not.toBeInTheDocument();
     });
 
@@ -834,25 +834,27 @@ describe("TenderDetailView: grilla de métricas", () => {
       return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     }
 
-    it("las secciones van como entrega y requisitos, documentos y descripción", async () => {
+    it("en la pestaña Bases las secciones van como entrega y requisitos, descripción y enlaces relacionados", async () => {
       conTender({});
 
       render(<TenderDetailView tenderId="tender-50" />);
 
       const entrega = await screen.findByText("Entrega y requisitos");
-      const documentos = screen.getByText("Documentos");
       const descripcion = screen.getByText("Descripción");
-      expect(antes(entrega, documentos)).toBe(true);
-      expect(antes(documentos, descripcion)).toBe(true);
+      const enlaces = screen.getByText("Enlaces relacionados");
+      expect(antes(entrega, descripcion)).toBe(true);
+      expect(antes(descripcion, enlaces)).toBe(true);
     });
 
-    it("los anexos están dentro de la sección de documentos", async () => {
+    it("en la pestaña Anexos y Resumen IA los anexos se renderizan directamente seguidos del digest", async () => {
       conTender({});
 
       render(<TenderDetailView tenderId="tender-50" />);
 
-      const documentos = (await screen.findByText("Documentos")).parentElement as HTMLElement;
-      expect(within(documentos).getByTestId("tender-attachments-panel")).toBeInTheDocument();
+      const panel = await screen.findByTestId("tender-attachments-panel");
+      const digest = screen.getByTestId("digest-card");
+      expect(screen.queryByText("Documentos")).not.toBeInTheDocument();
+      expect(antes(panel, digest)).toBe(true);
     });
 
     it("la grilla de métricas queda justo debajo del encabezado", async () => {
