@@ -54,21 +54,47 @@ function NavItem({ icon, label, href, active, badge, onNavigate }: NavItemProps)
   );
 }
 
-const NAV_ITEMS: ReadonlyArray<{ icon: string; label: string; href: string }> = [
-  { icon: "sparkles", label: "Inicio", href: "/" },
-  { icon: "search", label: "Buscar", href: "/buscar" },
-  { icon: "target", label: "Matches", href: "/matches" },
-  { icon: "bookmark", label: "Guardados", href: "/guardados" },
-  { icon: "kanban", label: "Tablero", href: "/tablero" },
-  { icon: "bell", label: "Alertas", href: "/alertas" },
+interface NavEntry {
+  icon: string;
+  label: string;
+  href: string;
+}
+
+interface NavSection {
+  title?: string;
+  items: ReadonlyArray<NavEntry>;
+}
+
+const BASE_NAV_SECTIONS: ReadonlyArray<NavSection> = [
+  {
+    items: [{ icon: "sparkles", label: "Inicio", href: "/" }],
+  },
+  {
+    title: "Descubrimiento",
+    items: [
+      { icon: "search", label: "Buscar", href: "/buscar" },
+      { icon: "target", label: "Matches", href: "/matches" },
+    ],
+  },
+  {
+    title: "Seguimiento",
+    items: [
+      { icon: "bookmark", label: "Guardados", href: "/guardados" },
+      { icon: "kanban", label: "Tablero", href: "/tablero" },
+    ],
+  },
+  {
+    title: "Administración",
+    items: [{ icon: "bell", label: "Alertas", href: "/alertas" }],
+  },
 ];
 
 // Solo visible cuando el usuario ya tiene una empresa asignada
-const COMPANY_NAV_ITEM = {
+const COMPANY_NAV_ITEM: NavEntry = {
   icon: "building-2",
   label: "Mi empresa",
   href: "/empresa",
-} as const;
+};
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -119,10 +145,16 @@ export function Sidebar() {
 
   const totalNotifications = unreadCount + (invitations?.length ?? 0);
 
-  const navItems =
-    company.status === "with-company" || activeWorkspace !== null
-      ? [...NAV_ITEMS, COMPANY_NAV_ITEM]
-      : NAV_ITEMS;
+  const hasCompany =
+    company.status === "with-company" || activeWorkspace !== null;
+
+  const navSections: ReadonlyArray<NavSection> = hasCompany
+    ? BASE_NAV_SECTIONS.map((section) =>
+        section.title === "Administración"
+          ? { ...section, items: [...section.items, COMPANY_NAV_ITEM] }
+          : section,
+      )
+    : BASE_NAV_SECTIONS;
 
   const handleLogout = async () => {
     setMobileOpen(false);
@@ -190,17 +222,29 @@ export function Sidebar() {
           className="flex-1 flex flex-col gap-1 overflow-y-auto"
           aria-label="Navegación principal"
         >
-          {navItems.map((item) => (
-            <NavItem
-              key={item.href}
-              icon={item.icon}
-              label={item.label}
-              href={item.href}
-              active={isActive(pathname, item.href)}
-              // Alertas lleva contador de avisos no leídos + invitaciones pendientes
-              badge={item.href === "/alertas" ? totalNotifications : undefined}
-              onNavigate={() => setMobileOpen(false)}
-            />
+          {navSections.map((section, sectionIndex) => (
+            <div
+              key={section.title ?? `section-${sectionIndex}`}
+              className="flex flex-col gap-1"
+            >
+              {section.title && (
+                <div className="mt-4 mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  {section.title}
+                </div>
+              )}
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={isActive(pathname, item.href)}
+                  // Alertas lleva contador de avisos no leídos + invitaciones pendientes
+                  badge={item.href === "/alertas" ? totalNotifications : undefined}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </div>
           ))}
         </nav>
 
