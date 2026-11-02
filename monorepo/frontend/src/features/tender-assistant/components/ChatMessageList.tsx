@@ -46,7 +46,7 @@ export function ChatMessageList({
       return <FileSpreadsheet className="h-3 w-3 text-emerald-600" />;
     }
     if (ext === "png" || ext === "jpg" || ext === "jpeg") {
-      return <FileImage className="h-3 w-3 text-blue-500" />;
+      return <FileImage className="h-3 w-3 text-primary" />;
     }
     return <FileText className="h-3 w-3 text-red-500" />;
   };
@@ -55,7 +55,7 @@ export function ChatMessageList({
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
       {messages.length === 0 && !isAsking && (
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-info-soft text-info-text">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
             <Bot className="h-6 w-6" />
           </div>
           <h4 className="text-sm font-semibold text-text-strong">
@@ -80,8 +80,8 @@ export function ChatMessageList({
             <div
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${
                 isUser
-                  ? "bg-blue-600 text-white"
-                  : "bg-surface-inset text-text-body"
+                  ? "bg-primary text-on-primary"
+                  : "bg-primary-soft text-primary"
               }`}
             >
               {isUser ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -90,7 +90,7 @@ export function ChatMessageList({
             <div
               className={`flex max-w-[85%] flex-col gap-2 rounded-2xl px-4 py-2.5 text-sm ${
                 isUser
-                  ? "rounded-tr-none bg-blue-600 text-white"
+                  ? "rounded-tr-none bg-primary text-on-primary"
                   : "rounded-tl-none border border-border-subtle bg-surface-card text-text-strong shadow-xs"
               }`}
             >

@@ -24,36 +24,18 @@ const mockDocs: TenderChatDocument[] = [
 ];
 
 describe("DocumentAttachmentManager (Decisión 5 / Plan 233)", () => {
-  it("muestra el banner informativo de bases oficiales y no incluye input de archivo", () => {
+  it("muestra el banner informativo de bases oficiales sin botón 'Ver panel' ni input de archivo", () => {
     render(
       <DocumentAttachmentManager
         documents={[]}
         onDelete={vi.fn()}
-        onNavigateToPanel={vi.fn()}
       />
     );
 
     expect(screen.getByText("Bases y anexos oficiales sincronizados")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ver panel" })).toBeNull();
     expect(screen.queryByTestId("file-upload-input")).toBeNull();
     expect(screen.queryByRole("button", { name: /adjuntar/i })).toBeNull();
-  });
-
-  it("invoca onNavigateToPanel al hacer clic en 'Ver panel'", async () => {
-    const onNavigateToPanel = vi.fn();
-    const user = userEvent.setup();
-
-    render(
-      <DocumentAttachmentManager
-        documents={[]}
-        onDelete={vi.fn()}
-        onNavigateToPanel={onNavigateToPanel}
-      />
-    );
-
-    const verPanelBtn = screen.getByRole("button", { name: "Ver panel" });
-    await user.click(verPanelBtn);
-
-    expect(onNavigateToPanel).toHaveBeenCalledOnce();
   });
 
   it("renderiza documentos legacy del chat con badge 'Chat antiguo'", () => {
