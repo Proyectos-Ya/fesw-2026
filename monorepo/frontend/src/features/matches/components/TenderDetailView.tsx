@@ -634,10 +634,10 @@ export function TenderDetailView({
         />
       </div>
 
-      {/* Layout Principal: Grid Desktop (Contenido en Pestañas + Panel Sticky) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+      {/* Layout Principal: Flex Responsivo (Contenido en Pestañas + Panel Sticky con Top Stacking en móvil) */}
+      <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
         {/* Columna Izquierda: Sistema de Pestañas */}
-        <div className="min-w-0 flex flex-col">
+        <div className="order-2 lg:order-1 flex-1 w-full min-w-0 flex flex-col">
           <div
             role="tablist"
             aria-label="Secciones del detalle de la licitación"
@@ -815,8 +815,8 @@ export function TenderDetailView({
           </div>
         </div>
 
-        {/* Columna Derecha: Panel de Acciones (Sticky) */}
-        <aside className="lg:sticky lg:top-6 flex flex-col gap-5">
+        {/* Columna Derecha: Panel de Acciones (Sticky en Desktop, Top Stacking en Móvil) */}
+        <aside className="order-1 lg:order-2 w-full lg:w-[320px] shrink-0 lg:sticky lg:top-6 flex flex-col gap-5">
           <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
           {/* AI Compatibility Analysis CTA Card */}
