@@ -55,13 +55,30 @@ describe("NotificationSettings", () => {
 
   it("permite apagar las alertas", async () => {
     render(<NotificationSettings />);
-    const interruptor = await screen.findByRole("switch");
+    const interruptor = await screen.findByRole("switch", {
+      name: /Alertas de nuevas licitaciones/i,
+    });
 
     await userEvent.click(interruptor);
 
     await waitFor(() =>
       expect(updateNotificationPreferences).toHaveBeenCalledWith({
         enabled: false,
+      }),
+    );
+  });
+
+  it("permite activar las notificaciones del tablero kanban", async () => {
+    render(<NotificationSettings />);
+    const interruptor = await screen.findByRole("switch", {
+      name: /Notificaciones del tablero kanban/i,
+    });
+
+    await userEvent.click(interruptor);
+
+    await waitFor(() =>
+      expect(updateNotificationPreferences).toHaveBeenCalledWith({
+        kanban_notifications_enabled: true,
       }),
     );
   });

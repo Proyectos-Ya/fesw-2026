@@ -175,6 +175,18 @@ export function NotificationSettings() {
       </div>
 
       <div className="rounded-lg border border-border-subtle bg-surface-card p-6">
+        <Switch
+          checked={preferences.kanban_notifications_enabled}
+          disabled={saving}
+          onChange={(kanban_notifications_enabled) =>
+            void guardar({ kanban_notifications_enabled })
+          }
+          label="Notificaciones del tablero kanban"
+          description="Recibe alertas cuando otros miembros del equipo muevan o actualicen licitaciones en el tablero compartido."
+        />
+      </div>
+
+      <div className="rounded-lg border border-border-subtle bg-surface-card p-6">
         <label
           htmlFor="umbral"
           className="text-sm font-semibold text-text-strong"
