@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "./Icon";
-import { Avatar } from "./Avatar";
 import { AccessibilityControls } from "./AccessibilityControls";
 import { useCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useAuth } from "@/features/auth/AuthContext";
@@ -103,15 +102,10 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
   const { user, logout } = useAuth();
-  const { company, logoUrl } = useCompany();
+  const { company } = useCompany();
   const { activeWorkspace, invitations } = useWorkspace();
   const unreadCount = useUnreadCount();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const activeLogoUrl =
-    logoUrl ??
-    (company.status === "with-company"
-      ? company.supplier.logo_url ?? null
-      : null);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -124,15 +118,6 @@ export function Sidebar() {
   }, []);
 
   const totalNotifications = unreadCount + (invitations?.length ?? 0);
-
-  const currentUser = {
-    name: user?.full_name ?? "Usuario",
-    company:
-      activeWorkspace?.active_supplier_name ||
-      (company.status === "with-company"
-        ? company.supplier.legal_name
-        : "Sin empresa"),
-  };
 
   const navItems =
     company.status === "with-company" || activeWorkspace !== null
@@ -224,17 +209,18 @@ export function Sidebar() {
         </div>
 
         <div className="pt-3 border-t border-border-subtle flex items-center gap-3 group">
-          <Avatar
-            name={currentUser.name}
-            src={activeLogoUrl ?? undefined}
-            size="md"
-          />
+          <div
+            className="flex size-10 flex-none items-center justify-center rounded-full bg-surface-inset text-text-muted"
+            aria-hidden="true"
+          >
+            <Icon name="user" size={20} />
+          </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold text-text-strong truncate">
-              {currentUser.name}
+              {user?.full_name ?? "Usuario"}
             </div>
             <div className="text-xs text-text-subtle truncate">
-              {currentUser.company}
+              {user?.email ?? ""}
             </div>
           </div>
           <Link
