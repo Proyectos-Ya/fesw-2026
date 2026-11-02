@@ -123,92 +123,20 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSa
       <p className="text-sm text-text-muted">Las cantidades disponibles se completan desde la licitación. Revísalas e indica los precios unitarios en pesos chilenos (CLP). Cantidades y precios deben ser enteros. Puedes editar los materiales o agregar los que falten. Total sin impuestos ni recargos.</p>
       {!materialsFromTender(initialTenderItems).length && <p className="text-sm text-text-muted">La licitación no tiene materiales detallados. Agrégalos manualmente según sus especificaciones.</p>}
       {initialTenderItems.some(item => item.quantity != null && !Number.isInteger(item.quantity)) && <p className="text-sm text-text-muted">La licitación contiene cantidades fraccionarias. Completa esas cantidades con enteros; no se redondean automáticamente.</p>}
-      <datalist id="unidades-medida">
-        {UNIT_OPTIONS.map((unit) => (
-          <option key={unit} value={unit} />
-        ))}
-      </datalist>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {items.map((item, index) => (
-          <div key={item.key} className="border border-border-subtle rounded-lg p-5 bg-surface-card flex flex-col gap-4">
-            <h3 className="font-semibold text-text-strong mb-1">Material {index + 1}</h3>
-
-            {/* Fila 1: Descripción (100% ancho) */}
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-              Descripción (obligatorio)
-              <input
-                aria-label={`Descripción ${index + 1}`}
-                className={inputClass}
-                value={item.description}
-                maxLength={500}
-                required
-                disabled={busy}
-                onChange={event => update(item.key, "description", event.target.value)}
-              />
-            </label>
-
-            {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                Unidad de medida (obligatorio)
-                <input
-                  type="text"
-                  list="unidades-medida"
-                  aria-label={`Unidad ${index + 1}`}
-                  className={`${inputClass} pr-8`}
-                  value={item.unit}
-                  maxLength={40}
-                  placeholder="Ej. unidad, m², saco"
-                  required
-                  disabled={busy}
-                  onChange={event => update(item.key, "unit", event.target.value)}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                Cantidad (obligatorio)
-                <IntegerInput
-                  aria-label={`Cantidad ${index + 1}`}
-                  className={inputClass}
-                  value={item.quantity}
-                  min="1"
-                  step="1"
-                  required
-                  disabled={busy}
-                  onChange={value => update(item.key, "quantity", value)}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                Precio unitario ({currency}) (obligatorio)
-                <IntegerInput
-                  aria-label={`Precio unitario ${index + 1}`}
-                  className={inputClass}
-                  value={item.unit_price}
-                  min="0"
-                  step="100"
-                  required
-                  disabled={busy}
-                  onChange={value => update(item.key, "unit_price", value)}
-                />
-              </label>
-            </div>
-
-            <div className="flex justify-between items-center mt-auto pt-4 border-t border-border-subtle">
-              <output aria-label={`Subtotal ${index + 1}`} className="text-sm font-semibold text-text-strong">
-                Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}
-              </output>
-              <button
-                type="button"
-                disabled={busy}
-                className="text-sm font-medium text-danger underline hover:opacity-80 disabled:opacity-50"
-                onClick={() => { changed(); setItems(items.filter(value => value.key !== item.key)); }}
-                aria-label={`Eliminar material ${index + 1}`}
-              >
-                Eliminar material
-              </button>
-            </div>
-          </div>
+          <MaterialCardItem
+            key={item.key}
+            item={item}
+            index={index}
+            busy={busy}
+            inputClass={inputClass}
+            onUpdate={(field, value) => update(item.key, field, value)}
+            onRemove={() => {
+              changed();
+              setItems(items.filter(value => value.key !== item.key));
+            }}
+          />
         ))}
       </div>
       <Button type="button" disabled={busy || items.length >= 200} onClick={() => { changed(); setItems([...items, row(blank())]); }}>Agregar material</Button>
@@ -222,6 +150,135 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSa
     {errors.length > 0 && <ul role="alert" className="text-sm text-danger">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
     {message && <p role="status">{message}</p>}
   </form>;
+}
+
+function MaterialCardItem({
+  item,
+  index,
+  busy,
+  inputClass,
+  onUpdate,
+  onRemove,
+}: {
+  item: Row;
+  index: number;
+  busy: boolean;
+  inputClass: string;
+  onUpdate: (field: keyof Material, value: string) => void;
+  onRemove: () => void;
+}) {
+  const [isUnitDropdownOpen, setIsUnitDropdownOpen] = useState(false);
+
+  const filteredUnits = UNIT_OPTIONS.filter((opt) =>
+    opt.toLowerCase().includes(item.unit.trim().toLowerCase())
+  );
+
+  return (
+    <div className="border border-border-subtle rounded-lg p-5 bg-surface-card flex flex-col gap-4">
+      <h3 className="font-semibold text-text-strong mb-1">Material {index + 1}</h3>
+
+      {/* Fila 1: Descripción (100% ancho) */}
+      <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+        Descripción (obligatorio)
+        <input
+          aria-label={`Descripción ${index + 1}`}
+          className={inputClass}
+          value={item.description}
+          maxLength={500}
+          required
+          disabled={busy}
+          onChange={event => onUpdate("description", event.target.value)}
+        />
+      </label>
+
+      {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+          <label htmlFor={`unit-input-${item.key}`}>
+            Unidad de medida (obligatorio)
+          </label>
+          <div className="relative w-full">
+            <input
+              id={`unit-input-${item.key}`}
+              type="text"
+              aria-label={`Unidad ${index + 1}`}
+              className={inputClass}
+              value={item.unit}
+              maxLength={40}
+              placeholder="Ej. unidad, m², saco"
+              required
+              disabled={busy}
+              onFocus={() => setIsUnitDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setIsUnitDropdownOpen(false), 150)}
+              onChange={event => {
+                onUpdate("unit", event.target.value);
+                setIsUnitDropdownOpen(true);
+              }}
+            />
+            {isUnitDropdownOpen && filteredUnits.length > 0 && (
+              <ul className="absolute z-50 w-full mt-1 bg-surface-card border border-border-subtle rounded-md shadow-lg max-h-48 overflow-y-auto py-1">
+                {filteredUnits.map((opcion) => (
+                  <li
+                    key={opcion}
+                    className="px-3 py-2 cursor-pointer hover:bg-surface-hover text-sm text-text-strong"
+                    onMouseDown={() => {
+                      onUpdate("unit", opcion);
+                      setIsUnitDropdownOpen(false);
+                    }}
+                  >
+                    {opcion}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+          Cantidad (obligatorio)
+          <IntegerInput
+            aria-label={`Cantidad ${index + 1}`}
+            className={inputClass}
+            value={item.quantity}
+            min="1"
+            step="1"
+            required
+            disabled={busy}
+            onChange={value => onUpdate("quantity", value)}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+          Precio unitario ({currency}) (obligatorio)
+          <IntegerInput
+            aria-label={`Precio unitario ${index + 1}`}
+            className={inputClass}
+            value={item.unit_price}
+            min="0"
+            step="100"
+            required
+            disabled={busy}
+            onChange={value => onUpdate("unit_price", value)}
+          />
+        </label>
+      </div>
+
+      <div className="flex justify-between items-center mt-auto pt-4 border-t border-border-subtle">
+        <output aria-label={`Subtotal ${index + 1}`} className="text-sm font-semibold text-text-strong">
+          Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}
+        </output>
+        <button
+          type="button"
+          disabled={busy}
+          className="text-sm font-medium text-danger underline hover:opacity-80 disabled:opacity-50"
+          onClick={onRemove}
+          aria-label={`Eliminar material ${index + 1}`}
+        >
+          Eliminar material
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function IntegerInput({ value, onChange, min, step, ...props }: {
