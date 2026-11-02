@@ -402,20 +402,20 @@ function CompanyHeroCard({
   return (
     <div className="mb-6 rounded-lg bg-surface-card p-6 sm:p-8 shadow-premium border border-border-subtle">
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-5">
-        <div className="flex flex-col md:flex-row md:items-start gap-5 min-w-0 flex-1">
+        <div className="flex flex-col md:flex-row md:items-center gap-5 min-w-0 flex-1">
           <CompanyLogoUploadSection
             supplier={supplier}
             onLogoUpdated={(updatedSupplier) => onSupplierChange(updatedSupplier)}
             compact
           />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-strong break-words">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <h1 className="m-0 text-2xl sm:text-3xl font-bold tracking-tight text-text-strong break-words">
               {supplier.legal_name}
             </h1>
-            <p className="text-sm text-text-muted mt-1 break-words">
+            <p className="m-0 text-sm text-text-muted break-words">
               {supplier.trade_name ?? "Sin nombre de fantasía"} · RUT {supplier.rut}
             </p>
-            <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-text-subtle">
+            <div className="inline-flex items-center gap-1.5 text-xs text-text-subtle">
               <Icon name="calendar" size={14} />
               <span>Miembro desde {memberSince}</span>
             </div>
