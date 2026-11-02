@@ -192,9 +192,9 @@ function MaterialCardItem({
       </label>
 
       {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-          <label htmlFor={`unit-input-${item.key}`}>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
+        <div className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <label htmlFor={`unit-input-${item.key}`} className="mb-auto">
             Unidad de medida (obligatorio)
           </label>
           <div className="relative w-full">
@@ -234,11 +234,11 @@ function MaterialCardItem({
           </div>
         </div>
 
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-          Cantidad (obligatorio)
+        <label className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <span className="mb-auto">Cantidad (obligatorio)</span>
           <IntegerInput
             aria-label={`Cantidad ${index + 1}`}
-            className={inputClass}
+            className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
             value={item.quantity}
             min="1"
             step="1"
@@ -248,11 +248,11 @@ function MaterialCardItem({
           />
         </label>
 
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-          Precio unitario ({currency}) (obligatorio)
+        <label className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <span className="mb-auto">Precio unitario ({currency}) (obligatorio)</span>
           <IntegerInput
             aria-label={`Precio unitario ${index + 1}`}
-            className={inputClass}
+            className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
             value={item.unit_price}
             min="0"
             step="100"
