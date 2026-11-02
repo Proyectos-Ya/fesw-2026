@@ -5,19 +5,19 @@ import { ApiError, apiFetch } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { type TenderMaterial, type Material, type Quotation, materialsFromTender, subtotal, total, validate, toCsv, normalizeInteger, formatInteger } from "./quotation";
 
-const UNIT_OPTIONS: { value: string; label: string }[] = [
-  { value: "unidad", label: "unidad" },
-  { value: "gl", label: "gl (global)" },
-  { value: "m", label: "m" },
-  { value: "m²", label: "m²" },
-  { value: "m³", label: "m³" },
-  { value: "kg", label: "kg" },
-  { value: "tonelada", label: "tonelada" },
-  { value: "litro", label: "litro" },
-  { value: "saco", label: "saco" },
-  { value: "hh", label: "hh (hora hombre)" },
-  { value: "mes", label: "mes" },
-];
+const UNIT_OPTIONS = [
+  "unidad",
+  "gl",
+  "m",
+  "m²",
+  "m³",
+  "kg",
+  "tonelada",
+  "litro",
+  "saco",
+  "hh",
+  "mes",
+] as const;
 const blank = (): Material => ({ description: "", unit: "", quantity: "", unit_price: "" });
 const currency = "CLP" as const;
 const noTenderItems: TenderMaterial[] = [];
@@ -123,98 +123,93 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSa
       <p className="text-sm text-text-muted">Las cantidades disponibles se completan desde la licitación. Revísalas e indica los precios unitarios en pesos chilenos (CLP). Cantidades y precios deben ser enteros. Puedes editar los materiales o agregar los que falten. Total sin impuestos ni recargos.</p>
       {!materialsFromTender(initialTenderItems).length && <p className="text-sm text-text-muted">La licitación no tiene materiales detallados. Agrégalos manualmente según sus especificaciones.</p>}
       {initialTenderItems.some(item => item.quantity != null && !Number.isInteger(item.quantity)) && <p className="text-sm text-text-muted">La licitación contiene cantidades fraccionarias. Completa esas cantidades con enteros; no se redondean automáticamente.</p>}
+      <datalist id="unidades-medida">
+        {UNIT_OPTIONS.map((unit) => (
+          <option key={unit} value={unit} />
+        ))}
+      </datalist>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {items.map((item, index) => {
-          const hasCustomUnit =
-            item.unit !== "" && !UNIT_OPTIONS.some((opt) => opt.value === item.unit);
-          return (
-            <div key={item.key} className="border border-border-subtle rounded-lg p-5 bg-surface-card flex flex-col gap-4">
-              <h3 className="font-semibold text-text-strong mb-1">Material {index + 1}</h3>
+        {items.map((item, index) => (
+          <div key={item.key} className="border border-border-subtle rounded-lg p-5 bg-surface-card flex flex-col gap-4">
+            <h3 className="font-semibold text-text-strong mb-1">Material {index + 1}</h3>
 
-              {/* Fila 1: Descripción (100% ancho) */}
+            {/* Fila 1: Descripción (100% ancho) */}
+            <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+              Descripción (obligatorio)
+              <input
+                aria-label={`Descripción ${index + 1}`}
+                className={inputClass}
+                value={item.description}
+                maxLength={500}
+                required
+                disabled={busy}
+                onChange={event => update(item.key, "description", event.target.value)}
+              />
+            </label>
+
+            {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                Descripción (obligatorio)
+                Unidad de medida (obligatorio)
                 <input
-                  aria-label={`Descripción ${index + 1}`}
-                  className={inputClass}
-                  value={item.description}
-                  maxLength={500}
+                  type="text"
+                  list="unidades-medida"
+                  aria-label={`Unidad ${index + 1}`}
+                  className={`${inputClass} pr-8`}
+                  value={item.unit}
+                  maxLength={40}
+                  placeholder="Ej. unidad, m², saco"
                   required
                   disabled={busy}
-                  onChange={event => update(item.key, "description", event.target.value)}
+                  onChange={event => update(item.key, "unit", event.target.value)}
                 />
               </label>
 
-              {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                  Unidad de medida (obligatorio)
-                  <select
-                    aria-label={`Unidad ${index + 1}`}
-                    className={inputClass}
-                    value={item.unit}
-                    required
-                    disabled={busy}
-                    onChange={event => update(item.key, "unit", event.target.value)}
-                  >
-                    <option value="">Seleccionar…</option>
-                    {hasCustomUnit && (
-                      <option value={item.unit}>{item.unit}</option>
-                    )}
-                    {UNIT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                  Cantidad (obligatorio)
-                  <IntegerInput
-                    aria-label={`Cantidad ${index + 1}`}
-                    className={inputClass}
-                    value={item.quantity}
-                    min="1"
-                    step="1"
-                    required
-                    disabled={busy}
-                    onChange={value => update(item.key, "quantity", value)}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
-                  Precio unitario ({currency}) (obligatorio)
-                  <IntegerInput
-                    aria-label={`Precio unitario ${index + 1}`}
-                    className={inputClass}
-                    value={item.unit_price}
-                    min="0"
-                    step="100"
-                    required
-                    disabled={busy}
-                    onChange={value => update(item.key, "unit_price", value)}
-                  />
-                </label>
-              </div>
-
-              <div className="flex justify-between items-center mt-auto pt-4 border-t border-border-subtle">
-                <output aria-label={`Subtotal ${index + 1}`} className="text-sm font-semibold text-text-strong">
-                  Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}
-                </output>
-                <button
-                  type="button"
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+                Cantidad (obligatorio)
+                <IntegerInput
+                  aria-label={`Cantidad ${index + 1}`}
+                  className={inputClass}
+                  value={item.quantity}
+                  min="1"
+                  step="1"
+                  required
                   disabled={busy}
-                  className="text-sm font-medium text-danger underline hover:opacity-80 disabled:opacity-50"
-                  onClick={() => { changed(); setItems(items.filter(value => value.key !== item.key)); }}
-                  aria-label={`Eliminar material ${index + 1}`}
-                >
-                  Eliminar material
-                </button>
-              </div>
+                  onChange={value => update(item.key, "quantity", value)}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+                Precio unitario ({currency}) (obligatorio)
+                <IntegerInput
+                  aria-label={`Precio unitario ${index + 1}`}
+                  className={inputClass}
+                  value={item.unit_price}
+                  min="0"
+                  step="100"
+                  required
+                  disabled={busy}
+                  onChange={value => update(item.key, "unit_price", value)}
+                />
+              </label>
             </div>
-          );
-        })}
+
+            <div className="flex justify-between items-center mt-auto pt-4 border-t border-border-subtle">
+              <output aria-label={`Subtotal ${index + 1}`} className="text-sm font-semibold text-text-strong">
+                Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}
+              </output>
+              <button
+                type="button"
+                disabled={busy}
+                className="text-sm font-medium text-danger underline hover:opacity-80 disabled:opacity-50"
+                onClick={() => { changed(); setItems(items.filter(value => value.key !== item.key)); }}
+                aria-label={`Eliminar material ${index + 1}`}
+              >
+                Eliminar material
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
       <Button type="button" disabled={busy || items.length >= 200} onClick={() => { changed(); setItems([...items, row(blank())]); }}>Agregar material</Button>
       <p className="text-xl font-bold" aria-live="polite">Total: {total(items) === "" ? "Pendiente" : `${formatInteger(total(items))} ${currency}`}</p>
