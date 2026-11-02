@@ -79,7 +79,15 @@ export function MatchMeter({
           role={label ? undefined : "img"}
           aria-label={label ? undefined : `Compatibilidad ${v}%`}
         >
-          <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--warm-200)" strokeWidth={s.stroke} />
+          <circle
+            cx={cx}
+            cy={cx}
+            r={r}
+            fill="none"
+            className="text-border-subtle"
+            stroke="currentColor"
+            strokeWidth={s.stroke}
+          />
           <circle
             cx={cx}
             cy={cx}

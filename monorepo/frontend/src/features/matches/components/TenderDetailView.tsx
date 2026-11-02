@@ -452,8 +452,8 @@ export function TenderDetailView({
 
       <header className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-5 sm:p-6 shadow-xs">
         {/* Fila Principal: MatchMeter + Badges/Título/Metadatos */}
-        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
-          <div className="flex-none w-28 flex flex-col items-center self-center sm:self-start">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+          <div className="flex-none w-28 flex flex-col items-center justify-center h-full self-center">
             {score !== null ? (
               <>
                 <MatchMeter
