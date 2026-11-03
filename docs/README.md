@@ -34,6 +34,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [306-retencion-licitaciones-cerradas.md](./plans/306-retencion-licitaciones-cerradas.md): Borrado nocturno de las licitaciones cerradas sin uso (plazo configurable) y limpieza de las tres colecciones de Qdrant al cerrar.
   * [312-hu-30/plan.md](./plans/312-hu-30/plan.md): Cotizaciones recibidas, llamado y ficha ordenada por secciones (HU-30). Tareas en [312-hu-30/task.md](./plans/312-hu-30/task.md).
   * [294-entrega-y-documentos-detalle/plan.md](./plans/294-entrega-y-documentos-detalle/plan.md): Dirección y plazo de entrega y flags del detalle de Compra Ágil, y recomendación de bases que nombra los documentos (#294). Tareas en [294-entrega-y-documentos-detalle/task.md](./plans/294-entrega-y-documentos-detalle/task.md).
+  * [314-hu-22-mapa-licitaciones/plan.md](./plans/314-hu-22-mapa-licitaciones/plan.md): Mapa de las direcciones de entrega de las licitaciones abiertas de la zona, con geocodificación por Nominatim (HU-22). Tareas en [314-hu-22-mapa-licitaciones/task.md](./plans/314-hu-22-mapa-licitaciones/task.md).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
@@ -50,6 +51,7 @@ Manuales prácticos para el equipo de desarrollo:
 * [alembic-migraciones.md](./guides/alembic-migraciones.md): Manual operativo de migraciones de base de datos con Alembic, buenas prácticas y troubleshooting completo.
 * [scripts-utilitarios.md](./guides/scripts-utilitarios.md): Catálogo de scripts de mantenimiento, vaciado de licitaciones y reseteo de cuentas/empresas.
 * [testing-hdu08.md](./guides/testing-hdu08.md): Guía paso a paso para el recorrido y prueba manual de la HdU 08 (alertas de licitaciones).
+* [testing-hu22.md](./guides/testing-hu22.md): Guía de prueba manual del mapa de direcciones de entrega (HU-22): cómo encender la geocodificación, sembrar direcciones y recorrer los ocho criterios.
 * [copia-produccion-matching.md](./guides/copia-produccion-matching.md): Cómo copiar el catálogo de licitaciones y los vectores de producción a un entorno local para probar el matching.
 
 ## 4. Registro de Cambios (`docs/changelogs/`)

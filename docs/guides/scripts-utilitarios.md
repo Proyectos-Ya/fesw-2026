@@ -28,22 +28,22 @@ Esta guía detalla los scripts existentes en `monorepo/backend/scripts/` y `mono
 
 ### B. Vaciar y Recargar el Catálogo de Licitaciones
 
-Cuando se desea reiniciar por completo el catálogo de licitaciones (sin necesidad de borrar las cuentas de usuario):
+Cuando se desea reiniciar por completo el entorno local con el dump del repositorio:
 
-1. **Vaciar tablas en PostgreSQL**:
-   ```bash
-   docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-   ```
-2. **Borrar la colección vectorial en Qdrant**:
-   ```bash
-   curl -X DELETE http://localhost:6333/collections/tenders
-   ```
-3. **Recargar el catálogo desde el dump del repositorio**:
-   ```bash
-   # Con el entorno virtual del backend activo (.venv):
-   python tests/matching_evaluation/load_postgres_robust.py
-   python tests/matching_evaluation/load_dataset.py
-   ```
+```bash
+# Con el entorno virtual del backend activo (.venv):
+python -m scripts.dump cargar
+```
+
+**Borra todo el entorno local sin preguntar**: el catálogo, las cuentas (también
+los logins de Supabase Auth), las empresas y lo que cuelga de ellas (guardadas,
+kanban, chats, cotizaciones, alertas, vectores de `suppliers`). Después de
+cargar hay que registrarse de nuevo en `/register`; si el navegador tenía una
+sesión abierta, cierra sesión primero.
+
+Luego carga el dump del repositorio e indexa. Solo corre contra una base y un
+Qdrant locales. Para borrar solo las cuentas y conservar el catálogo, usa
+`reset_cuentas` (arriba).
 
 ---
 
@@ -109,8 +109,8 @@ Cuando se desea reiniciar por completo el catálogo de licitaciones (sin necesid
 
 ## 4. Scripts de Carga y Evaluación del Matching (`tests/matching_evaluation/`)
 
-* **`load_postgres_robust.py`**: Carga el Excel de licitaciones (`project-data/chiripa_tenders.xlsx`) en PostgreSQL, desplazando automáticamente las fechas de cierre hacia el futuro para que se mantengan vigentes en desarrollo.
-* **`load_dataset.py`**: Toma las licitaciones en PostgreSQL, calcula sus embeddings vectoriales con BGE-M3 e indexa los vectores en la colección `tenders` de Qdrant.
+* **`python -m scripts.dump`** (en `scripts/`, no aquí): `exportar` escribe el dump (`project-data/chiripa_tenders.xlsx`) desde la base de `DATABASE_URL`; `cargar` reemplaza el catálogo local por el dump e indexa `tenders`, `tender_items` y `tender_lexical`; `revivir` corre las fechas del catálogo cargado para que vuelva a estar vigente, sin recalcular vectores.
+* **`generar_dataset.py`**: Trae compras ágiles desde la API de Mercado Público a la base local, para armar un dump sin acceso a producción. Consume cuota del ticket.
 * **`evaluate_matching_profiles.py`** y **`run_calibrated_benchmark.py`**: Scripts de benchmark y evaluación cuantitativa de la precisión del motor de matching semántico.
 
 ---

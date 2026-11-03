@@ -74,6 +74,7 @@ const BASE_NAV_SECTIONS: ReadonlyArray<NavSection> = [
     items: [
       { icon: "search", label: "Buscar", href: "/buscar" },
       { icon: "target", label: "Matches", href: "/matches" },
+      { icon: "map", label: "Mapa de licitaciones", href: "/mapa" },
     ],
   },
   {

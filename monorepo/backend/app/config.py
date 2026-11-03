@@ -199,6 +199,27 @@ class Settings(BaseSettings):
     # Solo para apuntar a otro host. Vacío usa el oficial de la fuente elegida.
     company_lookup_base_url: str | None = None
 
+    # --- Geocodificación de las direcciones de entrega (HU-22, #314) ---
+    # Ubica en el mapa la dirección de entrega de las licitaciones abiertas, en
+    # segundo plano. "none" la apaga: el mapa sale vacío, sin errores. Nominatim
+    # exige identificarse con un correo de contacto y una petición por segundo
+    # como máximo (https://operations.osmfoundation.org/policies/nominatim/).
+    geocoding_provider: Literal["none", "nominatim"] = "none"
+    geocoding_contact_email: str | None = None
+    # Solo para apuntar a otra instancia. Vacío usa la pública.
+    geocoding_base_url_override: str | None = Field(
+        default=None, alias="GEOCODING_BASE_URL"
+    )
+    # Licitaciones por vuelta y espera entre vueltas. Con 1 req/s, un lote de
+    # 50 tarda menos de un minuto; la caché acorta las vueltas siguientes.
+    geocoding_batch_size: int = Field(default=50, gt=0)
+    geocoding_interval_seconds: int = Field(default=300, gt=0)
+    # Segundos entre dos consultas que salen a la red; los aciertos de caché no
+    # esperan. 15 s son 4 por minuto, que es lo que la política de Nominatim
+    # permite a un proceso que corre siempre. Subirlo solo tiene sentido contra
+    # una instancia propia; ver `throttled_geocoding_service.py`.
+    geocoding_min_interval_seconds: float = Field(default=15.0, gt=0)
+
     # --- Matching ---
     # Canal léxico sparse BM25 (plan 256): complementa el matching denso con
     # recuperación exacta de términos y acrónimos sobre tender_lexical.
@@ -532,6 +553,7 @@ class Settings(BaseSettings):
         "pinecone_api_key",
         "postgres_password",
         "company_lookup_api_key",
+        "geocoding_contact_email",
         "google_calendar_client_id",
         "google_calendar_client_secret",
         "microsoft_calendar_client_id",
@@ -590,6 +612,10 @@ class Settings(BaseSettings):
                 "COMPANY_LOOKUP_API_KEY "
                 f"(COMPANY_LOOKUP_PROVIDER={self.company_lookup_provider})"
             )
+        if self.geocoding_provider != "none" and not self.geocoding_contact_email:
+            faltantes.append(
+                f"GEOCODING_CONTACT_EMAIL (GEOCODING_PROVIDER={self.geocoding_provider})"
+            )
         if faltantes:
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
@@ -626,6 +652,13 @@ class Settings(BaseSettings):
         if self.company_lookup_base_url:
             return self.company_lookup_base_url.rstrip("/")
         return _URL_POR_FUENTE_DE_EMPRESAS[self.company_lookup_provider]
+
+    @property
+    def geocoding_base_url(self) -> str:
+        """Host de Nominatim, con el override por delante."""
+        if self.geocoding_base_url_override:
+            return self.geocoding_base_url_override.rstrip("/")
+        return "https://nominatim.openstreetmap.org"
 
     @property
     def qdrant_url(self) -> str:

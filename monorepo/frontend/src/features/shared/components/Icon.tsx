@@ -40,6 +40,8 @@ import {
   Lock,
   LogOut,
   Mail,
+  // Con alias para no tapar el `Map` de JavaScript dentro de este módulo.
+  Map as MapIcon,
   MapPin,
   Menu,
   MessageCircle,
@@ -118,6 +120,7 @@ const iconRegistry: Record<string, LucideIcon> = {
   Lock,
   LogOut,
   Mail,
+  Map: MapIcon,
   MapPin,
   Menu,
   MessageCircle,
