@@ -827,7 +827,10 @@ export function TenderDetailView({
           <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
           {/* Acordeón Responsivo: Análisis y Asistencia IA */}
-          <div className="flex flex-col rounded-lg border border-border-subtle bg-surface-card shadow-xs">
+          <div
+            data-tour="match-detail-panel"
+            className="flex flex-col rounded-lg border border-border-subtle bg-surface-card shadow-xs"
+          >
             <button
               type="button"
               onClick={() => setIsAiSectionExpanded((prev) => !prev)}

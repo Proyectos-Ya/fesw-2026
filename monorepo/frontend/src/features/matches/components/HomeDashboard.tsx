@@ -137,7 +137,9 @@ export function HomeDashboard() {
       return (
         <section className="mx-auto w-full max-w-3xl">
           <PageHeader />
-          <EmptyGreen />
+          <div data-tour="home-recommendations">
+            <EmptyGreen />
+          </div>
         </section>
       );
     }
@@ -202,43 +204,45 @@ export function HomeDashboard() {
           />
         </div>
       ) : null}
-      {matches.length === 0 ? (
-        <EmptyGreen />
-      ) : (
-        <>
-          <div className="flex flex-col gap-4">
-            {matches.map((m, index) => (
-              // La posición es la de esta lista, ya filtrada por verde: la que ve el usuario.
-              <TenderCard
-                key={m.id}
-                match={m}
-                ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
-                onReport={(reportedId) => {
-                  setState((prev) =>
-                    prev.kind === "ready"
-                      ? {
-                          ...prev,
-                          matches: prev.matches.filter(
-                            (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
-                          ),
-                        }
-                      : prev
-                  );
-                }}
-              />
-            ))}
-          </div>
-          <div className="mt-6 text-center">
-            <Link
-              href="/matches"
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
-            >
-              Ver todos los matches
-              <Icon name="arrow-right" size={16} />
-            </Link>
-          </div>
-        </>
-      )}
+      <div data-tour="home-recommendations">
+        {matches.length === 0 ? (
+          <EmptyGreen />
+        ) : (
+          <>
+            <div className="flex flex-col gap-4">
+              {matches.map((m, index) => (
+                // La posición es la de esta lista, ya filtrada por verde: la que ve el usuario.
+                <TenderCard
+                  key={m.id}
+                  match={m}
+                  ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
+                  onReport={(reportedId) => {
+                    setState((prev) =>
+                      prev.kind === "ready"
+                        ? {
+                            ...prev,
+                            matches: prev.matches.filter(
+                              (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                            ),
+                          }
+                        : prev
+                    );
+                  }}
+                />
+              ))}
+            </div>
+            <div className="mt-6 text-center">
+              <Link
+                href="/matches"
+                className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
+              >
+                Ver todos los matches
+                <Icon name="arrow-right" size={16} />
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }
