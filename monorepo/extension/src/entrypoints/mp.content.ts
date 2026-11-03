@@ -1,21 +1,83 @@
 import { defineContentScript } from "wxt/sandbox";
 import { MpFichaAdapter } from "../adapters/mp/mp-ficha-adapter";
+import { MpPostulationAdapter } from "../adapters/mp/mp-postulation-adapter";
+import { PostulationPackagePayload } from "../types/schemas";
+import { PostulationPanel } from "../ui/postulation-panel";
 
 export default defineContentScript({
   matches: ["*://*.mercadopublico.cl/*"],
   runAt: "document_idle",
   async main() {
-    const adapter = new MpFichaAdapter(document);
-    const hydrated = await adapter.waitForHydration(5000);
+    const postulationAdapter = new MpPostulationAdapter(document);
+    const state = postulationAdapter.detectState();
+
+    // CA5: Si está en login, detección pasiva sin tocar credenciales ni inputs
+    if (state.isLogin) {
+      // No hacemos nada con inputs ni contraseñas.
+      return;
+    }
+
+    // CA6, CA7, CA8: Si está en el formulario de postulación
+    if (state.isForm && state.tenderCode) {
+      let panel: PostulationPanel | null = null;
+
+      const loadAndApplyPackage = async () => {
+        try {
+          const resp = await new Promise<{ packageData?: PostulationPackagePayload | null }>(
+            (resolve) => {
+              chrome.runtime.sendMessage(
+                { action: "GET_PENDING_POSTULATION", tender_code: state.tenderCode },
+                (r) => resolve(r ?? {})
+              );
+            }
+          );
+
+          if (resp?.packageData) {
+            const fillRes = postulationAdapter.fillPostulation(resp.packageData);
+            if (fillRes.success) {
+              if (!panel) {
+                panel = new PostulationPanel({
+                  doc: document,
+                  onClearHighlight: () => postulationAdapter.clearHighlighting(),
+                });
+              }
+              panel.render({
+                packageData: resp.packageData,
+                filledCount: fillRes.filledCount,
+                incompleteCount: fillRes.incompleteCount,
+              });
+            }
+          }
+        } catch (e) {
+          console.error("[MP Postulation] Error cargando paquete:", e);
+        }
+      };
+
+      // Intentar aplicar inmediatamente si ya hay paquete confirmado
+      await loadAndApplyPackage();
+
+      // Escuchar si el usuario confirma la postulación desde Chiripa mientras la pestaña está abierta
+      chrome.runtime.onMessage.addListener((message) => {
+        if (message?.action === "PACKAGE_READY" && message?.tender_code === state.tenderCode) {
+          loadAndApplyPackage();
+        }
+      });
+
+      return;
+    }
+
+    // Flujo complementario: Ficha informativa de licitación (anexos detectados)
+    const fichaAdapter = new MpFichaAdapter(document);
+    const hydrated = await fichaAdapter.waitForHydration(5000);
     if (!hydrated) return;
 
-    const code = adapter.extractCode();
+    const code = fichaAdapter.extractCode();
     if (!code) return;
 
-    const attachments = adapter.extractAttachments();
+    const attachments = fichaAdapter.extractAttachments();
     if (attachments.length === 0) return;
 
-    // Inyectar un banner discreto en la ficha indicando integración con Chiripa
+    // Inyectar un badge discreto en la ficha indicando integración con Chiripa
     const existingBadge = document.getElementById("chiripa-extension-badge");
     if (!existingBadge) {
       const badge = document.createElement("div");
@@ -37,7 +99,8 @@ export default defineContentScript({
         gap: 8px;
       `;
       const dot = document.createElement("span");
-      dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;";
+      dot.style.cssText =
+        "display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;";
 
       const text = document.createElement("span");
       text.textContent = `Chiripa: ${attachments.length} anexo(s) detectado(s)`;

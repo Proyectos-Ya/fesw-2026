@@ -1,5 +1,6 @@
 import { defineBackground } from "wxt/sandbox";
 import { JobRunner } from "../services/jobs/job-runner";
+import { postulationCoordinator } from "../services/postulation/postulation-coordinator";
 import { ExtensionStorage } from "../services/storage/extension-storage";
 import { Capabilities } from "../types/schemas";
 
@@ -60,6 +61,42 @@ export default defineBackground(() => {
           workspaceId: creds.workspaceId,
           capabilities: caps,
         });
+      })();
+      return true;
+    }
+
+    // --- Coordinador de Postulación (HU-032) ---
+    if (message?.action === "OPEN_POSTULATION") {
+      (async () => {
+        const res = await postulationCoordinator.openPostulationTab(
+          message.payload.tender_code,
+          message.payload.mp_url
+        );
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "CONFIRM_POSTULATION") {
+      (async () => {
+        const res = await postulationCoordinator.confirmPostulation(message.payload);
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "FOCUS_POSTULATION_TAB") {
+      (async () => {
+        const res = await postulationCoordinator.focusPostulationTab(message.payload.tender_code);
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "GET_PENDING_POSTULATION") {
+      (async () => {
+        const packageData = await postulationCoordinator.getPendingPackage(message.tender_code);
+        sendResponse({ packageData });
       })();
       return true;
     }

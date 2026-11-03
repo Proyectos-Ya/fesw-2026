@@ -62,3 +62,71 @@ export const ExtensionJobResultSchema = z.object({
   result_summary: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type ExtensionJobResult = z.infer<typeof ExtensionJobResultSchema>;
+
+// --- Postulación en Mercado Público (HU-032) ---
+
+export const PostulationFileAttachmentSchema = z.object({
+  name: z.string().min(1),
+  type: z.string(),
+  size: z.number().nonnegative(),
+  data_base64: z.string(),
+});
+export type PostulationFileAttachment = z.infer<typeof PostulationFileAttachmentSchema>;
+
+export const PostulationItemPayloadSchema = z.object({
+  line_number: z.number().int().positive(),
+  name: z.string().min(1),
+  quantity: z.number().positive(),
+  unit: z.string().optional(),
+  unit_price: z.number().int().nonnegative(),
+  total_price: z.number().int().nonnegative(),
+  technical_spec: z.string().nullable().optional(),
+});
+export type PostulationItemPayload = z.infer<typeof PostulationItemPayloadSchema>;
+
+export const PostulationPackagePayloadSchema = z.object({
+  tender_code: z.string().min(1),
+  tender_title: z.string().optional(),
+  company_rut: z.string().min(1),
+  company_name: z.string().min(1),
+  contact_name: z.string().nullable().optional(),
+  contact_email: z.string().nullable().optional(),
+  contact_phone: z.string().nullable().optional(),
+  items: z.array(PostulationItemPayloadSchema),
+  total_clp: z.number().int().nonnegative(),
+  observations: z.string().max(500).default(""),
+  validity_days: z.number().int().positive().default(30),
+  delivery_term_days: z.number().int().positive().default(15),
+  files: z.array(PostulationFileAttachmentSchema).default([]),
+});
+export type PostulationPackagePayload = z.infer<typeof PostulationPackagePayloadSchema>;
+
+export const BridgeOpenPostulationMessageSchema = z.object({
+  target: z.literal("CHIRIPA_EXTENSION"),
+  type: z.literal("OPEN_POSTULATION"),
+  nonce: z.string().uuid(),
+  payload: z.object({
+    tender_code: z.string().min(1),
+    mp_url: z.string().url().optional(),
+  }),
+});
+export type BridgeOpenPostulationMessage = z.infer<typeof BridgeOpenPostulationMessageSchema>;
+
+export const BridgeConfirmPostulationMessageSchema = z.object({
+  target: z.literal("CHIRIPA_EXTENSION"),
+  type: z.literal("CONFIRM_POSTULATION"),
+  nonce: z.string().uuid(),
+  payload: PostulationPackagePayloadSchema,
+});
+export type BridgeConfirmPostulationMessage = z.infer<typeof BridgeConfirmPostulationMessageSchema>;
+
+export const BridgeFocusTabMessageSchema = z.object({
+  target: z.literal("CHIRIPA_EXTENSION"),
+  type: z.literal("FOCUS_POSTULATION_TAB"),
+  nonce: z.string().uuid(),
+  payload: z.object({
+    tender_code: z.string().min(1),
+  }),
+});
+export type BridgeFocusTabMessage = z.infer<typeof BridgeFocusTabMessageSchema>;
+

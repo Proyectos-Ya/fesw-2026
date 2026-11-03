@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mercado Público - Iniciar Sesión</title>
+</head>
+<body>
+  <div class="login-container">
+    <h2>Acceso Proveedores</h2>
+    <form action="/Account/Login" method="POST" id="formLogin">
+      <div class="form-group">
+        <label for="txtUsuario">RUT o Correo Electrónico</label>
+        <input type="text" id="txtUsuario" name="usuario" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="txtClave">Contraseña</label>
+        <input type="password" id="txtClave" name="password" autocomplete="current-password">
+      </div>
+      <button type="submit" id="btnIngresar">Ingresar</button>
+      <a href="https://claveunica.gob.cl" id="lnkClaveUnica">Iniciar con ClaveÚnica</a>
+    </form>
+  </div>
+</body>
+</html>
