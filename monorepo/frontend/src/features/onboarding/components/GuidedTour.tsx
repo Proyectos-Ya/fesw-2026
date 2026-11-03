@@ -73,11 +73,61 @@ export const HOME_STEPS: DriveStep[] = [
 
 export const DETAIL_STEPS: DriveStep[] = [
   {
-    element: '[data-tour="match-detail-panel"]',
+    element: '[data-tour="detail-header"]',
     popover: {
-      title: "Exigencias y Asistente de IA",
+      title: "Información General",
       description:
-        "Al abrir cualquier licitación podrás revisar el desglose de requisitos clave y consultar a nuestro asistente de IA sobre las bases.",
+        "Revisa el código, título, organismo comprador, plazos de cierre y el porcentaje de compatibilidad con tu empresa.",
+      side: "bottom",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="detail-actions"]',
+    popover: {
+      title: "Gestión y Exportación",
+      description:
+        "Agrega la licitación a tu tablero Kanban, guárdala en favoritos o descarga resúmenes ejecutivos en PDF y Excel.",
+      side: "bottom",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="detail-ai-panel"]',
+    popover: {
+      title: "Asistencia e IA",
+      description:
+        "Genera propuestas técnicas automáticas con el Asistente o solicita un análisis detallado de riesgos y requisitos de las bases.",
+      side: "left",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="detail-bases"]',
+    popover: {
+      title: "Bases y Requisitos",
+      description:
+        "Visualiza y busca dentro de los documentos oficiales y cláusulas administrativas y técnicas de la licitación.",
+      side: "top",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="detail-anexos"]',
+    popover: {
+      title: "Anexos y Documentos",
+      description:
+        "Descarga formularios oficiales, formatos de declaración jurada y plantillas requeridas para postular.",
+      side: "top",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="detail-calendario"]',
+    popover: {
+      title: "Calendario de Hitos",
+      description:
+        "Controla las fechas límite de preguntas, respuestas, cierre de postulaciones y adjudicación estimada.",
       side: "top",
       align: "start",
     },
@@ -107,6 +157,20 @@ export function getStepsForTour(tourName: TourName | null): DriveStep[] | null {
       return DRAFT_STEPS;
     default:
       return null;
+  }
+}
+
+export function switchDetailTabIfNeeded(
+  tourName: TourName | null,
+  stepIndex?: number,
+) {
+  if (tourName !== "detail" || typeof stepIndex !== "number") return;
+  if (stepIndex === 3) {
+    document.querySelector<HTMLElement>('[data-tab-target="bases"]')?.click();
+  } else if (stepIndex === 4) {
+    document.querySelector<HTMLElement>('[data-tab-target="anexos"]')?.click();
+  } else if (stepIndex === 5) {
+    document.querySelector<HTMLElement>('[data-tab-target="calendario"]')?.click();
   }
 }
 
@@ -160,6 +224,7 @@ export function GuidedTour() {
           void markOnboardingAsCompletedAsync(currentTourName);
         } else {
           setTourStep(nextIdx);
+          switchDetailTabIfNeeded(currentTourName, nextIdx);
           opts.driver.moveTo(nextIdx);
         }
       },
@@ -167,6 +232,7 @@ export function GuidedTour() {
         const currentIdx = opts.state.activeIndex ?? 0;
         const prevIdx = Math.max(0, currentIdx - 1);
         setTourStep(prevIdx);
+        switchDetailTabIfNeeded(currentTourName, prevIdx);
         opts.driver.moveTo(prevIdx);
       },
       onCloseClick: (_element, _step, opts) => {
@@ -176,6 +242,7 @@ export function GuidedTour() {
       onHighlightStarted: (_element, _step, opts) => {
         if (typeof opts.index === "number") {
           setTourStep(opts.index);
+          switchDetailTabIfNeeded(currentTourName, opts.index);
         }
       },
       onPopoverRender: (popover, opts) => {

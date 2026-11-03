@@ -168,6 +168,39 @@ describe("HelpCenterDrawer", () => {
     ).toBeInTheDocument();
   });
 
+  it("muestra los 6 sub-desplegables de vista detallada de licitaciones", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/matches/licitacion-456";
+
+    render(<HelpCenterDrawer />);
+
+    expect(screen.getByText("Información de Licitación")).toBeInTheDocument();
+    expect(screen.getByText("Bases")).toBeInTheDocument();
+    expect(screen.getByText("Anexos")).toBeInTheDocument();
+    expect(screen.getByText("Calendario")).toBeInTheDocument();
+    expect(screen.getByText("Generar Postulación")).toBeInTheDocument();
+    expect(screen.getByText("Análisis y Asistencia IA")).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/Explora el encabezado para conocer el organismo convocante/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Consulta los requisitos técnicos, criterios de evaluación/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Accede y descarga todos los documentos adjuntos/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Sigue el cronograma oficial del proceso/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Utiliza la IA para estructurar borradores iniciales/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Haz preguntas directas al Asistente sobre puntos específicos/i),
+    ).toBeInTheDocument();
+  });
+
   it("auto-expande 'detail' cuando la ruta es una licitación", () => {
     useOnboardingStore.setState({ isHelpCenterOpen: true });
     mockPathname = "/matches/licitacion-456";

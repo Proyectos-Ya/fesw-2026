@@ -97,9 +97,80 @@ describe("GuidedTour", () => {
     expect(mockDriverFactory).toHaveBeenCalledTimes(1);
     const config = mockDriverFactory.mock.calls[0]?.[0];
     const steps = config?.steps as DriveStep[];
-    expect(steps).toHaveLength(DETAIL_STEPS.length);
-    expect(steps[0]?.element).toBe('[data-tour="match-detail-panel"]');
+    expect(steps).toHaveLength(6);
+    expect(steps[0]?.element).toBe('[data-tour="detail-header"]');
+    expect(steps[1]?.element).toBe('[data-tour="detail-actions"]');
+    expect(steps[2]?.element).toBe('[data-tour="detail-ai-panel"]');
+    expect(steps[3]?.element).toBe('[data-tour="detail-bases"]');
+    expect(steps[4]?.element).toBe('[data-tour="detail-anexos"]');
+    expect(steps[5]?.element).toBe('[data-tour="detail-calendario"]');
     expect(mockDrive).toHaveBeenCalledWith(0);
+  });
+
+  it("en activeTour === 'detail', onHighlightStarted activa la pestaña correspondiente para los pasos 4, 5 y 6", () => {
+    useOnboardingStore.setState({ activeTour: "detail", currentTourStep: 0 });
+
+    const basesBtn = document.createElement("button");
+    basesBtn.setAttribute("data-tab-target", "bases");
+    const anexosBtn = document.createElement("button");
+    anexosBtn.setAttribute("data-tab-target", "anexos");
+    const calendarioBtn = document.createElement("button");
+    calendarioBtn.setAttribute("data-tab-target", "calendario");
+
+    const basesClickSpy = vi.spyOn(basesBtn, "click");
+    const anexosClickSpy = vi.spyOn(anexosBtn, "click");
+    const calendarioClickSpy = vi.spyOn(calendarioBtn, "click");
+
+    document.body.appendChild(basesBtn);
+    document.body.appendChild(anexosBtn);
+    document.body.appendChild(calendarioBtn);
+
+    try {
+      render(<GuidedTour />);
+
+      const config = mockDriverFactory.mock.calls[0]?.[0];
+      expect(config?.onHighlightStarted).toBeTypeOf("function");
+
+      // Paso 4 (índice 3) -> Bases
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DETAIL_STEPS[3], {
+          config: config ?? {},
+          state: { activeIndex: 3 },
+          driver: mockDriverInstance,
+          index: 3,
+        });
+      });
+      expect(basesClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(3);
+
+      // Paso 5 (índice 4) -> Anexos
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DETAIL_STEPS[4], {
+          config: config ?? {},
+          state: { activeIndex: 4 },
+          driver: mockDriverInstance,
+          index: 4,
+        });
+      });
+      expect(anexosClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(4);
+
+      // Paso 6 (índice 5) -> Calendario
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DETAIL_STEPS[5], {
+          config: config ?? {},
+          state: { activeIndex: 5 },
+          driver: mockDriverInstance,
+          index: 5,
+        });
+      });
+      expect(calendarioClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(5);
+    } finally {
+      document.body.removeChild(basesBtn);
+      document.body.removeChild(anexosBtn);
+      document.body.removeChild(calendarioBtn);
+    }
   });
 
   it("inicializa driver.js con DRAFT_STEPS cuando activeTour === 'draft'", () => {

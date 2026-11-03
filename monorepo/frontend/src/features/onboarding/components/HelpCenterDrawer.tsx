@@ -59,12 +59,45 @@ const PROFILE_SUBSECTIONS = [
   {
     iconName: "tag",
     title: "Palabras Claves",
-    text: "Son elementos fundamentales para la calidad del match. La aplicación adapta las recomendaciones en base a estos términos. Puedes añadir palabras clave para afinar los resultados y eliminarlas manualmente editando esta sección.",
+    text: "Son elementos fundamentales para la calidad del match. La aplicación añade nuevas palabras clave mediante tu interacción con ella para afinar los resultados. También puedes agregar o eliminar términos manualmente editando esta sección.",
   },
   {
     iconName: "users",
     title: "Equipo",
     text: "Pestaña para gestionar a los miembros de tu espacio de trabajo. Controla quiénes tienen acceso y sus niveles de permiso sobre el perfil de la empresa, los matches y el seguimiento de licitaciones.",
+  },
+];
+
+const DETAIL_SUBSECTIONS = [
+  {
+    iconName: "layout-template",
+    title: "Información de Licitación",
+    text: "Explora el encabezado para conocer el organismo convocante, montos estimados, fechas límite y el nivel de compatibilidad semántica con tu perfil.",
+  },
+  {
+    iconName: "file-text",
+    title: "Bases",
+    text: "Consulta los requisitos técnicos, criterios de evaluación y condiciones administrativas para asegurar que tu oferta cumpla al 100%.",
+  },
+  {
+    iconName: "paperclip",
+    title: "Anexos",
+    text: "Accede y descarga todos los documentos adjuntos, formatos editables y declaraciones juradas necesarias para preparar tu postulación.",
+  },
+  {
+    iconName: "calendar",
+    title: "Calendario",
+    text: "Sigue el cronograma oficial del proceso: etapas de consultas, respuestas, apertura de ofertas y fecha estimada de adjudicación.",
+  },
+  {
+    iconName: "file-signature",
+    title: "Generar Postulación",
+    text: "Utiliza la IA para estructurar borradores iniciales de tu propuesta técnica y comercial basados en las bases de la licitación.",
+  },
+  {
+    iconName: "bot",
+    title: "Análisis y Asistencia IA",
+    text: "Haz preguntas directas al Asistente sobre puntos específicos de la licitación o solicita resúmenes de riesgos y requerimientos clave.",
   },
 ];
 
@@ -143,13 +176,31 @@ export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
     icon: Search,
     matchRoutes: ["/matches"],
     content: (
-      <div className="space-y-2">
-        <p>
-          Contenido sobre cómo funciona el Match y el análisis de requisitos clave con el Asistente de IA.
-        </p>
-        <p>
-          Revisa bases administrativas, criterios de evaluación y calendario de hitos oficiales de Mercado Público.
-        </p>
+      <div className="space-y-2 pt-1">
+        {DETAIL_SUBSECTIONS.map((sub) => (
+          <details
+            key={sub.title}
+            className="group/sub rounded-md border border-border-subtle/80 bg-surface-card p-2.5 transition-colors hover:border-border-default"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none hover:text-primary transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <Icon
+                  name={sub.iconName}
+                  size={16}
+                  className="w-4 h-4 text-text-muted transition-colors"
+                />
+                <span className="font-semibold text-sm">{sub.title}</span>
+              </span>
+              <ChevronDown
+                size={14}
+                className="text-text-subtle transition-transform duration-200 group-open/sub:rotate-180"
+              />
+            </summary>
+            <p className="mt-2 text-[0.8rem] text-text-muted leading-relaxed pl-6">
+              {sub.text}
+            </p>
+          </details>
+        ))}
       </div>
     ),
   },
