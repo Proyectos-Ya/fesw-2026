@@ -172,6 +172,7 @@ export function Sidebar() {
       <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-card sticky top-0 z-30">
         <button
           type="button"
+          data-tour="mobile-menu-toggle"
           onClick={() => setMobileOpen(true)}
           aria-label="Abrir menú de navegación"
           aria-expanded={mobileOpen}

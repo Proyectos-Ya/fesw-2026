@@ -8,6 +8,27 @@ import {
 } from "../store/useOnboardingStore";
 import type { TourName } from "../services/onboardingService";
 
+export function openMobileSidebarIfNeeded() {
+  const mobileBtn = document.querySelector<HTMLElement>(
+    '[data-tour="mobile-menu-toggle"]',
+  );
+  const searchItem = document.querySelector<HTMLElement>(
+    '[data-tour="sidebar-search"]',
+  );
+
+  // Si estamos en móvil y el ítem de búsqueda no es visible, abrimos el menú
+  if (
+    mobileBtn &&
+    mobileBtn.offsetParent !== null &&
+    (!searchItem ||
+      searchItem.offsetParent === null ||
+      searchItem.getBoundingClientRect().right <= 0 ||
+      mobileBtn.getAttribute("aria-expanded") === "false")
+  ) {
+    mobileBtn.click();
+  }
+}
+
 export const HOME_STEPS: DriveStep[] = [
   {
     element: '[data-tour="home-recommendations"]',
@@ -27,6 +48,9 @@ export const HOME_STEPS: DriveStep[] = [
         "¿Buscas una compra pública específica? Usa el explorador manual para filtrar por palabras clave, región o presupuesto.",
       side: "right",
       align: "center",
+    },
+    onHighlightStarted: () => {
+      openMobileSidebarIfNeeded();
     },
   },
   {

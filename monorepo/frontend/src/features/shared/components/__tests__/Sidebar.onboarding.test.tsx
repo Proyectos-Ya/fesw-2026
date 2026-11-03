@@ -79,6 +79,15 @@ describe("Sidebar - Onboarding & Help Center integration", () => {
     expect(helpButton).toHaveAttribute("data-tour", "help-center-trigger");
   });
 
+  it("asigna data-tour='mobile-menu-toggle' al botón del menú móvil", () => {
+    render(<Sidebar />);
+
+    const mobileMenuBtn = screen.getByRole("button", {
+      name: /Abrir menú de navegación/i,
+    });
+    expect(mobileMenuBtn).toHaveAttribute("data-tour", "mobile-menu-toggle");
+  });
+
   it("abre el Centro de Ayuda al hacer clic en el botón 'Ayuda'", () => {
     render(<Sidebar />);
 

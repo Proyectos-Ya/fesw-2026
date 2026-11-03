@@ -89,6 +89,96 @@ describe("GuidedTour", () => {
     expect(mockDrive).toHaveBeenCalledWith(0);
   });
 
+  it("en activeTour === 'home', el paso 2 auto-despliega el menú móvil si el sidebar está cerrado", () => {
+    useOnboardingStore.setState({ activeTour: "home", currentTourStep: 0 });
+
+    const mobileBtn = document.createElement("button");
+    mobileBtn.setAttribute("data-tour", "mobile-menu-toggle");
+    mobileBtn.setAttribute("aria-expanded", "false");
+    Object.defineProperty(mobileBtn, "offsetParent", {
+      value: document.body,
+      configurable: true,
+    });
+
+    const searchItem = document.createElement("a");
+    searchItem.setAttribute("data-tour", "sidebar-search");
+    Object.defineProperty(searchItem, "offsetParent", {
+      value: null,
+      configurable: true,
+    });
+
+    const mobileClickSpy = vi.spyOn(mobileBtn, "click");
+    document.body.appendChild(mobileBtn);
+    document.body.appendChild(searchItem);
+
+    try {
+      render(<GuidedTour />);
+
+      const config = mockDriverFactory.mock.calls[0]?.[0];
+      const steps = config?.steps as DriveStep[];
+      const step2 = steps[1];
+      expect(step2?.onHighlightStarted).toBeTypeOf("function");
+
+      act(() => {
+        step2?.onHighlightStarted?.(undefined, step2, {
+          config: config ?? {},
+          state: { activeIndex: 1 },
+          driver: mockDriverInstance,
+          index: 1,
+        });
+      });
+
+      expect(mobileClickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      document.body.removeChild(mobileBtn);
+      document.body.removeChild(searchItem);
+    }
+  });
+
+  it("en activeTour === 'home', el paso 2 NO hace clic si no estamos en móvil", () => {
+    useOnboardingStore.setState({ activeTour: "home", currentTourStep: 0 });
+
+    const mobileBtn = document.createElement("button");
+    mobileBtn.setAttribute("data-tour", "mobile-menu-toggle");
+    Object.defineProperty(mobileBtn, "offsetParent", {
+      value: null,
+      configurable: true,
+    });
+
+    const searchItem = document.createElement("a");
+    searchItem.setAttribute("data-tour", "sidebar-search");
+    Object.defineProperty(searchItem, "offsetParent", {
+      value: document.body,
+      configurable: true,
+    });
+
+    const mobileClickSpy = vi.spyOn(mobileBtn, "click");
+    document.body.appendChild(mobileBtn);
+    document.body.appendChild(searchItem);
+
+    try {
+      render(<GuidedTour />);
+
+      const config = mockDriverFactory.mock.calls[0]?.[0];
+      const steps = config?.steps as DriveStep[];
+      const step2 = steps[1];
+
+      act(() => {
+        step2?.onHighlightStarted?.(undefined, step2, {
+          config: config ?? {},
+          state: { activeIndex: 1 },
+          driver: mockDriverInstance,
+          index: 1,
+        });
+      });
+
+      expect(mobileClickSpy).not.toHaveBeenCalled();
+    } finally {
+      document.body.removeChild(mobileBtn);
+      document.body.removeChild(searchItem);
+    }
+  });
+
   it("inicializa driver.js con DETAIL_STEPS cuando activeTour === 'detail'", () => {
     useOnboardingStore.setState({ activeTour: "detail", currentTourStep: 0 });
 
