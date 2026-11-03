@@ -38,9 +38,28 @@ export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderIt
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-lg font-bold text-text-strong">Cotización de materiales</h2>
         <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p></div>
-      <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : "Generar cotización"}</Button>
+      <Button
+        data-action="toggle-quotation"
+        onClick={() => {
+          setOpened(true);
+          setOpen(!open);
+        }}
+        aria-expanded={open}
+      >
+        {open ? "Cerrar cotización" : "Generar cotización"}
+      </Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} onSaved={onSaved} /></div>}
+    {opened && (
+      <div data-tour="draft-cotizacion" hidden={!open}>
+        <QuotationForm
+          key={tenderId}
+          tenderId={tenderId}
+          tenderCode={tenderCode}
+          tenderItems={tenderItems}
+          onSaved={onSaved}
+        />
+      </div>
+    )}
   </section>;
 }
 

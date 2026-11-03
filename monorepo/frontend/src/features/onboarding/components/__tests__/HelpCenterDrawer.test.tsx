@@ -201,6 +201,27 @@ describe("HelpCenterDrawer", () => {
     ).toBeInTheDocument();
   });
 
+  it("muestra los 3 sub-desplegables de borrador y cotizador", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/matches/licitacion-456/postulacion";
+
+    render(<HelpCenterDrawer />);
+
+    expect(screen.getByText("Factibilidad y Exigencias")).toBeInTheDocument();
+    expect(screen.getByText("Borrador de Oferta")).toBeInTheDocument();
+    expect(screen.getByText("Cotización Financiera")).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/Escanea todas las bases y anexos adjuntos para crear un borrador/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Muestra los próximos pasos para postular y genera los textos exactos/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Autocompleta los campos financieros según las bases/i),
+    ).toBeInTheDocument();
+  });
+
   it("auto-expande 'detail' cuando la ruta es una licitación", () => {
     useOnboardingStore.setState({ isHelpCenterOpen: true });
     mockPathname = "/matches/licitacion-456";

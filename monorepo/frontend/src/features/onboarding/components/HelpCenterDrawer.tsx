@@ -101,6 +101,24 @@ const DETAIL_SUBSECTIONS = [
   },
 ];
 
+const DRAFT_SUBSECTIONS = [
+  {
+    iconName: "clipboard-check",
+    title: "Factibilidad y Exigencias",
+    text: "Escanea todas las bases y anexos adjuntos para crear un borrador. Si falta información excluyente de tu perfil, el asistente te hará preguntas clave para completar los requisitos.",
+  },
+  {
+    iconName: "copy",
+    title: "Borrador de Oferta",
+    text: "Muestra los próximos pasos para postular y genera los textos exactos listos para copiar en el formulario de Mercado Público. También permite la generación de documentos técnicos adicionales.",
+  },
+  {
+    iconName: "calculator",
+    title: "Cotización Financiera",
+    text: "Autocompleta los campos financieros según las bases. Permite añadir elementos manualmente, guardar tu progreso en la nube y descargar la cotización final en formato CSV o PDF.",
+  },
+];
+
 export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
   {
     id: "navigation",
@@ -210,13 +228,31 @@ export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
     icon: FileText,
     matchRoutes: ["/postulacion", "/cotizacion", "/propuesta"],
     content: (
-      <div className="space-y-2">
-        <p>
-          Genera borradores técnicos adaptados a las exigencias de la Compra Ágil y exporta cotizaciones formales.
-        </p>
-        <p>
-          Adjunta evidencias y certificaciones para respaldar tu cumplimiento de requisitos.
-        </p>
+      <div className="space-y-2 pt-1">
+        {DRAFT_SUBSECTIONS.map((sub) => (
+          <details
+            key={sub.title}
+            className="group/sub rounded-md border border-border-subtle/80 bg-surface-card p-2.5 transition-colors hover:border-border-default"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none hover:text-primary transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <Icon
+                  name={sub.iconName}
+                  size={16}
+                  className="w-4 h-4 text-text-muted transition-colors"
+                />
+                <span className="font-semibold text-sm">{sub.title}</span>
+              </span>
+              <ChevronDown
+                size={14}
+                className="text-text-subtle transition-transform duration-200 group-open/sub:rotate-180"
+              />
+            </summary>
+            <p className="mt-2 text-[0.8rem] text-text-muted leading-relaxed pl-6">
+              {sub.text}
+            </p>
+          </details>
+        ))}
       </div>
     ),
   },

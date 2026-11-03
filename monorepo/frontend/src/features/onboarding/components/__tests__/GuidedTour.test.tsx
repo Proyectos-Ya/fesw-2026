@@ -181,9 +181,90 @@ describe("GuidedTour", () => {
     expect(mockDriverFactory).toHaveBeenCalledTimes(1);
     const config = mockDriverFactory.mock.calls[0]?.[0];
     const steps = config?.steps as DriveStep[];
-    expect(steps).toHaveLength(DRAFT_STEPS.length);
-    expect(steps[0]?.element).toBe('[data-tour="proposal-editor"]');
+    expect(steps).toHaveLength(3);
+    expect(steps[0]?.element).toBe('[data-tour="draft-factibilidad"]');
+    expect(steps[1]?.element).toBe('[data-tour="draft-borrador-container"]');
+    expect(steps[2]?.element).toBe('[data-tour="draft-cotizacion"]');
     expect(mockDrive).toHaveBeenCalledWith(0);
+  });
+
+  it("en activeTour === 'draft', onHighlightStarted activa la pestaña y abre la cotización para los pasos correspondientes", () => {
+    vi.useFakeTimers();
+    useOnboardingStore.setState({ activeTour: "draft", currentTourStep: 0 });
+
+    const factibilidadBtn = document.createElement("button");
+    factibilidadBtn.setAttribute("data-tab-target", "factibilidad");
+    const borradorBtn = document.createElement("button");
+    borradorBtn.setAttribute("data-tab-target", "borrador");
+    const cotizacionBtn = document.createElement("button");
+    cotizacionBtn.setAttribute("data-tab-target", "cotizacion");
+    const toggleQuotationBtn = document.createElement("button");
+    toggleQuotationBtn.setAttribute("data-action", "toggle-quotation");
+    toggleQuotationBtn.setAttribute("aria-expanded", "false");
+
+    const factibilidadClickSpy = vi.spyOn(factibilidadBtn, "click");
+    const borradorClickSpy = vi.spyOn(borradorBtn, "click");
+    const cotizacionClickSpy = vi.spyOn(cotizacionBtn, "click");
+    const toggleQuotationClickSpy = vi.spyOn(toggleQuotationBtn, "click");
+
+    document.body.appendChild(factibilidadBtn);
+    document.body.appendChild(borradorBtn);
+    document.body.appendChild(cotizacionBtn);
+    document.body.appendChild(toggleQuotationBtn);
+
+    try {
+      render(<GuidedTour />);
+
+      const config = mockDriverFactory.mock.calls[0]?.[0];
+
+      // Paso 1 (índice 0) -> Factibilidad
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DRAFT_STEPS[0], {
+          config: config ?? {},
+          state: { activeIndex: 0 },
+          driver: mockDriverInstance,
+          index: 0,
+        });
+      });
+      expect(factibilidadClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(0);
+
+      // Paso 2 (índice 1) -> Borrador
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DRAFT_STEPS[1], {
+          config: config ?? {},
+          state: { activeIndex: 1 },
+          driver: mockDriverInstance,
+          index: 1,
+        });
+      });
+      expect(borradorClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(1);
+
+      // Paso 3 (índice 2) -> Cotización
+      act(() => {
+        config?.onHighlightStarted?.(undefined, DRAFT_STEPS[2], {
+          config: config ?? {},
+          state: { activeIndex: 2 },
+          driver: mockDriverInstance,
+          index: 2,
+        });
+      });
+      expect(cotizacionClickSpy).toHaveBeenCalledTimes(1);
+      expect(useOnboardingStore.getState().currentTourStep).toBe(2);
+
+      // Avanzar temporizador para el clic automático de abrir cotización
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(toggleQuotationClickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      document.body.removeChild(factibilidadBtn);
+      document.body.removeChild(borradorBtn);
+      document.body.removeChild(cotizacionBtn);
+      document.body.removeChild(toggleQuotationBtn);
+      vi.useRealTimers();
+    }
   });
 
   it("en onNextClick avanza dentro del mismo tour o lo finaliza al alcanzar el último paso", () => {

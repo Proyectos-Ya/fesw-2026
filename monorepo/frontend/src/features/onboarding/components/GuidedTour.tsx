@@ -136,11 +136,31 @@ export const DETAIL_STEPS: DriveStep[] = [
 
 export const DRAFT_STEPS: DriveStep[] = [
   {
-    element: '[data-tour="proposal-editor"]',
+    element: '[data-tour="draft-factibilidad"]',
     popover: {
-      title: "Editor de Propuesta y Borrador",
+      title: "Factibilidad y Exigencias",
       description:
-        "Redacta y estructura tu propuesta técnica y comercial con base en los requerimientos detectados.",
+        "Aquí se escanean las bases y anexos para estructurar tu propuesta. Si la IA detecta que falta información excluyente en tu perfil, te hará preguntas clave antes de continuar.",
+      side: "bottom",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="draft-borrador-container"]',
+    popover: {
+      title: "Borrador de Oferta",
+      description:
+        "Una vez analizado, aquí verás los próximos pasos a seguir, los textos listos para copiar y pegar en Mercado Público, y opciones para generar documentos técnicos.",
+      side: "top",
+      align: "start",
+    },
+  },
+  {
+    element: '[data-tour="draft-cotizacion"]',
+    popover: {
+      title: "Cotización Financiera",
+      description:
+        "Calcula los costos de tu oferta. El sistema autocompleta los campos según las bases, pero puedes añadir ítems manualmente, guardar tu progreso y exportarlo a CSV o PDF.",
       side: "top",
       align: "start",
     },
@@ -171,6 +191,32 @@ export function switchDetailTabIfNeeded(
     document.querySelector<HTMLElement>('[data-tab-target="anexos"]')?.click();
   } else if (stepIndex === 5) {
     document.querySelector<HTMLElement>('[data-tab-target="calendario"]')?.click();
+  }
+}
+
+export function switchDraftTabIfNeeded(
+  tourName: TourName | null,
+  stepIndex?: number,
+) {
+  if (tourName !== "draft" || typeof stepIndex !== "number") return;
+  if (stepIndex === 0) {
+    document
+      .querySelector<HTMLElement>(
+        '[data-tab-target="factibilidad"], [data-tab-target="analisis"]',
+      )
+      ?.click();
+  } else if (stepIndex === 1) {
+    document.querySelector<HTMLElement>('[data-tab-target="borrador"]')?.click();
+  } else if (stepIndex === 2) {
+    document.querySelector<HTMLElement>('[data-tab-target="cotizacion"]')?.click();
+    setTimeout(() => {
+      const toggleBtn = document.querySelector<HTMLElement>(
+        '[data-action="toggle-quotation"]',
+      );
+      if (toggleBtn && toggleBtn.getAttribute("aria-expanded") !== "true") {
+        toggleBtn.click();
+      }
+    }, 100);
   }
 }
 
@@ -225,6 +271,7 @@ export function GuidedTour() {
         } else {
           setTourStep(nextIdx);
           switchDetailTabIfNeeded(currentTourName, nextIdx);
+          switchDraftTabIfNeeded(currentTourName, nextIdx);
           opts.driver.moveTo(nextIdx);
         }
       },
@@ -233,6 +280,7 @@ export function GuidedTour() {
         const prevIdx = Math.max(0, currentIdx - 1);
         setTourStep(prevIdx);
         switchDetailTabIfNeeded(currentTourName, prevIdx);
+        switchDraftTabIfNeeded(currentTourName, prevIdx);
         opts.driver.moveTo(prevIdx);
       },
       onCloseClick: (_element, _step, opts) => {
@@ -243,6 +291,7 @@ export function GuidedTour() {
         if (typeof opts.index === "number") {
           setTourStep(opts.index);
           switchDetailTabIfNeeded(currentTourName, opts.index);
+          switchDraftTabIfNeeded(currentTourName, opts.index);
         }
       },
       onPopoverRender: (popover, opts) => {
