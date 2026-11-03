@@ -50,6 +50,24 @@ const NAVIGATION_SUBSECTIONS = [
   },
 ];
 
+const PROFILE_SUBSECTIONS = [
+  {
+    iconName: "info",
+    title: "Información",
+    text: "Contiene los datos vitales de tu empresa (descripción, años de experiencia, número de empleados, regiones operativas, rubros y certificaciones). Mantener esto completo y actualizado mejora directamente la calidad y precisión de los matches.",
+  },
+  {
+    iconName: "tag",
+    title: "Palabras Claves",
+    text: "Son elementos fundamentales para la calidad del match. La aplicación adapta las recomendaciones en base a estos términos. Puedes añadir palabras clave para afinar los resultados y eliminarlas manualmente editando esta sección.",
+  },
+  {
+    iconName: "users",
+    title: "Equipo",
+    text: "Pestaña para gestionar a los miembros de tu espacio de trabajo. Controla quiénes tienen acceso y sus niveles de permiso sobre el perfil de la empresa, los matches y el seguimiento de licitaciones.",
+  },
+];
+
 export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
   {
     id: "navigation",
@@ -91,13 +109,31 @@ export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
     icon: Building2,
     matchRoutes: ["/empresa", "/perfil", "/workspaces", "/configuracion"],
     content: (
-      <div className="space-y-2">
-        <p>
-          Configura el rubro, regiones de operación, certificaciones y experiencia de tu empresa.
-        </p>
-        <p>
-          La IA utiliza estos datos para calcular el puntaje de compatibilidad en cada licitación publicada.
-        </p>
+      <div className="space-y-2 pt-1">
+        {PROFILE_SUBSECTIONS.map((sub) => (
+          <details
+            key={sub.title}
+            className="group/sub rounded-md border border-border-subtle/80 bg-surface-card p-2.5 transition-colors hover:border-border-default"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none hover:text-primary transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <Icon
+                  name={sub.iconName}
+                  size={16}
+                  className="w-4 h-4 text-text-muted transition-colors"
+                />
+                <span className="font-semibold text-sm">{sub.title}</span>
+              </span>
+              <ChevronDown
+                size={14}
+                className="text-text-subtle transition-transform duration-200 group-open/sub:rotate-180"
+              />
+            </summary>
+            <p className="mt-2 text-[0.8rem] text-text-muted leading-relaxed pl-6">
+              {sub.text}
+            </p>
+          </details>
+        ))}
       </div>
     ),
   },
@@ -295,34 +331,6 @@ export function HelpCenterDrawer() {
 
         {/* Contenido desplazable */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Tarjeta destacada dinámica: Reiniciar Tour */}
-          <div className="rounded-xl border border-primary-border bg-primary-soft/60 p-5 shadow-xs">
-            <div className="flex items-start gap-3">
-              <div className="flex size-9 flex-none items-center justify-center rounded-full bg-primary text-on-primary">
-                <Icon name="sparkles" size={18} />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-text-strong">
-                  {tourConfig.title}
-                </h3>
-                <p className="text-xs text-text-muted leading-relaxed">
-                  {tourConfig.description}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <Button
-                type="button"
-                variant="primary"
-                onClick={handleResetTour}
-                className="w-full"
-              >
-                <Icon name="rotate-ccw" size={16} />
-                {tourConfig.buttonText}
-              </Button>
-            </div>
-          </div>
-
           {/* Guías contextuales en formato Accordion */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
@@ -373,6 +381,34 @@ export function HelpCenterDrawer() {
                   </details>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Tarjeta destacada dinámica: Reiniciar Tour */}
+          <div className="rounded-xl border border-primary-border bg-primary-soft/60 p-5 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 flex-none items-center justify-center rounded-full bg-primary text-on-primary">
+                <Icon name="sparkles" size={18} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-text-strong">
+                  {tourConfig.title}
+                </h3>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  {tourConfig.description}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleResetTour}
+                className="w-full"
+              >
+                <Icon name="rotate-ccw" size={16} />
+                {tourConfig.buttonText}
+              </Button>
             </div>
           </div>
         </div>

@@ -147,6 +147,27 @@ describe("HelpCenterDrawer", () => {
     ).toBeInTheDocument();
   });
 
+  it("muestra los 3 sub-desplegables de perfil de empresa (Información, Palabras Claves, Equipo)", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/empresa";
+
+    render(<HelpCenterDrawer />);
+
+    expect(screen.getByText("Información")).toBeInTheDocument();
+    expect(screen.getByText("Palabras Claves")).toBeInTheDocument();
+    expect(screen.getByText("Equipo")).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/Contiene los datos vitales de tu empresa/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Son elementos fundamentales para la calidad del match/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Pestaña para gestionar a los miembros de tu espacio de trabajo/i),
+    ).toBeInTheDocument();
+  });
+
   it("auto-expande 'detail' cuando la ruta es una licitación", () => {
     useOnboardingStore.setState({ isHelpCenterOpen: true });
     mockPathname = "/matches/licitacion-456";
