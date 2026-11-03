@@ -29,7 +29,7 @@ describe("ContentScriptBridge", () => {
     const sendRuntime = vi.fn();
     const bridge = new ContentScriptBridge({
       currentOrigin: defaultOrigin,
-      extensionVersion: "0.1.0",
+      extensionVersion: "0.2.0",
       postMessageToWindow: postMessage,
       sendMessageToRuntime: sendRuntime,
     });
@@ -49,7 +49,9 @@ describe("ContentScriptBridge", () => {
         target: "CHIRIPA_WEB",
         type: "PONG",
         nonce: "test-nonce-123",
-        version: "0.1.0",
+        version: "0.2.0",
+        features: ["postulation"],
+        mp_access: true,
       },
       defaultOrigin
     );

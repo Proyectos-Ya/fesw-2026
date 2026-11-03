@@ -5,13 +5,14 @@ export default defineContentScript({
   matches: [
     "*://*.chiripa.cl/*",
     "*://*.proyectosya.cl/*",
+    "*://*.vercel.app/*",
     "http://localhost:3000/*",
   ],
   runAt: "document_idle",
   main() {
     const bridge = new ContentScriptBridge({
       currentOrigin: window.location.origin,
-      extensionVersion: "0.1.0",
+      extensionVersion: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
       sendMessageToRuntime: (message, cb) => {
         if (cb) {
           chrome.runtime.sendMessage(message, cb);

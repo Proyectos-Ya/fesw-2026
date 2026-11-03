@@ -29,7 +29,9 @@ export function App() {
           <h1 style={{ fontSize: "16px", fontWeight: "700", margin: 0, color: "#0f172a" }}>Chiripa</h1>
           <p style={{ fontSize: "12px", color: "#64748b", margin: 0 }}>Licitaciones Inteligentes</p>
         </div>
-        <span style={{ fontSize: "11px", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", color: "#475569" }}>v0.1.0</span>
+        <span style={{ fontSize: "11px", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", color: "#475569" }}>
+          v{chrome?.runtime?.getManifest?.()?.version ?? "0.2.0"}
+        </span>
       </header>
 
       {loading ? (

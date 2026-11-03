@@ -33,7 +33,7 @@ export default defineBackground(() => {
               pairing_ticket: payload.pairing_ticket,
               installation_id: installationId,
               browser: "chrome",
-              extension_version: "0.1.0",
+              extension_version: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
             }),
           });
           if (res.ok) {
@@ -80,7 +80,7 @@ export default defineBackground(() => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             installation_id: creds.installationId,
-            extension_version: "0.1.0",
+            extension_version: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
           }),
         });
 
@@ -88,8 +88,10 @@ export default defineBackground(() => {
           const data = (await res.json()) as { capabilities?: Capabilities };
           if (data.capabilities) {
             await ExtensionStorage.saveCapabilities(data.capabilities);
-            // 2. Ejecutar ciclo distribuido
-            await jobRunner.runCycle(data.capabilities);
+            // 2. Ejecutar ciclo distribuido solo si fetch_jobs_enabled está activo
+            if (data.capabilities.fetch_jobs_enabled) {
+              await jobRunner.runCycle(data.capabilities);
+            }
           }
         }
       } catch (err) {

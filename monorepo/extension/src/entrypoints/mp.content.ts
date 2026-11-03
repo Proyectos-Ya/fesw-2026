@@ -36,10 +36,14 @@ export default defineContentScript({
         align-items: center;
         gap: 8px;
       `;
-      badge.innerHTML = `
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;"></span>
-        <span>Chiripa: ${attachments.length} anexo(s) detectado(s)</span>
-      `;
+      const dot = document.createElement("span");
+      dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;";
+
+      const text = document.createElement("span");
+      text.textContent = `Chiripa: ${attachments.length} anexo(s) detectado(s)`;
+
+      badge.appendChild(dot);
+      badge.appendChild(text);
       document.body.appendChild(badge);
     }
   },

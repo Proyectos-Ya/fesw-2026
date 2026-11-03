@@ -193,6 +193,44 @@ jobs:
       - name: Ejecutar pruebas unitarias (Vitest)
         run: pnpm run test
 
+  test-extension:
+    name: Tests y Build Extensión
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: monorepo/extension
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.3.0
+          run_install: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: monorepo/frontend/.nvmrc
+          cache: 'pnpm'
+          cache-dependency-path: monorepo/extension/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Verificacion de tipos (TypeScript)
+        run: pnpm run compile
+
+      - name: Pruebas unitarias (Vitest)
+        run: pnpm run test
+
+      - name: Compilar Chrome MV3
+        run: pnpm run build:chrome
+
+      - name: Compilar Firefox MV2
+        run: pnpm run build:firefox
+
+      - name: Linter oficial Firefox (web-ext lint)
+        run: pnpm run web-ext:lint
+
   test-unit-backend:
     name: Tests Unitarios Backend
     needs: [build-frontend, build-backend]
@@ -279,7 +317,7 @@ jobs:
   # Agregar aquí un job que despliegue a Railway provocaría un doble deploy.
   deploy-vercel:
     name: Deploy Frontend (Vercel)
-    needs: [test-unit-frontend, test-unit-backend, test-e2e, migraciones]
+    needs: [test-unit-frontend, test-unit-backend, test-extension, test-e2e, migraciones]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     runs-on: ubuntu-latest
@@ -324,7 +362,7 @@ jobs:
   # ============================================================
   metrics-summary:
     name: Informe de Impacto
-    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-e2e, migraciones, deploy-vercel]
+    needs: [build-frontend, build-backend, test-unit-frontend, test-unit-backend, test-extension, test-e2e, migraciones, deploy-vercel]
     if: always()
     runs-on: ubuntu-latest
     permissions:

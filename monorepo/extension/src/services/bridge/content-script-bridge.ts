@@ -39,6 +39,8 @@ export class ContentScriptBridge {
           type: "PONG",
           nonce: data.nonce,
           version: this.config.extensionVersion,
+          features: ["postulation"],
+          mp_access: true,
         },
         this.config.currentOrigin
       );
