@@ -28,6 +28,9 @@ from app.application.use_cases.capabilities.build_experience_catalog import (
 from app.application.use_cases.proposals.answer_proposal_question import (
     AnswerProposalQuestionUseCase,
 )
+from app.application.use_cases.proposals.build_postulation_package import (
+    BuildPostulationPackageUseCase,
+)
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
 )
@@ -48,6 +51,7 @@ from app.application.use_cases.proposals.sync_proposal_answers import (
 from app.bootstrap.capabilities import get_answer_capability_question_use_case
 from app.bootstrap.proposals import (
     get_answer_proposal_question_use_case,
+    get_build_postulation_package_use_case,
     get_decide_discrepancy_use_case,
     get_export_proposal_use_case,
     get_generate_proposal_use_case,
@@ -84,6 +88,7 @@ from tests.unit.application.fakes import (
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
 from tests.unit.application.test_start_feasibility import FakeProposalAI
+from tests.unit.application.test_build_postulation_package import InMemoryQuotationRepository
 
 # El rubro de las empresas de `_crear_empresa` es "Servicios".
 SEC = CapabilityQuestion(
@@ -210,6 +215,15 @@ def entorno(api: AsyncClient):
             drafts,
             BuildExperienceCatalogUseCase(suppliers, questions, answers, evidences),
             app.dependency_overrides[get_generate_proposal_use_case](),
+        )
+    )
+    quotations = InMemoryQuotationRepository()
+    app.dependency_overrides[get_build_postulation_package_use_case] = lambda: (
+        BuildPostulationPackageUseCase(
+            supplier_repo=suppliers,
+            tender_repo=tenders,
+            draft_repo=drafts,
+            quotation_repo=quotations,
         )
     )
 
@@ -797,3 +811,58 @@ async def test_la_vista_dice_si_el_documento_tecnico_es_ambiguo(
     assert secciones["equipo"]["hint"] == "Menciona las certificaciones."
     assert secciones["equipo"]["guidance"]
     assert secciones["antecedentes"]["hint"] is None
+
+
+@pytest.mark.asyncio
+async def test_postulation_package_viewer_gets_403(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, _, headers_c, _ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/postulation-package", headers=headers_c
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_postulation_package_success_200(api: AsyncClient, entorno, empresas):
+    tender_id, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    # Enable flag for testing
+    from app.config import settings
+    settings.extension_postulation_enabled = True
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/postulation-package", headers=headers_a
+    )
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert "tender" in cuerpo
+    assert "company" in cuerpo
+    assert "offer_name" in cuerpo
+    assert "items" in cuerpo
+    assert cuerpo["tender"]["code"] == f"COT-{tender_id}"
+
+
+@pytest.mark.asyncio
+async def test_postulation_package_tender_closed_409(api: AsyncClient, entorno, empresas):
+    tender_id, tenders, *_ = entorno
+    headers_a, *_ = empresas
+    await _redactado(api, tender_id, headers_a)
+
+    # Close tender
+    from app.shared.constants import TENDER_STATUSES
+    tender = tenders.tenders[tender_id]
+    tender.status_code = TENDER_STATUSES["CLOSED"]
+
+    from app.config import settings
+    settings.extension_postulation_enabled = True
+
+    resp = await api.get(
+        f"/tenders/{tender_id}/proposal/postulation-package", headers=headers_a
+    )
+    assert resp.status_code == 409
+

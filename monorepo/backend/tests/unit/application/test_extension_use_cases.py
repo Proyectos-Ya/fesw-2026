@@ -95,6 +95,7 @@ def test_capabilities_disabled():
     mock_settings.extension_latest_version = "0.1.0"
     mock_settings.extension_max_daily_fetches = 0
     mock_settings.extension_polling_interval_seconds = 300
+    mock_settings.extension_postulation_enabled = True
 
     use_case = GetExtensionCapabilitiesUseCase(settings=mock_settings)
     cap = use_case.execute()
@@ -102,6 +103,25 @@ def test_capabilities_disabled():
     assert cap.enabled is False
     assert cap.mp_adapter_enabled is False
     assert cap.fetch_jobs_enabled is False
+    assert cap.postulation_enabled is False
+
+
+def test_capabilities_postulation_flag_toggle():
+    mock_settings = MagicMock(spec=Settings)
+    mock_settings.extension_enabled = True
+    mock_settings.extension_min_version = "0.1.0"
+    mock_settings.extension_latest_version = "0.1.0"
+    mock_settings.extension_max_daily_fetches = 50
+    mock_settings.extension_polling_interval_seconds = 300
+
+    # Case A: postulation flag True
+    mock_settings.extension_postulation_enabled = True
+    use_case = GetExtensionCapabilitiesUseCase(settings=mock_settings)
+    assert use_case.execute().postulation_enabled is True
+
+    # Case B: postulation flag False
+    mock_settings.extension_postulation_enabled = False
+    assert use_case.execute().postulation_enabled is False
 
 
 # --- 2. PairExtensionUseCase ---
