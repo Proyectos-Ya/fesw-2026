@@ -6,6 +6,10 @@ import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
 import { NextSteps } from "./NextSteps";
 import { RegenerateDialog } from "./RegenerateDialog";
+import { PostularEnMercadoPublicoButton } from "./PostularEnMercadoPublicoButton";
+import { ExtensionRequiredDialog } from "./ExtensionRequiredDialog";
+import { PostulationConfirmDialog } from "./PostulationConfirmDialog";
+import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 import { MAX_DETALLE_COTIZACION } from "../utils/proposal";
 import type { DraftParagraph, DraftSection, ProposalStage, ProposalView } from "../types";
 
@@ -186,6 +190,21 @@ export function ProposalDraftViewer({
   onRequestTechnical,
 }: ProposalDraftViewerProps) {
   const [regenerando, setRegenerando] = useState(false);
+
+  const {
+    busy: postulationBusy,
+    packageData,
+    showExtensionRequiredDialog,
+    showConfirmDialog,
+    startPostulation,
+    confirm: handleConfirmPostulation,
+    setShowExtensionRequiredDialog,
+    setShowConfirmDialog,
+  } = useMercadoPublicoPostulation({
+    tenderId: view.tender_id,
+    tenderCode,
+  });
+
   const contenido = view.content;
   if (!contenido) return null;
 
@@ -218,18 +237,27 @@ export function ProposalDraftViewer({
             &quot;Fuentes&quot; en cada párrafo.
           </p>
         </div>
-        {canWrite && !view.is_expired && (
-          <Button
-            variant="ghost"
-            className="border border-border-strong"
-            disabled={busy}
-            isLoading={stage === "regenerating"}
-            onClick={() => setRegenerando(true)}
-          >
-            <Icon name="refresh-cw" size={16} />
-            Regenerar
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canWrite && !view.is_expired && (
+            <Button
+              variant="ghost"
+              className="border border-border-strong"
+              disabled={busy}
+              isLoading={stage === "regenerating"}
+              onClick={() => setRegenerando(true)}
+            >
+              <Icon name="refresh-cw" size={16} />
+              Regenerar
+            </Button>
+          )}
+
+          <PostularEnMercadoPublicoButton
+            canWrite={canWrite}
+            isExpired={view.is_expired}
+            busy={postulationBusy || busy}
+            onClick={startPostulation}
+          />
+        </div>
       </div>
 
       {view.warnings.length > 0 && (
@@ -374,6 +402,19 @@ export function ProposalDraftViewer({
           setRegenerando(false);
           onRegenerate(instrucciones);
         }}
+      />
+
+      <ExtensionRequiredDialog
+        open={showExtensionRequiredDialog}
+        onClose={() => setShowExtensionRequiredDialog(false)}
+      />
+
+      <PostulationConfirmDialog
+        open={showConfirmDialog}
+        packageData={packageData}
+        busy={postulationBusy}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmPostulation}
       />
     </div>
   );

@@ -179,3 +179,53 @@ export interface PendingAnswer {
 
 /** Las que no se preguntan: definen la oferta, no a la empresa. */
 export const KINDS_SIN_PREGUNTA: readonly RequirementKind[] = ["condicion", "documento"];
+
+// --- Postulación en Mercado Público (HU-032) ---
+
+export interface PostulationTenderInfo {
+  id: string;
+  code: string;
+  title: string;
+  closing_at: string;
+  url: string;
+}
+
+export interface PostulationCompanyInfo {
+  rut: string;
+  name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+}
+
+export interface PostulationItem {
+  line_number: number;
+  name: string;
+  quantity: number;
+  unit: string;
+  suggested_unit_price: number;
+  suggested_total_price: number;
+  technical_spec: string | null;
+}
+
+export interface PostulationRequiredDocument {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  matched_file_name: string | null;
+  status: "attached" | "placeholder" | "missing" | string;
+  download_url: string | null;
+}
+
+export interface PostulationPackage {
+  tender: PostulationTenderInfo;
+  company: PostulationCompanyInfo;
+  items: PostulationItem[];
+  total_suggested_clp: number;
+  observations: string;
+  validity_days: number;
+  delivery_term_days: number;
+  required_documents: PostulationRequiredDocument[];
+}
+
