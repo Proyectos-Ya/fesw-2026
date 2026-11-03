@@ -4,12 +4,19 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/features/shared/components/Icon";
 import { Avatar } from "@/features/shared/components/Avatar";
+import { useOptionalCompany } from "@/features/company-profile/components/CompanyProvider";
 import { useWorkspace } from "../WorkspaceContext";
 import { getRoleBadge } from "./WorkspaceSelector";
 import { PendingInvitationsList } from "./PendingInvitationsList";
 
 export function WorkspaceSelectionScreen() {
   const { workspaces, activeWorkspace, switchActiveWorkspace, isLoading } = useWorkspace();
+  const companyCtx = useOptionalCompany();
+  const activeLogoUrl =
+    companyCtx?.logoUrl ??
+    (companyCtx?.company.status === "with-company"
+      ? companyCtx.company.supplier.logo_url ?? null
+      : null);
   const [isSwitching, setIsSwitching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -70,7 +77,16 @@ export function WorkspaceSelectionScreen() {
               }`}
             >
               <div className="flex items-center gap-4 min-w-0">
-                <Avatar name={w.trade_name || w.legal_name} size="lg" />
+                <Avatar
+                  name={w.trade_name || w.legal_name}
+                  src={
+                    ((isCurrent ? activeLogoUrl : null) ??
+                      w.logo_url ??
+                      (isCurrent ? activeWorkspace?.logo_url : null)) ??
+                    undefined
+                  }
+                  size="lg"
+                />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-bold text-text-strong truncate group-hover:text-primary transition-colors">

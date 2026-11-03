@@ -24,36 +24,40 @@ const mockDocs: TenderChatDocument[] = [
 ];
 
 describe("DocumentAttachmentManager (Decisión 5 / Plan 233)", () => {
-  it("muestra el banner informativo de bases oficiales y no incluye input de archivo", () => {
+  it("muestra el banner de advertencia cuando no hay anexos subidos", () => {
     render(
       <DocumentAttachmentManager
         documents={[]}
         onDelete={vi.fn()}
-        onNavigateToPanel={vi.fn()}
       />
     );
 
-    expect(screen.getByText("Bases y anexos oficiales sincronizados")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Sin anexos subidos. El asistente solo usará la información general de la licitación."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Bases y anexos oficiales sincronizados")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ver panel" })).toBeNull();
     expect(screen.queryByTestId("file-upload-input")).toBeNull();
     expect(screen.queryByRole("button", { name: /adjuntar/i })).toBeNull();
   });
 
-  it("invoca onNavigateToPanel al hacer clic en 'Ver panel'", async () => {
-    const onNavigateToPanel = vi.fn();
-    const user = userEvent.setup();
-
+  it("muestra el banner de sincronización cuando hay anexos disponibles", () => {
     render(
       <DocumentAttachmentManager
         documents={[]}
+        hasAttachments={true}
         onDelete={vi.fn()}
-        onNavigateToPanel={onNavigateToPanel}
       />
     );
 
-    const verPanelBtn = screen.getByRole("button", { name: "Ver panel" });
-    await user.click(verPanelBtn);
-
-    expect(onNavigateToPanel).toHaveBeenCalledOnce();
+    expect(screen.getByText("Bases y anexos oficiales sincronizados")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Sin anexos subidos. El asistente solo usará la información general de la licitación."
+      )
+    ).toBeNull();
   });
 
   it("renderiza documentos legacy del chat con badge 'Chat antiguo'", () => {

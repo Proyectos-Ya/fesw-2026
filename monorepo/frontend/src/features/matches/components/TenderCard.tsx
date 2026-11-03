@@ -120,12 +120,12 @@ export function TenderCard({
       href={tenderDetailHref(tender.id, rankingContext)}
       ref={impressionRef}
       onClick={handleCardClick}
-      className="group flex flex-row items-start gap-3.5 sm:gap-5 rounded-lg border border-border-subtle bg-surface-card p-4 sm:p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="group flex flex-row gap-3.5 sm:gap-5 rounded-lg border border-border-subtle bg-surface-card p-4 sm:p-5 shadow-xs transition-all hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle de ${tender.name}`}
     >
       {/* Medidor de compatibilidad: solo visible si hay match con score */}
       {score !== null && (
-        <div className="flex-none">
+        <div className="flex flex-none flex-col items-center justify-center self-center">
           <MatchMeter
             value={score}
             size="lg"

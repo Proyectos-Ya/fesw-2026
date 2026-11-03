@@ -5,13 +5,14 @@ import {
   FileImage,
   Trash2,
   AlertCircle,
+  AlertTriangle,
 } from "lucide-react";
 import type { TenderChatDocument, SupportedDocumentType } from "../types";
 
 export interface DocumentAttachmentManagerProps {
   documents: TenderChatDocument[];
   onDelete: (documentId: string) => Promise<unknown> | void;
-  onNavigateToPanel?: () => void;
+  hasAttachments?: boolean;
   onUpload?: (file: File) => Promise<unknown> | void;
   isUploading?: boolean;
   externalError?: string | null;
@@ -20,9 +21,11 @@ export interface DocumentAttachmentManagerProps {
 export function DocumentAttachmentManager({
   documents,
   onDelete,
-  onNavigateToPanel,
+  hasAttachments,
   externalError = null,
 }: DocumentAttachmentManagerProps) {
+  const isSynced = hasAttachments ?? documents.length > 0;
+
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -36,7 +39,7 @@ export function DocumentAttachmentManager({
       case "xlsx":
         return <FileSpreadsheet className="h-4 w-4 text-emerald-600" />;
       case "png":
-        return <FileImage className="h-4 w-4 text-blue-500" />;
+        return <FileImage className="h-4 w-4 text-primary" />;
       default:
         return <FileText className="h-4 w-4 text-text-muted" />;
     }
@@ -44,22 +47,20 @@ export function DocumentAttachmentManager({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface-inset p-3">
-      {/* Banner de bases oficiales sincronizadas */}
-      <div className="flex items-center justify-between rounded-lg bg-info-soft p-2.5 text-xs text-text-strong border border-info/30">
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-4 w-4 shrink-0 text-info" />
+      {/* Banner condicional de estado de anexos */}
+      {isSynced ? (
+        <div className="flex items-center gap-2 rounded-lg border border-primary-border bg-primary-soft p-2.5 text-xs text-text-strong">
+          <FileText className="h-4 w-4 shrink-0 text-primary" />
           <span className="truncate font-medium">Bases y anexos oficiales sincronizados</span>
         </div>
-        {onNavigateToPanel && (
-          <button
-            type="button"
-            onClick={onNavigateToPanel}
-            className="font-bold text-info-text hover:underline shrink-0 text-[0.6875rem]"
-          >
-            Ver panel
-          </button>
-        )}
-      </div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-soft p-2.5 text-xs text-text-strong">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <span className="font-medium leading-snug">
+            Sin anexos subidos. El asistente solo usará la información general de la licitación.
+          </span>
+        </div>
+      )}
 
       {externalError && (
         <div className="flex items-center gap-1.5 rounded-md bg-danger-soft p-1.5 text-xs text-danger-text">
