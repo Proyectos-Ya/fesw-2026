@@ -24,27 +24,27 @@ export interface HelpCategory {
 
 const NAVIGATION_SUBSECTIONS = [
   {
-    icon: "📍",
+    iconName: "sparkles",
     title: "Inicio",
     text: "Resumen diario con tus mejores recomendaciones generadas por IA, donde destacan las oportunidades urgentes o de altísima compatibilidad.",
   },
   {
-    icon: "🔍",
+    iconName: "search",
     title: "Buscar",
     text: "Explorador manual de Mercado Público. Úsalo cuando necesites cazar licitaciones específicas usando filtros estrictos (región, estado, presupuesto).",
   },
   {
-    icon: "🎯",
+    iconName: "target",
     title: "Matches",
     text: "Catálogo completo de licitaciones afines a tu rubro. Es tu bandeja de entrada principal para revisar, descartar o guardar oportunidades.",
   },
   {
-    icon: "🔖",
+    iconName: "bookmark",
     title: "Guardados",
     text: "Tu buzón de licitaciones pre-seleccionadas. Todo lo que marques con la etiqueta de guardado llegará aquí para esperar tu revisión detallada.",
   },
   {
-    icon: "📊",
+    iconName: "kanban",
     title: "Tablero (Kanban)",
     text: "Espacio de trabajo visual. Organiza tu proceso de postulación moviendo tarjetas por columnas (Análisis, Borrador, Revisión y Enviado) para coordinar con tu equipo.",
   },
@@ -63,10 +63,14 @@ export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
             key={sub.title}
             className="group/sub rounded-md border border-border-subtle/80 bg-surface-card p-2.5 transition-colors hover:border-border-default"
           >
-            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none hover:text-primary transition-colors [&::-webkit-details-marker]:hidden">
               <span className="flex items-center gap-2">
-                <span>{sub.icon}</span>
-                <span className="font-semibold">{sub.title}</span>
+                <Icon
+                  name={sub.iconName}
+                  size={16}
+                  className="w-4 h-4 text-text-muted transition-colors"
+                />
+                <span className="font-semibold text-sm">{sub.title}</span>
               </span>
               <ChevronDown
                 size={14}
