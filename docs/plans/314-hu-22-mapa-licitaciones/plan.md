@@ -137,8 +137,9 @@ de uso de Nominatim pide no repetir consultas. RLS la activa el event trigger
   `react-leaflet-cluster` lo necesitan). Teselas de OpenStreetMap con su
   atribución; no piden key.
 - **Ruta y menú.** `src/app/(app)/mapa/page.tsx` de una línea, y
-  `{ icon: "map", label: "Mapa de licitaciones", href: "/mapa" }` en
-  `NAV_ITEMS` de `Sidebar.tsx` (criterio 1).
+  `{ icon: "map", label: "Mapa de licitaciones", href: "/mapa" }` en la sección
+  **Descubrimiento** de `BASE_NAV_SECTIONS`, en `Sidebar.tsx` (criterio 1): el
+  mapa sirve para encontrar licitaciones, no para seguir las ya guardadas.
 - **Feature** `src/features/tender-map/`:
   - `services/tenderMapService.ts`: `getTendersMap(region)` con `apiFetch`.
   - `hooks/useTenderMap.ts`: carga, error, datos y `retry`, como
@@ -176,6 +177,19 @@ pnpm run test && pnpm run lint && pnpm run build
 
 jsdom no tiene canvas, así que las pruebas de Vitest mockean `TenderMap`. La
 agrupación y el centrado se prueban a mano.
+
+Resultado tras el segundo merge con develop (2026-11-03), que trajo el PR #328
+con las reformas de interfaz:
+
+- El único conflicto fue `Sidebar.tsx`: develop pasó el menú de una lista plana
+  a secciones con título. El ítem del mapa queda en **Descubrimiento**.
+- **Frontend**: 1.346 pruebas en 165 archivos, todas en verde. `eslint` sin
+  errores (27 advertencias, ninguna de esta rama) y `next build` compila con
+  `/mapa`.
+- **Backend**: este merge no trajo ningún archivo de backend ni migraciones
+  nuevas, así que vale el resultado de abajo. Sigue habiendo una sola cabeza.
+- `DeliveryInfo` sobrevivió al rediseño del detalle, así que el criterio 7
+  sigue cubierto.
 
 Resultado tras sincronizar con develop (2026-11-01), que trajo la HU-31 (modo
 oscuro y accesibilidad), retroalimentación de usuario y cuatro migraciones:

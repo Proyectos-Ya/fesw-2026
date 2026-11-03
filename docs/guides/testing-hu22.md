@@ -171,8 +171,8 @@ Entra a la aplicación con tu cuenta. La empresa debe tener al menos una región
 
 ### Criterio 1 — Entrada en el menú y mapa centrado en la zona
 
-En el menú lateral, entre **Guardados** y **Tablero**, debe aparecer **Mapa de
-licitaciones**. Haz clic.
+En el menú lateral, en la sección **Descubrimiento** y debajo de **Matches**, debe
+aparecer **Mapa de licitaciones**, con su ícono. Haz clic.
 
 Esperado: se abre `/mapa`, el selector **Zona** muestra la primera región de tu empresa
 y el mapa aparece centrado ahí, con un marcador por cada licitación ubicada.
