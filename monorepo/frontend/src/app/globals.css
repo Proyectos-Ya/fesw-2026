@@ -420,3 +420,109 @@ html[data-font-scale="xlarge"] {
     }
   }
 }
+
+/* ==========================================================================
+   Driver.js Guided Tour Popover — Theme & Dark Mode Support
+   ========================================================================== */
+.chiripa-tour-popover.driver-popover {
+  background-color: var(--surface-card) !important;
+  color: var(--text-strong) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.25) !important;
+  font-family: inherit !important;
+  padding: 1.25rem !important;
+  max-width: 360px !important;
+}
+
+.chiripa-tour-popover .driver-popover-title {
+  color: var(--text-strong) !important;
+  font-family: var(--font-display, inherit) !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+}
+
+.chiripa-tour-popover .driver-popover-description {
+  color: var(--text-muted) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+  margin-top: 0.5rem !important;
+}
+
+.chiripa-tour-popover .driver-popover-close-btn {
+  color: var(--text-subtle) !important;
+}
+
+.chiripa-tour-popover .driver-popover-close-btn:hover {
+  color: var(--text-strong) !important;
+}
+
+.chiripa-tour-popover .driver-popover-progress-text {
+  color: var(--text-subtle) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+}
+
+.chiripa-tour-popover .driver-popover-next-btn,
+.chiripa-tour-popover .driver-popover-footer-btn.driver-popover-next-btn {
+  background-color: var(--primary) !important;
+  color: var(--on-primary) !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600 !important;
+  padding: 0.4rem 0.85rem !important;
+  font-size: 0.8125rem !important;
+  transition: all 0.15s ease !important;
+}
+
+.chiripa-tour-popover .driver-popover-next-btn:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.chiripa-tour-popover .driver-popover-prev-btn,
+.chiripa-tour-popover .driver-popover-footer-btn.driver-popover-prev-btn {
+  background-color: transparent !important;
+  color: var(--text-muted) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500 !important;
+  padding: 0.4rem 0.85rem !important;
+  font-size: 0.8125rem !important;
+}
+
+.chiripa-tour-popover .driver-popover-prev-btn:hover {
+  background-color: var(--surface-inset) !important;
+  color: var(--text-strong) !important;
+}
+
+.chiripa-tour-popover .driver-popover-skip-btn {
+  background: none !important;
+  border: none !important;
+  color: var(--text-subtle) !important;
+  cursor: pointer !important;
+  font-size: 0.75rem !important;
+  text-decoration: underline !important;
+  padding: 0.25rem 0.5rem !important;
+  margin-right: auto !important;
+}
+
+.chiripa-tour-popover .driver-popover-skip-btn:hover {
+  color: var(--text-strong) !important;
+}
+
+.chiripa-tour-popover .driver-popover-arrow-side-left {
+  border-left-color: var(--surface-card) !important;
+}
+
+.chiripa-tour-popover .driver-popover-arrow-side-right {
+  border-right-color: var(--surface-card) !important;
+}
+
+.chiripa-tour-popover .driver-popover-arrow-side-top {
+  border-top-color: var(--surface-card) !important;
+}
+
+.chiripa-tour-popover .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--surface-card) !important;
+}
