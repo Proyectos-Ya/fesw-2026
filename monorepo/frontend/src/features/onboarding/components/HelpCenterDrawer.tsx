@@ -22,6 +22,34 @@ export interface HelpCategory {
   content: ReactNode | ComponentType;
 }
 
+const NAVIGATION_SUBSECTIONS = [
+  {
+    icon: "📍",
+    title: "Inicio",
+    text: "Resumen diario con tus mejores recomendaciones generadas por IA, donde destacan las oportunidades urgentes o de altísima compatibilidad.",
+  },
+  {
+    icon: "🔍",
+    title: "Buscar",
+    text: "Explorador manual de Mercado Público. Úsalo cuando necesites cazar licitaciones específicas usando filtros estrictos (región, estado, presupuesto).",
+  },
+  {
+    icon: "🎯",
+    title: "Matches",
+    text: "Catálogo completo de licitaciones afines a tu rubro. Es tu bandeja de entrada principal para revisar, descartar o guardar oportunidades.",
+  },
+  {
+    icon: "🔖",
+    title: "Guardados",
+    text: "Tu buzón de licitaciones pre-seleccionadas. Todo lo que marques con la etiqueta de guardado llegará aquí para esperar tu revisión detallada.",
+  },
+  {
+    icon: "📊",
+    title: "Tablero (Kanban)",
+    text: "Espacio de trabajo visual. Organiza tu proceso de postulación moviendo tarjetas por columnas (Análisis, Borrador, Revisión y Enviado) para coordinar con tu equipo.",
+  },
+];
+
 export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
   {
     id: "navigation",
@@ -29,15 +57,27 @@ export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
     icon: Map,
     matchRoutes: ["/", "/buscar", "/guardados", "/tablero", "/alertas"],
     content: (
-      <div className="space-y-2">
-        <p>
-          Explora licitaciones compatibles desde el <strong>Inicio</strong>, usa el{" "}
-          <strong>Buscador manual</strong> con filtros avanzados o gestiona tus oportunidades en el{" "}
-          <strong>Tablero Kanban</strong>.
-        </p>
-        <p>
-          Configura tus palabras clave y alertas para no perderte oportunidades con fechas de cierre próximas.
-        </p>
+      <div className="space-y-2 pt-1">
+        {NAVIGATION_SUBSECTIONS.map((sub) => (
+          <details
+            key={sub.title}
+            className="group/sub rounded-md border border-border-subtle/80 bg-surface-card p-2.5 transition-colors hover:border-border-default"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-text-strong select-none [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <span>{sub.icon}</span>
+                <span className="font-semibold">{sub.title}</span>
+              </span>
+              <ChevronDown
+                size={14}
+                className="text-text-subtle transition-transform duration-200 group-open/sub:rotate-180"
+              />
+            </summary>
+            <p className="mt-2 text-[0.8rem] text-text-muted leading-relaxed pl-6">
+              {sub.text}
+            </p>
+          </details>
+        ))}
       </div>
     ),
   },

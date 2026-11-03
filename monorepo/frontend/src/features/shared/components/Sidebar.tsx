@@ -226,37 +226,53 @@ export function Sidebar() {
           className="flex-1 flex flex-col gap-0.5 overflow-y-auto"
           aria-label="Navegación principal"
         >
-          {navSections.map((section, sectionIndex) => (
-            <div
-              key={section.title ?? `section-${sectionIndex}`}
-              className="flex flex-col gap-0.5"
-            >
-              {section.title && (
-                <div className="mt-2 mb-0 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
-                  {section.title}
-                </div>
-              )}
-              {section.items.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={isActive(pathname, item.href)}
-                  dataTour={item.href === "/buscar" ? "sidebar-search" : undefined}
-                  // Alertas lleva contador de avisos no leídos + invitaciones pendientes
-                  badge={item.href === "/alertas" ? totalNotifications : undefined}
-                  onNavigate={() => setMobileOpen(false)}
-                />
-              ))}
-            </div>
-          ))}
+          {navSections.map((section, sectionIndex) => {
+            const sectionTour =
+              section.title === "Seguimiento"
+                ? "sidebar-seguimiento"
+                : section.title === "Administración"
+                  ? "sidebar-administracion"
+                  : undefined;
+
+            return (
+              <div
+                key={section.title ?? `section-${sectionIndex}`}
+                data-tour={sectionTour}
+                className="flex flex-col gap-0.5"
+              >
+                {section.title && (
+                  <div className="mt-2 mb-0 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
+                    {section.title}
+                  </div>
+                )}
+                {section.items.map((item) => (
+                  <NavItem
+                    key={item.href}
+                    icon={item.icon}
+                    label={item.label}
+                    href={item.href}
+                    active={isActive(pathname, item.href)}
+                    dataTour={
+                      item.href === "/buscar"
+                        ? "sidebar-search"
+                        : item.href === "/matches"
+                          ? "sidebar-matches"
+                          : undefined
+                    }
+                    // Alertas lleva contador de avisos no leídos + invitaciones pendientes
+                    badge={item.href === "/alertas" ? totalNotifications : undefined}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="pt-3 pb-2 border-t border-border-subtle flex flex-col gap-2">
           <button
             type="button"
-            data-tour="sidebar-help"
+            data-tour="help-center-trigger"
             onClick={() => {
               setMobileOpen(false);
               openHelpCenter();

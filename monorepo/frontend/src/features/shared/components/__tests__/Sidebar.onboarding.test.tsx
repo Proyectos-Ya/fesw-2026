@@ -63,6 +63,22 @@ describe("Sidebar - Onboarding & Help Center integration", () => {
     expect(searchLink).toHaveAttribute("data-tour", "sidebar-search");
   });
 
+  it("asigna los atributos data-tour para matches, seguimiento, administración y ayuda", () => {
+    const { container } = render(<Sidebar />);
+
+    const matchesLink = screen.getByRole("link", { name: /Matches/i });
+    expect(matchesLink).toHaveAttribute("data-tour", "sidebar-matches");
+
+    const seguimientoSection = container.querySelector('[data-tour="sidebar-seguimiento"]');
+    expect(seguimientoSection).toBeInTheDocument();
+
+    const administracionSection = container.querySelector('[data-tour="sidebar-administracion"]');
+    expect(administracionSection).toBeInTheDocument();
+
+    const helpButton = screen.getByRole("button", { name: /Ayuda/i });
+    expect(helpButton).toHaveAttribute("data-tour", "help-center-trigger");
+  });
+
   it("abre el Centro de Ayuda al hacer clic en el botón 'Ayuda'", () => {
     render(<Sidebar />);
 

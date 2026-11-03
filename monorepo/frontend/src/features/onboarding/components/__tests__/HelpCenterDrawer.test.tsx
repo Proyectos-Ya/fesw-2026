@@ -108,7 +108,7 @@ describe("HelpCenterDrawer", () => {
 
     const { container } = render(<HelpCenterDrawer />);
 
-    const details = container.querySelectorAll("details");
+    const details = container.querySelectorAll('[aria-label="Categorías de ayuda"] > details');
     expect(details).toHaveLength(4);
 
     // El primer acordeón (Navegación por Chiripa) debe estar abierto
@@ -118,13 +118,42 @@ describe("HelpCenterDrawer", () => {
     expect(details[3]).not.toHaveAttribute("open");
   });
 
+  it("muestra los 5 sub-desplegables de navegación (Inicio, Buscar, Matches, Guardados, Tablero)", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/";
+
+    render(<HelpCenterDrawer />);
+
+    expect(screen.getByText("Inicio")).toBeInTheDocument();
+    expect(screen.getByText("Buscar")).toBeInTheDocument();
+    expect(screen.getByText("Matches")).toBeInTheDocument();
+    expect(screen.getByText("Guardados")).toBeInTheDocument();
+    expect(screen.getByText("Tablero (Kanban)")).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/Resumen diario con tus mejores recomendaciones/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Explorador manual de Mercado Público/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Catálogo completo de licitaciones afines a tu rubro/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Tu buzón de licitaciones pre-seleccionadas/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Espacio de trabajo visual\. Organiza tu proceso/i),
+    ).toBeInTheDocument();
+  });
+
   it("auto-expande 'detail' cuando la ruta es una licitación", () => {
     useOnboardingStore.setState({ isHelpCenterOpen: true });
     mockPathname = "/matches/licitacion-456";
 
     const { container } = render(<HelpCenterDrawer />);
 
-    const details = container.querySelectorAll("details");
+    const details = container.querySelectorAll('[aria-label="Categorías de ayuda"] > details');
     expect(details[0]).toHaveAttribute("open");
     expect(details[0]).toHaveTextContent("Vista detallada de licitaciones");
     expect(details[1]).not.toHaveAttribute("open");
@@ -136,7 +165,7 @@ describe("HelpCenterDrawer", () => {
 
     const { container } = render(<HelpCenterDrawer />);
 
-    const details = container.querySelectorAll("details");
+    const details = container.querySelectorAll('[aria-label="Categorías de ayuda"] > details');
     expect(details[0]).toHaveAttribute("open");
     expect(details[1]).not.toHaveAttribute("open");
 

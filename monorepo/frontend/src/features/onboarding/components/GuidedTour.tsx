@@ -30,11 +30,41 @@ export const HOME_STEPS: DriveStep[] = [
     },
   },
   {
-    element: '[data-tour="sidebar-help"]',
+    element: '[data-tour="sidebar-matches"]',
     popover: {
-      title: "Centro de Ayuda y Guías Rápidas",
+      title: "Todos tus Matches",
       description:
-        "Encuentra explicaciones detalladas sobre el funcionamiento de la plataforma o reinicia los tours cuando lo necesites.",
+        "Revisa el listado completo de oportunidades compatibles. Aquí puedes descartar las que no te interesen o guardarlas para analizarlas a fondo.",
+      side: "right",
+      align: "center",
+    },
+  },
+  {
+    element: '[data-tour="sidebar-seguimiento"]',
+    popover: {
+      title: "Tu Embudo de Ventas",
+      description:
+        "En 'Guardados' y 'Tablero' podrás organizar tus licitaciones favoritas en un tablero Kanban, moviéndolas desde el análisis inicial hasta la postulación.",
+      side: "right",
+      align: "center",
+    },
+  },
+  {
+    element: '[data-tour="sidebar-administracion"]',
+    popover: {
+      title: "Gestión de tu Empresa",
+      description:
+        "Configura las palabras clave de tu negocio en 'Mi empresa' y ajusta tus 'Alertas' para que Chiripa te notifique antes de que venza un plazo.",
+      side: "right",
+      align: "center",
+    },
+  },
+  {
+    element: '[data-tour="help-center-trigger"]',
+    popover: {
+      title: "Ayuda siempre a mano",
+      description:
+        "Si alguna vez te pierdes o quieres repetir este recorrido, abre el Centro de Ayuda. ¡Estás listo para empezar a ganar licitaciones!",
       side: "right",
       align: "center",
     },
@@ -108,7 +138,7 @@ export function GuidedTour() {
     const driverObj = driver({
       showProgress: true,
       animate: true,
-      allowClose: true,
+      allowClose: false,
       overlayColor: "rgba(27, 24, 20, 0.65)",
       stagePadding: 8,
       stageRadius: 10,

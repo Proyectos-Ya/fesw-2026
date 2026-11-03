@@ -63,7 +63,7 @@ describe("GuidedTour", () => {
     expect(mockDrive).not.toHaveBeenCalled();
   });
 
-  it("inicializa driver.js con HOME_STEPS y configuración de modo oscuro cuando activeTour === 'home'", () => {
+  it("inicializa driver.js con allowClose en false, HOME_STEPS y configuración de modo oscuro cuando activeTour === 'home'", () => {
     useOnboardingStore.setState({ activeTour: "home", currentTourStep: 0 });
 
     render(<GuidedTour />);
@@ -72,15 +72,19 @@ describe("GuidedTour", () => {
     const config = mockDriverFactory.mock.calls[0]?.[0];
     expect(config).toBeDefined();
     expect(config?.showProgress).toBe(true);
+    expect(config?.allowClose).toBe(false);
     expect(config?.overlayColor).toBe("rgba(27, 24, 20, 0.65)");
     expect(config?.popoverClass).toContain("chiripa-tour-popover");
     expect(config?.popoverClass).toContain("dark:bg-gray-900");
 
     const steps = config?.steps as DriveStep[];
-    expect(steps).toHaveLength(HOME_STEPS.length);
+    expect(steps).toHaveLength(6);
     expect(steps[0]?.element).toBe('[data-tour="home-recommendations"]');
     expect(steps[1]?.element).toBe('[data-tour="sidebar-search"]');
-    expect(steps[2]?.element).toBe('[data-tour="sidebar-help"]');
+    expect(steps[2]?.element).toBe('[data-tour="sidebar-matches"]');
+    expect(steps[3]?.element).toBe('[data-tour="sidebar-seguimiento"]');
+    expect(steps[4]?.element).toBe('[data-tour="sidebar-administracion"]');
+    expect(steps[5]?.element).toBe('[data-tour="help-center-trigger"]');
 
     expect(mockDrive).toHaveBeenCalledWith(0);
   });
@@ -133,12 +137,13 @@ describe("GuidedTour", () => {
     expect(useOnboardingStore.getState().currentTourStep).toBe(1);
 
     // Último paso -> Finalizar
+    const lastStepIndex = HOME_STEPS.length - 1;
     act(() => {
-      config?.onNextClick?.(undefined, HOME_STEPS[2], {
+      config?.onNextClick?.(undefined, HOME_STEPS[lastStepIndex], {
         config: config ?? {},
-        state: { activeIndex: 2 },
+        state: { activeIndex: lastStepIndex },
         driver: mockDriverInstance,
-        index: 2,
+        index: lastStepIndex,
       });
     });
 
