@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { markOnboardingCompletedApi } from "../services/onboardingService";
 
 export const ONBOARDING_STORAGE_KEY = "chiripa_onboarding_state";
 
@@ -22,11 +23,13 @@ export interface OnboardingState extends PersistedOnboardingSlice {
   openHelpCenter: () => void;
   closeHelpCenter: () => void;
   setHasHydrated: (hydrated: boolean) => void;
+  setHasCompletedOnboarding: (completed: boolean) => void;
+  markOnboardingAsCompletedAsync: () => Promise<void>;
 }
 
 export const useOnboardingStore = create<OnboardingState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       hasCompletedOnboarding: false,
       isTourActive: false,
       currentTourStep: 0,
@@ -55,12 +58,18 @@ export const useOnboardingStore = create<OnboardingState>()(
           currentTourStep: Math.max(0, step),
         }),
 
-      skipTour: () =>
+      skipTour: () => {
         set({
           hasCompletedOnboarding: true,
           isTourActive: false,
           currentTourStep: 0,
-        }),
+        });
+        void markOnboardingCompletedApi().catch((err) => {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[Onboarding] Error syncing skipTour:", err);
+          }
+        });
+      },
 
       completeOnboarding: () =>
         set({
@@ -68,6 +77,22 @@ export const useOnboardingStore = create<OnboardingState>()(
           isTourActive: false,
           currentTourStep: 0,
         }),
+
+      setHasCompletedOnboarding: (completed: boolean) =>
+        set({
+          hasCompletedOnboarding: completed,
+        }),
+
+      markOnboardingAsCompletedAsync: async () => {
+        get().completeOnboarding();
+        try {
+          await markOnboardingCompletedApi();
+        } catch (error) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[Onboarding] Error syncing onboarding status:", error);
+          }
+        }
+      },
 
       resetTour: () =>
         set({

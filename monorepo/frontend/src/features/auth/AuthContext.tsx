@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { ApiError, registrarProveedorDeToken } from "@/features/shared/api/client";
+import { useOnboardingStore } from "@/features/onboarding/store/useOnboardingStore";
 
 import type { UserPublic } from "./authSchema";
 import { cerrarSesion, getMe } from "./services/authService";
@@ -39,6 +40,7 @@ function sonUsuariosIguales(a: UserPublic | null, b: UserPublic | null): boolean
     a.phone === b.phone &&
     a.active === b.active &&
     a.email_verified === b.email_verified &&
+    a.has_completed_onboarding === b.has_completed_onboarding &&
     a.created_at === b.created_at
   );
 }
@@ -54,6 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cargarPerfil = useCallback(async () => {
     try {
       const nuevo = await getMe();
+      if (typeof nuevo.has_completed_onboarding === "boolean") {
+        useOnboardingStore
+          .getState()
+          .setHasCompletedOnboarding(nuevo.has_completed_onboarding);
+      }
       setUser((prev) => (sonUsuariosIguales(prev, nuevo) ? prev : nuevo));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {

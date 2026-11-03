@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "../AuthContext";
 import type { UserPublic } from "../authSchema";
 import { getMe } from "../services/authService";
+import { useOnboardingStore } from "@/features/onboarding/store/useOnboardingStore";
 
 type Evento = "INITIAL_SESSION" | "SIGNED_IN" | "TOKEN_REFRESHED" | "USER_UPDATED" | "SIGNED_OUT";
 type Sesion = { user: { id: string }; access_token: string } | null;
@@ -106,5 +107,17 @@ describe("AuthProvider: eventos de Supabase", () => {
 
     await screen.findByText(PERFIL.email);
     expect(getMe).toHaveBeenCalledTimes(2);
+  });
+
+  it("sincroniza has_completed_onboarding con useOnboardingStore", async () => {
+    useOnboardingStore.setState({ hasCompletedOnboarding: false });
+    vi.mocked(getMe).mockResolvedValueOnce({
+      ...PERFIL,
+      has_completed_onboarding: true,
+    });
+
+    await montarConSesion("auth-onboarded");
+
+    expect(useOnboardingStore.getState().hasCompletedOnboarding).toBe(true);
   });
 });

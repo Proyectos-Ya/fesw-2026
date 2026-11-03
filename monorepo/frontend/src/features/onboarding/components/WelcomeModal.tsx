@@ -17,7 +17,9 @@ export function WelcomeModal() {
   );
   const isTourActive = useOnboardingStore((state) => state.isTourActive);
   const startTour = useOnboardingStore((state) => state.startTour);
-  const skipTour = useOnboardingStore((state) => state.skipTour);
+  const markOnboardingAsCompletedAsync = useOnboardingStore(
+    (state) => state.markOnboardingAsCompletedAsync,
+  );
 
   const hasActiveCompanyContext =
     company.status === "with-company" || activeWorkspace !== null;
@@ -30,11 +32,15 @@ export function WelcomeModal() {
 
   if (!isOpen) return null;
 
+  const handleSkip = () => {
+    void markOnboardingAsCompletedAsync();
+  };
+
   return (
     <Dialog
       open={isOpen}
       title="¡Bienvenido a Chiripa!"
-      onClose={skipTour}
+      onClose={handleSkip}
     >
       <div className="space-y-4">
         <div className="flex items-start gap-3 rounded-lg bg-primary-soft p-3 text-primary">
@@ -56,7 +62,7 @@ export function WelcomeModal() {
           <Button
             type="button"
             variant="ghost"
-            onClick={skipTour}
+            onClick={handleSkip}
           >
             Omitir por ahora
           </Button>

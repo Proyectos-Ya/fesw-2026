@@ -17,4 +17,5 @@ class UserPublicSchema(BaseModel):
     phone: str | None = None
     active: bool
     email_verified: bool
+    has_completed_onboarding: bool = False
     created_at: datetime

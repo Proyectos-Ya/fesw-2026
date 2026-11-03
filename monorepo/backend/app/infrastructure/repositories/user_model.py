@@ -21,5 +21,6 @@ class UserModel(SQLModel, table=True):
     phone: str | None = None
     active: bool = True
     email_verified: bool = False
+    has_completed_onboarding: bool = Field(default=False)
     created_at: datetime
     updated_at: datetime

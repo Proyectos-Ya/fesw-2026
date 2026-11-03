@@ -23,5 +23,6 @@ export interface UserPublic {
   phone: string | null;
   active: boolean;
   email_verified: boolean;
+  has_completed_onboarding?: boolean;
   created_at: string;
 }

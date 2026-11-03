@@ -1,11 +1,20 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ONBOARDING_STORAGE_KEY,
   useOnboardingStore,
 } from "../useOnboardingStore";
 
+const mockMarkOnboardingCompletedApi = vi.fn().mockResolvedValue({
+  id: "u-1",
+  has_completed_onboarding: true,
+});
+vi.mock("../../services/onboardingService", () => ({
+  markOnboardingCompletedApi: () => mockMarkOnboardingCompletedApi(),
+}));
+
 describe("useOnboardingStore", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.localStorage.clear();
     useOnboardingStore.setState({
       hasCompletedOnboarding: false,
@@ -143,5 +152,30 @@ describe("useOnboardingStore", () => {
     expect(state._hasHydrated).toBe(true);
     expect(state.hasCompletedOnboarding).toBe(true);
     expect(state.currentTourStep).toBe(2);
+  });
+
+  it("setHasCompletedOnboarding actualiza el estado directamente", () => {
+    useOnboardingStore.getState().setHasCompletedOnboarding(true);
+    expect(useOnboardingStore.getState().hasCompletedOnboarding).toBe(true);
+
+    useOnboardingStore.getState().setHasCompletedOnboarding(false);
+    expect(useOnboardingStore.getState().hasCompletedOnboarding).toBe(false);
+  });
+
+  it("markOnboardingAsCompletedAsync actualiza optimisticamente y llama a la API", async () => {
+    mockMarkOnboardingCompletedApi.mockResolvedValueOnce({
+      id: "u-1",
+      has_completed_onboarding: true,
+    });
+
+    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 1 });
+
+    await useOnboardingStore.getState().markOnboardingAsCompletedAsync();
+
+    const state = useOnboardingStore.getState();
+    expect(state.hasCompletedOnboarding).toBe(true);
+    expect(state.isTourActive).toBe(false);
+    expect(state.currentTourStep).toBe(0);
+    expect(mockMarkOnboardingCompletedApi).toHaveBeenCalledTimes(1);
   });
 });

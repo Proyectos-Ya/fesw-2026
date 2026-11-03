@@ -37,6 +37,7 @@ class User(BaseModel):
     phone: str | None = None
     active: bool = True
     email_verified: bool = False
+    has_completed_onboarding: bool = False
     created_at: UtcDateTime = Field(default_factory=utc_now_naive)
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
 

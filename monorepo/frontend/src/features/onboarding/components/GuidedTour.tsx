@@ -47,9 +47,8 @@ export function GuidedTour() {
   const isTourActive = useOnboardingStore((state) => state.isTourActive);
   const currentTourStep = useOnboardingStore((state) => state.currentTourStep);
   const setTourStep = useOnboardingStore((state) => state.setTourStep);
-  const skipTour = useOnboardingStore((state) => state.skipTour);
-  const completeOnboarding = useOnboardingStore(
-    (state) => state.completeOnboarding,
+  const markOnboardingAsCompletedAsync = useOnboardingStore(
+    (state) => state.markOnboardingAsCompletedAsync,
   );
 
   const driverRef = useRef<Driver | null>(null);
@@ -97,17 +96,13 @@ export function GuidedTour() {
         skipButton.setAttribute("data-tour-action", "skip");
         skipButton.className = "driver-popover-skip-btn";
         skipButton.addEventListener("click", () => {
-          skipTour();
+          void markOnboardingAsCompletedAsync();
           opts.driver.destroy();
         });
         popover.footerButtons.prepend(skipButton);
       },
-      onDestroyed: (_element, _step, opts) => {
-        if (opts.reason === "done") {
-          completeOnboarding();
-        } else {
-          skipTour();
-        }
+      onDestroyed: () => {
+        void markOnboardingAsCompletedAsync();
       },
     });
 

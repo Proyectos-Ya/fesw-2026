@@ -6,6 +6,10 @@ import { WelcomeModal } from "../WelcomeModal";
 const mockUseCompany = vi.fn();
 const mockUseWorkspace = vi.fn();
 
+vi.mock("../../services/onboardingService", () => ({
+  markOnboardingCompletedApi: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("@/features/company-profile/components/CompanyProvider", () => ({
   useCompany: () => mockUseCompany(),
 }));
