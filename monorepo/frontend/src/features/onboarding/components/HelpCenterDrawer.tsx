@@ -1,48 +1,132 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  Building2,
+  ChevronDown,
+  FileText,
+  Map,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { useOnboardingStore } from "../store/useOnboardingStore";
 
-interface HelpGuideSection {
+export interface HelpCategory {
   id: string;
-  icon: string;
   title: string;
-  description: string;
+  icon: LucideIcon;
+  matchRoutes: ReadonlyArray<string | RegExp>;
+  content: ReactNode | ComponentType;
 }
 
-const HELP_GUIDES: ReadonlyArray<HelpGuideSection> = [
+export const HELP_CATEGORIES: ReadonlyArray<HelpCategory> = [
   {
-    id: "matching",
-    icon: "target",
-    title: "Cómo funciona el matching",
-    description:
-      "Cruzamos semánticamente las licitaciones de Mercado Público con el rubro, regiones y experiencia de tu empresa para calcular un porcentaje de compatibilidad y priorizar tus mejores oportunidades del día.",
+    id: "navigation",
+    title: "Navegación por Chiripa",
+    icon: Map,
+    matchRoutes: ["/", "/buscar", "/guardados", "/tablero", "/alertas"],
+    content: (
+      <div className="space-y-2">
+        <p>
+          Explora licitaciones compatibles desde el <strong>Inicio</strong>, usa el{" "}
+          <strong>Buscador manual</strong> con filtros avanzados o gestiona tus oportunidades en el{" "}
+          <strong>Tablero Kanban</strong>.
+        </p>
+        <p>
+          Configura tus palabras clave y alertas para no perderte oportunidades con fechas de cierre próximas.
+        </p>
+      </div>
+    ),
   },
   {
-    id: "search",
-    icon: "search",
-    title: "Búsqueda manual",
-    description:
-      "En la sección Buscar puedes explorar todo el catálogo de compras públicas filtrando por palabras clave, región, comuna, estado y rango de presupuesto.",
+    id: "profile",
+    title: "Mi perfil de empresa",
+    icon: Building2,
+    matchRoutes: ["/empresa", "/perfil", "/workspaces", "/configuracion"],
+    content: (
+      <div className="space-y-2">
+        <p>
+          Configura el rubro, regiones de operación, certificaciones y experiencia de tu empresa.
+        </p>
+        <p>
+          La IA utiliza estos datos para calcular el puntaje de compatibilidad en cada licitación publicada.
+        </p>
+      </div>
+    ),
   },
   {
-    id: "kanban",
-    icon: "kanban",
-    title: "Guardados y Tablero Kanban",
-    description:
-      "Guarda las licitaciones de tu interés y organízalas por etapas en el Tablero Kanban para coordinar la preparación de ofertas junto a tu equipo.",
+    id: "detail",
+    title: "Vista detallada de licitaciones",
+    icon: Search,
+    matchRoutes: ["/matches"],
+    content: (
+      <div className="space-y-2">
+        <p>
+          Contenido sobre cómo funciona el Match y el análisis de requisitos clave con el Asistente de IA.
+        </p>
+        <p>
+          Revisa bases administrativas, criterios de evaluación y calendario de hitos oficiales de Mercado Público.
+        </p>
+      </div>
+    ),
   },
   {
-    id: "alerts",
-    icon: "bell",
-    title: "Alertas y notificaciones",
-    description:
-      "Configura tus preferencias en Alertas para recibir avisos oportunos cuando se publiquen nuevas licitaciones compatibles o se acerquen fechas de cierre.",
+    id: "draft",
+    title: "Borrador y Cotizador",
+    icon: FileText,
+    matchRoutes: ["/postulacion", "/cotizacion", "/propuesta"],
+    content: (
+      <div className="space-y-2">
+        <p>
+          Genera borradores técnicos adaptados a las exigencias de la Compra Ágil y exporta cotizaciones formales.
+        </p>
+        <p>
+          Adjunta evidencias y certificaciones para respaldar tu cumplimiento de requisitos.
+        </p>
+      </div>
+    ),
   },
 ];
+
+function getRouteMatchScore(routePattern: string | RegExp, pathname: string): number {
+  if (routePattern instanceof RegExp) {
+    return routePattern.test(pathname) ? 50 : 0;
+  }
+  if (routePattern === "/") {
+    return pathname === "/" ? 100 : 0;
+  }
+  if (pathname.includes(routePattern)) {
+    return routePattern.length;
+  }
+  return 0;
+}
+
+export function getSortedCategories(
+  pathname: string,
+  categories: ReadonlyArray<HelpCategory> = HELP_CATEGORIES,
+): HelpCategory[] {
+  let bestCategory: HelpCategory | null = null;
+  let highestScore = 0;
+
+  for (const category of categories) {
+    for (const route of category.matchRoutes) {
+      const score = getRouteMatchScore(route, pathname);
+      if (score > highestScore) {
+        highestScore = score;
+        bestCategory = category;
+      }
+    }
+  }
+
+  const priorityCategory = bestCategory ?? categories[0];
+  if (!priorityCategory) return [...categories];
+
+  const others = categories.filter((c) => c.id !== priorityCategory.id);
+  return [priorityCategory, ...others];
+}
 
 export function getTourConfigForPath(pathname: string) {
   if (
@@ -88,10 +172,23 @@ export function HelpCenterDrawer() {
   const closeHelpCenter = useOnboardingStore((state) => state.closeHelpCenter);
   const resetTour = useOnboardingStore((state) => state.resetTour);
 
-  const tourConfig = getTourConfigForPath(pathname || "/");
+  const normalizedPath = pathname || "/";
+  const tourConfig = getTourConfigForPath(normalizedPath);
+  const sortedCategories = getSortedCategories(normalizedPath);
+  const priorityCategory = sortedCategories[0];
+
+  const [openCategoryId, setOpenCategoryId] = useState<string | null>(
+    priorityCategory?.id ?? null,
+  );
+
+  useEffect(() => {
+    if (priorityCategory) {
+      setOpenCategoryId(priorityCategory.id);
+    }
+  }, [normalizedPath, priorityCategory?.id]);
 
   const handleResetTour = () => {
-    if (tourConfig.type === "home" && pathname !== "/") {
+    if (tourConfig.type === "home" && normalizedPath !== "/") {
       router.push("/");
     }
     resetTour(tourConfig.type);
@@ -182,32 +279,56 @@ export function HelpCenterDrawer() {
             </div>
           </div>
 
-          {/* Guías estáticas */}
+          {/* Guías contextuales en formato Accordion */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-              Guías rápidas de la plataforma
+              Guías de la plataforma
             </h3>
-            <div className="space-y-3">
-              {HELP_GUIDES.map((guide) => (
-                <article
-                  key={guide.id}
-                  className="rounded-lg border border-border-subtle bg-surface-inset/50 p-4 transition-colors hover:border-border-default"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex size-7 flex-none items-center justify-center rounded-md bg-surface-card text-primary shadow-xs">
-                      <Icon name={guide.icon} size={16} />
+            <div className="space-y-3" role="region" aria-label="Categorías de ayuda">
+              {sortedCategories.map((category) => {
+                const CategoryIcon = category.icon;
+                const isOpen = openCategoryId === category.id;
+
+                return (
+                  <details
+                    key={category.id}
+                    open={isOpen}
+                    className="group rounded-lg border border-border-subtle bg-surface-inset/50 transition-colors hover:border-border-default"
+                  >
+                    <summary
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenCategoryId((prev) =>
+                          prev === category.id ? null : category.id,
+                        );
+                      }}
+                      className="flex cursor-pointer list-none items-center justify-between p-4 font-semibold text-text-strong select-none transition-colors hover:bg-surface-hover/50 [&::-webkit-details-marker]:hidden"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-7 flex-none items-center justify-center rounded-md bg-surface-card text-primary shadow-xs">
+                          <CategoryIcon size={16} />
+                        </div>
+                        <h4 className="text-sm font-bold text-text-strong">
+                          {category.title}
+                        </h4>
+                      </div>
+                      <ChevronDown
+                        size={16}
+                        className={`text-text-subtle transition-transform duration-200 ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </summary>
+                    <div className="border-t border-border-subtle/60 px-4 py-3 text-xs leading-relaxed text-text-muted">
+                      {typeof category.content === "function" ? (
+                        <category.content />
+                      ) : (
+                        category.content
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-text-strong">
-                        {guide.title}
-                      </h4>
-                      <p className="text-xs text-text-muted leading-relaxed">
-                        {guide.description}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </details>
+                );
+              })}
             </div>
           </div>
         </div>

@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
-import { HelpCenterDrawer } from "../HelpCenterDrawer";
+import {
+  HelpCenterDrawer,
+  getSortedCategories,
+  HELP_CATEGORIES,
+} from "../HelpCenterDrawer";
 
 const mockPush = vi.fn();
 let mockPathname = "/";
@@ -12,6 +16,46 @@ vi.mock("next/navigation", () => ({
   }),
   usePathname: () => mockPathname,
 }));
+
+describe("getSortedCategories", () => {
+  it("prioriza 'navigation' en la ruta raíz '/'", () => {
+    const sorted = getSortedCategories("/");
+    expect(sorted[0]?.id).toBe("navigation");
+  });
+
+  it("prioriza 'navigation' en rutas de búsqueda '/buscar'", () => {
+    const sorted = getSortedCategories("/buscar");
+    expect(sorted[0]?.id).toBe("navigation");
+  });
+
+  it("prioriza 'profile' en rutas de empresa y perfil", () => {
+    const sortedEmpresa = getSortedCategories("/empresa");
+    expect(sortedEmpresa[0]?.id).toBe("profile");
+
+    const sortedPerfil = getSortedCategories("/perfil");
+    expect(sortedPerfil[0]?.id).toBe("profile");
+  });
+
+  it("prioriza 'detail' en rutas de detalle de licitación '/matches/123'", () => {
+    const sorted = getSortedCategories("/matches/licitacion-123");
+    expect(sorted[0]?.id).toBe("detail");
+  });
+
+  it("prioriza 'draft' sobre 'detail' en rutas de postulación o cotización", () => {
+    const sortedPostulacion = getSortedCategories("/matches/licitacion-123/postulacion");
+    expect(sortedPostulacion[0]?.id).toBe("draft");
+
+    const sortedCotizacion = getSortedCategories("/matches/licitacion-123/cotizacion");
+    expect(sortedCotizacion[0]?.id).toBe("draft");
+  });
+
+  it("contiene todas las categorías de HELP_CATEGORIES sin duplicados", () => {
+    const sorted = getSortedCategories("/matches/licitacion-123");
+    expect(sorted).toHaveLength(HELP_CATEGORIES.length);
+    const ids = sorted.map((c) => c.id);
+    expect(new Set(ids).size).toBe(HELP_CATEGORIES.length);
+  });
+});
 
 describe("HelpCenterDrawer", () => {
   beforeEach(() => {
@@ -39,7 +83,7 @@ describe("HelpCenterDrawer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("muestra el cajón con guías y botón dinámico 'Tour de Inicio' en la raíz", () => {
+  it("muestra el cajón con botón dinámico 'Tour de Inicio' en la raíz y categorías en acordeón", () => {
     useOnboardingStore.setState({ isHelpCenterOpen: true });
     mockPathname = "/";
 
@@ -52,7 +96,66 @@ describe("HelpCenterDrawer", () => {
     expect(
       screen.getByRole("button", { name: /Reiniciar tour de inicio/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Cómo funciona el matching/i)).toBeInTheDocument();
+    expect(screen.getByText("Navegación por Chiripa")).toBeInTheDocument();
+    expect(screen.getByText("Mi perfil de empresa")).toBeInTheDocument();
+    expect(screen.getByText("Vista detallada de licitaciones")).toBeInTheDocument();
+    expect(screen.getByText("Borrador y Cotizador")).toBeInTheDocument();
+  });
+
+  it("auto-expande la categoría prioritaria (índice 0) por defecto y colapsa las demás", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/";
+
+    const { container } = render(<HelpCenterDrawer />);
+
+    const details = container.querySelectorAll("details");
+    expect(details).toHaveLength(4);
+
+    // El primer acordeón (Navegación por Chiripa) debe estar abierto
+    expect(details[0]).toHaveAttribute("open");
+    expect(details[1]).not.toHaveAttribute("open");
+    expect(details[2]).not.toHaveAttribute("open");
+    expect(details[3]).not.toHaveAttribute("open");
+  });
+
+  it("auto-expande 'detail' cuando la ruta es una licitación", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/matches/licitacion-456";
+
+    const { container } = render(<HelpCenterDrawer />);
+
+    const details = container.querySelectorAll("details");
+    expect(details[0]).toHaveAttribute("open");
+    expect(details[0]).toHaveTextContent("Vista detallada de licitaciones");
+    expect(details[1]).not.toHaveAttribute("open");
+  });
+
+  it("permite alternar el acordeón al hacer clic en el encabezado", () => {
+    useOnboardingStore.setState({ isHelpCenterOpen: true });
+    mockPathname = "/";
+
+    const { container } = render(<HelpCenterDrawer />);
+
+    const details = container.querySelectorAll("details");
+    expect(details[0]).toHaveAttribute("open");
+    expect(details[1]).not.toHaveAttribute("open");
+
+    // Clic en la segunda categoría (Mi perfil de empresa)
+    const summaryProfile = details[1]?.querySelector("summary");
+    expect(summaryProfile).not.toBeNull();
+    if (summaryProfile) {
+      fireEvent.click(summaryProfile);
+    }
+
+    // Ahora la categoría perfil debe estar abierta y la de navegación cerrada
+    expect(details[0]).not.toHaveAttribute("open");
+    expect(details[1]).toHaveAttribute("open");
+
+    // Clic nuevamente en la categoría abierta para colapsarla
+    if (summaryProfile) {
+      fireEvent.click(summaryProfile);
+    }
+    expect(details[1]).not.toHaveAttribute("open");
   });
 
   it("muestra 'Tour de Licitación' en rutas de detalle de licitación", () => {
