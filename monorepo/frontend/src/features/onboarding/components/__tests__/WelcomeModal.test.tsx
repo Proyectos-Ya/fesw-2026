@@ -116,4 +116,28 @@ describe("WelcomeModal", () => {
     expect(state.hasCompletedOnboarding).toBe(true);
     expect(state.isTourActive).toBe(false);
   });
+
+  it("ignora el cierre al presionar Escape o al hacer clic en el backdrop", () => {
+    render(<WelcomeModal />);
+
+    const dialog = screen.getByRole("dialog", { name: /¡Bienvenido a Chiripa!/i });
+    expect(dialog).toBeInTheDocument();
+
+    // Intentar cerrar con Escape
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: /¡Bienvenido a Chiripa!/i })).toBeInTheDocument();
+
+    // Intentar cerrar con clic en el backdrop
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+    if (backdrop) {
+      fireEvent.mouseDown(backdrop);
+    }
+    expect(screen.getByRole("dialog", { name: /¡Bienvenido a Chiripa!/i })).toBeInTheDocument();
+
+    // El estado de onboarding sigue sin completarse
+    const state = useOnboardingStore.getState();
+    expect(state.hasCompletedOnboarding).toBe(false);
+    expect(state.isTourActive).toBe(false);
+  });
 });

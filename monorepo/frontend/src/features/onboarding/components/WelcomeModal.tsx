@@ -40,7 +40,8 @@ export function WelcomeModal() {
     <Dialog
       open={isOpen}
       title="¡Bienvenido a Chiripa!"
-      onClose={handleSkip}
+      onClose={() => {}}
+      preventOutsideClose={true}
     >
       <div className="space-y-4">
         <div className="flex items-start gap-3 rounded-lg bg-primary-soft p-3 text-primary">
