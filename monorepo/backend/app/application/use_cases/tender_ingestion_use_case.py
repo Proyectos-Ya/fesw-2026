@@ -555,9 +555,20 @@ class TenderIngestionUseCase:
 
     @staticmethod
     def _aplicar_entrega(existente: TenderModel, dto: TenderIngestaDTO) -> None:
-        """Vuelca la entrega y los requisitos del detalle, sin borrar lo que no trae."""
-        if dto.delivery_address is not None:
+        """Vuelca la entrega y los requisitos del detalle, sin borrar lo que no trae.
+
+        Una dirección distinta vuelve a la cola de geocodificación (#314) y
+        pierde su punto: el guardado es de la dirección anterior.
+        """
+        if (
+            dto.delivery_address is not None
+            and dto.delivery_address != existente.delivery_address
+        ):
             existente.delivery_address = dto.delivery_address
+            existente.delivery_lat = None
+            existente.delivery_lng = None
+            existente.delivery_geo_precision = None
+            existente.delivery_geocoded_at = None
         if dto.delivery_term_days is not None:
             existente.delivery_term_days = dto.delivery_term_days
         if dto.requires_environmental_criteria is not None:

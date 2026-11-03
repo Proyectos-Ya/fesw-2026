@@ -81,6 +81,7 @@ from app.application.repositories.tender_chat_repository import ITenderChatRepos
 from app.application.repositories.tender_digest_repository import (
     ITenderDigestRepository,
 )
+from app.application.repositories.tender_map_repository import ITenderMapRepository
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
@@ -165,6 +166,9 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
 from app.infrastructure.repositories.sql_tender_digest_repository import (
     SqlTenderDigestRepository,
 )
+from app.infrastructure.repositories.sql_tender_location_repository import (
+    SqlTenderLocationRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_milestone_attachment_repository import (
     TenderMilestoneAttachmentRepository,
@@ -208,6 +212,10 @@ def get_user_repo(session: SessionDep) -> IUserRepository:
 
 def get_tender_repo(session: SessionDep) -> ITenderRepository:
     return TenderRepository(session)
+
+
+def get_tender_map_repo(session: SessionDep) -> ITenderMapRepository:
+    return SqlTenderLocationRepository(session)
 
 
 def get_matching_result_repo(session: SessionDep) -> IMatchingResultRepository:
@@ -362,6 +370,9 @@ SupplierRepoDep = Annotated[ISupplierRepository, Depends(get_supplier_repo)]
 
 
 TenderRepoDep = Annotated[ITenderRepository, Depends(get_tender_repo)]
+
+
+TenderMapRepoDep = Annotated[ITenderMapRepository, Depends(get_tender_map_repo)]
 
 
 MatchingResultRepoDep = Annotated[

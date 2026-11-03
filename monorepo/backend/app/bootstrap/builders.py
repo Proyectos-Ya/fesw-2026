@@ -8,6 +8,7 @@ from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.calendar_provider_client import ICalendarProviderClient
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.geocoding_service import IGeocodingService
 from app.application.services.reranker_service import IRerankerService
 from app.config import settings
 from app.domain.entities.calendar import CalendarProvider
@@ -34,6 +35,9 @@ from app.infrastructure.services.company_lookup.http_company_lookup_service impo
     HttpCompanyLookupService,
     SreLookupService,
     WebEmpresarioLookupService,
+)
+from app.infrastructure.services.geocoding.nominatim_geocoding_service import (
+    NominatimGeocodingService,
 )
 
 logger = logging.getLogger(__name__)
@@ -247,4 +251,25 @@ def build_company_lookup_service() -> ICompanyLookupService | None:
     return _FUENTE_DE_EMPRESAS_POR_PROVEEDOR[settings.company_lookup_provider](
         api_key=settings.company_lookup_api_key or "",
         base_url=settings.company_lookup_url,
+    )
+
+
+def build_geocoding_service() -> IGeocodingService | None:
+    """Geocodificación de las direcciones de entrega para el mapa (HU-22, #314).
+
+    Sin proveedor devuelve `None`: el scheduler no arranca y el mapa sale vacío.
+    El correo de contacto ya lo exigió `config.py`.
+    """
+    if settings.geocoding_provider == "none":
+        logger.info(
+            "Geocodificación de entregas desactivada (GEOCODING_PROVIDER=none)."
+        )
+        return None
+
+    logger.info(
+        "Geocodificación de entregas servida por %s.", settings.geocoding_provider
+    )
+    return NominatimGeocodingService(
+        contact_email=settings.geocoding_contact_email or "",
+        base_url=settings.geocoding_base_url,
     )

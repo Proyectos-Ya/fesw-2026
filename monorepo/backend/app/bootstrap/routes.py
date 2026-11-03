@@ -72,6 +72,7 @@ from app.bootstrap.matching import (
     get_score_tender_on_demand_use_case,
     get_search_tenders_use_case,
     get_tender_detail_use_case,
+    get_tenders_map_use_case,
     get_unsave_tender_use_case,
 )
 from app.bootstrap.notifications import (
@@ -249,6 +250,7 @@ def register_routes(app: FastAPI) -> None:
             get_unsave_tender_use_case=get_unsave_tender_use_case,
             get_search_tenders_use_case=get_search_tenders_use_case,
             get_tender_detail_use_case=get_tender_detail_use_case,
+            get_tenders_map_use_case=get_tenders_map_use_case,
             get_current_workspace_context=get_optional_workspace_context,
             get_score_tender_on_demand_use_case=get_score_tender_on_demand_use_case,
             get_ranking_impression_logger=get_ranking_impression_logger,

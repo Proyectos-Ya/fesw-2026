@@ -22,6 +22,7 @@ from app.application.schemas.ranking_telemetry_schema import (
     TenderInteractionRequest,
     TenderInteractionResponse,
 )
+from app.application.schemas.tender_map_schema import TenderMapResponse
 from app.application.schemas.tender_schema import (
     TenderFilterCriteria,
     TenderSearchResult,
@@ -48,6 +49,7 @@ from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUs
 from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
+from app.application.use_cases.tender.get_tenders_map import GetTendersMapUseCase
 from app.application.use_cases.tender.search_tenders import (
     DEFAULT_RESULT_LIMIT,
     MAX_RESULT_LIMIT,
@@ -142,6 +144,7 @@ def create_tender_router(
     get_ranking_impression_logger: Callable | None = None,
     get_ranking_registry: Callable | None = None,
     get_record_tender_interaction_use_case: Callable | None = None,
+    get_tenders_map_use_case: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -279,6 +282,51 @@ def create_tender_router(
                     "Inténtalo nuevamente en unos minutos."
                 ),
             ) from e
+
+    if get_tenders_map_use_case is not None:
+        # Como `/search`, antes de cualquier ruta con `/{tender_id}`.
+        @router.get(
+            "/map",
+            response_model=TenderMapResponse,
+            summary="Licitaciones abiertas con dirección de entrega ubicada, por región",
+            responses={
+                422: {"description": "Región desconocida o ausente"},
+                503: {"description": "No se pudo cargar el mapa: la base no responde"},
+            },
+        )
+        async def get_tenders_map(
+            use_case: Annotated[
+                GetTendersMapUseCase, Depends(get_tenders_map_use_case)
+            ],
+            region: Annotated[
+                str,
+                Query(
+                    min_length=1,
+                    max_length=80,
+                    description="Región del organismo comprador. Vale el nombre "
+                    'canónico ("Metropolitana de Santiago") o el del perfil de '
+                    'empresa ("Metropolitana").',
+                ),
+            ],
+        ):
+            """Marcadores del mapa de licitaciones (HU-22, #314).
+
+            Solo publicadas con cierre futuro y con la dirección de entrega ya
+            ubicada; las que cierran antes primero, hasta 3.000. `precision`
+            `comuna` es un punto aproximado: la dirección no se encontró y se usó
+            la comuna del organismo.
+            """
+            try:
+                return await use_case.execute(region)
+            except InvalidSearchCriteria as e:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+                ) from e
+            except (SQLAlchemyError, OSError) as e:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="No se pudo cargar el mapa. Inténtalo nuevamente.",
+                ) from e
 
     @router.get(
         "/recommended",

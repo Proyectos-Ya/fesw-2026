@@ -1,4 +1,4 @@
-"""`load_dataset.py` tiene que poder reanudarse sin recalcular lo ya indexado.
+"""`scripts.dump` tiene que poder reanudarse sin recalcular lo ya indexado.
 
 Antes indexaba todo lo que hubiera en Postgres en lotes de 32, con relleno hasta el
 texto más largo del lote: con partidas de más de 10.000 caracteres el proceso moría
@@ -7,7 +7,7 @@ por memoria sin un mensaje, a medio camino, y volver a correrlo repetía el trab
 
 from uuid import uuid4
 
-from tests.matching_evaluation.load_dataset import seleccionar_pendientes
+from scripts.dump import seleccionar_pendientes
 
 
 def test_omite_las_licitaciones_ya_indexadas() -> None:

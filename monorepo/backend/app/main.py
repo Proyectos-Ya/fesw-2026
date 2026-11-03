@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.bootstrap import bootstrap
 from app.bootstrap.runners import (
     build_attachment_processing_runner,
+    build_geocoding_runner,
     build_kanban_archive_runner,
     build_milestone_refresh_runner,
     build_notification_runners,
@@ -27,6 +28,9 @@ from app.infrastructure.repositories.qdrant_tender_repository import (
 from app.infrastructure.seeder import seed_database_metadata
 from app.infrastructure.services.attachment_processing_scheduler import (
     AttachmentProcessingScheduler,
+)
+from app.infrastructure.services.geocoding.geocoding_scheduler import (
+    GeocodingScheduler,
 )
 from app.infrastructure.services.kanban.archive_scheduler import (
     KanbanArchiveScheduler,
@@ -171,6 +175,19 @@ async def lifespan(app: FastAPI):
         print("[Main] Iniciando revisión de cambios de fechas de hitos...")
         milestone_refresh_task = asyncio.create_task(milestone_scheduler.start_loop())
 
+    # Geocodificación de las direcciones de entrega para el mapa (HU-22, #314).
+    # Sin proveedor configurado el mapa sale vacío; con Nominatim, una petición
+    # por segundo como máximo, que es lo que permite su política de uso.
+    geocoding_task = None
+    if app.state.geocoding_service is not None:
+        geocoding_scheduler = GeocodingScheduler(
+            geocode=build_geocoding_runner(app),
+            interval_seconds=settings.geocoding_interval_seconds,
+            batch_size=settings.geocoding_batch_size,
+        )
+        print("[Main] Iniciando la geocodificación de direcciones de entrega...")
+        geocoding_task = asyncio.create_task(geocoding_scheduler.start_loop())
+
     # Telemetría del ranking (plan 233, decisión 8). Mismo supuesto de una sola
     # instancia; con dos, los upserts y la purga quedan idempotentes y solo se
     # duplica algún snapshot.
@@ -237,6 +254,7 @@ async def lifespan(app: FastAPI):
             ranking_telemetry_task,
             attachment_processing_task,
             kanban_archive_task,
+            geocoding_task,
         )
         if t
     ]

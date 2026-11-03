@@ -23,7 +23,7 @@ import pytest
 import pytest_asyncio
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import Boolean, DateTime, Integer, Text, inspect, text
+from sqlalchemy import Boolean, DateTime, Double, Integer, Text, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -159,3 +159,65 @@ async def test_tender_guarda_la_entrega_y_los_requisitos(engine_migrado):
     for columna in (direccion, plazo, medioambientales, impacto_social):
         assert columna["nullable"] is True
         assert columna["default"] is None
+
+
+async def test_tender_guarda_la_ubicacion_de_la_entrega(engine_migrado):
+    """Plan #314: cuatro columnas nullable y sin default, y la cola indexada.
+
+    `delivery_geocoded_at` nulo es "pendiente de geocodificar". El índice
+    parcial cubre solo esa fracción de la tabla.
+    """
+
+    def _leer(connection):
+        inspector = inspect(connection)
+        columnas = {c["name"]: c for c in inspector.get_columns("tender")}
+        indices = {i["name"]: i for i in inspector.get_indexes("tender")}
+        return columnas, indices
+
+    async with engine_migrado.connect() as conn:
+        columnas, indices = await conn.run_sync(_leer)
+        definicion = await conn.scalar(
+            text(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE indexname = 'ix_tender_geocodificacion_pendiente'"
+            )
+        )
+
+    lat = columnas["delivery_lat"]
+    lng = columnas["delivery_lng"]
+    precision = columnas["delivery_geo_precision"]
+    geocodificada = columnas["delivery_geocoded_at"]
+    assert isinstance(lat["type"], Double)
+    assert isinstance(lng["type"], Double)
+    assert isinstance(precision["type"], Text)
+    assert isinstance(geocodificada["type"], DateTime)
+    assert not geocodificada["type"].timezone
+    for columna in (lat, lng, precision, geocodificada):
+        assert columna["nullable"] is True
+        assert columna["default"] is None
+
+    assert "ix_tender_geocodificacion_pendiente" in indices
+    assert "delivery_address IS NOT NULL" in definicion
+    assert "delivery_geocoded_at IS NULL" in definicion
+
+
+async def test_la_cache_de_geocodificacion_guarda_tambien_los_no_encontrados(
+    engine_migrado,
+):
+    """Plan #314: `lat`/`lng` nulos = Nominatim no encontró la consulta."""
+
+    def _leer(connection):
+        inspector = inspect(connection)
+        columnas = {c["name"]: c for c in inspector.get_columns("geocoding_cache")}
+        pk = inspector.get_pk_constraint("geocoding_cache")
+        return columnas, pk
+
+    async with engine_migrado.connect() as conn:
+        columnas, pk = await conn.run_sync(_leer)
+
+    assert pk["constrained_columns"] == ["query"]
+    assert isinstance(columnas["query"]["type"], Text)
+    assert columnas["lat"]["nullable"] is True
+    assert columnas["lng"]["nullable"] is True
+    assert isinstance(columnas["lat"]["type"], Double)
+    assert columnas["geocoded_at"]["nullable"] is False

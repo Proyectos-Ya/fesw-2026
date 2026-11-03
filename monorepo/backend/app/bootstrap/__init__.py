@@ -23,6 +23,7 @@ from app.bootstrap.builders import (
     build_calendar_providers,
     build_company_lookup_service,
     build_embedding_service,
+    build_geocoding_service,
     build_reranker_service,
 )
 from app.bootstrap.matching import build_compatibility_formula
@@ -119,6 +120,10 @@ def bootstrap(app: FastAPI) -> None:
     app.state.reranker_service = build_reranker_service()
 
     app.state.company_lookup_service = build_company_lookup_service()
+
+    # Ubicación de las direcciones de entrega para el mapa (HU-22, #314). `None`
+    # deja el scheduler sin arrancar y el mapa vacío.
+    app.state.geocoding_service = build_geocoding_service()
 
     # El envío de correo es stateless y barato de construir, pero vive en
     # app.state igual que el resto: así el scheduler y los endpoints usan
