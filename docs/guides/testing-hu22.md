@@ -64,12 +64,27 @@ Debe decir `Geocodificación de entregas servida por nominatim`. Si dice
 
 ## 2. Conseguir licitaciones con dirección de entrega
 
-**Esta es la trampa de la prueba.** El dump de datos del repositorio
-(`chiripa_tenders.xlsx`) **no trae la dirección de entrega**: es anterior a #294, que
-agregó esa columna. Si cargas el dump y entras al mapa, lo vas a ver vacío. No está
-roto; no hay direcciones que mostrar.
+**Esta es la trampa de la prueba.** El mapa solo dibuja licitaciones **abiertas con
+dirección de entrega**, y un dump exportado antes de #294 no trae la dirección.
+Si lo cargas y entras al mapa, lo vas a ver vacío. No está roto; no hay
+direcciones que mostrar.
 
-Hay dos caminos.
+### Camino 0 — el dump del repositorio (lo normal)
+
+```bash
+python -m scripts.dump cargar
+```
+
+Mira la línea `N licitaciones (M con dirección de entrega)` que imprime. Si `M`
+es 0, tu copia del dump es vieja: `git pull` y vuelve a cargar. Si el mapa sale
+vacío días después, las licitaciones vencieron: `python -m scripts.dump revivir`.
+
+Para sacar un dump nuevo desde producción, ver
+[`copia-produccion-matching.md`](./copia-produccion-matching.md) §2.1: `exportar
+--limite` prioriza las que traen dirección y, si producción ya las ubicó, las que
+tienen coordenadas, que aparecen en el mapa sin esperar a Nominatim.
+
+Si necesitas más direcciones o controlarlas, quedan dos caminos.
 
 ### Camino A — datos reales (necesita la clave de Mercado Público)
 
@@ -92,12 +107,13 @@ permite probar el criterio 4.
 ```bash
 docker exec -i supabase_db_fesw-2026 psql -U postgres -d postgres <<'SQL'
 WITH abiertas AS (
-  SELECT t.id, row_number() OVER (ORDER BY t.closing_at) AS n
+  SELECT t.id,
+         row_number() OVER (ORDER BY b.comuna_id IS NULL DESC, t.closing_at DESC) AS n
   FROM tender t
   JOIN tender_status s ON s.id = t.status_id
   JOIN buyer_institution b ON b.rut = t.buyer_rut
   WHERE s.code = 'publicada'
-    AND t.closing_at > now()
+    AND t.closing_at > now() + interval '1 day'
     AND b.region_id = 13
   LIMIT 8
 ), direcciones (n, calle) AS (
@@ -125,6 +141,12 @@ SQL
 
 Si devuelve `UPDATE 0`, no hay licitaciones abiertas de la RM en tu base: carga el dump
 primero, o cambia `b.region_id = 13` por la región que tengas.
+
+El orden importa por dos razones. Primero van los organismos **sin comuna resuelta**:
+la consulta a Nominatim lleva la comuna del organismo, y "Plaza de Armas" de un
+organismo de La Pintana es la plaza de La Pintana, no la de Santiago; sin comuna se
+busca solo con la región y cae en el centro. Y van las que **cierran más tarde**, para
+que no desaparezcan del mapa mientras pruebas.
 
 ---
 

@@ -120,19 +120,42 @@ alembic revision --autogenerate -m "descripcion"
 
 ### Cargar Datos desde el Dump
 Para sembrar licitaciones de prueba (`project-data/chiripa_tenders.xlsx`, en la raíz del
-repo) en PostgreSQL y Qdrant:
+repo) en PostgreSQL y Qdrant, con Supabase y Qdrant arriba y `alembic upgrade head`:
 ```bash
 # Desde monorepo/backend/ con .venv activo:
-python tests/matching_evaluation/load_postgres_robust.py
-python tests/matching_evaluation/load_dataset.py
+python -m scripts.dump cargar
 ```
 
-Las licitaciones del dump que ya cerraron se cargan con sus fechas corridas un mes
-hacia adelante (los meses que hagan falta si el dump es más viejo), manteniendo la
-separación entre publicación, cierre y último cambio. Es lo que mantiene el corpus de
-prueba visible en la app: sin eso el dump caducaría a las pocas semanas y el
-dashboard saldría vacío. Las fechas dejan de ser las reales de cada licitación, que
-para probar la aplicación da lo mismo.
+**Borra todo el entorno local sin preguntar**: el catálogo, las cuentas (también
+los logins de Supabase Auth), las empresas y lo que cuelga de ellas (guardadas,
+kanban, chats, cotizaciones, alertas, vectores de `suppliers`). Después de
+cargar hay que registrarse de nuevo en `/register`; si el navegador tenía una
+sesión abierta, cierra sesión primero.
+
+Carga el dump e indexa `tenders`, `tender_items` y `tender_lexical` con el mismo
+código que la ingesta. Pon `EMBEDDING_PROVIDER=deepinfra` y tu `EMBEDDING_API_KEY`
+en `monorepo/.env`: así son un par de minutos. Con `local` los vectores se
+calculan en la CPU y tarda bastante más.
+
+Antes de borrar nada comprueba que el embedding responde. Se niega a correr
+contra una base o un Qdrant que no sean locales.
+
+Las columnas se cargan según el esquema de la base, así que una columna nueva
+viaja en el dump sin tocar el script. Quedan fuera `attachments_synced_at` y
+`offers_checked_at`, que son estado de los procesos de quien exportó.
+
+**Fechas.** Al cargar, todo el catálogo se corre los mismos días, hasta que la
+licitación publicada más reciente quede publicada hoy. Se ve como el día del
+export, con los mismos plazos hasta el cierre. Las compras ágiles duran unos diez
+días, así que vuelve a vencer; cuando pase:
+
+```bash
+python -m scripts.dump revivir
+```
+
+Corre las fechas de nuevo y actualiza el payload de Qdrant sin recalcular
+vectores: tarda segundos. Solo toca las licitaciones del dump, no las que bajó la
+ingesta real (esas tienen fila en `tender_metadata`).
 
 Para vaciar licitaciones o resetear usuarios y empresas sin borrar el catálogo, ver la
 [Guía de Scripts Utilitarios](../../docs/guides/scripts-utilitarios.md).
@@ -188,18 +211,28 @@ Si quieres partir solo con lo que traiga la API:
 
 ```bash
 docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-curl -X DELETE http://localhost:6333/collections/tenders
+for c in tenders tender_items tender_lexical; do curl -X DELETE http://localhost:6333/collections/$c; done
 ```
 
 ### Regenerar el dump
 
-Lo hace **una sola persona**, porque consume cuota compartida del ticket.
+**No es parte del día a día.** Que las licitaciones venzan se arregla con
+`revivir`. Regenerar sirve cuando quieres **otro** corpus: más licitaciones, otras
+regiones, o columnas nuevas que el dump actual no trae.
 
-**No es parte del día a día.** El dump es un corpus de prueba y las compras ágiles
-duran unos diez días, así que sus licitaciones se cierran solas; para eso está el
-desplazamiento de fechas al cargarlo, que las mantiene visibles en la app
-indefinidamente. Regenerar sirve cuando quieres **otro** corpus: más licitaciones,
-de otras regiones o de otros rubros.
+Lo habitual es sacarlo de producción, sin gastar cuota, con el usuario de solo
+lectura ([Copia de producción](../../docs/guides/copia-produccion-matching.md)):
+
+```bash
+DATABASE_URL="postgresql://matching_lectura.<project-ref>:${PROD_RO_PASS}@<host>:5432/postgres" \
+  python -m scripts.dump exportar --limite 300
+```
+
+`--limite` prioriza las licitaciones con dirección de entrega y, entre esas, las
+que ya tienen coordenadas (HU-22). Solo ejecuta `SELECT`.
+
+Sin acceso a producción se arma desde la API de Mercado Público. Lo hace **una
+sola persona**, porque consume cuota compartida del ticket:
 
 **1. Infraestructura arriba.** `generar_dataset.py` no es autónomo: escribe en la
 base del `.env`, indexa en Qdrant y necesita `MERCADO_PUBLICO_API_KEY`.
@@ -210,32 +243,22 @@ docker compose up -d qdrant # desde monorepo/
 alembic upgrade head        # desde monorepo/backend/
 ```
 
-**2. Base limpia (opcional).** El export saca del `.env` todo lo que tenga
-`closing_at > now()`, así que si ahí quedó un dump cargado, sus licitaciones —con la
-fecha ya desplazada— entran también al xlsx nuevo. Para un corpus de prueba eso no
-molesta; solo ten en cuenta que cada ciclo de cargar y volver a exportar les corre
-otro mes. Vacía la base si quieres el corpus nuevo limpio, o sáltate este paso si
-prefieres acumular sobre lo que ya tienes.
-
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-curl -X DELETE http://localhost:6333/collections/tenders
-```
+**2. Base limpia (opcional).** El export saca todo lo que tenga
+`closing_at > now()`, así que si quedó un dump cargado, sus licitaciones entran
+también al xlsx nuevo. Vacía la base con el bloque de arriba si quieres el corpus
+limpio.
 
 **3. Traer licitaciones y volcarlas al xlsx.**
 
 ```bash
 python tests/matching_evaluation/generar_dataset.py --limite 300
-python tests/matching_evaluation/export_dataset.py
+python -m scripts.dump exportar
 ```
 
 El primero trae compras ágiles vigentes desde la API (~1 petición por licitación) y
 las deja en la base y en Qdrant. Al terminar imprime cuántas quedaron vigentes; si
-son 0, no sigas: el xlsx saldría vacío. El segundo lee la base del `.env` y
-**sobrescribe** el xlsx solo con las vigentes, sin acumular cerradas.
-
-Ese es el único script que escribe el dump. La dirección contraria —dump a base— es
-de `load_postgres_robust.py` y `load_dataset.py`, que nunca tocan el archivo.
+son 0, no sigas: el xlsx saldría vacío. El segundo **sobrescribe** el xlsx con las
+vigentes.
 
 **4. Compartirlo por git.**
 
@@ -252,9 +275,8 @@ Lo único que importa es cuántas están vigentes:
 docker exec supabase_db_fesw-2026 psql -U postgres -c "select count(*) total, count(*) filter (where closing_at > now()) vigentes from tender;"
 ```
 
-Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya. Cargando el
-dump no debería pasar, porque las cerradas entran con la fecha corrida; si pasa,
-revisa que la carga haya sido con `load_postgres_robust.py`.
+Si `vigentes` es 0, el dashboard saldrá vacío por más filas que haya:
+`python -m scripts.dump revivir`.
 
 Y si el dashboard sale vacío con licitaciones vigentes, casi siempre es el **filtro
 por región**, que es estricto: un proveedor solo ve licitaciones de las regiones que
