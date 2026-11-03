@@ -256,6 +256,7 @@ export function Sidebar() {
         <div className="pt-3 pb-2 border-t border-border-subtle flex flex-col gap-2">
           <button
             type="button"
+            data-tour="sidebar-help"
             onClick={() => {
               setMobileOpen(false);
               openHelpCenter();

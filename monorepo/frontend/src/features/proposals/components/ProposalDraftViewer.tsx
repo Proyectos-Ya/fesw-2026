@@ -204,7 +204,7 @@ export function ProposalDraftViewer({
   );
 
   return (
-    <div>
+    <div data-tour="proposal-editor">
       <NextSteps view={view} tenderCode={tenderCode} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1 text-sm text-text-muted">

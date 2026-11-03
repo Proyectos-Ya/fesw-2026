@@ -12,10 +12,8 @@ export function WelcomeModal() {
   const { activeWorkspace } = useWorkspace();
 
   const hasHydrated = useOnboardingStore((state) => state._hasHydrated);
-  const hasCompletedOnboarding = useOnboardingStore(
-    (state) => state.hasCompletedOnboarding,
-  );
-  const isTourActive = useOnboardingStore((state) => state.isTourActive);
+  const tours = useOnboardingStore((state) => state.tours);
+  const activeTour = useOnboardingStore((state) => state.activeTour);
   const startTour = useOnboardingStore((state) => state.startTour);
   const markOnboardingAsCompletedAsync = useOnboardingStore(
     (state) => state.markOnboardingAsCompletedAsync,
@@ -26,14 +24,18 @@ export function WelcomeModal() {
 
   const isOpen =
     hasHydrated &&
-    !hasCompletedOnboarding &&
-    !isTourActive &&
+    !tours.home &&
+    activeTour === null &&
     hasActiveCompanyContext;
 
   if (!isOpen) return null;
 
   const handleSkip = () => {
-    void markOnboardingAsCompletedAsync();
+    void markOnboardingAsCompletedAsync("home");
+  };
+
+  const handleStart = () => {
+    startTour("home");
   };
 
   return (
@@ -70,7 +72,7 @@ export function WelcomeModal() {
           <Button
             type="button"
             variant="primary"
-            onClick={startTour}
+            onClick={handleStart}
           >
             Iniciar recorrido
             <Icon name="arrow-right" size={16} />

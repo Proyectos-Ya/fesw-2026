@@ -48,8 +48,8 @@ describe("Sidebar - Onboarding & Help Center integration", () => {
   beforeEach(() => {
     window.localStorage.clear();
     useOnboardingStore.setState({
-      hasCompletedOnboarding: true,
-      isTourActive: false,
+      tours: { home: true, detail: false, draft: false },
+      activeTour: null,
       currentTourStep: 0,
       isHelpCenterOpen: false,
       _hasHydrated: true,

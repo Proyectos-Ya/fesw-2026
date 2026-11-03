@@ -1,8 +1,13 @@
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Config, Driver } from "driver.js";
+import type { Config, Driver, DriveStep } from "driver.js";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
-import { GuidedTour, GUIDED_TOUR_STEPS, type TourStep } from "../GuidedTour";
+import {
+  GuidedTour,
+  HOME_STEPS,
+  DETAIL_STEPS,
+  DRAFT_STEPS,
+} from "../GuidedTour";
 
 let isDriverActive = false;
 const mockDrive = vi.fn(() => {
@@ -28,56 +33,29 @@ vi.mock("driver.js", () => ({
   driver: (config?: Config) => mockDriverFactory(config),
 }));
 
-const mockPush = vi.fn();
-let currentMockPathname = "/";
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
-  usePathname: () => currentMockPathname,
-}));
-
-const mockUseCompany = vi.fn();
-const mockUseWorkspace = vi.fn();
-
 vi.mock("../../services/onboardingService", () => ({
   markOnboardingCompletedApi: vi.fn().mockResolvedValue({}),
-}));
-
-vi.mock("@/features/company-profile/components/CompanyProvider", () => ({
-  useCompany: () => mockUseCompany(),
-}));
-
-vi.mock("@/features/workspaces/WorkspaceContext", () => ({
-  useWorkspace: () => mockUseWorkspace(),
 }));
 
 describe("GuidedTour", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    currentMockPathname = "/";
     isDriverActive = false;
     useOnboardingStore.setState({
-      hasCompletedOnboarding: false,
-      isTourActive: false,
+      tours: {
+        home: false,
+        detail: false,
+        draft: false,
+      },
+      activeTour: null,
       currentTourStep: 0,
       isHelpCenterOpen: false,
       _hasHydrated: true,
     });
-    mockUseCompany.mockReturnValue({
-      company: {
-        status: "with-company",
-        supplier: { id: "sup-1", name: "Empresa Demo" },
-      },
-    });
-    mockUseWorkspace.mockReturnValue({
-      activeWorkspace: null,
-    });
   });
 
-  it("no inicializa driver.js cuando isTourActive es false", () => {
+  it("no inicializa driver.js cuando activeTour es null", () => {
     const { container } = render(<GuidedTour />);
 
     expect(container.firstChild).toBeNull();
@@ -85,19 +63,8 @@ describe("GuidedTour", () => {
     expect(mockDrive).not.toHaveBeenCalled();
   });
 
-  it("aplica el Soft Gate: no inicia driver.js si el usuario no tiene empresa ni workspace activo", () => {
-    mockUseCompany.mockReturnValue({
-      company: { status: "without-company" },
-    });
-    useOnboardingStore.setState({ isTourActive: true });
-
-    render(<GuidedTour />);
-
-    expect(mockDrive).not.toHaveBeenCalled();
-  });
-
-  it("inicializa driver.js con rutas multi-página, estilos para modo oscuro y overlayColor difuminado", () => {
-    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 0 });
+  it("inicializa driver.js con HOME_STEPS y configuración de modo oscuro cuando activeTour === 'home'", () => {
+    useOnboardingStore.setState({ activeTour: "home", currentTourStep: 0 });
 
     render(<GuidedTour />);
 
@@ -109,30 +76,52 @@ describe("GuidedTour", () => {
     expect(config?.popoverClass).toContain("chiripa-tour-popover");
     expect(config?.popoverClass).toContain("dark:bg-gray-900");
 
-    const steps = config?.steps as TourStep[];
-    expect(steps).toHaveLength(3);
+    const steps = config?.steps as DriveStep[];
+    expect(steps).toHaveLength(HOME_STEPS.length);
     expect(steps[0]?.element).toBe('[data-tour="home-recommendations"]');
-    expect(steps[0]?.route).toBe("/");
     expect(steps[1]?.element).toBe('[data-tour="sidebar-search"]');
-    expect(steps[1]?.route).toBe("/buscar");
-    expect(steps[2]?.element).toBe('[data-tour="match-detail-panel"]');
-    expect(steps[2]?.route).toBe("/buscar");
+    expect(steps[2]?.element).toBe('[data-tour="sidebar-help"]');
 
     expect(mockDrive).toHaveBeenCalledWith(0);
   });
 
-  it("en onNextClick navega a la siguiente ruta cuando difiere del pathname actual sin completar el onboarding", () => {
-    currentMockPathname = "/";
-    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 0 });
+  it("inicializa driver.js con DETAIL_STEPS cuando activeTour === 'detail'", () => {
+    useOnboardingStore.setState({ activeTour: "detail", currentTourStep: 0 });
+
+    render(<GuidedTour />);
+
+    expect(mockDriverFactory).toHaveBeenCalledTimes(1);
+    const config = mockDriverFactory.mock.calls[0]?.[0];
+    const steps = config?.steps as DriveStep[];
+    expect(steps).toHaveLength(DETAIL_STEPS.length);
+    expect(steps[0]?.element).toBe('[data-tour="match-detail-panel"]');
+    expect(mockDrive).toHaveBeenCalledWith(0);
+  });
+
+  it("inicializa driver.js con DRAFT_STEPS cuando activeTour === 'draft'", () => {
+    useOnboardingStore.setState({ activeTour: "draft", currentTourStep: 0 });
+
+    render(<GuidedTour />);
+
+    expect(mockDriverFactory).toHaveBeenCalledTimes(1);
+    const config = mockDriverFactory.mock.calls[0]?.[0];
+    const steps = config?.steps as DriveStep[];
+    expect(steps).toHaveLength(DRAFT_STEPS.length);
+    expect(steps[0]?.element).toBe('[data-tour="proposal-editor"]');
+    expect(mockDrive).toHaveBeenCalledWith(0);
+  });
+
+  it("en onNextClick avanza dentro del mismo tour o lo finaliza al alcanzar el último paso", () => {
+    useOnboardingStore.setState({ activeTour: "home", currentTourStep: 0 });
 
     render(<GuidedTour />);
 
     const config = mockDriverFactory.mock.calls[0]?.[0];
     expect(config?.onNextClick).toBeTypeOf("function");
 
-    // Simulamos clic en 'Siguiente' en el paso 0 (Home -> Buscar)
+    // Paso 0 -> Paso 1
     act(() => {
-      config?.onNextClick?.(undefined, GUIDED_TOUR_STEPS[0], {
+      config?.onNextClick?.(undefined, HOME_STEPS[0], {
         config: config ?? {},
         state: { activeIndex: 0 },
         driver: mockDriverInstance,
@@ -140,47 +129,12 @@ describe("GuidedTour", () => {
       });
     });
 
-    expect(mockDestroy).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/buscar");
+    expect(mockMoveTo).toHaveBeenCalledWith(1);
     expect(useOnboardingStore.getState().currentTourStep).toBe(1);
-    // No debe haberse marcado como completado porque es una transición interna
-    expect(useOnboardingStore.getState().hasCompletedOnboarding).toBe(false);
-  });
 
-  it("en onPrevClick navega a la ruta anterior cuando difiere del pathname actual", () => {
-    currentMockPathname = "/buscar";
-    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 1 });
-
-    render(<GuidedTour />);
-
-    const config = mockDriverFactory.mock.calls[0]?.[0];
-    expect(config?.onPrevClick).toBeTypeOf("function");
-
-    // Simulamos clic en 'Anterior' en el paso 1 (/buscar -> /)
+    // Último paso -> Finalizar
     act(() => {
-      config?.onPrevClick?.(undefined, GUIDED_TOUR_STEPS[1], {
-        config: config ?? {},
-        state: { activeIndex: 1 },
-        driver: mockDriverInstance,
-        index: 1,
-      });
-    });
-
-    expect(mockDestroy).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/");
-    expect(useOnboardingStore.getState().currentTourStep).toBe(0);
-  });
-
-  it("en onNextClick finaliza el tour si se encuentra en el último paso", () => {
-    currentMockPathname = "/buscar";
-    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 2 });
-
-    render(<GuidedTour />);
-
-    const config = mockDriverFactory.mock.calls[0]?.[0];
-
-    act(() => {
-      config?.onNextClick?.(undefined, GUIDED_TOUR_STEPS[2], {
+      config?.onNextClick?.(undefined, HOME_STEPS[2], {
         config: config ?? {},
         state: { activeIndex: 2 },
         driver: mockDriverInstance,
@@ -190,31 +144,50 @@ describe("GuidedTour", () => {
 
     expect(mockDestroy).toHaveBeenCalledTimes(1);
     const state = useOnboardingStore.getState();
-    expect(state.isTourActive).toBe(false);
-    expect(state.hasCompletedOnboarding).toBe(true);
+    expect(state.activeTour).toBeNull();
+    expect(state.tours.home).toBe(true);
   });
 
-  it("marca el onboarding como completado/omitido cuando driver.js se destruye por acción del usuario", () => {
-    currentMockPathname = "/buscar";
-    useOnboardingStore.setState({ isTourActive: true, currentTourStep: 1 });
+  it("en onPrevClick retrocede al paso anterior", () => {
+    useOnboardingStore.setState({ activeTour: "home", currentTourStep: 2 });
 
     render(<GuidedTour />);
 
     const config = mockDriverFactory.mock.calls[0]?.[0];
-    expect(config?.onDestroyed).toBeTypeOf("function");
+    expect(config?.onPrevClick).toBeTypeOf("function");
 
     act(() => {
-      config?.onDestroyed?.(undefined, { popover: {} }, {
+      config?.onPrevClick?.(undefined, HOME_STEPS[2], {
+        config: config ?? {},
+        state: { activeIndex: 2 },
+        driver: mockDriverInstance,
+        index: 2,
+      });
+    });
+
+    expect(mockMoveTo).toHaveBeenCalledWith(1);
+    expect(useOnboardingStore.getState().currentTourStep).toBe(1);
+  });
+
+  it("marca el tour activo como completado al cerrarse o destruirse", () => {
+    useOnboardingStore.setState({ activeTour: "detail", currentTourStep: 0 });
+
+    render(<GuidedTour />);
+
+    const config = mockDriverFactory.mock.calls[0]?.[0];
+    expect(config?.onCloseClick).toBeTypeOf("function");
+
+    act(() => {
+      config?.onCloseClick?.(undefined, DETAIL_STEPS[0], {
         config: config ?? {},
         state: {},
         driver: mockDriverInstance,
-        index: 1,
-        reason: "close",
+        index: 0,
       });
     });
 
     const state = useOnboardingStore.getState();
-    expect(state.isTourActive).toBe(false);
-    expect(state.hasCompletedOnboarding).toBe(true);
+    expect(state.activeTour).toBeNull();
+    expect(state.tours.detail).toBe(true);
   });
 });

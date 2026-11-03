@@ -109,15 +109,19 @@ describe("AuthProvider: eventos de Supabase", () => {
     expect(getMe).toHaveBeenCalledTimes(2);
   });
 
-  it("sincroniza has_completed_onboarding con useOnboardingStore", async () => {
-    useOnboardingStore.setState({ hasCompletedOnboarding: false });
+  it("sincroniza tour_home_completed con useOnboardingStore", async () => {
+    useOnboardingStore.setState({
+      tours: { home: false, detail: false, draft: false },
+    });
     vi.mocked(getMe).mockResolvedValueOnce({
       ...PERFIL,
-      has_completed_onboarding: true,
+      tour_home_completed: true,
+      tour_detail_completed: false,
+      tour_draft_completed: false,
     });
 
     await montarConSesion("auth-onboarded");
 
-    expect(useOnboardingStore.getState().hasCompletedOnboarding).toBe(true);
+    expect(useOnboardingStore.getState().tours.home).toBe(true);
   });
 });

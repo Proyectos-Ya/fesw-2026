@@ -1,44 +1,57 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { markOnboardingCompletedApi } from "../services/onboardingService";
+import {
+  markOnboardingCompletedApi,
+  type TourName,
+} from "../services/onboardingService";
 
 export const ONBOARDING_STORAGE_KEY = "chiripa_onboarding_state";
 
+export interface TourProgress {
+  home: boolean;
+  detail: boolean;
+  draft: boolean;
+}
+
 interface PersistedOnboardingSlice {
-  hasCompletedOnboarding: boolean;
-  isTourActive: boolean;
+  tours: TourProgress;
+  activeTour: TourName | null;
   currentTourStep: number;
 }
 
 export interface OnboardingState extends PersistedOnboardingSlice {
   isHelpCenterOpen: boolean;
   _hasHydrated: boolean;
-  startTour: () => void;
+  startTour: (tourName: TourName) => void;
   nextStep: () => void;
   prevStep: () => void;
   setTourStep: (step: number) => void;
-  skipTour: () => void;
-  completeOnboarding: () => void;
-  resetTour: () => void;
+  skipTour: (tourName?: TourName) => void;
+  completeTour: (tourName: TourName) => void;
+  resetTour: (tourName: TourName) => void;
   openHelpCenter: () => void;
   closeHelpCenter: () => void;
   setHasHydrated: (hydrated: boolean) => void;
-  setHasCompletedOnboarding: (completed: boolean) => void;
-  markOnboardingAsCompletedAsync: () => Promise<void>;
+  setToursStatus: (tours: Partial<TourProgress>) => void;
+  markOnboardingAsCompletedAsync: (tourName: TourName) => Promise<void>;
 }
 
 export const useOnboardingStore = create<OnboardingState>()(
   persist(
     (set, get) => ({
-      hasCompletedOnboarding: false,
-      isTourActive: false,
+      tours: {
+        home: false,
+        detail: false,
+        draft: false,
+      },
+      activeTour: null,
       currentTourStep: 0,
       isHelpCenterOpen: false,
       _hasHydrated: false,
 
-      startTour: () =>
+      startTour: (tourName: TourName) =>
         set({
-          isTourActive: true,
+          activeTour: tourName,
           currentTourStep: 0,
           isHelpCenterOpen: false,
         }),
@@ -58,35 +71,46 @@ export const useOnboardingStore = create<OnboardingState>()(
           currentTourStep: Math.max(0, step),
         }),
 
-      skipTour: () => {
-        set({
-          hasCompletedOnboarding: true,
-          isTourActive: false,
+      skipTour: (tourName?: TourName) => {
+        const targetTour = tourName ?? get().activeTour ?? "home";
+        set((state) => ({
+          tours: {
+            ...state.tours,
+            [targetTour]: true,
+          },
+          activeTour: null,
           currentTourStep: 0,
-        });
-        void markOnboardingCompletedApi().catch((err) => {
+        }));
+        void markOnboardingCompletedApi(targetTour).catch((err) => {
           if (process.env.NODE_ENV !== "production") {
             console.warn("[Onboarding] Error syncing skipTour:", err);
           }
         });
       },
 
-      completeOnboarding: () =>
-        set({
-          hasCompletedOnboarding: true,
-          isTourActive: false,
+      completeTour: (tourName: TourName) =>
+        set((state) => ({
+          tours: {
+            ...state.tours,
+            [tourName]: true,
+          },
+          activeTour: null,
           currentTourStep: 0,
-        }),
+        })),
 
-      setHasCompletedOnboarding: (completed: boolean) =>
-        set({
-          hasCompletedOnboarding: completed,
-        }),
+      setToursStatus: (toursUpdate: Partial<TourProgress>) =>
+        set((state) => ({
+          tours: {
+            home: toursUpdate.home ?? state.tours.home,
+            detail: toursUpdate.detail ?? state.tours.detail,
+            draft: toursUpdate.draft ?? state.tours.draft,
+          },
+        })),
 
-      markOnboardingAsCompletedAsync: async () => {
-        get().completeOnboarding();
+      markOnboardingAsCompletedAsync: async (tourName: TourName) => {
+        get().completeTour(tourName);
         try {
-          await markOnboardingCompletedApi();
+          await markOnboardingCompletedApi(tourName);
         } catch (error) {
           if (process.env.NODE_ENV !== "production") {
             console.warn("[Onboarding] Error syncing onboarding status:", error);
@@ -94,10 +118,10 @@ export const useOnboardingStore = create<OnboardingState>()(
         }
       },
 
-      resetTour: () =>
+      resetTour: (tourName: TourName) =>
         set({
           isHelpCenterOpen: false,
-          isTourActive: true,
+          activeTour: tourName,
           currentTourStep: 0,
         }),
 
@@ -120,8 +144,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       name: ONBOARDING_STORAGE_KEY,
       storage: createJSONStorage(() => window.localStorage),
       partialize: (state): PersistedOnboardingSlice => ({
-        hasCompletedOnboarding: state.hasCompletedOnboarding,
-        isTourActive: state.isTourActive,
+        tours: state.tours,
+        activeTour: state.activeTour,
         currentTourStep: state.currentTourStep,
       }),
       onRehydrateStorage: () => (state) => {

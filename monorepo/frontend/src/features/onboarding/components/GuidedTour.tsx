@@ -1,20 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { useCompany } from "@/features/company-profile/components/CompanyProvider";
-import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
-import { useOnboardingStore } from "../store/useOnboardingStore";
+import {
+  useOnboardingStore,
+} from "../store/useOnboardingStore";
+import type { TourName } from "../services/onboardingService";
 
-export interface TourStep extends DriveStep {
-  route: string;
-}
-
-export const GUIDED_TOUR_STEPS: TourStep[] = [
+export const HOME_STEPS: DriveStep[] = [
   {
-    route: "/",
     element: '[data-tour="home-recommendations"]',
     popover: {
       title: "Compatibilidad y Matches Automáticos",
@@ -25,7 +20,6 @@ export const GUIDED_TOUR_STEPS: TourStep[] = [
     },
   },
   {
-    route: "/buscar",
     element: '[data-tour="sidebar-search"]',
     popover: {
       title: "Buscador Manual de Licitaciones",
@@ -36,7 +30,19 @@ export const GUIDED_TOUR_STEPS: TourStep[] = [
     },
   },
   {
-    route: "/buscar",
+    element: '[data-tour="sidebar-help"]',
+    popover: {
+      title: "Centro de Ayuda y Guías Rápidas",
+      description:
+        "Encuentra explicaciones detalladas sobre el funcionamiento de la plataforma o reinicia los tours cuando lo necesites.",
+      side: "right",
+      align: "center",
+    },
+  },
+];
+
+export const DETAIL_STEPS: DriveStep[] = [
+  {
     element: '[data-tour="match-detail-panel"]',
     popover: {
       title: "Exigencias y Asistente de IA",
@@ -48,88 +54,56 @@ export const GUIDED_TOUR_STEPS: TourStep[] = [
   },
 ];
 
+export const DRAFT_STEPS: DriveStep[] = [
+  {
+    element: '[data-tour="proposal-editor"]',
+    popover: {
+      title: "Editor de Propuesta y Borrador",
+      description:
+        "Redacta y estructura tu propuesta técnica y comercial con base en los requerimientos detectados.",
+      side: "top",
+      align: "start",
+    },
+  },
+];
+
+export function getStepsForTour(tourName: TourName | null): DriveStep[] | null {
+  switch (tourName) {
+    case "home":
+      return HOME_STEPS;
+    case "detail":
+      return DETAIL_STEPS;
+    case "draft":
+      return DRAFT_STEPS;
+    default:
+      return null;
+  }
+}
+
 export function GuidedTour() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const { company } = useCompany();
-  const { activeWorkspace } = useWorkspace();
-
-  const isTourActive = useOnboardingStore((state) => state.isTourActive);
+  const activeTour = useOnboardingStore((state) => state.activeTour);
   const currentTourStep = useOnboardingStore((state) => state.currentTourStep);
   const setTourStep = useOnboardingStore((state) => state.setTourStep);
+  const skipTour = useOnboardingStore((state) => state.skipTour);
   const markOnboardingAsCompletedAsync = useOnboardingStore(
     (state) => state.markOnboardingAsCompletedAsync,
   );
 
   const driverRef = useRef<Driver | null>(null);
-  const isNavigatingRef = useRef(false);
 
-  const hasActiveCompanyContext =
-    company.status === "with-company" || activeWorkspace !== null;
-
-  const handleNext = (activeIdx: number, driverObj: Driver) => {
-    const nextIdx = activeIdx + 1;
-    if (nextIdx >= GUIDED_TOUR_STEPS.length) {
-      isNavigatingRef.current = false;
-      driverObj.destroy();
-      void markOnboardingAsCompletedAsync();
-      return;
-    }
-
-    const nextStep = GUIDED_TOUR_STEPS[nextIdx];
-    if (nextStep && nextStep.route !== pathname) {
-      isNavigatingRef.current = true;
-      driverObj.destroy();
-      setTourStep(nextIdx);
-      router.push(nextStep.route);
-    } else {
-      setTourStep(nextIdx);
-      driverObj.moveTo(nextIdx);
-    }
-  };
-
-  const handlePrev = (activeIdx: number, driverObj: Driver) => {
-    const prevIdx = activeIdx - 1;
-    if (prevIdx < 0) return;
-
-    const prevStep = GUIDED_TOUR_STEPS[prevIdx];
-    if (prevStep && prevStep.route !== pathname) {
-      isNavigatingRef.current = true;
-      driverObj.destroy();
-      setTourStep(prevIdx);
-      router.push(prevStep.route);
-    } else {
-      setTourStep(prevIdx);
-      driverObj.moveTo(prevIdx);
-    }
-  };
+  const steps = getStepsForTour(activeTour);
 
   useEffect(() => {
-    if (!isTourActive || !hasActiveCompanyContext) {
+    if (!activeTour || !steps || steps.length === 0) {
       if (driverRef.current?.isActive()) {
         driverRef.current.destroy();
       }
       driverRef.current = null;
-      isNavigatingRef.current = false;
       return;
     }
 
-    const targetStepIndex = useOnboardingStore.getState().currentTourStep;
-    const targetStep = GUIDED_TOUR_STEPS[targetStepIndex] ?? GUIDED_TOUR_STEPS[0];
-
-    // Si no estamos en la ruta esperada para este paso, navegamos
-    if (targetStep && targetStep.route !== pathname) {
-      isNavigatingRef.current = true;
-      router.push(targetStep.route);
-      return;
-    }
-
-    isNavigatingRef.current = false;
-
-    if (driverRef.current?.isActive()) {
-      driverRef.current.destroy();
-    }
+    const currentTourName = activeTour;
+    const startIndex = useOnboardingStore.getState().currentTourStep;
 
     const driverObj = driver({
       showProgress: true,
@@ -147,19 +121,27 @@ export function GuidedTour() {
       showButtons: ["next", "previous", "close"],
       popoverClass:
         "chiripa-tour-popover bg-surface-card text-text-strong font-sans border border-border-subtle shadow-xl rounded-lg dark:bg-gray-900 dark:text-white dark:border-gray-700",
-      steps: GUIDED_TOUR_STEPS,
+      steps,
       onNextClick: (_element, _step, opts) => {
-        const currentIdx = opts.state.activeIndex ?? targetStepIndex;
-        handleNext(currentIdx, opts.driver);
+        const currentIdx = opts.state.activeIndex ?? 0;
+        const nextIdx = currentIdx + 1;
+        if (nextIdx >= steps.length) {
+          opts.driver.destroy();
+          void markOnboardingAsCompletedAsync(currentTourName);
+        } else {
+          setTourStep(nextIdx);
+          opts.driver.moveTo(nextIdx);
+        }
       },
       onPrevClick: (_element, _step, opts) => {
-        const currentIdx = opts.state.activeIndex ?? targetStepIndex;
-        handlePrev(currentIdx, opts.driver);
+        const currentIdx = opts.state.activeIndex ?? 0;
+        const prevIdx = Math.max(0, currentIdx - 1);
+        setTourStep(prevIdx);
+        opts.driver.moveTo(prevIdx);
       },
       onCloseClick: (_element, _step, opts) => {
-        isNavigatingRef.current = false;
         opts.driver.destroy();
-        void markOnboardingAsCompletedAsync();
+        void markOnboardingAsCompletedAsync(currentTourName);
       },
       onHighlightStarted: (_element, _step, opts) => {
         if (typeof opts.index === "number") {
@@ -176,32 +158,30 @@ export function GuidedTour() {
         skipButton.setAttribute("data-tour-action", "skip");
         skipButton.className = "driver-popover-skip-btn";
         skipButton.addEventListener("click", () => {
-          isNavigatingRef.current = false;
-          void markOnboardingAsCompletedAsync();
           opts.driver.destroy();
+          void markOnboardingAsCompletedAsync(currentTourName);
         });
         popover.footerButtons.prepend(skipButton);
       },
-      onDestroyed: () => {
-        if (isNavigatingRef.current) {
-          // Transición de ruta en curso: NO completar onboarding
-          return;
+      onDestroyed: (_element, _step, opts) => {
+        if (opts.reason === "done") {
+          void markOnboardingAsCompletedAsync(currentTourName);
+        } else {
+          skipTour(currentTourName);
         }
-        void markOnboardingAsCompletedAsync();
       },
     });
 
     driverRef.current = driverObj;
-    driverObj.drive(targetStepIndex);
+    driverObj.drive(startIndex);
 
     return () => {
-      if (driverRef.current?.isActive() && !isNavigatingRef.current) {
+      if (driverRef.current?.isActive()) {
         driverRef.current.destroy();
         driverRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTourActive, hasActiveCompanyContext, pathname]);
+  }, [activeTour, steps, markOnboardingAsCompletedAsync, setTourStep, skipTour]);
 
   void currentTourStep;
 

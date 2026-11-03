@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
 import { useOnboardingStore } from "../store/useOnboardingStore";
@@ -43,12 +44,58 @@ const HELP_GUIDES: ReadonlyArray<HelpGuideSection> = [
   },
 ];
 
+export function getTourConfigForPath(pathname: string) {
+  if (
+    pathname.includes("/postulacion") ||
+    pathname.includes("/cotizacion") ||
+    pathname.includes("/propuesta")
+  ) {
+    return {
+      type: "draft" as const,
+      title: "Tour de Postulación",
+      description:
+        "Revisa cómo preparar y organizar tu propuesta, adjuntar evidencias y afinar tu cotización con IA.",
+      buttonText: "Reiniciar tour de postulación",
+    };
+  }
+
+  if (pathname.includes("/matches/")) {
+    return {
+      type: "detail" as const,
+      title: "Tour de Licitación",
+      description:
+        "Aprende a analizar los requisitos, desglosar las bases y consultar dudas con el Asistente de IA.",
+      buttonText: "Reiniciar tour de licitación",
+    };
+  }
+
+  return {
+    type: "home" as const,
+    title: "Tour de Inicio",
+    description:
+      "Vuelve a revisar tus recomendaciones automáticas, el buscador manual y el estado de tus licitaciones.",
+    buttonText: "Reiniciar tour de inicio",
+  };
+}
+
 export function HelpCenterDrawer() {
+  const pathname = usePathname();
+  const router = useRouter();
+
   const isHelpCenterOpen = useOnboardingStore(
     (state) => state.isHelpCenterOpen,
   );
   const closeHelpCenter = useOnboardingStore((state) => state.closeHelpCenter);
   const resetTour = useOnboardingStore((state) => state.resetTour);
+
+  const tourConfig = getTourConfigForPath(pathname || "/");
+
+  const handleResetTour = () => {
+    if (tourConfig.type === "home" && pathname !== "/") {
+      router.push("/");
+    }
+    resetTour(tourConfig.type);
+  };
 
   useEffect(() => {
     if (!isHelpCenterOpen) return;
@@ -107,7 +154,7 @@ export function HelpCenterDrawer() {
 
         {/* Contenido desplazable */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Tarjeta destacada: Reiniciar Tour */}
+          {/* Tarjeta destacada dinámica: Reiniciar Tour */}
           <div className="rounded-xl border border-primary-border bg-primary-soft/60 p-5 shadow-xs">
             <div className="flex items-start gap-3">
               <div className="flex size-9 flex-none items-center justify-center rounded-full bg-primary text-on-primary">
@@ -115,11 +162,10 @@ export function HelpCenterDrawer() {
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-text-strong">
-                  Recorrido guiado de Chiripa
+                  {tourConfig.title}
                 </h3>
                 <p className="text-xs text-text-muted leading-relaxed">
-                  Vuelve a revisar paso a paso dónde encontrar tus matches
-                  automáticos, el buscador manual y el análisis con IA.
+                  {tourConfig.description}
                 </p>
               </div>
             </div>
@@ -127,11 +173,11 @@ export function HelpCenterDrawer() {
               <Button
                 type="button"
                 variant="primary"
-                onClick={resetTour}
+                onClick={handleResetTour}
                 className="w-full"
               >
                 <Icon name="rotate-ccw" size={16} />
-                Reiniciar tour interactivo
+                {tourConfig.buttonText}
               </Button>
             </div>
           </div>

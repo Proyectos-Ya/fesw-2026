@@ -22,8 +22,12 @@ describe("WelcomeModal", () => {
   beforeEach(() => {
     window.localStorage.clear();
     useOnboardingStore.setState({
-      hasCompletedOnboarding: false,
-      isTourActive: false,
+      tours: {
+        home: false,
+        detail: false,
+        draft: false,
+      },
+      activeTour: null,
       currentTourStep: 0,
       isHelpCenterOpen: false,
       _hasHydrated: true,
@@ -64,8 +68,10 @@ describe("WelcomeModal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("no se renderiza si el usuario ya completó el onboarding o si el tour está activo", () => {
-    useOnboardingStore.setState({ hasCompletedOnboarding: true });
+  it("no se renderiza si el usuario ya completó el tour de inicio o si hay un tour activo", () => {
+    useOnboardingStore.setState({
+      tours: { home: true, detail: false, draft: false },
+    });
     const { rerender } = render(<WelcomeModal />);
     expect(
       screen.queryByRole("dialog", { name: /¡Bienvenido a Chiripa!/i }),
@@ -73,8 +79,8 @@ describe("WelcomeModal", () => {
 
     act(() => {
       useOnboardingStore.setState({
-        hasCompletedOnboarding: false,
-        isTourActive: true,
+        tours: { home: false, detail: false, draft: false },
+        activeTour: "home",
       });
     });
     rerender(<WelcomeModal />);
@@ -97,24 +103,24 @@ describe("WelcomeModal", () => {
     ).toBeInTheDocument();
   });
 
-  it("dispara startTour al hacer clic en 'Iniciar recorrido'", () => {
+  it("dispara startTour('home') al hacer clic en 'Iniciar recorrido'", () => {
     render(<WelcomeModal />);
 
     fireEvent.click(screen.getByRole("button", { name: /Iniciar recorrido/i }));
 
     const state = useOnboardingStore.getState();
-    expect(state.isTourActive).toBe(true);
+    expect(state.activeTour).toBe("home");
     expect(state.currentTourStep).toBe(0);
   });
 
-  it("dispara skipTour al hacer clic en 'Omitir por ahora'", () => {
+  it("dispara skipTour('home') al hacer clic en 'Omitir por ahora'", () => {
     render(<WelcomeModal />);
 
     fireEvent.click(screen.getByRole("button", { name: /Omitir por ahora/i }));
 
     const state = useOnboardingStore.getState();
-    expect(state.hasCompletedOnboarding).toBe(true);
-    expect(state.isTourActive).toBe(false);
+    expect(state.tours.home).toBe(true);
+    expect(state.activeTour).toBeNull();
   });
 
   it("ignora el cierre al presionar Escape o al hacer clic en el backdrop", () => {
@@ -135,9 +141,9 @@ describe("WelcomeModal", () => {
     }
     expect(screen.getByRole("dialog", { name: /¡Bienvenido a Chiripa!/i })).toBeInTheDocument();
 
-    // El estado de onboarding sigue sin completarse
+    // El estado del tour de home sigue sin completarse
     const state = useOnboardingStore.getState();
-    expect(state.hasCompletedOnboarding).toBe(false);
-    expect(state.isTourActive).toBe(false);
+    expect(state.tours.home).toBe(false);
+    expect(state.activeTour).toBeNull();
   });
 });
