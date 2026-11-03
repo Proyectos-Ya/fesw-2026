@@ -34,6 +34,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [306-retencion-licitaciones-cerradas.md](./plans/306-retencion-licitaciones-cerradas.md): Borrado nocturno de las licitaciones cerradas sin uso (plazo configurable) y limpieza de las tres colecciones de Qdrant al cerrar.
   * [312-hu-30/plan.md](./plans/312-hu-30/plan.md): Cotizaciones recibidas, llamado y ficha ordenada por secciones (HU-30). Tareas en [312-hu-30/task.md](./plans/312-hu-30/task.md).
   * [294-entrega-y-documentos-detalle/plan.md](./plans/294-entrega-y-documentos-detalle/plan.md): Dirección y plazo de entrega y flags del detalle de Compra Ágil, y recomendación de bases que nombra los documentos (#294). Tareas en [294-entrega-y-documentos-detalle/task.md](./plans/294-entrega-y-documentos-detalle/task.md).
+  * [318-hu-32-postular-mercado-publico/plan.md](./plans/318-hu-32-postular-mercado-publico/plan.md): Postulación asistida a licitaciones en Mercado Público desde Chiripa mediante extensión de navegador (HU-32). Tareas en [318-hu-32-postular-mercado-publico/task.md](./plans/318-hu-32-postular-mercado-publico/task.md).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).
@@ -44,6 +45,7 @@ Registros de decisiones técnicas significativas o difíciles de revertir (ADR -
   * [0002-confianza-de-anexos-compartidos.md](./decisions/0002-confianza-de-anexos-compartidos.md): Modelo de confianza, privacidad y ciclo de vida de anexos oficiales compartidos entre empresas (Plan 233, Decisión 6).
   * [0003-arquitectura-extension-navegador.md](./decisions/0003-arquitectura-extension-navegador.md): Arquitectura de la extensión de navegador, compatibilidad multi-navegador con WXT, Bridge y adaptador de Mercado Público (Plan 233, Decisión 7).
   * [0005-matching-en-sombra-con-anexos.md](./decisions/0005-matching-en-sombra-con-anexos.md): Matching enriquecido en sombra con anexos oficiales, recorte de tokens a 512, variantes att-text-v1 y att-items-v1, y replay con NDCG (Plan 233, Decisión 9).
+  * [0006-postulacion-asistida-mercado-publico.md](./decisions/0006-postulacion-asistida-mercado-publico.md): Postulación asistida en Mercado Público mediante extensión de navegador: aislamiento de credenciales, transferencia local por chunks, matching determinista y no-envío automático (HU-32, Plan 318).
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:
