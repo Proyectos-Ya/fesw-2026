@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlmodel import Field, SQLModel
 
 
@@ -21,5 +22,20 @@ class UserModel(SQLModel, table=True):
     phone: str | None = None
     active: bool = True
     email_verified: bool = False
+    tour_home_completed: bool = Field(
+        default=False,
+        nullable=False,
+        sa_column_kwargs={"server_default": text("false")},
+    )
+    tour_detail_completed: bool = Field(
+        default=False,
+        nullable=False,
+        sa_column_kwargs={"server_default": text("false")},
+    )
+    tour_draft_completed: bool = Field(
+        default=False,
+        nullable=False,
+        sa_column_kwargs={"server_default": text("false")},
+    )
     created_at: datetime
     updated_at: datetime
