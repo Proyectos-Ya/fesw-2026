@@ -31,19 +31,32 @@ DEFAULT_TIMEOUT_SECONDS = 10.0
 class NominatimGeocodingService(IGeocodingService):
     def __init__(
         self,
-        contact_email: str,
+        contact_email: str | None = None,
+        api_key: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._email = (contact_email or "").strip() or None
+        self._api_key = (api_key or "").strip() or None
+        contacto = f" ({self._email})" if self._email else ""
         self._headers = {
             "Accept": "application/json",
-            "User-Agent": f"Chiripa/1.0 ({contact_email})",
+            "User-Agent": f"Chiripa/1.0{contacto}",
         }
 
     async def geocode(self, query: str) -> GeoPoint | None:
-        params = {"q": query, "format": "jsonv2", "countrycodes": "cl", "limit": "1"}
+        params: dict[str, str] = {
+            "q": query,
+            "format": "json" if self._api_key else "jsonv2",
+            "countrycodes": "cl",
+            "limit": "1",
+        }
+        if self._api_key:
+            params["key"] = self._api_key
+        elif self._email:
+            params["email"] = self._email
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.get(
@@ -53,6 +66,18 @@ class NominatimGeocodingService(IGeocodingService):
             logger.warning("Nominatim no respondió: %s", exc)
             raise GeocodingUnavailable(str(exc)) from exc
 
+        # LocationIQ devuelve 404 cuando no encuentra coincidencias (en vez de
+        # 200 con [] como Nominatim). Eso es "no encontrado", no caída.
+        if response.status_code == 404:
+            return None
+        # 400 es que rechazó esta consulta (por ejemplo, una dirección con
+        # horarios y teléfonos que pasa el largo máximo). Es de esa licitación,
+        # no del servicio: tratarlo como caída cortaría el lote y la cola
+        # quedaría trabada en ese registro. Sin punto, el caso de uso cae al
+        # respaldo por comuna.
+        if response.status_code == 400:
+            logger.warning("Consulta rechazada (400): %.80s…", query)
+            return None
         if response.status_code >= 400:
             # 429 es que nos pasamos del límite: tampoco es "no encontrado".
             logger.warning("Nominatim respondió %s", response.status_code)
