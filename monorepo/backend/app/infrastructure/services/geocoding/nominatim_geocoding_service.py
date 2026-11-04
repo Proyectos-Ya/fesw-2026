@@ -70,6 +70,14 @@ class NominatimGeocodingService(IGeocodingService):
         # 200 con [] como Nominatim). Eso es "no encontrado", no caída.
         if response.status_code == 404:
             return None
+        # 400 es que rechazó esta consulta (por ejemplo, una dirección con
+        # horarios y teléfonos que pasa el largo máximo). Es de esa licitación,
+        # no del servicio: tratarlo como caída cortaría el lote y la cola
+        # quedaría trabada en ese registro. Sin punto, el caso de uso cae al
+        # respaldo por comuna.
+        if response.status_code == 400:
+            logger.warning("Consulta rechazada (400): %.80s…", query)
+            return None
         if response.status_code >= 400:
             # 429 es que nos pasamos del límite: tampoco es "no encontrado".
             logger.warning("Nominatim respondió %s", response.status_code)
