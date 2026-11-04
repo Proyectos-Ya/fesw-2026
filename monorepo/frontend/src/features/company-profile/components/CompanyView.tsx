@@ -34,6 +34,7 @@ import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { CompanyTeamSection } from "./CompanyTeamSection";
 import { ExtensionPairingSection } from "./ExtensionPairingSection";
 import { WorkspaceMatchThresholdSettings } from "@/features/workspaces/components/WorkspaceMatchThresholdSettings";
+import { WorkspaceExportsPanel } from "@/features/tender-export/components/WorkspaceExportsPanel";
 
 // El RUT no es editable (identidad tributaria de la empresa)
 const companyEditSchema = profileSchema.omit({ rut: true });
@@ -799,6 +800,12 @@ export function CompanyView() {
                 }
               />
               <WorkspaceMatchThresholdSettings supplierId={company.supplier.id} />
+              <section className="pt-4 border-t border-border-subtle">
+                <h3 className="text-sm font-semibold text-text-strong mb-3">
+                  Documentos del equipo
+                </h3>
+                <WorkspaceExportsPanel />
+              </section>
             </>
           )}
         </>

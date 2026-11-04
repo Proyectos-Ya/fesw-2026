@@ -4,13 +4,14 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.application.use_cases.exports.export_jobs import (
     DownloadExportFileUseCase,
     GetExportJobUseCase,
+    ListWorkspaceExportJobsUseCase,
 )
 from app.application.use_cases.exports.export_snapshot import ExportSection
 from app.application.use_cases.exports.export_tender import (
@@ -47,6 +48,7 @@ class ExportQueuedResponse(BaseModel):
 
 class ExportJobResponse(BaseModel):
     id: UUID
+    user_id: UUID
     status: ExportJobStatus
     format: ExportFormat
     file_name: str
@@ -85,6 +87,7 @@ def create_exports_router(
     get_export_tender_use_case: Callable,
     get_export_job_use_case: Callable,
     get_download_export_file_use_case: Callable,
+    get_list_workspace_export_jobs_use_case: Callable,
 ) -> APIRouter:
     router = APIRouter(tags=["Exports"])
 
@@ -127,18 +130,41 @@ def create_exports_router(
             ).model_dump(mode="json"),
         )
 
+    @router.get("/exports", response_model=list[ExportJobResponse])
+    async def list_workspace_exports(
+        ctx: Annotated[WorkspaceContext, Depends(get_workspace_context)],
+        use_case: Annotated[ListWorkspaceExportJobsUseCase, Depends(get_list_workspace_export_jobs_use_case)],
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        jobs = await use_case.execute(ctx.active_supplier_id, limit=limit, offset=offset)
+        return [
+            ExportJobResponse(
+                id=j.id,
+                user_id=j.user_id,
+                status=j.status,
+                format=j.format,
+                file_name=j.file_name,
+                created_at=j.created_at,
+                finished_at=j.finished_at,
+                expires_at=j.expires_at,
+            )
+            for j in jobs
+        ]
+
     @router.get("/exports/{job_id}", response_model=ExportJobResponse)
     async def get_export_job(
         job_id: UUID,
-        user: Annotated[User, Depends(get_current_user)],
+        ctx: Annotated[WorkspaceContext, Depends(get_workspace_context)],
         use_case: Annotated[GetExportJobUseCase, Depends(get_export_job_use_case)],
     ):
         try:
-            job = await use_case.execute(user.id, job_id)
+            job = await use_case.execute(ctx.active_supplier_id, job_id)
         except ExportJobNotFound as error:
             raise HTTPException(404, str(error)) from error
         return ExportJobResponse(
             id=job.id,
+            user_id=job.user_id,
             status=job.status,
             format=job.format,
             file_name=job.file_name,
@@ -150,11 +176,11 @@ def create_exports_router(
     @router.get("/exports/{job_id}/file")
     async def download_export_file(
         job_id: UUID,
-        user: Annotated[User, Depends(get_current_user)],
+        ctx: Annotated[WorkspaceContext, Depends(get_workspace_context)],
         use_case: Annotated[DownloadExportFileUseCase, Depends(get_download_export_file_use_case)],
     ):
         try:
-            return _archivo(await use_case.execute(user.id, job_id))
+            return _archivo(await use_case.execute(ctx.active_supplier_id, job_id))
         except ExportJobNotFound as error:
             raise HTTPException(404, str(error)) from error
         except ExportFileUnavailable as error:

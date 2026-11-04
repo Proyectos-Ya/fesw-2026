@@ -8,6 +8,7 @@ from app.application.use_cases.exports.export_jobs import (
     CompleteExportJobUseCase,
     DownloadExportFileUseCase,
     GetExportJobUseCase,
+    ListWorkspaceExportJobsUseCase,
     ReconcileExportJobsUseCase,
 )
 from app.domain.entities.export_job import ExportFormat, ExportJob, ExportJobStatus
@@ -19,12 +20,13 @@ AHORA = datetime(2026, 9, 28, 12, 0, 0)
 BASE_URL = "https://app.test"
 CORREO = "rep@andes.cl"
 USUARIO = uuid4()
+SUPPLIER = uuid4()
 
 
 def _job(formato: ExportFormat = ExportFormat.PDF) -> ExportJob:
     return ExportJob.crear(
         user_id=USUARIO,
-        supplier_id=uuid4(),
+        supplier_id=SUPPLIER,
         tender_id=uuid4(),
         format=formato,
         sections=[],
@@ -116,27 +118,45 @@ class TestCompletar:
 
 
 class TestConsultar:
-    async def test_el_dueno_ve_el_estado(self):
+    async def test_un_miembro_del_workspace_ve_el_estado(self):
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job())
 
-        assert (await GetExportJobUseCase(jobs).execute(USUARIO, job.id)).id == job.id
+        assert (await GetExportJobUseCase(jobs).execute(SUPPLIER, job.id)).id == job.id
 
     async def test_consultar_el_estado_no_trae_el_archivo(self):
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job().listo(b"%PDF", AHORA))
 
-        consultado = await GetExportJobUseCase(jobs).execute(USUARIO, job.id)
+        consultado = await GetExportJobUseCase(jobs).execute(SUPPLIER, job.id)
 
         assert consultado.status is ExportJobStatus.READY
         assert consultado.content is None
 
-    async def test_otro_usuario_no_lo_ve(self):
+    async def test_otro_workspace_no_lo_ve(self):
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job())
 
         with pytest.raises(ExportJobNotFound):
             await GetExportJobUseCase(jobs).execute(uuid4(), job.id)
+
+
+class TestListar:
+    async def test_devuelve_los_jobs_del_workspace_sin_contenido(self):
+        jobs = InMemoryExportJobRepository()
+        job = await jobs.save(_job().listo(b"%PDF", AHORA))
+        await jobs.save(_job().model_copy(update={"supplier_id": uuid4()}))  # otro workspace
+
+        resultado = await ListWorkspaceExportJobsUseCase(jobs).execute(SUPPLIER)
+
+        assert len(resultado) == 1
+        assert resultado[0].id == job.id
+        assert resultado[0].content is None
+
+    async def test_devuelve_vacio_si_no_hay_jobs(self):
+        jobs = InMemoryExportJobRepository()
+
+        assert await ListWorkspaceExportJobsUseCase(jobs).execute(SUPPLIER) == []
 
 
 class TestDescargar:
@@ -147,13 +167,13 @@ class TestDescargar:
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job().listo(b"%PDF", AHORA))
 
-        archivo = await self._descargar(jobs).execute(USUARIO, job.id)
+        archivo = await self._descargar(jobs).execute(SUPPLIER, job.id)
 
         assert archivo.content == b"%PDF"
         assert archivo.media_type == "application/pdf"
         assert archivo.file_name == "licitacion-COT26.pdf"
 
-    async def test_solo_al_dueno(self):
+    async def test_otro_workspace_no_puede_descargar(self):
         jobs = InMemoryExportJobRepository()
         job = await jobs.save(_job().listo(b"%PDF", AHORA))
 
@@ -172,7 +192,7 @@ class TestDescargar:
         job = await jobs.save(preparar(_job()))
 
         with pytest.raises(ExportFileUnavailable) as error:
-            await self._descargar(jobs).execute(USUARIO, job.id)
+            await self._descargar(jobs).execute(SUPPLIER, job.id)
         assert error.value.reason == motivo
 
     async def test_vencido_a_los_siete_dias(self):
@@ -180,7 +200,7 @@ class TestDescargar:
         job = await jobs.save(_job().listo(b"%PDF", AHORA))
 
         with pytest.raises(ExportFileUnavailable) as error:
-            await self._descargar(jobs, AHORA + timedelta(days=7)).execute(USUARIO, job.id)
+            await self._descargar(jobs, AHORA + timedelta(days=7)).execute(SUPPLIER, job.id)
         assert error.value.reason == "expired"
 
 

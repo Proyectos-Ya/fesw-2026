@@ -35,6 +35,7 @@ from app.bootstrap.exports import (
     get_export_job_use_case,
     get_export_tender_use_case,
     get_list_share_links_use_case,
+    get_list_workspace_export_jobs_use_case,
     get_revoke_share_link_use_case,
     get_shared_tender_use_case,
 )
@@ -364,6 +365,7 @@ def register_routes(app: FastAPI) -> None:
             get_export_tender_use_case,
             get_export_job_use_case,
             get_download_export_file_use_case,
+            get_list_workspace_export_jobs_use_case,
         )
     )
     app.include_router(
