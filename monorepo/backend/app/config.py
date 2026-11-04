@@ -28,6 +28,12 @@ _URL_POR_FUENTE_DE_EMPRESAS = {
     "chilerut": "https://chilerutempresa.cl",
 }
 
+_URL_POR_GEOCODIFICADOR = {
+    "none": "https://nominatim.openstreetmap.org",
+    "nominatim": "https://nominatim.openstreetmap.org",
+    "locationiq": "https://us1.locationiq.com/v1",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -204,9 +210,10 @@ class Settings(BaseSettings):
     # segundo plano. "none" la apaga: el mapa sale vacío, sin errores. Nominatim
     # exige identificarse con un correo de contacto y una petición por segundo
     # como máximo (https://operations.osmfoundation.org/policies/nominatim/).
-    geocoding_provider: Literal["none", "nominatim"] = "none"
+    geocoding_provider: Literal["none", "nominatim", "locationiq"] = "none"
     geocoding_contact_email: str | None = None
-    # Solo para apuntar a otra instancia. Vacío usa la pública.
+    geocoding_api_key: str | None = None
+    # Solo para apuntar a otra instancia. Vacío usa el host del proveedor.
     geocoding_base_url_override: str | None = Field(
         default=None, alias="GEOCODING_BASE_URL"
     )
@@ -554,6 +561,7 @@ class Settings(BaseSettings):
         "postgres_password",
         "company_lookup_api_key",
         "geocoding_contact_email",
+        "geocoding_api_key",
         "google_calendar_client_id",
         "google_calendar_client_secret",
         "microsoft_calendar_client_id",
@@ -612,10 +620,15 @@ class Settings(BaseSettings):
                 "COMPANY_LOOKUP_API_KEY "
                 f"(COMPANY_LOOKUP_PROVIDER={self.company_lookup_provider})"
             )
-        if self.geocoding_provider != "none" and not self.geocoding_contact_email:
-            faltantes.append(
-                f"GEOCODING_CONTACT_EMAIL (GEOCODING_PROVIDER={self.geocoding_provider})"
-            )
+        if self.geocoding_provider == "nominatim" and not self.geocoding_contact_email:
+            faltantes.append("GEOCODING_CONTACT_EMAIL (GEOCODING_PROVIDER=nominatim)")
+        if self.geocoding_provider == "locationiq" and not self.geocoding_api_key:
+            faltantes.append("GEOCODING_API_KEY (GEOCODING_PROVIDER=locationiq)")
+        if (
+            self.geocoding_provider == "locationiq"
+            and "geocoding_min_interval_seconds" not in self.model_fields_set
+        ):
+            self.geocoding_min_interval_seconds = 1.0
         if faltantes:
             raise ValueError("Falta configurar: " + ", ".join(faltantes))
         return self
@@ -655,10 +668,10 @@ class Settings(BaseSettings):
 
     @property
     def geocoding_base_url(self) -> str:
-        """Host de Nominatim, con el override por delante."""
+        """Host del geocodificador, con el override por delante."""
         if self.geocoding_base_url_override:
             return self.geocoding_base_url_override.rstrip("/")
-        return "https://nominatim.openstreetmap.org"
+        return _URL_POR_GEOCODIFICADOR[self.geocoding_provider]
 
     @property
     def qdrant_url(self) -> str:
