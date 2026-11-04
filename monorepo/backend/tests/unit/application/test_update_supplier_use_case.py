@@ -300,3 +300,35 @@ async def test_edita_la_empresa_activa_y_no_la_propia(
     assert result.id == activa.id
     assert (await supplier_repo.get_by_id(activa.id)).trade_name == "Renovada"
     assert (await supplier_repo.get_by_id(propia.id)).trade_name != "Renovada"
+
+
+async def test_manual_update_keywords_cleans_matching_negative_keywords(
+    use_case: UpdateSupplierUseCase, supplier_repo: InMemorySupplierRepository
+) -> None:
+    """Si el usuario añade manualmente una keyword que estaba en negative_keywords, se elimina de los descartes."""
+    owner_id = uuid4()
+    supplier = Supplier(
+        rut=VALID_RUT,
+        legal_name="Empresa SpA",
+        description="Obras civiles",
+        user_id=owner_id,
+        negative_keywords=[
+            {"keyword": "maquinaria:grua", "discarded_at": "2026-10-20T00:00:00"},
+            {"keyword": "certificacion:iso_9001", "discarded_at": "2026-10-20T00:00:00"},
+        ],
+    )
+    await supplier_repo.save(supplier)
+
+    updated = await use_case.execute(
+        owner_id,
+        UpdateSupplierSchema(keywords=["maquinaria:grua", "otra:palabra"]),
+    )
+
+    assert updated.negative_keywords == [
+        {"keyword": "certificacion:iso_9001", "discarded_at": "2026-10-20T00:00:00"}
+    ]
+    saved_in_repo = await supplier_repo.get_by_id(supplier.id)
+    assert saved_in_repo.negative_keywords == [
+        {"keyword": "certificacion:iso_9001", "discarded_at": "2026-10-20T00:00:00"}
+    ]
+

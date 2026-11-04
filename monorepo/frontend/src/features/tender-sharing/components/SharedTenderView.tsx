@@ -200,7 +200,7 @@ export function SharedTenderView({ token }: { token: string }) {
 function Dato({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] font-bold uppercase tracking-caps text-text-subtle">{label}</dt>
+      <dt className="text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">{label}</dt>
       <dd className="mt-1 text-sm font-semibold text-text-strong">{value}</dd>
     </div>
   );

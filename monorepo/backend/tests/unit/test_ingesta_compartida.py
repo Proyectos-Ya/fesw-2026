@@ -23,7 +23,9 @@ def _capturar_engine(monkeypatch) -> list[dict]:
         return original(url, **kwargs)
 
     monkeypatch.setattr(db, "create_async_engine", espia)
-    monkeypatch.setattr(app.bootstrap.builders, "build_embedding_service", lambda: object())
+    monkeypatch.setattr(
+        app.bootstrap.builders, "build_embedding_service", lambda: object()
+    )
     return llamadas
 
 
@@ -57,7 +59,7 @@ class _ColaFalsa:
         self.guion = list(guion)
         self.pasadas = 0
 
-    async def process_unprocessed_tenders(self, limite=None):
+    async def process_unprocessed_tenders(self, limite=None, **_):
         from app.infrastructure.services.tenders.tender_ingestion_service import (
             ResultadoProceso,
         )
@@ -103,3 +105,73 @@ class TestVaciarCola:
         assert resultado.sin_avance is False
         assert resultado.pendientes == 0
         assert resultado.procesadas == 900
+
+
+class TestEmbeddingsContados:
+    """Plan 305: cada corrida guarda cuántas veces llamó a la API de embeddings.
+
+    Con los vectores por partida, cada licitación nueva cuesta dos llamadas y
+    unos cuatro textos en vez de uno. Sin contarlo no se ve cuánto suma.
+    """
+
+    async def test_cuenta_llamadas_y_textos_y_delega(self):
+        from scripts.ingesta_compartida import EmbeddingsContados
+
+        class Interno:
+            async def embed(self, textos):
+                return [[0.0] for _ in textos]
+
+        contados = EmbeddingsContados(Interno())  # type: ignore[arg-type]
+
+        await contados.embed(["a", "b"])
+        vectores = await contados.embed(["c"])
+
+        assert (contados.llamadas, contados.textos) == (2, 3)
+        assert vectores == [[0.0]]
+
+
+class TestConcurrenciaDelListado:
+    """Los crons piden el listado de a 6 páginas (plan 305), configurable."""
+
+    def test_por_defecto_es_6(self):
+        from app.config import Settings
+
+        assert Settings.model_fields["mercadopublico_listing_concurrency"].default == 6
+
+    def test_construir_servicio_la_pasa_al_cliente(self, monkeypatch):
+        from app.config import settings
+        from scripts import ingesta_compartida
+
+        monkeypatch.setattr(settings, "mercadopublico_listing_concurrency", 4)
+        monkeypatch.setattr(ingesta_compartida, "crear_engine", lambda: None)
+
+        servicio, _, qdrant = ingesta_compartida.construir_servicio(
+            con_embeddings=False
+        )
+
+        assert servicio.client.concurrencia_listado == 4
+
+
+class TestSalir:
+    """Los crons terminan el proceso aunque quede un hilo vivo (plan 305).
+
+    El 2026-10-21 la corrida de sync-estados de las 12:03 imprimió su resumen a
+    las 12:33 y el contenedor siguió vivo, sin CPU. Railway no arranca un cron
+    mientras el anterior siga corriendo, así que se saltó la de las 13:00.
+    `sys.exit` espera a los hilos que no son daemon; `os._exit` no.
+    """
+
+    def test_vacia_la_salida_y_termina_con_el_codigo(self, monkeypatch):
+        import os
+        import sys
+
+        from scripts.ingesta_compartida import salir
+
+        llamadas: list[str | int] = []
+        monkeypatch.setattr(sys.stdout, "flush", lambda: llamadas.append("stdout"))
+        monkeypatch.setattr(sys.stderr, "flush", lambda: llamadas.append("stderr"))
+        monkeypatch.setattr(os, "_exit", lambda codigo: llamadas.append(codigo))
+
+        salir(3)
+
+        assert llamadas == ["stdout", "stderr", 3]

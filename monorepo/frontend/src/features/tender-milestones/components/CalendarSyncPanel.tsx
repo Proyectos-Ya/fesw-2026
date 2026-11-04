@@ -92,7 +92,7 @@ export function CalendarSyncPanel({ calendars, selectedCount, onSync }: Calendar
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
               <div
                 role="menu"
-                className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border border-border-subtle bg-white p-2 shadow-premium"
+                className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-surface-card p-2 shadow-premium"
               >
                 {calendars.map((calendar) => (
                   <button

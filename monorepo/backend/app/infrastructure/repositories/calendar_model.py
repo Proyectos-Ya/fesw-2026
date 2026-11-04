@@ -31,7 +31,7 @@ class CalendarOAuthStateModel(SQLModel, table=True):
     state_hash: str = Field(primary_key=True, max_length=64)
     user_id: UUID = Field(foreign_key="users.id", index=True)
     provider: str = Field(max_length=20)
-    tender_id: UUID = Field(foreign_key="tender.id")
+    tender_id: UUID = Field(foreign_key="tender.id", index=True)
     milestone_ids: list[str] = Field(sa_column=Column(JSON, nullable=False))
     default_time: time | None = Field(default=None)
     expires_at: datetime

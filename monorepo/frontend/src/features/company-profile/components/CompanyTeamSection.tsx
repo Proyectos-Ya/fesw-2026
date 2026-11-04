@@ -200,7 +200,7 @@ export function CompanyTeamSection({
   };
 
   return (
-    <section className="mt-8 rounded-lg bg-white p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
+    <section className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-text-strong">
@@ -236,7 +236,7 @@ export function CompanyTeamSection({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="representante@empresa.cl"
                 disabled={isSubmitting}
-                className="w-full rounded-lg border border-border-subtle bg-white px-3.5 py-2 text-sm text-text-strong placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                className="w-full rounded-lg border border-border-subtle bg-surface-card px-3.5 py-2 text-sm text-text-strong placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
               />
             </div>
 
@@ -247,16 +247,23 @@ export function CompanyTeamSection({
               >
                 Rol asignado
               </label>
-              <select
-                id="invite-member-role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as MemberRole)}
-                disabled={isSubmitting}
-                className="w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-              >
-                <option value="member">Representante</option>
-                <option value="admin">Administrador</option>
-              </select>
+              <div className="relative">
+                <select
+                  id="invite-member-role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as MemberRole)}
+                  disabled={isSubmitting}
+                  className="w-full appearance-none rounded-lg border border-border-subtle bg-surface-card pl-3.5 pr-9 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60 cursor-pointer"
+                >
+                  <option value="member">Representante</option>
+                  <option value="admin">Administrador</option>
+                </select>
+                <Icon
+                  name="chevron-down"
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle"
+                />
+              </div>
             </div>
 
             <div className="sm:col-span-3">
@@ -284,7 +291,7 @@ export function CompanyTeamSection({
           {feedbackMessage && (
             <div
               role="status"
-              className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-medium text-emerald-700"
+              className="flex items-center gap-2 rounded-lg bg-success-soft border border-success/30 p-3 text-xs font-medium text-success-text"
             >
               <Icon name="circle-check" size={16} />
               <span>{feedbackMessage}</span>
@@ -307,7 +314,7 @@ export function CompanyTeamSection({
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border-subtle">
             <table className="w-full text-left text-sm">
-              <thead className="bg-warm-100/60 text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
+              <thead className="bg-surface-inset text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
                 <tr>
                   <th className="px-4 py-2.5">Nombre</th>
                   <th className="px-4 py-2.5">Correo</th>
@@ -347,7 +354,7 @@ export function CompanyTeamSection({
                         {formatDateTime(rawLastAccess)}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                        <span className="inline-flex items-center rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-semibold text-success-text">
                           Activo
                         </span>
                       </td>
@@ -392,7 +399,7 @@ export function CompanyTeamSection({
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border-subtle">
               <table className="w-full text-left text-sm">
-                <thead className="bg-warm-100/60 text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
+                <thead className="bg-surface-inset text-xs font-bold uppercase text-text-subtle border-b border-border-subtle">
                   <tr>
                     <th className="px-4 py-2.5">Correo invitado</th>
                     <th className="px-4 py-2.5">Rol</th>
@@ -417,7 +424,7 @@ export function CompanyTeamSection({
                               El usuario rechazó la invitación
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                            <span className="inline-flex items-center rounded-full bg-warning-soft px-2.5 py-0.5 text-xs font-semibold text-warning-text">
                               Pendiente
                             </span>
                           )}
@@ -431,7 +438,7 @@ export function CompanyTeamSection({
                               onClick={() =>
                                 void handleAcknowledgeRejected(inv)
                               }
-                              className="inline-flex items-center gap-1 rounded-md bg-warm-100 px-2.5 py-1 text-xs font-semibold text-text-strong hover:bg-warm-200 transition-colors cursor-pointer disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-md bg-surface-inset px-2.5 py-1 text-xs font-semibold text-text-strong hover:bg-surface-hover transition-colors cursor-pointer disabled:opacity-50"
                             >
                               <Icon name="check" size={14} />
                               <span>Confirmar lectura</span>
@@ -466,7 +473,7 @@ export function CompanyTeamSection({
           aria-labelledby="revoke-member-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border-subtle">
+          <div className="w-full max-w-md rounded-xl bg-surface-card p-6 shadow-xl border border-border-subtle">
             <h4
               id="revoke-member-title"
               className="text-base font-bold text-text-strong"
@@ -516,7 +523,7 @@ export function CompanyTeamSection({
           aria-labelledby="cancel-invitation-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-border-subtle">
+          <div className="w-full max-w-md rounded-xl bg-surface-card p-6 shadow-xl border border-border-subtle">
             <h4
               id="cancel-invitation-title"
               className="text-base font-bold text-text-strong"

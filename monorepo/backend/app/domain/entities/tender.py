@@ -70,6 +70,25 @@ class Tender(BaseModel):
     )
     published_at: UtcDateTime
     closing_at: UtcDateTime
+    # 1 = primer llamado, 2 = segundo (plan 233, decisión 3). `closing_at` es el
+    # del llamado vigente; en el primero, `second_call_closing_at` es solo una
+    # fecha posible. Nulos en licitaciones ingeridas antes de guardarlos.
+    call_number: int | None = None
+    first_call_closing_at: UtcDateTime | None = None
+    second_call_closing_at: UtcDateTime | None = None
+    # Cotizaciones recibidas y cuándo se revisó la cifra. `None` es que la fuente
+    # no la informó, no 0.
+    received_offers_count: int | None = None
+    offers_checked_at: UtcDateTime | None = None
+    # Última cifra vista del primer llamado: la API cuenta solo el llamado
+    # actual, y la ficha suma las dos.
+    first_call_offers_count: int | None = None
+    # Entrega y requisitos del detalle (#294). `None` es que el detalle no los
+    # informó; en los flags, `False` es un dato.
+    delivery_address: str | None = None
+    delivery_term_days: int | None = None
+    requires_environmental_criteria: bool | None = None
+    requires_social_impact_criteria: bool | None = None
     last_change_at: UtcDateTime
     buyer_rut: str
     buyer_name: str | None = None  # Nombre de la institución compradora
@@ -91,6 +110,9 @@ class Tender(BaseModel):
         ficha, el cálculo de compatibilidad y el análisis IA— y con el criterio
         copiado en cada uno bastaba con cambiar uno para que la ficha dijera
         "abierta" mientras el botón se negaba a calcular.
+
+        El cierre del segundo llamado no cuenta: en el primero es solo posible, y
+        en el segundo `closing_at` ya es esa fecha.
         """
         momento = ahora or utc_now_naive()
         return (

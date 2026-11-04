@@ -8,8 +8,9 @@ import { loginUrlWithReturn } from "@/features/auth/returnUrl";
 import { ApiError, TimeoutError } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { Icon } from "@/features/shared/components/Icon";
+import { cardRanking } from "@/features/ranking-telemetry/utils/rankingLink";
 import { getRecommendedTenders } from "../services/tenderService";
-import type { MatchingResult } from "../tenderTypes";
+import type { RecommendedMatch } from "../tenderTypes";
 import type { Question } from "../questionTypes";
 import { normalizeScore } from "../utils/format";
 import { useSmartQuestions } from "../hooks/useSmartQuestions";
@@ -17,9 +18,7 @@ import { SmartQuestionsBanner } from "./SmartQuestionsBanner";
 import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
-import { answerSmartQuestion } from "../services/questionService";
 import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
-import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 
 const GREEN_THRESHOLD = 70;
@@ -27,7 +26,7 @@ const GREEN_THRESHOLD = 70;
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; matches: MatchingResult[] }
+  | { kind: "ready"; matches: RecommendedMatch[] }
   | { kind: "no-supplier" }
   | { kind: "error"; message: string };
 
@@ -35,49 +34,38 @@ export function HomeDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const { workspaces, activeWorkspace } = useWorkspace();
+  // Los efectos dependen de ids y no de objetos: AuthContext y WorkspaceContext
+  // pueden entregar un objeto nuevo con los mismos datos, y eso no es motivo
+  // para volver a pedir las recomendaciones.
+  const userId = user?.id;
+  const activeSupplierId = activeWorkspace?.active_supplier_id ?? null;
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [retryNonce, setRetryNonce] = useState(0);
 
-  const { questions: fetchedQuestions } = useSmartQuestions(user?.id ?? "");
+  const { questions: fetchedQuestions } = useSmartQuestions(undefined, isAuthenticated);
   const [pendingQuestions, setPendingQuestions] = useState<Question[]>([]);
+  const [totalQuestionsCount, setTotalQuestionsCount] = useState<number>(0);
   const [showCard, setShowCard] = useState(false);
-  const [isAnswering, setIsAnswering] = useState(false);
 
   useEffect(() => {
     setPendingQuestions(fetchedQuestions);
   }, [fetchedQuestions]);
 
   function handleBannerOpen() {
-    if (pendingQuestions.length > 0) setShowCard(true);
-  }
-
-async function handleAnswer(questionId: string, targetField: string, answerValue: string) {
-    if (!user?.id || isAnswering) return;
-
-    setIsAnswering(true);
-    try {
-      await answerSmartQuestion({
-        supplier_id: user?.id,
-        question_id: questionId,
-        target_profile_field: targetField,
-        answer: answerValue,
-      });
-      
-      advanceQueue();
-
-      setRetryNonce((n) => n + 1);
-
-    } catch (error) {
-      console.error("Error al responder la pregunta:", error);
-    } finally {
-      setIsAnswering(false);
+    if (pendingQuestions.length > 0) {
+      setTotalQuestionsCount(pendingQuestions.length);
+      setShowCard(true);
     }
   }
 
   function advanceQueue() {
     setPendingQuestions((prev) => {
       const next = prev.slice(1);
-      if (next.length === 0) setShowCard(false);
+      if (next.length === 0) {
+        setShowCard(false);
+        setTotalQuestionsCount(0);
+        setRetryNonce((n) => n + 1);
+      }
       return next;
     });
   }
@@ -88,13 +76,13 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       router.replace("/login");
       return;
     }
-    if (!user) return;
+    if (!userId) return;
 
     let cancelled = false;
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const all = await getRecommendedTenders(user.id);
+        const all = await getRecommendedTenders(userId);
         if (cancelled) return;
         // Las recomendadas siempre traen puntaje; el nulo existe para las
         // licitaciones que nadie ha medido, y esas no son recomendaciones.
@@ -111,7 +99,7 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
           return;
         }
         if (err instanceof ApiError && err.status === 404) {
-          if (workspaces.length > 0 || activeWorkspace !== null) {
+          if (workspaces.length > 0 || activeSupplierId !== null) {
             setState({ kind: "ready", matches: [] });
             return;
           }
@@ -129,13 +117,12 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, user, router, retryNonce, workspaces.length, activeWorkspace]);
+  }, [authLoading, isAuthenticated, userId, router, retryNonce, workspaces.length, activeSupplierId]);
 
   if (authLoading || state.kind === "idle" || state.kind === "loading") {
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <div className="flex flex-col gap-4">
           <TenderCardSkeleton />
           <TenderCardSkeleton />
@@ -150,7 +137,6 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
       return (
         <section className="mx-auto w-full max-w-3xl">
           <PageHeader />
-          <RecentWorkspacesBar />
           <EmptyGreen />
         </section>
       );
@@ -158,7 +144,6 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <PendingInvitationsList />
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
@@ -187,7 +172,6 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button variant="primary" className="mt-4" onClick={() => setRetryNonce((n) => n + 1)}>
@@ -203,37 +187,51 @@ async function handleAnswer(questionId: string, targetField: string, answerValue
   return (
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
-      <RecentWorkspacesBar />
-      <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
-      {showCard && pendingQuestions[0] && (
+      {!showCard ? (
+        <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
+      ) : pendingQuestions[0] ? (
         <div className="mb-6">
           <SmartQuestionCard
             key={pendingQuestions[0].id}
             question={pendingQuestions[0]}
-            onSubmit={(value: string) => 
-              handleAnswer(
-                pendingQuestions[0].id, 
-                pendingQuestions[0].target_profile_field, 
-                value
-              )
-            }
-            onOmit={() => advanceQueue()}
+            progress={{
+              current: Math.max(1, totalQuestionsCount - pendingQuestions.length + 1),
+              total: Math.max(totalQuestionsCount, pendingQuestions.length),
+            }}
+            onAnswered={advanceQueue}
           />
         </div>
-      )}
+      ) : null}
       {matches.length === 0 ? (
         <EmptyGreen />
       ) : (
         <>
           <div className="flex flex-col gap-4">
-            {matches.map((m) => (
-              <TenderCard key={m.id} match={m} />
+            {matches.map((m, index) => (
+              // La posición es la de esta lista, ya filtrada por verde: la que ve el usuario.
+              <TenderCard
+                key={m.id}
+                match={m}
+                ranking={cardRanking(m.ranking_id, index + 1, "inicio")}
+                onReport={(reportedId) => {
+                  setState((prev) =>
+                    prev.kind === "ready"
+                      ? {
+                          ...prev,
+                          matches: prev.matches.filter(
+                            (item) => (item.tender?.id ?? item.tender_id ?? item.id) !== reportedId
+                          ),
+                        }
+                      : prev
+                  );
+                }}
+              />
             ))}
           </div>
           <div className="mt-6 text-center">
             <Link
               href="/matches"
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-white px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
+              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
             >
               Ver todos los matches
               <Icon name="arrow-right" size={16} />
@@ -262,7 +260,7 @@ function PageHeader() {
 function EmptyGreen() {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-warm-100">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-surface-inset">
         <Icon name="search" size={22} color="var(--text-subtle)" />
       </div>
       <h2 className="font-display text-xl font-semibold text-text-strong">
@@ -274,7 +272,7 @@ function EmptyGreen() {
       </p>
       <Link
         href="/matches"
-        className="mt-6 inline-flex items-center gap-2 rounded-full border border-border-default bg-white px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
+        className="mt-6 inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
       >
         Ver todos los matches
         <Icon name="arrow-right" size={16} />

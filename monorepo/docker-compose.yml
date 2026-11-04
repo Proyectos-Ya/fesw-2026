@@ -46,6 +46,8 @@ services:
       # las dos, y el síntoma es un 401 en todo solo dentro de Docker.
       SUPABASE_URL: ${SUPABASE_URL_DOCKER:-http://host.docker.internal:54321}
       SUPABASE_JWT_ISSUER: ${SUPABASE_URL:-http://127.0.0.1:54321}/auth/v1
+      RUN_ATTACHMENT_PROCESSING: ${RUN_ATTACHMENT_PROCESSING:-true}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
     ports:
       - "${API_PORT:-8000}:8000"
     # En desarrollo se migra antes de arrancar. En producción NO debe ir acá:

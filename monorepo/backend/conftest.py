@@ -46,6 +46,9 @@ def _forzar_modo_desarrollo() -> None:
     autenticación cuando era la configuración de la cookie.
     """
     os.environ["IS_DEV"] = "true"
+    # Ningún test enciende el bucle de anexos: con lifespan llamaría a Gemini con la
+    # clave real del `.env` del desarrollador.
+    os.environ["RUN_ATTACHMENT_PROCESSING"] = "false"
 
 
 _completar_variables_faltantes()

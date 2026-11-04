@@ -1,6 +1,6 @@
 import React from "react";
 
-const SIZES = { xs: 24, sm: 32, md: 40, lg: 56 };
+const SIZES = { xs: 24, sm: 32, md: 40, lg: 56, xl: 96 };
 const PALETTE = [
   "var(--teal-500)",
   "var(--coral-500)",

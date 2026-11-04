@@ -17,6 +17,25 @@ export interface Tender {
   status_code: string | null;
   published_at: string;
   closing_at: string;
+  /** Llamado vigente: 1 = primer llamado, 2 = segundo. Nulo o ausente en licitaciones antiguas. */
+  call_number?: number | null;
+  /** Cotizaciones recibidas. Nulo o ausente es que la fuente no lo informó, no 0. */
+  received_offers_count?: number | null;
+  /** Cuándo se revisó la cifra de cotizaciones (ISO UTC). Nulo o ausente si no se informó. */
+  offers_checked_at?: string | null;
+  /** Última cifra del primer llamado. La API cuenta solo el llamado actual; nulo si no se vio. */
+  first_call_offers_count?: number | null;
+  /** Dirección de entrega del detalle (#294). Nula o ausente si no se informó. */
+  delivery_address?: string | null;
+  /** Plazo de entrega en días. Nulo o ausente si no se informó; 0 es un dato. */
+  delivery_term_days?: number | null;
+  /** Requisitos del comprador. Nulo o ausente si no se informó; `false` es un dato. */
+  requires_environmental_criteria?: boolean | null;
+  requires_social_impact_criteria?: boolean | null;
+  /** Cierre del primer llamado (ISO UTC con `Z`). */
+  first_call_closing_at?: string | null;
+  /** Cierre del segundo llamado. En el primero es solo una fecha posible: MP la publica aunque no se use. */
+  second_call_closing_at?: string | null;
   last_change_at: string;
   buyer_rut: string;
   buyer_name: string | null;
@@ -43,6 +62,14 @@ export interface MatchingResult {
   model_version: string;
   calculated_at: string;
   tender: Tender | null;
+}
+
+/** Lo que devuelve `/tenders/recommended`. Opcionales: un backend anterior no los manda. */
+export interface RecommendedMatch extends MatchingResult {
+  /** Nulo si se pidió con `track: false`. */
+  ranking_id?: string | null;
+  /** Posición servida, antes de los filtros del frontend. */
+  ranking_position?: number | null;
 }
 
 export interface DeepAnalysis {

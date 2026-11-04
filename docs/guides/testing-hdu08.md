@@ -111,11 +111,12 @@ Desde `monorepo/backend/`, con el venv activo:
 
 ```bash
 alembic upgrade head
-python tests/matching_evaluation/load_postgres_robust.py
-python tests/matching_evaluation/load_dataset.py
+python -m scripts.dump cargar
 ```
 
-El segundo comando genera los embeddings e indexa en Qdrant: tarda un par de minutos.
+Carga el dump del repositorio, corre sus fechas para que esté vigente e indexa
+Qdrant. Con `EMBEDDING_PROVIDER=deepinfra` tarda un par de minutos. También borra
+todas las cuentas locales: si ya tenías una, vuelve a crearla en el paso 4.
 
 **Ya no hay cuentas de prueba sembradas.** Las emitía un script que escribía contraseñas
 en la base, y con Supabase Auth esas cuentas no sirven para entrar. La cuenta se crea a

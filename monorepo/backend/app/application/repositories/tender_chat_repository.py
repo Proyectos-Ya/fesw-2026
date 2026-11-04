@@ -45,6 +45,11 @@ class ITenderChatRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_message_by_id(self, message_id: UUID) -> Optional[TenderChatMessage]:
+        """Recupera un mensaje de chat puntual por su ID."""
+        pass
+
+    @abstractmethod
     async def save_message(self, message: TenderChatMessage) -> TenderChatMessage:
         """Guarda un mensaje de chat (usuario o asistente) en la base de datos."""
         pass

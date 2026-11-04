@@ -5,14 +5,33 @@ import { ApiError, apiFetch } from "@/features/shared/api/client";
 import { Button } from "@/features/shared/components/Button";
 import { type TenderMaterial, type Material, type Quotation, materialsFromTender, subtotal, total, validate, toCsv, normalizeInteger, formatInteger } from "./quotation";
 
+const UNIT_OPTIONS = [
+  "unidad",
+  "gl",
+  "m",
+  "m²",
+  "m³",
+  "kg",
+  "tonelada",
+  "litro",
+  "saco",
+  "hh",
+  "mes",
+] as const;
 const blank = (): Material => ({ description: "", unit: "", quantity: "", unit_price: "" });
 const currency = "CLP" as const;
 const noTenderItems: TenderMaterial[] = [];
-interface QuotationEditorProps { tenderId: string; tenderCode: string; tenderItems?: TenderMaterial[]; }
+interface QuotationEditorProps {
+  tenderId: string;
+  tenderCode: string;
+  tenderItems?: TenderMaterial[];
+  /** Se llama después de guardar la cotización con éxito (la ficha lo usa para su telemetría). */
+  onSaved?: () => void;
+}
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });
 
-export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
+export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   return <section className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-6">
@@ -21,11 +40,11 @@ export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderIt
         <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p></div>
       <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : "Generar cotización"}</Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} /></div>}
+    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} onSaved={onSaved} /></div>}
   </section>;
 }
 
-function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: QuotationEditorProps) {
+function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
   const [items, setItems] = useState<Row[]>([]);
   const [initialTenderItems] = useState(tenderItems);
   const [loading, setLoading] = useState(true);
@@ -78,6 +97,7 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: Qu
     try {
       const saved = await apiFetch<Quotation>(endpoint, { method: "PUT", body: JSON.stringify({ currency, items: data }) });
       setDirty(false);
+      onSaved?.();
       if (download) {
         const normalized = { ...saved, items: saved.items.map(item => ({ ...item, quantity: normalizeInteger(item.quantity), unit_price: normalizeInteger(item.unit_price) })) };
         const blob = download === "pdf"
@@ -97,47 +117,182 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems }: Qu
 
   if (loading) return <p role="status" className="mt-4">Cargando cotización…</p>;
   if (loadError) return <div className="mt-4"><p role="alert">{loadError}</p><Button onClick={() => { setLoading(true); setLoadError(""); setAttempt(attempt + 1); }}>Reintentar</Button></div>;
-  const inputClass = "mt-1 w-full rounded-md border border-border-subtle bg-surface-card p-2 text-text-strong";
+  const inputClass = "w-full rounded-md border border-border-default bg-surface-inset px-3 py-2 text-sm text-text-strong transition-colors focus:border-primary focus:bg-surface-card focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50";
   return <form className="mt-6 space-y-4" noValidate onSubmit={event => { event.preventDefault(); void save(null); }}>
-    <fieldset disabled={busy} className="space-y-4">
+    <div className="space-y-4">
       <p className="text-sm text-text-muted">Las cantidades disponibles se completan desde la licitación. Revísalas e indica los precios unitarios en pesos chilenos (CLP). Cantidades y precios deben ser enteros. Puedes editar los materiales o agregar los que falten. Total sin impuestos ni recargos.</p>
       {!materialsFromTender(initialTenderItems).length && <p className="text-sm text-text-muted">La licitación no tiene materiales detallados. Agrégalos manualmente según sus especificaciones.</p>}
       {initialTenderItems.some(item => item.quantity != null && !Number.isInteger(item.quantity)) && <p className="text-sm text-text-muted">La licitación contiene cantidades fraccionarias. Completa esas cantidades con enteros; no se redondean automáticamente.</p>}
-      {items.map((item, index) => <fieldset key={item.key} className="rounded-md border border-border-subtle p-4">
-        <legend className="px-1 font-semibold">Material {index + 1}</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">Descripción (obligatorio)<input aria-label={`Descripción ${index + 1}`} className={inputClass} value={item.description} maxLength={500} required onChange={event => update(item.key, "description", event.target.value)} /></label>
-          <label className="text-sm">Unidad de medida (obligatorio)<input aria-label={`Unidad ${index + 1}`} className={inputClass} value={item.unit} maxLength={40} placeholder="Ej. saco, m², unidad" required onChange={event => update(item.key, "unit", event.target.value)} /></label>
-          <label className="text-sm">Cantidad (obligatorio)<IntegerInput aria-label={`Cantidad ${index + 1}`} className={inputClass}  value={item.quantity} required onChange={value => update(item.key, "quantity", value)} /></label>
-          <label className="text-sm">Precio unitario ({currency}) (obligatorio)<IntegerInput aria-label={`Precio unitario ${index + 1}`} className={inputClass}  value={item.unit_price} required onChange={value => update(item.key, "unit_price", value)} /></label>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3"><output aria-label={`Subtotal ${index + 1}`}>Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}</output>
-          <button type="button" className="text-sm text-danger underline" onClick={() => { changed(); setItems(items.filter(value => value.key !== item.key)); }} aria-label={`Eliminar material ${index + 1}`}>Eliminar material</button></div>
-      </fieldset>)}
-      <Button type="button" disabled={items.length >= 200} onClick={() => { changed(); setItems([...items, row(blank())]); }}>Agregar material</Button>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {items.map((item, index) => (
+          <MaterialCardItem
+            key={item.key}
+            item={item}
+            index={index}
+            busy={busy}
+            inputClass={inputClass}
+            onUpdate={(field, value) => update(item.key, field, value)}
+            onRemove={() => {
+              changed();
+              setItems(items.filter(value => value.key !== item.key));
+            }}
+          />
+        ))}
+      </div>
+      <Button type="button" disabled={busy || items.length >= 200} onClick={() => { changed(); setItems([...items, row(blank())]); }}>Agregar material</Button>
       <p className="text-xl font-bold" aria-live="polite">Total: {total(items) === "" ? "Pendiente" : `${formatInteger(total(items))} ${currency}`}</p>
       {dirty && <p className="text-sm text-text-muted">Cambios sin guardar.</p>}
-      <div className="flex flex-wrap gap-3"><Button type="submit">{busy ? "Guardando…" : "Guardar cotización"}</Button>
-        <Button type="button" onClick={() => void save("csv")}>Descargar CSV</Button>
-        <Button type="button" onClick={() => void save("pdf")}>Descargar PDF</Button></div>
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy}>{busy ? "Guardando…" : "Guardar cotización"}</Button>
+        <Button type="button" disabled={busy} onClick={() => void save("csv")}>Descargar CSV</Button>
+        <Button type="button" disabled={busy} onClick={() => void save("pdf")}>Descargar PDF</Button></div>
       <p className="text-xs text-text-muted">La descarga guarda primero la cotización para tu empresa.</p>
-    </fieldset>
+    </div>
     {errors.length > 0 && <ul role="alert" className="text-sm text-danger">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
     {message && <p role="status">{message}</p>}
   </form>;
 }
 
-function IntegerInput({ value, onChange, ...props }: {
+function MaterialCardItem({
+  item,
+  index,
+  busy,
+  inputClass,
+  onUpdate,
+  onRemove,
+}: {
+  item: Row;
+  index: number;
+  busy: boolean;
+  inputClass: string;
+  onUpdate: (field: keyof Material, value: string) => void;
+  onRemove: () => void;
+}) {
+  const [isUnitDropdownOpen, setIsUnitDropdownOpen] = useState(false);
+
+  const filteredUnits = UNIT_OPTIONS.filter((opt) =>
+    opt.toLowerCase().includes(item.unit.trim().toLowerCase())
+  );
+
+  return (
+    <div className="border border-border-subtle rounded-lg p-5 bg-surface-card flex flex-col gap-4">
+      <h3 className="font-semibold text-text-strong mb-1">Material {index + 1}</h3>
+
+      {/* Fila 1: Descripción (100% ancho) */}
+      <label className="flex flex-col gap-1.5 text-sm font-medium text-text-body">
+        Descripción (obligatorio)
+        <input
+          aria-label={`Descripción ${index + 1}`}
+          className={inputClass}
+          value={item.description}
+          maxLength={500}
+          required
+          disabled={busy}
+          onChange={event => onUpdate("description", event.target.value)}
+        />
+      </label>
+
+      {/* Fila 2: Métricas (Unidad, Cantidad, Precio Unitario) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
+        <div className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <label htmlFor={`unit-input-${item.key}`} className="mb-auto">
+            Unidad de medida (obligatorio)
+          </label>
+          <div className="relative w-full">
+            <input
+              id={`unit-input-${item.key}`}
+              type="text"
+              aria-label={`Unidad ${index + 1}`}
+              className={inputClass}
+              value={item.unit}
+              maxLength={40}
+              placeholder="Ej. unidad, m², saco"
+              required
+              disabled={busy}
+              onFocus={() => setIsUnitDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setIsUnitDropdownOpen(false), 150)}
+              onChange={event => {
+                onUpdate("unit", event.target.value);
+                setIsUnitDropdownOpen(true);
+              }}
+            />
+            {isUnitDropdownOpen && filteredUnits.length > 0 && (
+              <ul className="absolute z-50 w-full mt-1 bg-surface-card border border-border-subtle rounded-md shadow-lg max-h-48 overflow-y-auto py-1">
+                {filteredUnits.map((opcion) => (
+                  <li
+                    key={opcion}
+                    className="px-3 py-2 cursor-pointer hover:bg-surface-hover text-sm text-text-strong"
+                    onMouseDown={() => {
+                      onUpdate("unit", opcion);
+                      setIsUnitDropdownOpen(false);
+                    }}
+                  >
+                    {opcion}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <label className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <span className="mb-auto">Cantidad (obligatorio)</span>
+          <IntegerInput
+            aria-label={`Cantidad ${index + 1}`}
+            className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+            value={item.quantity}
+            min="1"
+            step="1"
+            required
+            disabled={busy}
+            onChange={value => onUpdate("quantity", value)}
+          />
+        </label>
+
+        <label className="flex flex-col h-full justify-end gap-1.5 text-sm font-medium text-text-body">
+          <span className="mb-auto">Precio unitario ({currency}) (obligatorio)</span>
+          <IntegerInput
+            aria-label={`Precio unitario ${index + 1}`}
+            className={`${inputClass} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+            value={item.unit_price}
+            min="0"
+            step="100"
+            required
+            disabled={busy}
+            onChange={value => onUpdate("unit_price", value)}
+          />
+        </label>
+      </div>
+
+      <div className="flex justify-between items-center mt-auto pt-4 border-t border-border-subtle">
+        <output aria-label={`Subtotal ${index + 1}`} className="text-sm font-semibold text-text-strong">
+          Subtotal: {subtotal(item) === "" ? "Pendiente" : `${formatInteger(subtotal(item))} ${currency}`}
+        </output>
+        <button
+          type="button"
+          disabled={busy}
+          className="text-sm font-medium text-danger underline hover:opacity-80 disabled:opacity-50"
+          onClick={onRemove}
+          aria-label={`Eliminar material ${index + 1}`}
+        >
+          Eliminar material
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function IntegerInput({ value, onChange, min, step, ...props }: {
   value: string;
   onChange: (value: string) => void;
   "aria-label": string;
   className: string;
   required: boolean;
+  disabled?: boolean;
+  min?: string;
+  step?: string;
 }) {
-  const [focused, setFocused] = useState(false);
-  return <input {...props} type="text" inputMode="numeric"
-    value={focused ? value : formatInteger(value)}
-    onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+  return <input {...props} type="number" inputMode="numeric" min={min} step={step}
+    value={value}
     onChange={event => {
       const input = event.target.value;
       // Acepta pegados como 1.250.000 sin convertir fracciones como 1.5.

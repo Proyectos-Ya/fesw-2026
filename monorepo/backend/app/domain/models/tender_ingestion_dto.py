@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # from uuid import UUID
 from app.shared.constants import UNKNOWN_TENDER_STATUS
@@ -20,6 +20,24 @@ class ItemLicitacionDTO(BaseModel):
     unidad_medida: str
 
 
+class DocumentoOficialDTO(BaseModel):
+    """Un anexo tal como lo publica Mercado Público: `documentos: [{id, nombre}]`.
+
+    Inmutable (y por eso hashable) porque viaja dentro de `CambioDeEstado`, que
+    es un dataclass congelado.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    mp_document_id: int = Field(gt=0)
+    nombre: str = Field(min_length=1)
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def _recortar(cls, valor: object) -> object:
+        return valor.strip() if isinstance(valor, str) else valor
+
+
 class TenderIngestaDTO(BaseModel):
     code: str = Field(..., alias="CodigoExterno")
     name: str = Field(..., alias="Nombre")
@@ -34,6 +52,25 @@ class TenderIngestaDTO(BaseModel):
     status_semantic_code: str = Field(UNKNOWN_TENDER_STATUS, alias="EstadoCodigo")
     published_at: datetime = Field(..., alias="FechaPublicacion")
     closing_at: datetime = Field(..., alias="FechaCierre")
+    # Segundo llamado (plan 233, decisión 3). `closing_at` sigue siendo el cierre
+    # del llamado vigente; estos tres lo desglosan. Un None es "no vino", no
+    # "no hay segundo llamado": el detalle de la API aún no se verificó con ellos.
+    call_number: int | None = Field(None, alias="NumeroLlamado")
+    first_call_closing_at: datetime | None = Field(None, alias="FechaCierrePrimerLlamado")
+    second_call_closing_at: datetime | None = Field(None, alias="FechaCierreSegundoLlamado")
+    # `resumen.total_ofertas_recibidas`. Un None es "no vino", no 0: la guía de la
+    # API lo documenta en el detalle, pero no se confirmó con una petición real.
+    received_offers_count: int | None = Field(None, alias="TotalOfertasRecibidas")
+    # Entrega y requisitos (#294). Solo los trae el detalle. Un None es "no
+    # vino"; en los flags, `False` es un dato.
+    delivery_address: str | None = Field(None, alias="DireccionEntrega")
+    delivery_term_days: int | None = Field(None, alias="PlazoEntregaDias")
+    requires_environmental_criteria: bool | None = Field(
+        None, alias="RequisitosMedioambientales"
+    )
+    requires_social_impact_criteria: bool | None = Field(
+        None, alias="RequisitosImpactoSocial"
+    )
     buyer_rut: str = Field(..., alias="RutComprador")
     buyer_name: str = Field(..., alias="NombreOrganismo")
     buyer_unit: str = Field(..., alias="UnidadCompra")
@@ -46,6 +83,12 @@ class TenderIngestaDTO(BaseModel):
 
     available_amount_clp: float | None = Field(None, alias="MontoEstimado")
     items: list[ItemLicitacionDTO] = []
+    # Lista oficial de anexos. `None` = la fuente no la informa (el detalle no
+    # trae la clave o algún ítem es ilegible): la lista guardada no se toca.
+    # `[]` = Mercado Público dice que no hay anexos: se retiran los que había.
+    # Confundirlos haría que cada pasada de la ingesta retirara los anexos que
+    # el listado acaba de registrar, y la lista parpadearía.
+    documentos: list[DocumentoOficialDTO] | None = None
 
     class Config:
         populate_by_name = True
@@ -77,3 +120,9 @@ class TenderIngestaDTO(BaseModel):
         normalized = to_utc_naive(value)
         assert normalized is not None  # el campo es obligatorio, nunca es None
         return normalized
+
+    @field_validator("first_call_closing_at", "second_call_closing_at", mode="after")
+    @classmethod
+    def normalize_optional_to_utc(cls, value: datetime | None) -> datetime | None:
+        """Mismo criterio que `normalize_to_utc`: un naive es hora de Chile."""
+        return to_utc_naive(value)

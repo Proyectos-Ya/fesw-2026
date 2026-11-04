@@ -173,7 +173,7 @@ class TestResponder:
         empresa = await e.suppliers.get_by_id(e.empresa.id)
         assert empresa is not None
         assert empresa.keywords is None
-        assert empresa.certifications == ["ISO 9001:2015"]
+        assert empresa.certification_names == ["ISO 9001:2015"]
 
     async def test_guarda_la_vigencia_y_la_licitacion_de_origen(self):
         sec = _pregunta(kind="certificacion")

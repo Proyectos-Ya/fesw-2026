@@ -101,3 +101,7 @@ class TenderChatStorageError(TenderChatError):
 
 
 
+
+class MessageNotFoundError(TenderChatError):
+    def __init__(self, message: str = "El mensaje solicitado no existe o no pertenece a esta licitación."):
+        super().__init__(message)

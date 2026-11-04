@@ -15,7 +15,7 @@ Consulta esta tabla para saber qué documento crear y qué referencia consultar 
 
 | Situación / Evento | Tipo de Documento | Ubicación | Guía de Referencia |
 |---|---|---|---|
-| Vas a empezar una HdU o cambio no trivial | **Plan Técnico** | `docs/plans/<issue>-<slug>.md` | [plan-tecnico.md](./references/plan-tecnico.md) |
+| Vas a empezar una HdU o cambio no trivial | **Plan Técnico** (y opcionalmente `task.md`) | `docs/plans/<issue>-<slug>.md` (un archivo) o `docs/plans/<issue>-<slug>/` (`plan.md` + `task.md`) | [plan-tecnico.md](./references/plan-tecnico.md) |
 | Se toma una decisión técnica o de diseño importante | **ADR** | `docs/decisions/<NNNN>-<slug>.md` | [adr.md](./references/adr.md) |
 | Se cierra un sprint o ciclo de trabajo | **Changelog** | `docs/changelogs/sprint-<N>.md` | [changelog-sprint.md](./references/changelog-sprint.md) |
 | Creación de endpoint o ruta de API | **OpenAPI / Swagger** | Parámetros en el router FastAPI | [api-openapi.md](./references/api-openapi.md) |

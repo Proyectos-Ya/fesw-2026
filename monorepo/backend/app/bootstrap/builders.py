@@ -1,10 +1,14 @@
 """Construcción, al arrancar, de los servicios con proveedor configurable."""
 
 import logging
+import secrets
+from pathlib import Path
 
+from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.calendar_provider_client import ICalendarProviderClient
 from app.application.services.company_lookup_service import ICompanyLookupService
 from app.application.services.embedding_service import IEmbeddingService
+from app.application.services.geocoding_service import IGeocodingService
 from app.application.services.reranker_service import IRerankerService
 from app.config import settings
 from app.domain.entities.calendar import CalendarProvider
@@ -14,6 +18,12 @@ from app.infrastructure.services.api_embedding_service import (
     HuggingFaceEmbeddingService,
 )
 from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.attachments.local_attachment_storage import (
+    LocalDiskAttachmentStorage,
+)
+from app.infrastructure.services.attachments.r2_attachment_storage import (
+    R2AttachmentStorage,
+)
 from app.infrastructure.services.calendar.google_calendar_client import (
     GoogleCalendarClient,
 )
@@ -21,9 +31,13 @@ from app.infrastructure.services.calendar.outlook_calendar_client import (
     OutlookCalendarClient,
 )
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    ChileRutLookupService,
     HttpCompanyLookupService,
     SreLookupService,
     WebEmpresarioLookupService,
+)
+from app.infrastructure.services.geocoding.nominatim_geocoding_service import (
+    NominatimGeocodingService,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +60,37 @@ def build_calendar_providers() -> dict[CalendarProvider, ICalendarProviderClient
             tenant=settings.microsoft_calendar_tenant,
         )
     return providers
+
+
+def build_attachment_storage() -> IAttachmentStorage | None:
+    """R2 si está configurado; disco local solo en desarrollo; si no, la subida queda apagada.
+
+    Sin R2 y fuera de desarrollo devuelve `None`: la API arranca igual y las rutas
+    de escritura responden 503 `storage_unavailable`, así se puede desplegar antes
+    de crear el bucket sin romper nada.
+    """
+    if settings.r2_enabled:
+        logger.info("Anexos en Cloudflare R2 (bucket %s).", settings.r2_bucket)
+        return R2AttachmentStorage(
+            account_id=settings.r2_account_id or "",
+            access_key_id=settings.r2_access_key_id or "",
+            secret_access_key=settings.r2_secret_access_key or "",
+            bucket=settings.r2_bucket or "",
+        )
+    if settings.is_dev:
+        logger.warning(
+            "Anexos en disco local (%s): solo para desarrollo.",
+            settings.attachment_local_storage_dir,
+        )
+        # Secreto por proceso: con --reload las URLs pendientes vencen, y el cliente
+        # pide otra.
+        return LocalDiskAttachmentStorage(
+            root=Path(settings.attachment_local_storage_dir),
+            public_base_url=settings.attachment_local_storage_public_url,
+            secret=secrets.token_bytes(32),
+        )
+    logger.warning("Sin R2 configurado: la subida de anexos queda apagada.")
+    return None
 
 
 class MockRerankerService(IRerankerService):
@@ -187,6 +232,7 @@ def build_reranker_service() -> IRerankerService:
 _FUENTE_DE_EMPRESAS_POR_PROVEEDOR: dict[str, type[HttpCompanyLookupService]] = {
     "sre": SreLookupService,
     "web-empresario": WebEmpresarioLookupService,
+    "chilerut": ChileRutLookupService,
 }
 
 
@@ -205,4 +251,25 @@ def build_company_lookup_service() -> ICompanyLookupService | None:
     return _FUENTE_DE_EMPRESAS_POR_PROVEEDOR[settings.company_lookup_provider](
         api_key=settings.company_lookup_api_key or "",
         base_url=settings.company_lookup_url,
+    )
+
+
+def build_geocoding_service() -> IGeocodingService | None:
+    """Geocodificación de las direcciones de entrega para el mapa (HU-22, #314).
+
+    Sin proveedor devuelve `None`: el scheduler no arranca y el mapa sale vacío.
+    El correo de contacto ya lo exigió `config.py`.
+    """
+    if settings.geocoding_provider == "none":
+        logger.info(
+            "Geocodificación de entregas desactivada (GEOCODING_PROVIDER=none)."
+        )
+        return None
+
+    logger.info(
+        "Geocodificación de entregas servida por %s.", settings.geocoding_provider
+    )
+    return NominatimGeocodingService(
+        contact_email=settings.geocoding_contact_email or "",
+        base_url=settings.geocoding_base_url,
     )

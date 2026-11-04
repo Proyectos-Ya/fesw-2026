@@ -44,7 +44,10 @@ export function registrarManejadorRevocacionAcceso(
   notificarRevocacionAcceso = manejador;
 }
 
-const REQUEST_TIMEOUT_MS = 60_000; 
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const MENSAJE_ERROR_SERVIDOR =
+  "Tuvimos un problema en el servidor. Inténtalo nuevamente en unos segundos.";
 // Este numero es un balance entre no hacer esperar al usuario demasiado tiempo y no cancelar solicitudes legítimas en conexiones lentas.
 
 /**
@@ -57,13 +60,21 @@ export interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
 }
 
-/** Error de una respuesta HTTP no exitosa del backend. */
+/**
+ * Error de una respuesta HTTP no exitosa del backend.
+ *
+ * `code` es el código estable (`quota_exceeded`, `share_link_revoked`…) que
+ * algunos endpoints mandan junto al `detail` cuando el status no alcanza para
+ * distinguir el caso; `body` es el JSON completo para leer sus extras (`limit`,
+ * `expected_name`…). Ambos son opcionales: la mayoría de los errores solo traen
+ * `detail`.
+ */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    /** Código estable que manda el backend cuando un status no alcanza para distinguir el caso. */
     public readonly code?: string,
+    public readonly body: unknown = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -117,17 +128,22 @@ async function solicitar(path: string, opciones?: ApiRequestOptions): Promise<Re
   }
 
   if (!response.ok) {
-    let detail = response.statusText;
+    // Un 5xx no controlado llega en texto plano; su statusText ("Internal
+    // Server Error") no le sirve a quien lo lee. Si el backend manda `detail`,
+    // ese mensaje tiene prioridad.
+    let detail = response.status >= 500 ? MENSAJE_ERROR_SERVIDOR : response.statusText;
     let code: string | undefined;
+    let errorBody: unknown = null;
     try {
       const body: unknown = await response.json();
+      errorBody = body;
       if (body && typeof body === "object") {
         const campos = body as { detail?: unknown; code?: unknown };
         if (typeof campos.detail === "string") detail = campos.detail;
         if (typeof campos.code === "string") code = campos.code;
       }
     } catch {
-      // Respuesta sin cuerpo JSON: se mantiene el statusText.
+      // Respuesta sin cuerpo JSON: se mantiene el mensaje de respaldo.
     }
     if (
       response.status === 403 &&
@@ -136,7 +152,7 @@ async function solicitar(path: string, opciones?: ApiRequestOptions): Promise<Re
     ) {
       notificarRevocacionAcceso(detail);
     }
-    throw new ApiError(response.status, detail, code);
+    throw new ApiError(response.status, detail, code, errorBody);
   }
 
   return response;

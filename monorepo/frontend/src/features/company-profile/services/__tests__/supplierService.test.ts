@@ -4,6 +4,7 @@ import {
   createSupplier,
   getMySupplier,
   getMySupplierOrNull,
+  suggestKeywordsFromDescription,
   updateSupplier,
   waitForMySupplier,
 } from "../supplierService";
@@ -263,5 +264,43 @@ describe("updateSupplier", () => {
     expect(options.credentials).toBe("include");
     expect(JSON.parse(options.body as string)).toEqual({ legal_name: "Nueva SpA" });
     expect(result.legal_name).toBe("Nueva SpA");
+  });
+});
+
+describe("suggestKeywordsFromDescription", () => {
+  it("hace POST con la descripción y las palabras clave ya elegidas, y devuelve las sugeridas", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ suggested_keywords: ["pintura", "revestimiento"] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await suggestKeywordsFromDescription("Pintura y revestimiento de muros.", [
+      "obras menores",
+    ]);
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/suppliers/suggest-keywords-from-description");
+    expect(options.method).toBe("POST");
+    expect(options.credentials).toBe("include");
+    expect(JSON.parse(options.body as string)).toEqual({
+      description: "Pintura y revestimiento de muros.",
+      existing_keywords: ["obras menores"],
+    });
+    expect(result).toEqual(["pintura", "revestimiento"]);
+  });
+
+  it("lanza ApiError cuando el backend rechaza la petición", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: async () => ({ detail: "No autenticado" }),
+      }),
+    );
+
+    await expect(suggestKeywordsFromDescription("pintura", [])).rejects.toBeInstanceOf(ApiError);
   });
 });

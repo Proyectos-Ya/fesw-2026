@@ -20,6 +20,7 @@ import {
 } from "../services/tenderService";
 import type { Tender, DeepAnalysis } from "../tenderTypes";
 import { formatDateTime } from "../utils/format";
+import { ReportModal } from "./ReportModal";
 
 interface TenderAnalysisViewProps {
   tenderId: string;
@@ -50,6 +51,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
   const [promptError, setPromptError] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // 1. Cargar la licitación. Se pide por su ficha y no por las recomendadas:
   // el análisis no es un privilegio del top-12, y una licitación llegada del
@@ -251,7 +253,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
       ) : analysis ? (
         <div className="flex flex-col gap-6">
           {/* Tarjeta Principal de Análisis */}
-          <div className="rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
+          <div className="rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs">
             <div className="flex flex-col gap-5">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
@@ -267,6 +269,15 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                     </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                  title="Reportar análisis de compatibilidad incorrecto"
+                >
+                  <Icon name="flag" size={14} />
+                  Reportar
+                </button>
               </div>
 
               <div className="grid grid-cols-1 gap-6 border-t border-border-subtle pt-5 sm:grid-cols-4 items-center">
@@ -277,7 +288,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                     thresholds={ANALYSIS_THRESHOLDS}
                     colors={ANALYSIS_COLORS}
                   />
-                  <div className="mt-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle text-center">
+                  <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
                     Score de Compatibilidad
                   </div>
                 </div>
@@ -397,6 +408,34 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
           </Button>
         </div>
       )}
+
+      <ReportModal
+        open={reportModalOpen}
+        kind="analysis"
+        tenderId={tenderId}
+        tenderTitle={tender.name}
+        onClose={() => setReportModalOpen(false)}
+        onSuccess={async (reportedReason) => {
+          if (licitacionCerrada) return;
+          setRegenerating(true);
+          setErrorMsg("");
+          try {
+            const instruction = `El usuario reportó como imprecisa la evaluación anterior por el siguiente motivo: ${reportedReason}`.slice(0, 1000);
+            const res = await generateDeepAnalysis(
+              tenderId,
+              instruction,
+              true
+            );
+            setAnalysis(res);
+          } catch (err) {
+            setErrorMsg(
+              err instanceof Error ? err.message : "Error al actualizar el análisis con tu reporte."
+            );
+          } finally {
+            setRegenerating(false);
+          }
+        }}
+      />
     </section>
   );
 }

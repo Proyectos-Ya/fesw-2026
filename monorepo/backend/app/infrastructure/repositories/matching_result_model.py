@@ -20,7 +20,7 @@ class MatchingResultModel(SQLModel, table=True):
     supplier_id: UUID = Field(
         foreign_key="supplier.id", index=True
     )  # Referencia al proveedor
-    tender_id: UUID = Field(foreign_key="tender.id")  # Referencia a la licitación
+    tender_id: UUID = Field(foreign_key="tender.id", index=True)  # Referencia a la licitación
     similarity_score: float | None = Field(
         default=None
     )  # Score vectorial inicial (nulo si no pasó por Qdrant)

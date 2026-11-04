@@ -5,6 +5,7 @@ import pytest
 from app.bootstrap.builders import build_company_lookup_service
 from app.config import settings
 from app.infrastructure.services.company_lookup.http_company_lookup_service import (
+    ChileRutLookupService,
     SreLookupService,
     WebEmpresarioLookupService,
 )
@@ -18,7 +19,7 @@ def test_sin_fuente_la_importacion_queda_apagada(monkeypatch):
 
 @pytest.mark.parametrize(
     "proveedor,clase",
-    [("sre", SreLookupService), ("web-empresario", WebEmpresarioLookupService)],
+    [("sre", SreLookupService), ("web-empresario", WebEmpresarioLookupService), ("chilerut", ChileRutLookupService)],
 )
 def test_construye_la_fuente_elegida(monkeypatch, proveedor, clase):
     monkeypatch.setattr(settings, "company_lookup_provider", proveedor)

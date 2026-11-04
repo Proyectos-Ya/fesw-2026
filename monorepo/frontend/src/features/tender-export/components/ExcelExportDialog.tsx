@@ -70,7 +70,7 @@ export function ExcelExportDialog({ open, onConfirm, onClose }: ExcelExportDialo
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="cursor-pointer rounded-lg p-1.5 text-text-subtle hover:bg-warm-100 hover:text-text-strong"
+            className="cursor-pointer rounded-lg p-1.5 text-text-subtle hover:bg-surface-hover hover:text-text-strong"
           >
             <Icon name="x" size={18} />
           </button>

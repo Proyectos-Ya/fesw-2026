@@ -76,7 +76,7 @@ function ContenidoFuentes({ parrafo }: { parrafo: DraftParagraph }) {
           <p className="mb-1.5 font-semibold text-text-strong">Se basa en:</p>
           <ul className="flex flex-col gap-1.5">
             {parrafo.sources.map((fuente) => (
-              <li key={fuente.id} className="rounded-md bg-warm-100/60 px-2 py-1.5">
+              <li key={fuente.id} className="rounded-md bg-surface-inset px-2 py-1.5">
                 {fuente.label}
               </li>
             ))}
@@ -84,7 +84,7 @@ function ContenidoFuentes({ parrafo }: { parrafo: DraftParagraph }) {
         </>
       )}
       {parrafo.placeholders.length > 0 && (
-        <p className="mt-2 font-semibold text-amber-700">
+        <p className="mt-2 font-semibold text-warning-text">
           Falta completar: {parrafo.placeholders.join(", ")}.
         </p>
       )}
@@ -119,7 +119,7 @@ function FuentesDelParrafo({ parrafo }: { parrafo: DraftParagraph }) {
         onKeyDown={(evento) => {
           if (evento.key === "Escape") setAbierto(false);
         }}
-        className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-white px-2 py-0.5 text-xs text-text-muted transition-colors hover:border-primary/40 hover:text-teal-700"
+        className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-surface-card px-2 py-0.5 text-xs text-text-muted transition-colors hover:border-primary/40 hover:text-text-link"
       >
         <Icon name="book-open" size={12} aria-hidden="true" />
         Fuentes ({parrafo.sources.length})
@@ -128,7 +128,7 @@ function FuentesDelParrafo({ parrafo }: { parrafo: DraftParagraph }) {
         <span
           id={idGlobo}
           role="tooltip"
-          className="absolute right-0 top-full z-20 mt-1 block w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-white p-3 text-left text-xs text-text-body shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 block w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-surface-card p-3 text-left text-xs text-text-body shadow-lg"
         >
           <ContenidoFuentes parrafo={parrafo} />
         </span>
@@ -139,7 +139,7 @@ function FuentesDelParrafo({ parrafo }: { parrafo: DraftParagraph }) {
 
 function Parrafo({ parrafo }: { parrafo: DraftParagraph }) {
   return (
-    <div className="flex items-start gap-3 rounded-md px-3 py-2 text-sm leading-relaxed text-text-body hover:bg-warm-100/40">
+    <div className="flex items-start gap-3 rounded-md px-3 py-2 text-sm leading-relaxed text-text-body hover:bg-surface-hover">
       <p className="flex-1">
         <HighlightedText text={parrafo.text} />
       </p>
@@ -237,7 +237,7 @@ export function ProposalDraftViewer({
           role="alert"
           className="mb-5 rounded-lg border border-warning/30 bg-warning-soft/40 p-4 text-sm"
         >
-          <p className="mb-1 font-bold text-amber-700">Revisar antes de enviar</p>
+          <p className="mb-1 font-bold text-warning-text">Revisar antes de enviar</p>
           <ul className="list-disc pl-5 text-text-body">
             {view.warnings.map((w) => (
               <li key={w.requirement_id}>{w.text}</li>
@@ -256,9 +256,9 @@ export function ProposalDraftViewer({
           <div
             data-testid="capa-de-carga"
             aria-hidden="true"
-            className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-white/70 pt-16 backdrop-blur-[1px]"
+            className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-surface-card/75 pt-16 backdrop-blur-[1px]"
           >
-            <span className="flex items-center gap-2 rounded-full border border-primary/20 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 shadow-md">
+            <span className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-4 py-2 text-sm font-semibold text-text-link shadow-md">
               <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               {stage === "regenerating" ? "Regenerando el borrador…" : "Redactando el borrador…"}
             </span>
@@ -269,7 +269,7 @@ export function ProposalDraftViewer({
             <section
               key={key}
               aria-label={titulo}
-              className="rounded-lg border border-border-subtle bg-white p-4"
+              className="rounded-lg border border-border-subtle bg-surface-card p-4"
             >
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-text-strong">{titulo}</h3>
@@ -284,7 +284,7 @@ export function ProposalDraftViewer({
 
           <section
             aria-label="Documentos necesarios"
-            className="rounded-lg border border-border-subtle bg-white p-4"
+            className="rounded-lg border border-border-subtle bg-surface-card p-4"
           >
             <h3 className="mb-2 text-sm font-bold text-text-strong">Documentos necesarios</h3>
             {contenido.required_documents.paragraphs.length === 0 ? (
@@ -306,7 +306,7 @@ export function ProposalDraftViewer({
             // entrega (plan 292, §2.8).
             <section
               aria-label="Documento técnico"
-              className="rounded-lg border border-border-subtle bg-white p-4 text-sm"
+              className="rounded-lg border border-border-subtle bg-surface-card p-4 text-sm"
             >
               <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-text-strong">
                 <Icon name="file-text" size={16} />
@@ -340,7 +340,7 @@ export function ProposalDraftViewer({
           {contenido.technical_document && (
             <section
               aria-label="Documento técnico"
-              className="rounded-lg border border-primary/20 bg-teal-50/30 p-4"
+              className="rounded-lg border border-primary/20 bg-primary-soft/40 p-4"
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold text-text-strong">Documento técnico</h3>

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
+import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from app.application.repositories.matching_result_repository import (
@@ -18,6 +20,13 @@ from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForAnalysis, TenderNotFound
+
+if TYPE_CHECKING:
+    from app.application.use_cases.questions.generate_tender_smart_questions_use_case import (
+        GenerateTenderSmartQuestionsUseCase,
+    )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,12 +50,14 @@ class GetOrCreateDeepAnalysisUseCase:
         matching_result_repo: IMatchingResultRepository,
         deep_analysis_service: IDeepAnalysisService,
         scorer: CompatibilityScorer,
+        generate_questions_use_case: "GenerateTenderSmartQuestionsUseCase | None" = None,
     ):
         self.supplier_repo = supplier_repo
         self.tender_repo = tender_repo
         self.matching_result_repo = matching_result_repo
         self.deep_analysis_service = deep_analysis_service
         self.scorer = scorer
+        self.generate_questions_use_case = generate_questions_use_case
 
     async def execute(
         self,
@@ -136,6 +147,32 @@ class GetOrCreateDeepAnalysisUseCase:
         new_analysis.tender_updated_at = tender.updated_at
         new_analysis.supplier_updated_at = supplier.updated_at
         saved_analysis = await self.tender_repo.save_deep_analysis(new_analysis)
+
+        # Las preguntas solo se generan en la primera creación del análisis para
+        # esta licitación (sin personalización ni actualización posterior), evitando
+        # sobregasto de cuota y duplicación de preguntas.
+        es_generacion_inicial = (
+            existing_analysis is None
+            and not prompt_instruction
+        )
+        if (
+            es_generacion_inicial
+            and self.generate_questions_use_case is not None
+            and not cerrada
+        ):
+            try:
+                await self.generate_questions_use_case.execute(
+                    user_id=user_id,
+                    tender_id=tender.id,
+                    supplier_id=supplier.id,
+                )
+            except Exception as e:
+                logger.warning(
+                    "No se pudieron generar las preguntas inteligentes para la licitación %s: %s",
+                    tender.id,
+                    e,
+                )
+
         return DeepAnalysisResult(analysis=saved_analysis)
 
     async def _resolver_puntaje(

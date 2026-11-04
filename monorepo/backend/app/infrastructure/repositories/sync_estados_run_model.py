@@ -22,6 +22,11 @@ class SyncEstadosRunModel(SQLModel, table=True):
     # Si el listado recorrió la ventana entera.
     complete: bool
     listed: int = Field(default=0)
+    # La fila se inserta al empezar y se cierra al terminar (plan 305). Nulo:
+    # la corrida no terminó, o es de antes de ese cambio.
+    finished_at: datetime | None = Field(default=None)
+    # Peticiones a Mercado Público que hizo la corrida, reintentos incluidos.
+    requests: int | None = Field(default=None)
 
     # La racha se cuenta desde la última completa, por fecha.
     __table_args__ = (Index("ix_sync_estados_run_started_at", "started_at"),)

@@ -20,12 +20,14 @@ class ExtraerFalso:
 
     def __init__(self, demora: float = 0.0, errores: list[Exception] | None = None) -> None:
         self.llamadas: list[tuple] = []
+        self.empresas: list = []
         self.demora = demora
         self.errores = list(errores or [])
         self.en_curso = 0
         self.max_en_curso = 0
 
-    async def execute(self, user_id, tender_id):
+    async def execute(self, user_id, tender_id, workspace_id=None):
+        self.empresas.append(workspace_id)
         self.en_curso += 1
         self.max_en_curso = max(self.max_en_curso, self.en_curso)
         try:
@@ -61,6 +63,28 @@ async def test_extrae_en_segundo_plano_con_una_sesion_propia():
     assert extraer.llamadas == [(USUARIO, LICITACION)]
     assert sesiones == ["abierta", "cerrada"]
     assert fondo.status(USUARIO, LICITACION) is MilestoneExtractionStatus.IDLE
+
+
+async def test_la_pasada_lee_los_anexos_de_la_empresa_agendada():
+    # Los anexos son de la empresa: quien agenda dice cuál (plan 233).
+    extraer = ExtraerFalso()
+    fondo = _fondo(extraer)
+    empresa = uuid4()
+
+    fondo.schedule(USUARIO, LICITACION, empresa)
+    await fondo.wait_idle()
+
+    assert extraer.empresas == [empresa]
+
+
+async def test_la_extraccion_manual_tambien_recibe_la_empresa():
+    extraer = ExtraerFalso()
+    fondo = _fondo(extraer)
+    empresa = uuid4()
+
+    await fondo.run_now(USUARIO, LICITACION, extraer, empresa)
+
+    assert extraer.empresas == [empresa]
 
 
 async def test_mientras_corre_el_estado_es_en_curso():

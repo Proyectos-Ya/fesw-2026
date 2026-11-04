@@ -3,6 +3,9 @@ from typing import Optional, List
 from uuid import UUID
 from pydantic import BaseModel, Field
 
+from app.application.schemas.deep_analysis_schema import DeepAnalysisResponse
+from app.domain.entities.quotation import Quotation
+
 
 class CitationResponse(BaseModel):
     """Esquema de respuesta para una cita textual."""
@@ -76,4 +79,12 @@ class TenderChatDocumentResponse(BaseModel):
     file_type: str
     file_size_bytes: int
     created_at: datetime
+    deep_analysis: Optional[DeepAnalysisResponse] = None
+    quotation: Optional[Quotation] = None
+
+
+class TenderChatDocumentUploadResponse(TenderChatDocumentResponse):
+    """Esquema de salida para la subida de un documento adjunto al chat, incluyendo análisis y cotización si aplican."""
+    pass
+
 

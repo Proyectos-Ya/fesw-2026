@@ -8,8 +8,8 @@ corriendo:
 
 * **Licitación ya cerrada.** `RankTendersUseCase` descarta lo que tenga
   `closing_at` en el pasado, así que un aviso siempre nace apuntando a una
-  licitación abierta. Y el dump de prueba refuerza el efecto: `date_shift.py`
-  empuja al futuro toda licitación vencida para que el dashboard no salga
+  licitación abierta. Y el dump de prueba refuerza el efecto: `scripts.dump`
+  corre las fechas del catálogo al cargarlo para que el dashboard no salga
   vacío. Hay que cerrar una a propósito.
 
 * **Resumen diario.** Lo arma un bucle atado a `NOTIFICATION_DIGEST_HOUR`

@@ -20,6 +20,7 @@ from app.application.use_cases.milestones.set_milestone_reminder import (
     SetMilestoneReminderUseCase,
 )
 from app.domain.entities.calendar import CalendarProvider
+from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.tender_milestone import (
     REMINDER_DAYS_OPTIONS,
     MilestoneKind,
@@ -107,17 +108,23 @@ def create_milestones_router(
     get_milestone_extraction_background: Callable[[], IMilestoneExtractionBackground | None] = (
         lambda: None
     ),
+    get_optional_workspace_context: Callable[[], WorkspaceContext | None] = lambda: None,
 ) -> APIRouter:
     router = APIRouter(prefix="/tenders", tags=["Milestones"])
+
+    def _empresa(contexto: WorkspaceContext | None) -> UUID | None:
+        # Los hitos salen de los anexos de la empresa activa (plan 233).
+        return contexto.active_supplier_id if contexto is not None else None
 
     @router.get("/{tender_id}/milestones", response_model=MilestoneListResponse)
     async def list_milestones(
         tender_id: UUID,
         user: Annotated[User, Depends(get_current_user)],
         use_case: Annotated[GetTenderMilestonesUseCase, Depends(get_tender_milestones_use_case)],
+        contexto: Annotated[WorkspaceContext | None, Depends(get_optional_workspace_context)],
     ):
         try:
-            return _respuesta(await use_case.execute(user.id, tender_id))
+            return _respuesta(await use_case.execute(user.id, tender_id, _empresa(contexto)))
         except TenderNotFound as error:
             raise HTTPException(404, "La licitación no existe.") from error
 
@@ -131,12 +138,14 @@ def create_milestones_router(
         background: Annotated[
             IMilestoneExtractionBackground | None, Depends(get_milestone_extraction_background)
         ],
+        contexto: Annotated[WorkspaceContext | None, Depends(get_optional_workspace_context)],
     ):
+        empresa = _empresa(contexto)
         try:
             if background is None:
-                return _respuesta(await use_case.execute(user.id, tender_id))
+                return _respuesta(await use_case.execute(user.id, tender_id, empresa))
             # Con el mismo candado que la automática: si está en curso, espera.
-            return _respuesta(await background.run_now(user.id, tender_id, use_case))
+            return _respuesta(await background.run_now(user.id, tender_id, use_case, empresa))
         except TenderNotFound as error:
             raise HTTPException(404, "La licitación no existe.") from error
         except MilestoneExtractionUnavailable as error:

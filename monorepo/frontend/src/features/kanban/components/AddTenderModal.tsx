@@ -145,7 +145,7 @@ export function AddTenderModal({
         onClick={onClose}
         aria-hidden
       />
-      <div className="relative w-full max-w-lg bg-white rounded-xl shadow-xl flex flex-col max-h-[80vh]">
+      <div className="relative w-full max-w-lg bg-surface-card rounded-xl shadow-xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between p-4 border-b border-border-subtle">
           <div>
             <h2 className="text-base font-semibold text-text-strong">
@@ -156,7 +156,7 @@ export function AddTenderModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-md text-text-subtle hover:bg-warm-100 transition-colors"
+            className="p-1.5 rounded-md text-text-subtle hover:bg-surface-hover transition-colors"
             aria-label="Cerrar"
           >
             <Icon name="x" size={18} />
@@ -254,11 +254,11 @@ export function AddTenderModal({
                 type="button"
                 disabled={adding === tender.id}
                 onClick={() => void handleAdd(tender)}
-                className="w-full text-left px-4 py-3 hover:bg-warm-50 border-b border-border-subtle last:border-0 transition-colors disabled:opacity-50"
+                className="w-full text-left px-4 py-3 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors disabled:opacity-50"
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-text-subtle font-mono truncate mb-0.5">
+                    <p className="text-[0.6875rem] text-text-subtle font-mono truncate mb-0.5">
                       {tender.code}
                     </p>
                     <p className="text-sm font-medium text-text-strong line-clamp-2 leading-snug">

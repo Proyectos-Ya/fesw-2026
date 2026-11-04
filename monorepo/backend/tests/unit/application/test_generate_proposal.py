@@ -41,13 +41,18 @@ from app.domain.errors.proposal_errors import (
 )
 from app.domain.errors.tender_errors import TenderClosedForProposal
 from app.shared.constants import TENDER_STATUSES
+from tests.unit.application.attachment_fakes import InMemoryTenderAttachmentRepository
+from tests.unit.application.attachment_file_fakes import (
+    FakeAttachmentStorage,
+    InMemoryAttachmentFileRepository,
+    guardar_anexo,
+)
 from tests.unit.application.fakes import (
     InMemoryCapabilityAnswerRepository,
     InMemoryCapabilityEvidenceRepository,
     InMemoryCapabilityQuestionRepository,
     InMemoryProposalDraftRepository,
     InMemorySupplierRepository,
-    InMemoryTenderChatRepository,
     InMemoryTenderRepository,
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
@@ -88,6 +93,9 @@ class Escenario:
         self.answers = InMemoryCapabilityAnswerRepository()
         self.evidences = InMemoryCapabilityEvidenceRepository()
         self.ai = FakeProposalAI(FeasibilityResultDTO(), redaccion or _redaccion())
+        self.archivos = InMemoryAttachmentFileRepository()
+        self.oficiales = InMemoryTenderAttachmentRepository()
+        self.almacen = FakeAttachmentStorage()
         self.user_id = uuid4()
         self.tender_id = uuid4()
         self.tenders.tenders[self.tender_id] = crear_licitacion(self.tender_id)
@@ -160,7 +168,9 @@ class Escenario:
             catalog_use_case=BuildExperienceCatalogUseCase(
                 self.suppliers, self.questions, self.answers, self.evidences
             ),
-            chat_repo=InMemoryTenderChatRepository(),
+            files=self.archivos,
+            attachments=self.oficiales,
+            storage=self.almacen,
             ai_service=self.ai,
         )
 
@@ -178,6 +188,24 @@ def _textos(seccion) -> list[str]:
 
 
 class TestRedactar:
+    async def test_redacta_con_los_anexos_de_la_empresa(self):
+        # Plan 233, parte 2: los mismos anexos que leen los hitos y el análisis.
+        e = await Escenario().preparar()
+        for nombre, empresa in (("bases.pdf", e.empresa.id), ("ajeno.pdf", uuid4())):
+            await guardar_anexo(
+                e.archivos,
+                e.oficiales,
+                e.almacen,
+                tender_id=e.tender_id,
+                nombre=nombre,
+                workspace_id=empresa,
+            )
+
+        await e.redactar()
+
+        [llamada] = e.ai.redacciones
+        assert [d.document_name for d in llamada["documents"]] == ["bases.pdf"]
+
     async def test_deja_el_borrador_listo_con_la_plantilla_de_compra_agil(self):
         e = await Escenario().preparar()
 

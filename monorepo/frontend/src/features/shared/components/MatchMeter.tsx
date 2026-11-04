@@ -65,17 +65,29 @@ export function MatchMeter({
       className={`inline-flex items-center font-sans ${className}`}
       style={{ gap: label ? 12 : 0, ...style }}
     >
-      <div className="relative flex-none" style={{ width: s.d, height: s.d }}>
+      <div
+        className="relative flex flex-none items-center justify-center"
+        style={{ width: s.d, height: s.d }}
+      >
         <svg
           width={s.d}
           height={s.d}
           viewBox={`0 0 ${s.d} ${s.d}`}
+          className="block"
           style={{ transform: "rotate(-90deg)" }}
           aria-hidden={label ? "true" : undefined}
           role={label ? undefined : "img"}
           aria-label={label ? undefined : `Compatibilidad ${v}%`}
         >
-          <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--warm-200)" strokeWidth={s.stroke} />
+          <circle
+            cx={cx}
+            cy={cx}
+            r={r}
+            fill="none"
+            className="text-border-subtle"
+            stroke="currentColor"
+            strokeWidth={s.stroke}
+          />
           <circle
             cx={cx}
             cy={cx}
@@ -91,12 +103,14 @@ export function MatchMeter({
         </svg>
         {showValue && (
           <div
-            className="absolute inset-0 flex items-center justify-center font-mono font-semibold text-text-strong"
-            style={{ fontSize: s.font }}
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-center font-mono font-semibold leading-none tracking-tighter text-text-strong"
+            style={{ fontSize: v >= 100 ? Math.round(s.font * 0.82) : s.font }}
           >
-            {v}
-            <span className="ml-[1px] text-text-subtle" style={{ fontSize: "0.6em" }}>
-              %
+            <span className="inline-flex items-baseline justify-center leading-none">
+              <span>{v}</span>
+              <span className="ml-[1px] leading-none text-text-subtle" style={{ fontSize: "0.6em" }}>
+                %
+              </span>
             </span>
           </div>
         )}

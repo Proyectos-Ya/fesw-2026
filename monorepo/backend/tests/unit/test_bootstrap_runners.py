@@ -12,14 +12,14 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.datastructures import State
 
 from app.bootstrap.runners import build_scan_rank_tenders_use_case
-from tests.unit.application.fakes import FakeEmbeddingService
+from tests.unit.application.fakes import FORMULA_DE_PRUEBA, FakeEmbeddingService
 
 
 def _estado_de_la_app() -> State:
     state = State()
     state.qdrant_async_client = object()
     state.reranker_service = object()
-    state.weighting_service = object()
+    state.compatibility_formula = FORMULA_DE_PRUEBA
     state.embedding_service = FakeEmbeddingService()
     return state
 

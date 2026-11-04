@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.services.deep_analysis_service import IDeepAnalysisService
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
@@ -24,11 +23,10 @@ from app.domain.errors.supplier_errors import SupplierNotFoundForUser
 from app.domain.errors.tender_errors import TenderClosedForAnalysis, TenderNotFound
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 
 
@@ -148,11 +146,7 @@ async def armar(
             tender_repo=tender_repo,
             matching_result_repo=matching_result_repo,
             deep_analysis_service=ai_service,
-            scorer=CompatibilityScorer(
-                reranker_service=FakeRerankerService(),
-                weighting_service=FakeWeightingService(),
-                matching_result_repo=matching_result_repo,
-            ),
+            scorer=armar_scorer(matching_result_repo=matching_result_repo),
         ),
         tender_repo=tender_repo,
         matching_result_repo=matching_result_repo,
@@ -596,3 +590,59 @@ async def test_analiza_para_la_empresa_activa_y_no_la_propia():
     assert resultado.analysis is not None
     assert resultado.analysis.supplier_id == activa.id
     assert esc.ai_service.calls[0][1] == activa.id
+
+
+@pytest.mark.asyncio
+async def test_genera_preguntas_en_la_creacion_inicial_del_analisis():
+    """Al generar análisis por primera vez (sin custom prompt), dispara generación de preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    await esc.use_case.execute(tender_id=esc.tender_id, user_id=esc.user_id)
+
+    mock_questions_uc.execute.assert_awaited_once_with(
+        user_id=esc.user_id,
+        tender_id=esc.tender_id,
+        supplier_id=esc.supplier.id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_genera_preguntas_si_el_analisis_ya_existia_actualizacion():
+    """Al actualizar o regenerar un análisis preexistente, NO vuelve a generar preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    # Guardar análisis preexistente
+    await guardar_analisis(esc, generado_hace=timedelta(hours=1))
+
+    # Forzar regeneración (Actualizar análisis)
+    await esc.use_case.execute(
+        tender_id=esc.tender_id, user_id=esc.user_id, force_regenerate=True
+    )
+
+    mock_questions_uc.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_genera_preguntas_al_regenerar_con_enfoque_personalizado():
+    """Si se pasa prompt_instruction (enfoque personalizado), NO se generan preguntas."""
+    from unittest.mock import AsyncMock
+
+    mock_questions_uc = AsyncMock()
+    esc = await armar()
+    esc.use_case.generate_questions_use_case = mock_questions_uc
+
+    await esc.use_case.execute(
+        tender_id=esc.tender_id,
+        user_id=esc.user_id,
+        prompt_instruction="Enfocarse en ISO 14001 y plazos",
+    )
+
+    mock_questions_uc.execute.assert_not_called()

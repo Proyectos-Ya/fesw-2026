@@ -157,7 +157,8 @@ async def test_ca1_and_ca2_cross_referencing_and_discrepancies(app_with_services
         }
 
         respx.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=integration-test-key"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+            headers={"x-goog-api-key": "integration-test-key"},
         ).respond(status_code=200, json=mock_gemini_response)
 
         # Consultar al asistente
@@ -216,7 +217,8 @@ async def test_ca3_and_ca4_partial_backing_and_anti_hallucination(app_with_servi
         }
 
         respx.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=integration-test-key"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+            headers={"x-goog-api-key": "integration-test-key"},
         ).respond(status_code=200, json=mock_gemini_response)
 
         ask_resp = await client.post(
@@ -306,7 +308,8 @@ async def test_ca6_corrupted_document_rejection_and_graceful_isolation(app_with_
             ]
         }
         respx.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=integration-test-key"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+            headers={"x-goog-api-key": "integration-test-key"},
         ).respond(status_code=200, json=mock_gemini_response)
 
         # 3. Realizar consulta: debe responder con éxito y listar el warning del archivo corrupto

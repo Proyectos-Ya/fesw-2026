@@ -63,15 +63,30 @@ async def get_tender(tenders: ITenderRepository, tender_id: UUID) -> Tender:
     return encontradas[0]
 
 
+# El título es parte de la clave de `merge_milestones` (tipo, título), así que no
+# depende del llamado: si cambiara al pasar al segundo llamado quedaría un
+# duplicado. Lo que cambia entre llamados es la descripción.
+_TITULO_SEGUNDO_LLAMADO = "Cierre del segundo llamado"
+_SEGUNDO_LLAMADO_VIGENTE = "Llamado vigente: coincide con el cierre de recepción de ofertas."
+_SEGUNDO_LLAMADO_POSIBLE = (
+    "Fecha posible: Mercado Público la publica desde el primer llamado y solo se "
+    "usa si se abre un segundo llamado."
+)
+
+
 def mercado_publico_milestones(tender: Tender, user_id: UUID) -> list[TenderMilestone]:
-    """Hitos oficiales que siempre vienen en la ficha de Mercado Público."""
+    """Hitos oficiales de la ficha de Mercado Público.
+
+    Siempre la publicación y el cierre de ofertas; y el cierre del segundo
+    llamado cuando Mercado Público lo publica.
+    """
     comunes = {
         "user_id": user_id,
         "tender_id": tender.id,
         "source": MilestoneSource.MERCADO_PUBLICO,
         "has_time": True,
     }
-    return [
+    hitos = [
         TenderMilestone(
             kind=MilestoneKind.PUBLICACION,
             title="Publicación en Mercado Público",
@@ -85,6 +100,24 @@ def mercado_publico_milestones(tender: Tender, user_id: UUID) -> list[TenderMile
             **comunes,
         ),
     ]
+    # Solo cuando Mercado Público publicó la fecha. Con tipo propio y fuera de
+    # `_OFICIALES` de `refresh_synced_tender_dates`: avisos y calendario no
+    # cambian con este hito.
+    if tender.second_call_closing_at is not None:
+        hitos.append(
+            TenderMilestone(
+                kind=MilestoneKind.CIERRE_SEGUNDO_LLAMADO,
+                title=_TITULO_SEGUNDO_LLAMADO,
+                description=(
+                    _SEGUNDO_LLAMADO_VIGENTE
+                    if tender.call_number == 2
+                    else _SEGUNDO_LLAMADO_POSIBLE
+                ),
+                due_at=tender.second_call_closing_at,
+                **comunes,
+            )
+        )
+    return hitos
 
 
 def _clave(milestone: TenderMilestone) -> tuple[MilestoneKind, str]:
@@ -162,7 +195,15 @@ def merge_ai_milestones(
 def changed(existing: list[TenderMilestone], merged: list[TenderMilestone]) -> list[TenderMilestone]:
     """Los hitos que son nuevos o cambiaron de fecha, título o descripción."""
     por_id = {m.id: m for m in existing}
-    campos = ("title", "description", "due_at", "has_time", "source_excerpt", "source_document_id")
+    campos = (
+        "title",
+        "description",
+        "due_at",
+        "has_time",
+        "source_excerpt",
+        "source_document_id",
+        "source_file_id",
+    )
     return [
         m for m in merged
         if m.id not in por_id or any(getattr(m, c) != getattr(por_id[m.id], c) for c in campos)
@@ -229,6 +270,32 @@ async def remove_orphan_ai_milestones(
         if m.source is MilestoneSource.IA_DOCUMENTO
         and m.source_document_id is not None
         and m.source_document_id not in document_ids
+    ]
+    if not huerfanos:
+        return
+    sincronizados = await synced_providers_by_milestone(event_links, huerfanos)
+    borrar = [i for i in huerfanos if i not in sincronizados]
+    if borrar:
+        await milestones.delete_many(user_id, borrar)
+
+
+async def remove_orphan_file_milestones(
+    milestones: ITenderMilestoneRepository,
+    event_links: ICalendarEventLinkRepository,
+    user_id: UUID,
+    tender_id: UUID,
+    file_ids: set[UUID],
+) -> None:
+    """Quita los hitos de IA de anexos que ya no están visibles, salvo los sincronizados.
+
+    `source_file_id` no tiene FK: borrar el archivo no arrastra sus hitos.
+    """
+    huerfanos = [
+        m.id
+        for m in await milestones.list_for_tender(user_id, tender_id)
+        if m.source is MilestoneSource.IA_DOCUMENTO
+        and m.source_file_id is not None
+        and m.source_file_id not in file_ids
     ]
     if not huerfanos:
         return

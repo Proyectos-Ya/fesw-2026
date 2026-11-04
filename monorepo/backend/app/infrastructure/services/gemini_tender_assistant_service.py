@@ -1,22 +1,23 @@
 import base64
 import json
 from typing import List, Optional
+
 import httpx
 
 from app.application.services.tender_assistant_ai_service import (
-    ITenderAssistantAIService,
     AIResponseDTO,
     DocumentContextDTO,
+    ITenderAssistantAIService,
 )
 from app.domain.entities.tender_chat import (
-    TenderChatMessage,
     Citation,
     DocumentDiscrepancy,
+    TenderChatMessage,
 )
 from app.domain.errors.tender_chat_errors import (
-    TenderAssistantUnavailableError,
     TenderAssistantAIProviderError,
     TenderAssistantResponseError,
+    TenderAssistantUnavailableError,
 )
 from app.infrastructure.services.document_text import xlsx_to_text
 
@@ -39,7 +40,10 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         return xlsx_to_text(file_bytes, file_name)
 
     def _build_system_instruction(
-        self, has_supplier: bool = False, has_tender: bool = False
+        self,
+        has_supplier: bool = False,
+        has_tender: bool = False,
+        feedback_context: Optional[str] = None,
     ) -> str:
         base_instruction = (
             "Eres un asistente analítico experto en compras públicas y licitaciones de Mercado Público de Chile.\n"
@@ -58,6 +62,13 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                 "Se te adjuntan los ANTECEDENTES Y PERFIL DE LA EMPRESA CONSULTANTE. Debes utilizarlos activamente cuando el "
                 "usuario pregunte sobre compatibilidad, cumplimiento de requisitos habilitantes (certificaciones, años de experiencia, "
                 "rubros, registros especiales como ESVAL, MINVU, etc.) contrastando su perfil contra lo exigido en las bases.\n\n"
+            )
+
+        if feedback_context:
+            base_instruction += (
+                "RETROALIMENTACIÓN Y CORRECCIONES DE RESPUESTAS ANTERIORES EN ESTA LICITACIÓN:\n"
+                f"{feedback_context}\n"
+                "INSTRUCCIÓN: Debes acoger explícitamente estas observaciones para no repetir el error ni la omisión.\n\n"
             )
 
         base_instruction += (
@@ -91,8 +102,11 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         documents: List[DocumentContextDTO],
         supplier_context: Optional[str] = None,
         tender_context: Optional[str] = None,
+        feedback_context: Optional[str] = None,
+        pass_number: int = 1,
     ) -> AIResponseDTO:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        headers = {"x-goog-api-key": self.api_key}
 
         # 1. Preparar las partes del turno actual
         current_parts: list[dict] = [
@@ -100,6 +114,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                 "text": self._build_system_instruction(
                     has_supplier=bool(supplier_context),
                     has_tender=bool(tender_context),
+                    feedback_context=feedback_context,
                 )
             }
         ]
@@ -108,18 +123,25 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
         if tender_context:
             current_parts.append({"text": tender_context})
 
-
         # Si se proporcionó el perfil de la empresa proveedora, agregarlo como contexto
         if supplier_context:
             current_parts.append({"text": supplier_context})
 
-
-        # 2. Agregar los documentos adjuntos (PDF / PNG / XLSX)
+        # 2. Agregar los documentos adjuntos (PDF / PNG / XLSX / texto preextraído)
         for doc in documents:
             if doc.is_corrupted:
                 current_parts.append({
                     "text": f"Documento adjunto: '{doc.document_name}' [ESTADO: ARCHIVO DAÑADO O ILEGIBLE - No es posible extraer su contenido ni responder sobre los requisitos contenidos exclusivamente en él]."
                 })
+                continue
+
+            if doc.text:
+                if doc.document_name == "Resumen de Anexos y Bases Oficiales":
+                    current_parts.append({"text": doc.text})
+                else:
+                    current_parts.append({"text": f"Documento adjunto '{doc.document_name}':\n{doc.text}"})
+
+            if not doc.file_bytes:
                 continue
 
             if doc.file_type.lower() == "pdf":
@@ -131,11 +153,12 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
                     }
                 })
                 current_parts.append({"text": f"Documento adjunto: '{doc.document_name}'"})
-            elif doc.file_type.lower() == "png":
+            elif doc.file_type.lower() in ("png", "jpg", "jpeg"):
+                mime = "image/png" if doc.file_type.lower() == "png" else "image/jpeg"
                 b64_data = base64.b64encode(doc.file_bytes).decode("utf-8")
                 current_parts.append({
                     "inlineData": {
-                        "mimeType": "image/png",
+                        "mimeType": mime,
                         "data": b64_data,
                     }
                 })
@@ -224,7 +247,7 @@ class GeminiTenderAssistantService(ITenderAssistantAIService):
 
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.post(url, json=payload, timeout=60.0)
+                resp = await client.post(url, headers=headers, json=payload, timeout=60.0)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Error conectando a Gemini API: {e}", exc_info=True)

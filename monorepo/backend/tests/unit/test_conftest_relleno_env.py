@@ -42,6 +42,12 @@ def test_el_relleno_alcanza_para_construir_settings():
     assert _construir(RELLENO_ENV) is not None
 
 
+def test_fuerza_desactivado_el_procesamiento_de_anexos():
+    import os
+
+    assert os.environ["RUN_ATTACHMENT_PROCESSING"] == "false"
+
+
 def test_cada_clave_del_relleno_hace_falta():
     """Relleno muerto: una clave que se puede quitar sin que nada falle.
 

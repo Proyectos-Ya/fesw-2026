@@ -24,16 +24,26 @@ class MilestoneExtractionStatus(StrEnum):
 
 
 class MilestoneExtraction(Protocol):
-    async def execute(self, user_id: UUID, tender_id: UUID) -> "TenderMilestonesResult": ...
+    async def execute(
+        self, user_id: UUID, tender_id: UUID, workspace_id: UUID | None = None
+    ) -> "TenderMilestonesResult": ...
 
 
 class IMilestoneExtractionBackground(Protocol):
-    def schedule(self, user_id: UUID, tender_id: UUID) -> None: ...
+    def schedule(
+        self, user_id: UUID, tender_id: UUID, workspace_id: UUID | None = None
+    ) -> None:
+        """`workspace_id` es la empresa cuyos anexos se leen; sin ella, la del usuario."""
+        ...
 
     def status(self, user_id: UUID, tender_id: UUID) -> MilestoneExtractionStatus: ...
 
     async def run_now(
-        self, user_id: UUID, tender_id: UUID, extraction: MilestoneExtraction
+        self,
+        user_id: UUID,
+        tender_id: UUID,
+        extraction: MilestoneExtraction,
+        workspace_id: UUID | None = None,
     ) -> "TenderMilestonesResult":
         """Extrae ya (el botón manual), esperando a la automática si está en curso."""
         ...

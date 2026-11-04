@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, delete, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -7,7 +9,11 @@ from app.application.repositories.matching_result_repository import (
     IMatchingResultRepository,
 )
 from app.domain.entities.matching_result import MatchingResult
+from app.domain.errors.matching_errors import RecommendationsSaveError
 from app.infrastructure.repositories.matching_result_model import MatchingResultModel
+
+# Restricción única del par (ver MatchingResultModel y las migraciones).
+_PAR_UNICO = "uq_matching_result_supplier_tender"
 
 
 class MatchingResultRepository(IMatchingResultRepository):
@@ -46,11 +52,43 @@ class MatchingResultRepository(IMatchingResultRepository):
         )
 
     async def save_bulk(self, results: list[MatchingResult]) -> None:
-        """Persiste una lista de resultados de matching en la base de datos."""
-        models = [self._to_model(r) for r in results]
-        for m in models:
-            self.session.add(m)
-        await self.session.commit()
+        """Persiste el ranking de un proveedor; si el par ya existe, lo reemplaza.
+
+        Idempotente por (proveedor, licitación): dos recálculos simultáneos del
+        mismo proveedor —el dashboard pide `/tenders/recommended` dos veces al
+        abrirse— escriben los mismos pares, y el borrado previo del caso de uso
+        no alcanza a protegerlos porque ocurre antes de que el otro inserte. Con
+        ON CONFLICT gana el último cálculo en vez de violar
+        `uq_matching_result_supplier_tender`.
+
+        Cualquier otro rechazo de la base (p. ej. una licitación borrada a mitad
+        del cálculo) sale como `RecommendationsSaveError`, con la sesión ya
+        revertida para que pueda seguir usándose.
+        """
+        if not results:
+            return
+        filas = [self._to_model(r).model_dump() for r in results]
+        stmt = pg_insert(MatchingResultModel).values(filas)
+        stmt = stmt.on_conflict_do_update(
+            constraint=_PAR_UNICO,
+            set_={
+                columna: stmt.excluded[columna]
+                for columna in (
+                    "similarity_score",
+                    "reranker_score",
+                    "final_score",
+                    "model_version",
+                    "source",
+                    "calculated_at",
+                )
+            },
+        )
+        try:
+            await self.session.exec(stmt)
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise RecommendationsSaveError() from exc
 
     async def save_on_demand(self, result: MatchingResult) -> MatchingResult:
         """Reemplaza el cálculo previo de ese par (proveedor, licitación), si lo hay."""

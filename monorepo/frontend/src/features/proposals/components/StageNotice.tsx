@@ -15,7 +15,7 @@ export function StageNotice({ stage }: { stage: ProposalStage }) {
   return (
     <p
       role="status"
-      className="pointer-events-auto flex w-full max-w-xl items-center gap-2 rounded-md border border-primary/20 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-700 shadow-lg"
+      className="pointer-events-auto flex w-full max-w-xl items-center gap-2 rounded-md border border-primary/20 bg-primary-soft px-4 py-3 text-sm font-semibold text-text-link shadow-lg"
     >
       <span className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
       {mensaje}

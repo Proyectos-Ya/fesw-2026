@@ -9,7 +9,12 @@ class IMatchingResultRepository(ABC):
 
     @abstractmethod
     async def save_bulk(self, results: list[MatchingResult]) -> None:
-        """Guarda en lote una lista de resultados de matching."""
+        """Guarda en lote el ranking; un par (proveedor, licitación) ya guardado se reemplaza.
+
+        Tiene que ser idempotente: dos recálculos simultáneos del mismo
+        proveedor escriben los mismos pares. Si la base rechaza el guardado por
+        otro motivo, lanza `RecommendationsSaveError`.
+        """
         pass
 
     @abstractmethod

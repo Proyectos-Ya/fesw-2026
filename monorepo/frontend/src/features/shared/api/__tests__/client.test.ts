@@ -46,6 +46,53 @@ describe("apiFetch", () => {
     await expect(apiFetch("/auth/me")).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("usa un mensaje legible cuando un error 5xx llega sin detail", async () => {
+    // Un 500 no controlado de FastAPI trae el cuerpo en texto plano; antes el
+    // usuario veía el statusText crudo: "Internal Server Error".
+    mockFetchOnce(
+      new Response("Internal Server Error", {
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    const error = await apiFetch("/tenders/recommended").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(500);
+    expect((error as ApiError).message).not.toMatch(/Internal Server Error/);
+    expect((error as ApiError).message).toMatch(/Inténtalo nuevamente/);
+  });
+
+  it("prefiere el detail del backend también en errores 5xx", async () => {
+    mockFetchOnce(
+      new Response(JSON.stringify({ detail: "No pudimos guardar tus recomendaciones." }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(apiFetch("/tenders/recommended")).rejects.toThrowError(
+      expect.objectContaining({ status: 503, message: "No pudimos guardar tus recomendaciones." }),
+    );
+  });
+});
+
+describe("apiFetch — código estable del error", () => {
+  it("expone el code y el cuerpo cuando el backend los manda", async () => {
+    mockFetchOnce(
+      new Response(
+        JSON.stringify({ detail: "Tope alcanzado", code: "quota_exceeded", limit: 100 }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const error = await apiFetch("/tenders/t/attachments/a/upload-url").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).message).toBe("Tope alcanzado");
+    expect((error as ApiError).code).toBe("quota_exceeded");
+    expect((error as { body: { limit: number } }).body.limit).toBe(100);
+  });
+
   it("expone el code del backend para distinguir errores con el mismo status", async () => {
     // Un enlace caducado y uno revocado son los dos 410 (HdU 19).
     mockFetchOnce(
@@ -69,6 +116,23 @@ describe("apiFetch", () => {
     const error = await apiFetch("/auth/me").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBeUndefined();
+  });
+
+  it("deja code sin definir y body en null cuando la respuesta no es JSON", async () => {
+    mockFetchOnce(new Response("caída", { status: 502, statusText: "Bad Gateway" }));
+
+    const error = await apiFetch("/auth/me").catch((e: unknown) => e);
+
+    expect((error as ApiError).code).toBeUndefined();
+    expect((error as ApiError).body).toBeNull();
+  });
+
+  it("construir un ApiError con status y mensaje sigue funcionando", () => {
+    const error = new ApiError(404, "No existe");
+
+    expect(error.status).toBe(404);
+    expect(error.code).toBeUndefined();
+    expect(error.body).toBeNull();
   });
 });
 

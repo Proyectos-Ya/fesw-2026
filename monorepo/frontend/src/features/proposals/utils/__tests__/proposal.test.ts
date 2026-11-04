@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   esDeclaracionDeHabilidad,
   basesNotice,
+  nombrarDocumentos,
   canGenerate,
   currentAnswer,
   pauseOrigin,
@@ -232,6 +233,23 @@ describe("proposalStatus", () => {
   });
 });
 
+describe("nombrarDocumentos", () => {
+  it("une los nombres como en una frase", () => {
+    expect(nombrarDocumentos(["Bases.pdf"])).toBe("Bases.pdf");
+    expect(nombrarDocumentos(["Bases.pdf", "Anexo 1.docx"])).toBe("Bases.pdf y Anexo 1.docx");
+    expect(nombrarDocumentos(["A.pdf", "B.pdf", "C.pdf"])).toBe("A.pdf, B.pdf y C.pdf");
+  });
+
+  it("con más de cinco nombra los primeros y cuenta el resto", () => {
+    const nombres = ["A", "B", "C", "D", "E", "F", "G"];
+    expect(nombrarDocumentos(nombres)).toBe("A, B, C, D, E y 2 más");
+  });
+
+  it("sin nombres no dice nada", () => {
+    expect(nombrarDocumentos([])).toBe("");
+  });
+});
+
 describe("basesNotice", () => {
   it("borradores anteriores a este dato no dicen nada", () => {
     expect(basesNotice(vista({ analysis_documents: null }), [])).toBeNull();
@@ -247,6 +265,20 @@ describe("basesNotice", () => {
   it("si la ficha menciona bases que no se subieron, lo dice", () => {
     const v = vista({ content: CONTENIDO, analysis_documents: [], mentions_attachments: true });
     expect(basesNotice(v, [])).toMatch(/la ficha menciona bases o anexos que no se subieron/);
+  });
+
+  it("con documentos oficiales sin subir, los nombra", () => {
+    const v = vista({ analysis_documents: [], mentions_attachments: false });
+    expect(basesNotice(v, [], ["Bases.pdf", "Anexo 1.docx"])).toBe(
+      "Este análisis se hizo solo con la ficha. La Compra Ágil publica Bases.pdf y Anexo 1.docx: súbelos y vuelve a analizar.",
+    );
+  });
+
+  it("los documentos oficiales tienen prioridad sobre lo que menciona la ficha", () => {
+    const v = vista({ content: CONTENIDO, analysis_documents: [], mentions_attachments: true });
+    expect(basesNotice(v, [], ["Bases.pdf"])).toBe(
+      "Este borrador se hizo solo con la ficha. La Compra Ágil publica Bases.pdf: súbelos y vuelve a analizar.",
+    );
   });
 
   it("con archivos subidos después del análisis pide volver a analizar", () => {

@@ -16,6 +16,7 @@ export interface UserWorkspaceSummary {
   role: MemberRole;
   status: MemberStatus;
   is_active_context: boolean;
+  logo_url?: string | null;
 }
 
 export interface WorkspaceContext {
@@ -25,6 +26,7 @@ export interface WorkspaceContext {
   role: MemberRole;
   permissions: string[];
   is_admin: boolean;
+  logo_url?: string | null;
 }
 
 export interface SupplierInvitation {

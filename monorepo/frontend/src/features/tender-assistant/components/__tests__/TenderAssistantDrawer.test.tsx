@@ -336,7 +336,7 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
     expect(onCloseMock).toHaveBeenCalledOnce();
   });
 
-  it("no se renderiza en el DOM cuando isOpen es false", () => {
+  it("se oculta con translate-x-full cuando isOpen es false", () => {
     render(
       <TenderAssistantDrawer
         tenderId="tender-1"
@@ -346,6 +346,53 @@ describe("TenderAssistantDrawer (HU-05.2)", () => {
       />
     );
 
-    expect(screen.queryByText(/Asistente Virtual IA/i)).not.toBeInTheDocument();
+    const drawer = screen.getByLabelText("Asistente virtual de licitación");
+    expect(drawer).toHaveAttribute("aria-hidden", "true");
+    expect(drawer).toHaveClass("translate-x-full");
+  });
+
+  it("llama a onClose al hacer clic en el backdrop", async () => {
+    const user = userEvent.setup();
+    const onCloseMock = vi.fn();
+
+    vi.mocked(useTenderChatModule.useTenderChat).mockReturnValue({
+      sessionId: "session-1",
+      messages: [],
+      isLoadingHistory: false,
+      isAsking: false,
+      isStartingNewChat: false,
+      error: null,
+      historyError: null,
+      loadHistory: vi.fn(),
+      startNewChat: vi.fn(),
+      retryHistory: vi.fn(),
+      sendMessage: vi.fn(),
+    });
+
+    vi.mocked(useTenderDocumentsModule.useTenderDocuments).mockReturnValue({
+      documents: [],
+      isLoading: false,
+      isUploading: false,
+      error: null,
+      canUpload: true,
+      maxDocuments: 10,
+      clearError: vi.fn(),
+      loadDocuments: vi.fn(),
+      uploadDocument: vi.fn(),
+      removeDocument: vi.fn(),
+    });
+
+    render(
+      <TenderAssistantDrawer
+        tenderId="tender-1"
+        isOpen={true}
+        onClose={onCloseMock}
+      />
+    );
+
+    const backdrop = screen.getByTestId("assistant-drawer-backdrop");
+    await user.click(backdrop);
+
+    expect(onCloseMock).toHaveBeenCalledOnce();
   });
 });

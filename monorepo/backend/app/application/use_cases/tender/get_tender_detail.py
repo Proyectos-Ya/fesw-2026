@@ -23,6 +23,10 @@ class TenderDetail:
     # calculó. `None` significa "no lo sabemos", no "cero".
     final_score: float | None
     is_closed: bool
+    # Si está en el top-N cacheado del proveedor. La ficha lo usa para no
+    # ofrecer "Recalcular" en una recomendada, y así no necesita pedir el
+    # ranking completo solo para buscar una licitación en él.
+    is_recommended: bool = False
 
 
 class GetTenderDetailUseCase:
@@ -52,6 +56,7 @@ class GetTenderDetailUseCase:
         tender = tenders[0]
 
         final_score: float | None = None
+        en_el_ranking = False
         supplier = await resolver_empresa(self.supplier_repo, user_id, supplier_id)
         if supplier is not None:
             match = await self.matching_result_repo.get_by_proveedor_and_licitacion(
@@ -59,7 +64,14 @@ class GetTenderDetailUseCase:
             )
             if match is not None:
                 final_score = match.final_score
+                en_el_ranking = match.source == "ranking"
 
+        # La fila del ranking cacheado puede seguir ahí después del cierre hasta
+        # la próxima corrida, pero `/recommended` ya no la mostraría.
+        cerrada = tender.esta_cerrada()
         return TenderDetail(
-            tender=tender, final_score=final_score, is_closed=tender.esta_cerrada()
+            tender=tender,
+            final_score=final_score,
+            is_closed=cerrada,
+            is_recommended=en_el_ranking and not cerrada,
         )

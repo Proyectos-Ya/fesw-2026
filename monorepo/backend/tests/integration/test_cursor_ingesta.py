@@ -224,3 +224,77 @@ class TestCorridasColgadas:
         )
 
         assert await servicio.hay_corrida_en_curso() is True
+
+
+async def _corrida_de_tipo(engine, *, kind: str | None, hasta_hace: timedelta) -> None:
+    hasta = utc_now_naive() - hasta_hace
+    async with AsyncSession(engine) as s:
+        s.add(
+            IngestionRunModel(
+                id=uuid.uuid4(),
+                window_from=hasta - timedelta(hours=6),
+                window_to=hasta,
+                status="ok",
+                finished_at=hasta,
+                kind=kind,
+            )
+        )
+        await s.commit()
+
+
+class TestTiposDeCorrida:
+    """Plan 305: solo los tramos de la nocturna mueven el cursor.
+
+    La fila de la corrida nocturna entera y la de cada corrida frecuente también
+    terminan en `ok`, pero su `window_to` es "ahora": si contaran, el cursor
+    saltaría por encima de lo que no se listó.
+    """
+
+    async def test_un_tramo_ok_mueve_el_cursor(self, servicio, integration_engine):
+        await _corrida_de_tipo(
+            integration_engine, kind="tramo", hasta_hace=timedelta(days=2)
+        )
+
+        desde, _ = await servicio.ventana_a_sincronizar()
+
+        assert abs(desde - (utc_now_naive() - timedelta(days=2))) < timedelta(minutes=1)
+
+    async def test_las_filas_antiguas_sin_tipo_siguen_contando(
+        self, servicio, integration_engine
+    ):
+        await _corrida_de_tipo(
+            integration_engine, kind=None, hasta_hace=timedelta(days=2)
+        )
+
+        desde, _ = await servicio.ventana_a_sincronizar()
+
+        assert abs(desde - (utc_now_naive() - timedelta(days=2))) < timedelta(minutes=1)
+
+    @pytest.mark.parametrize("kind", ["nocturna", "frecuente"])
+    async def test_las_corridas_enteras_no_mueven_el_cursor(
+        self, servicio, integration_engine, kind
+    ):
+        await _corrida_de_tipo(
+            integration_engine, kind="tramo", hasta_hace=timedelta(days=2)
+        )
+        # Más vieja que el piso de 24 h: si contara, el cursor quedaría ahí.
+        await _corrida_de_tipo(
+            integration_engine, kind=kind, hasta_hace=timedelta(hours=30)
+        )
+
+        desde, _ = await servicio.ventana_a_sincronizar()
+
+        assert abs(desde - (utc_now_naive() - timedelta(days=2))) < timedelta(minutes=1)
+
+    async def test_el_inicio_guarda_el_tipo_y_el_fin_las_peticiones(
+        self, servicio, integration_engine
+    ):
+        ahora = utc_now_naive()
+        run_id = await servicio.registrar_inicio(ahora, ahora, kind="frecuente")
+
+        await servicio.registrar_fin(run_id, status="ok", requests=123)
+
+        async with AsyncSession(integration_engine) as s:
+            fila = await s.get(IngestionRunModel, run_id)
+        assert fila is not None
+        assert (fila.kind, fila.requests, fila.status) == ("frecuente", 123, "ok")

@@ -343,3 +343,78 @@ class TestSinCambios:
         await escenario.use_case.execute()
 
         assert await escenario.avisos.list_by_user(sin_calendario) == []
+
+
+class TestSegundoLlamado:
+    """El hito del 2.º llamado tiene tipo propio y no entra en avisos ni calendario.
+
+    `_cambios` indexa los hitos por tipo y `_aplicar` mueve "todo hito cuyo tipo
+    cambió": con dos hitos oficiales del mismo tipo habría avisos falsos de
+    "Fecha modificada" y se moverían los dos.
+    """
+
+    def _con_segundo_llamado(self, escenario: Escenario) -> Tender:
+        tender = escenario.licitacion().model_copy(
+            update={"call_number": 1, "second_call_closing_at": CIERRE + timedelta(days=1)}
+        )
+        escenario.tenders.tenders[tender.id] = tender
+        return tender
+
+    async def test_el_hito_del_segundo_llamado_no_genera_avisos(self):
+        escenario = Escenario()
+        tender = self._con_segundo_llamado(escenario)
+        user_id, _ = await escenario.usuario_sincronizado(tender)
+
+        assert await escenario.use_case.execute() == 0
+        assert await escenario.avisos.list_by_user(user_id) == []
+
+    async def test_un_cierre_movido_no_arrastra_al_hito_del_segundo_llamado(self):
+        escenario = Escenario()
+        tender = self._con_segundo_llamado(escenario)
+        user_id, _ = await escenario.usuario_sincronizado(tender)
+        escenario.mover_cierre(tender)
+
+        await escenario.use_case.execute()
+
+        hitos = await escenario.hitos.list_for_tender(user_id, tender.id)
+        segundo = next(h for h in hitos if h.kind is MilestoneKind.CIERRE_SEGUNDO_LLAMADO)
+        assert segundo.due_at == CIERRE + timedelta(days=1)
+        [aviso] = await escenario.avisos.list_by_user(user_id)
+        assert [c.label for c in aviso.date_changes] == ["Cierre de recepción de ofertas"]
+
+
+class TestSinPedirLaApi:
+    """Plan 305: el refresco usa las fechas que sync-estados ya mantiene.
+
+    sync-estados escribe `closing_at` y `published_at` de cada licitación cada
+    hora desde el listado. Pedir el detalle de cada licitación sincronizada cada
+    6 h gastaba cuota en hora punta, con cuatro intentos ante cada 504, para
+    traer la misma fecha.
+    """
+
+    def _sin_refresher(self, escenario: Escenario) -> None:
+        escenario.use_case.refresher = None
+
+    async def test_detecta_el_cambio_con_la_fecha_guardada(self):
+        escenario = Escenario()
+        self._sin_refresher(escenario)
+        tender = escenario.licitacion()
+        _, evento_id = await escenario.usuario_sincronizado(tender)
+        escenario.tenders.tenders[tender.id] = tender.model_copy(
+            update={"closing_at": NUEVO_CIERRE}
+        )
+
+        cambiadas = await escenario.use_case.execute()
+
+        assert cambiadas == 1
+        assert escenario.google.eventos[evento_id].start == NUEVO_CIERRE
+        assert escenario.refresher.pedidos == []
+
+    async def test_sin_cambios_no_hace_nada(self):
+        escenario = Escenario()
+        self._sin_refresher(escenario)
+        tender = escenario.licitacion()
+        await escenario.usuario_sincronizado(tender)
+
+        assert await escenario.use_case.execute() == 0
+        assert escenario.refresher.pedidos == []

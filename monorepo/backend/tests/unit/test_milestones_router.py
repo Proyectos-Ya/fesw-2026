@@ -102,7 +102,7 @@ def test_lista_los_hitos_con_fecha_utc_urgencia_y_sincronizacion(api):
         "synced_providers": ["google"],
         "reminder_days_before": None,
     }
-    api.listar.execute.assert_awaited_once_with(api.user_id, api.tender_id)
+    api.listar.execute.assert_awaited_once_with(api.user_id, api.tender_id, None)
 
 
 def test_extraer_devuelve_los_hitos_y_cuantos_se_descartaron(api):
@@ -111,7 +111,7 @@ def test_extraer_devuelve_los_hitos_y_cuantos_se_descartaron(api):
     assert respuesta.status_code == 200
     assert respuesta.json()["discarded_count"] == 2
     assert respuesta.json()["unavailable_documents_count"] == 1
-    api.extraer.execute.assert_awaited_once_with(api.user_id, api.tender_id)
+    api.extraer.execute.assert_awaited_once_with(api.user_id, api.tender_id, None)
 
 
 def test_licitacion_inexistente_es_404(api):
@@ -226,7 +226,7 @@ def test_la_extraccion_manual_pasa_por_el_candado_de_la_automatica(api):
     respuesta = TestClient(app).post(f"{api.path}/extract")
 
     assert respuesta.status_code == 200
-    fondo.run_now.assert_awaited_once_with(api.user_id, api.tender_id, api.extraer)
+    fondo.run_now.assert_awaited_once_with(api.user_id, api.tender_id, api.extraer, None)
 
 
 def test_informa_bases_pendientes_y_fallidas(api):
@@ -240,3 +240,25 @@ def test_informa_bases_pendientes_y_fallidas(api):
 
     assert cuerpo["pending_documents_count"] == 1
     assert cuerpo["failed_documents_count"] == 1
+
+
+def test_pasa_la_empresa_activa_a_la_consulta_y_a_la_extraccion(api):
+    # Los hitos salen de los anexos de la empresa activa (plan 233).
+    empresa = uuid4()
+    app = FastAPI()
+    app.include_router(
+        create_milestones_router(
+            api.current_user,
+            lambda: api.listar,
+            lambda: api.extraer,
+            lambda: api.recordar,
+            get_optional_workspace_context=lambda: SimpleNamespace(active_supplier_id=empresa),
+        )
+    )
+    cliente = TestClient(app)
+
+    cliente.get(api.path)
+    cliente.post(f"{api.path}/extract")
+
+    api.listar.execute.assert_awaited_once_with(api.user_id, api.tender_id, empresa)
+    api.extraer.execute.assert_awaited_once_with(api.user_id, api.tender_id, empresa)

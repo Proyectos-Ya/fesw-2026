@@ -189,7 +189,9 @@ class TestNoPerderLicitaciones:
 
         fila = await _metadata(entorno, "ROTA-1")
         assert fila.attempts == MAX_INTENTOS_INGESTA
-        assert fila.is_processed is True
+        # Plan 305: el abandono queda explícito en vez de pasar por procesada.
+        assert fila.discarded_at is not None
+        assert fila.discard_reason == "abandono_por_error"
 
     async def test_un_detalle_vacio_si_se_marca_de_inmediato(self, entorno):
         """Vacío significa que no hay nada que traer; reintentar no aporta."""
@@ -363,7 +365,9 @@ class TestCarrerasEntreTareasConcurrentes:
         # Todas las que arma `_detalle` comparten comprador y estado.
         await _encolar(entorno, [f"MISMO-{i}" for i in range(6)])
 
-        resultado = await _servicio(entorno, ClienteFalso()).process_unprocessed_tenders()
+        resultado = await _servicio(
+            entorno, ClienteFalso()
+        ).process_unprocessed_tenders()
 
         assert resultado.procesadas == 6
         assert resultado.fallidas == 0
