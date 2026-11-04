@@ -7,3 +7,12 @@
 export function compraAgilFichaUrl(code: string): string {
   return `https://buscador.mercadopublico.cl/ficha?code=${encodeURIComponent(code)}`;
 }
+
+/** Ficha de Compra Ágil desde donde el proveedor cotiza (requiere sesión en Mercado Público). */
+export function compraAgilCotizacionUrl(code: string): string {
+  return `https://compra-agil.mercadopublico.cl/resumen-cotizacion/${encodeURIComponent(code)}`;
+}
+
+export function isCompraAgilCode(code: string): boolean {
+  return /-COT\d+$/i.test(code.trim());
+}

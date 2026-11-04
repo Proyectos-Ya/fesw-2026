@@ -83,6 +83,29 @@ describe("useMercadoPublicoPostulation", () => {
     expect(result.current.packageData).toEqual(samplePackage);
   });
 
+  it("CA3: para una Compra Ágil abre directo la ficha de cotización", async () => {
+    vi.mocked(bridge.probeExtension).mockResolvedValue({
+      installed: true,
+      version: "0.2.0",
+      postulation_enabled: true,
+    });
+    vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 11 });
+    vi.mocked(proposalService.getPostulationPackage).mockResolvedValue(samplePackage);
+
+    const { result } = renderHook(() =>
+      useMercadoPublicoPostulation({ tenderId: "t-2", tenderCode: "5626-943-COT26" })
+    );
+
+    await act(async () => {
+      await result.current.startPostulation();
+    });
+
+    expect(bridge.openPostulationTab).toHaveBeenCalledWith(
+      "5626-943-COT26",
+      "https://compra-agil.mercadopublico.cl/resumen-cotizacion/5626-943-COT26"
+    );
+  });
+
   it("al confirmar postulación, envía payload al bridge y enfoca pestaña (CA4)", async () => {
     vi.mocked(bridge.confirmPostulation).mockResolvedValue({ ok: true });
     vi.mocked(bridge.focusPostulationTab).mockResolvedValue({ ok: true });

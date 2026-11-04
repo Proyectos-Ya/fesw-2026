@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { compraAgilFichaUrl } from "@/features/matches/utils/links";
+import { compraAgilCotizacionUrl, isCompraAgilCode } from "@/features/matches/utils/links";
 import {
   confirmPostulation,
   focusPostulationTab,
@@ -41,11 +41,13 @@ export function useMercadoPublicoPostulation({
       }
 
       // 2. Abrir la pestaña de Mercado Público inactiva en background (CA3)
-      // Mercado Público no permite cotizar desde el buscador público (buscador.mercadopublico.cl);
-      // las cotizaciones de Compra Ágil se responden desde el Escritorio Proveedor (Menu.aspx).
+      // Compra Ágil se cotiza en su ficha (resumen-cotizacion); el buscador público no
+      // permite cotizar. Las licitaciones siguen por el Escritorio Proveedor (Menu.aspx).
       if (tenderCode) {
-        const portalUrl = "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx";
-        await openPostulationTab(tenderCode, portalUrl);
+        const url = isCompraAgilCode(tenderCode)
+          ? compraAgilCotizacionUrl(tenderCode)
+          : "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx";
+        await openPostulationTab(tenderCode, url);
       }
 
       // 3. Obtener el paquete de postulación desde la API de Chiripa
