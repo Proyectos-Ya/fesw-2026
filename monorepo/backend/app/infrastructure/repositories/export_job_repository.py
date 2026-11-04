@@ -64,6 +64,19 @@ class ExportJobRepository(IExportJobRepository):
             model = result.first()
         return self._to_entity(model, with_content) if model is not None else None
 
+    async def list_by_supplier(
+        self, supplier_id: UUID, limit: int = 20, offset: int = 0
+    ) -> list[ExportJob]:
+        result = await self.session.exec(
+            select(ExportJobModel)
+            .where(col(ExportJobModel.supplier_id) == supplier_id)
+            .options(defer(ExportJobModel.content))
+            .order_by(col(ExportJobModel.created_at).desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [self._to_entity(m, with_content=False) for m in result.all()]
+
     async def _update(self, statement) -> int:
         try:
             result = await self.session.exec(statement)

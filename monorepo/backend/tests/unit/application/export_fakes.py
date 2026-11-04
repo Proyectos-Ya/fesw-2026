@@ -33,6 +33,17 @@ class InMemoryExportJobRepository(IExportJobRepository):
             self.jobs[job.id] = job.fallido("La API se reinició durante la generación.", now)
         return len(en_proceso)
 
+    async def list_by_supplier(
+        self, supplier_id: UUID, limit: int = 20, offset: int = 0
+    ) -> list[ExportJob]:
+        matching = [
+            j.model_copy(update={"content": None})
+            for j in self.jobs.values()
+            if j.supplier_id == supplier_id
+        ]
+        matching.sort(key=lambda j: j.created_at, reverse=True)
+        return matching[offset : offset + limit]
+
     async def purge_expired(self, now: datetime) -> int:
         vencidos = [j for j in self.jobs.values() if j.content is not None and now >= j.expires_at]
         for job in vencidos:
