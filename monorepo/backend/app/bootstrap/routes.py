@@ -172,6 +172,7 @@ from app.infrastructure.routers.tender_attachments import (
 )
 from app.infrastructure.routers.tender_chat import create_tender_chat_router
 from app.infrastructure.routers.tender_digest import create_tender_digest_router
+from app.infrastructure.routers.users import create_user_router
 from app.infrastructure.routers.workspace import create_workspace_router
 from app.infrastructure.services.attachments.local_attachment_storage import (
     LocalDiskAttachmentStorage,
@@ -205,6 +206,12 @@ def register_routes(app: FastAPI) -> None:
     # orden en que FastAPI prueba las rutas, así que no se reordena a la ligera.
     app.include_router(create_health_router(), tags=["Health"])
     app.include_router(create_auth_router(get_current_user=get_current_user))
+    app.include_router(
+        create_user_router(
+            get_current_user=get_current_user,
+            get_user_repo=get_user_repo,
+        )
+    )
     app.include_router(
         create_public_supplier_logo_router(
             get_attachment_storage=get_attachment_storage

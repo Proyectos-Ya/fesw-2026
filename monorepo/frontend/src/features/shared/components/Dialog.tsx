@@ -10,10 +10,17 @@ interface DialogProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  preventOutsideClose?: boolean;
 }
 
 /** Diálogo modal accesible: foco atrapado, Escape para cerrar y foco devuelto al salir. */
-export function Dialog({ open, title, onClose, children }: DialogProps) {
+export function Dialog({
+  open,
+  title,
+  onClose,
+  children,
+  preventOutsideClose = false,
+}: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   // Ref para que un onClose nuevo en cada render no reinicie el foco del diálogo.
@@ -32,6 +39,7 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        if (preventOutsideClose) return;
         event.preventDefault();
         onCloseRef.current();
         return;
@@ -63,7 +71,9 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!preventOutsideClose && event.target === event.currentTarget) {
+          onClose();
+        }
       }}
     >
       <div

@@ -25,8 +25,11 @@ export default function PublicLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="h-full antialiased">
-      <body className="min-h-full bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong">
+    <html lang="es" className="h-full antialiased" suppressHydrationWarning>
+      <body
+        className="min-h-full bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong"
+        suppressHydrationWarning
+      >
         <PreferencesProvider>
           <header className="border-b border-border-subtle bg-surface-card/80 backdrop-blur-md">
             <div className="mx-auto flex min-h-16 max-w-3xl items-center justify-between gap-3 px-4 sm:px-6 py-2">

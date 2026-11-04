@@ -73,3 +73,23 @@ def test_el_ritmo_por_defecto_respeta_la_politica_de_nominatim():
 def test_un_ritmo_no_positivo_impide_arrancar():
     with pytest.raises(ValidationError):
         _construir(geocoding_min_interval_seconds=0)
+
+
+def test_locationiq_exige_api_key():
+    with pytest.raises(ValidationError, match="GEOCODING_API_KEY"):
+        _construir(geocoding_provider="locationiq")
+
+
+def test_locationiq_con_api_key_no_exige_correo_y_usa_su_host_y_ritmo():
+    s = _construir(geocoding_provider="locationiq", geocoding_api_key="pk.test_123")
+    assert s.geocoding_base_url == "https://us1.locationiq.com/v1"
+    assert s.geocoding_min_interval_seconds == 1.0
+
+
+def test_locationiq_respeta_un_ritmo_explicito():
+    s = _construir(
+        geocoding_provider="locationiq",
+        geocoding_api_key="pk.test_123",
+        geocoding_min_interval_seconds=3.0,
+    )
+    assert s.geocoding_min_interval_seconds == 3.0

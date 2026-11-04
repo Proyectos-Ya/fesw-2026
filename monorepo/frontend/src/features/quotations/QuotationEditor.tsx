@@ -63,9 +63,9 @@ export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderIt
         <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p>
         {exists && updatedAt && <p className="mt-1 text-sm font-medium text-text-strong">Ya existe una cotización guardada para esta licitación en tu espacio de trabajo. <span className="font-normal text-text-muted">Última modificación: {formatModified(updatedAt)}.</span></p>}
         {stored.status === "missing" && !exists && <p className="mt-1 text-sm text-text-muted">Aún no se ha generado una cotización para esta licitación.</p>}</div>
-      <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : exists ? "Abrir cotización" : "Generar cotización"}</Button>
+      <Button data-action="toggle-quotation" onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : exists ? "Abrir cotización" : "Generar cotización"}</Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} stored={stored} onRetry={() => { setStored({ status: "loading" }); setAttempt(attempt + 1); }} onPersisted={quotation => setUpdatedAt(quotation.updated_at)} onSaved={onSaved} /></div>}
+    {opened && <div data-tour="draft-cotizacion" hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} stored={stored} onRetry={() => { setStored({ status: "loading" }); setAttempt(attempt + 1); }} onPersisted={quotation => setUpdatedAt(quotation.updated_at)} onSaved={onSaved} /></div>}
   </section>;
 }
 
