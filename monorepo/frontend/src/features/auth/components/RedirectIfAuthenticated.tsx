@@ -18,7 +18,10 @@ export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
 
   if (isLoading || isAuthenticated) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center">
+      <div
+        className="flex min-h-screen w-full items-center justify-center"
+        suppressHydrationWarning
+      >
         <span className="text-sm text-text-subtle">Cargando…</span>
       </div>
     );
