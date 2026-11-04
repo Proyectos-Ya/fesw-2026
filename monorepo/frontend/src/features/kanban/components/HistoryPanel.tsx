@@ -170,6 +170,11 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
                     </span>{" "}
                     {eventSummary(event)}
                   </p>
+                  {event.tender_id && (
+                    <p className="text-[0.6875rem] font-mono text-text-subtle mt-0.5 truncate">
+                      {event.tender_id}
+                    </p>
+                  )}
                   <p className="text-xs text-text-subtle mt-0.5">
                     {formatDateTime(event.created_at)}
                   </p>
