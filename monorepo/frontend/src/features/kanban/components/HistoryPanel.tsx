@@ -170,9 +170,9 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
                     </span>{" "}
                     {eventSummary(event)}
                   </p>
-                  {event.tender_id && (
-                    <p className="text-[0.6875rem] font-mono text-text-subtle mt-0.5 truncate">
-                      {event.tender_id}
+                  {event.tender_code && (
+                    <p className="text-[0.6875rem] font-mono text-text-subtle mt-0.5">
+                      {event.tender_code}
                     </p>
                   )}
                   <p className="text-xs text-text-subtle mt-0.5">

@@ -13,6 +13,7 @@ class KanbanEventResponse(BaseModel):
     user_id: UUID
     user_name: str | None = None
     event_type: str
+    tender_code: str | None = None
     entity_type: str | None = None
     entity_id: UUID | None = None
     tender_id: UUID | None = None

@@ -112,6 +112,7 @@ from app.bootstrap.repositories import (
     get_supplier_invitation_repo,
     get_supplier_member_repo,
     get_supplier_repo,
+    get_tender_repo,
     get_user_repo,
 )
 from app.bootstrap.services import (
@@ -310,6 +311,7 @@ def register_routes(app: FastAPI) -> None:
             get_list_kanban_events_use_case=get_list_kanban_events_use_case,
             get_notify_kanban_change_use_case=get_notify_kanban_change_use_case,
             get_user_repo=get_user_repo,
+            get_tender_repo=get_tender_repo,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

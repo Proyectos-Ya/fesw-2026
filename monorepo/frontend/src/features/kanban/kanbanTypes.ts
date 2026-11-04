@@ -73,6 +73,7 @@ export interface KanbanEvent {
   user_id: string;
   user_name: string | null;
   event_type: KanbanEventType;
+  tender_code: string | null;
   entity_type: KanbanEntityType | null;
   entity_id: string | null;
   tender_id: string | null;

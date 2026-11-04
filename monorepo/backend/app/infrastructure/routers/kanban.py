@@ -59,6 +59,7 @@ from app.application.use_cases.kanban.restore_tender import RestoreTenderUseCase
 from app.application.use_cases.kanban.update_kanban_column import (
     UpdateKanbanColumnUseCase,
 )
+from app.application.repositories.tender_repository import ITenderRepository, TenderFilters
 from app.application.repositories.user_repository import IUserRepository
 from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
@@ -101,6 +102,7 @@ def create_kanban_router(
     get_list_kanban_events_use_case: Callable,
     get_notify_kanban_change_use_case: Callable,
     get_user_repo: Callable | None = None,
+    get_tender_repo: Callable | None = None,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     workspace_context_dep = get_current_workspace_context or (lambda: None)
@@ -589,6 +591,7 @@ def create_kanban_router(
         return card
 
     user_repo_dep: Callable = get_user_repo or (lambda: None)
+    tender_repo_dep: Callable = get_tender_repo or (lambda: None)
 
     @router.get(
         "/events",
@@ -603,6 +606,7 @@ def create_kanban_router(
             ListKanbanEventsUseCase, Depends(get_list_kanban_events_use_case)
         ],
         user_repo: Annotated[IUserRepository | None, Depends(user_repo_dep)],
+        tender_repo: Annotated[ITenderRepository | None, Depends(tender_repo_dep)],
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ):
@@ -618,6 +622,14 @@ def create_kanban_router(
                 if user is not None:
                     name_cache[uid] = user.full_name or user.email
 
+        code_cache: dict[UUID, str] = {}
+        if tender_repo is not None:
+            tender_ids = [e.tender_id for e in events if e.tender_id is not None]
+            if tender_ids:
+                tenders = await tender_repo.get_tenders(TenderFilters(ids=tender_ids))
+                for t in tenders:
+                    code_cache[t.id] = t.code
+
         return [
             KanbanEventResponse(
                 id=e.id,
@@ -625,6 +637,7 @@ def create_kanban_router(
                 user_id=e.user_id,
                 user_name=name_cache.get(e.user_id),
                 event_type=e.event_type,
+                tender_code=code_cache.get(e.tender_id) if e.tender_id else None,
                 entity_type=e.entity_type,
                 entity_id=e.entity_id,
                 tender_id=e.tender_id,
