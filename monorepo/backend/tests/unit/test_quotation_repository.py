@@ -33,7 +33,7 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
         # Esquema mínimo previo; las tablas de la funcionalidad las crea Alembic.
         await connection.execute(
             text(
-                "CREATE TABLE supplier (id CHAR(32) PRIMARY KEY, user_id CHAR(32), rut VARCHAR, legal_name VARCHAR, trade_name VARCHAR, description VARCHAR, regions JSON, sectors JSON, certifications JSON, keywords JSON, negative_keywords JSON, years_experience INTEGER, num_employees INTEGER, created_at DATETIME, updated_at DATETIME, profile_changed_at DATETIME)"
+                "CREATE TABLE supplier (id CHAR(32) PRIMARY KEY, user_id CHAR(32), rut VARCHAR, legal_name VARCHAR, trade_name VARCHAR, description VARCHAR, regions JSON, sectors JSON, certifications JSON, keywords JSON, negative_keywords JSON, years_experience INTEGER, num_employees INTEGER, logo_url VARCHAR, created_at DATETIME, updated_at DATETIME, profile_changed_at DATETIME)"
             )
         )
         await connection.execute(text("CREATE TABLE tender (id CHAR(32) PRIMARY KEY)"))

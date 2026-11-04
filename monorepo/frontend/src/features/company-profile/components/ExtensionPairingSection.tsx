@@ -155,7 +155,7 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
 
       <div className="mt-4 border-t border-border pt-4">
         {status === "idle" && (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span className="text-xs text-text-muted">
               Disponible para Google Chrome, Microsoft Edge y Mozilla Firefox.
             </span>
@@ -174,8 +174,8 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
 
         {status === "not_installed" && (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-medium text-amber-700">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
+            <div className="flex items-center gap-2 text-xs font-medium text-warning-text">
+              <AlertCircle className="h-4 w-4 text-warning" />
               <span>No detectamos la extensión activa en este navegador.</span>
             </div>
             <p className="text-xs text-text-subtle">
@@ -197,9 +197,9 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
         )}
 
         {status === "success" && (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-medium text-success-text">
+              <CheckCircle2 className="h-4 w-4 text-success" />
               <span>¡Extensión vinculada y lista para sincronizar anexos!</span>
             </div>
             <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={handlePair}>
@@ -210,8 +210,8 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
 
         {status === "error" && (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-medium text-rose-700">
-              <AlertCircle className="h-4 w-4 text-rose-600" />
+            <div className="flex items-center gap-2 text-xs font-medium text-danger-text">
+              <AlertCircle className="h-4 w-4 text-danger" />
               <span>{errorMessage || "Ocurrió un error al vincular la extensión."}</span>
             </div>
             <div className="flex justify-end pt-1">

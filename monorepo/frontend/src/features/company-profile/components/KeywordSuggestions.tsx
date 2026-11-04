@@ -53,7 +53,7 @@ export function KeywordSuggestions({
         {pending.map((keyword) => (
           <span
             key={keyword}
-            className="inline-flex items-center rounded-full border border-dashed border-primary-border bg-white text-xs font-medium text-primary transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary hover:bg-primary-soft"
+            className="inline-flex items-center rounded-full border border-dashed border-primary-border bg-surface-card text-xs font-medium text-primary transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary hover:bg-primary-soft"
           >
             <button
               type="button"

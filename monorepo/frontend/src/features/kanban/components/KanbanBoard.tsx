@@ -46,6 +46,7 @@ export function KanbanBoard() {
   const [activeCard, setActiveCard] = useState<KanbanCardType | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
   const newColInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -163,7 +164,7 @@ export function KanbanBoard() {
           type="button"
           onClick={() => setEditorOpen(true)}
           aria-label="Editar tablero"
-          className="flex-none rounded-md p-2 text-text-subtle hover:bg-warm-100 hover:text-text-strong transition-colors"
+          className="flex-none rounded-md p-2 text-text-subtle hover:bg-surface-hover hover:text-text-strong transition-colors"
         >
           <Icon name="settings" size={18} />
         </button>
@@ -180,7 +181,71 @@ export function KanbanBoard() {
         onReorder={(ids) => void reorderColumns(ids)}
       />
 
-      <div className="flex-1 overflow-x-auto px-6 py-5">
+      {/* Selector de pestañas por etapa en móvil (< md) */}
+      {columns.length > 0 && (
+        <div className="md:hidden flex items-center gap-2 overflow-x-auto px-4 py-2.5 border-b border-border-subtle bg-surface-inset">
+          {columns.map((column) => {
+            const isSelected =
+              (selectedColumnId ?? columns[0]?.id) === column.id;
+            return (
+              <button
+                key={column.id}
+                type="button"
+                onClick={() => setSelectedColumnId(column.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  isSelected
+                    ? "bg-primary text-on-primary shadow-xs"
+                    : "bg-surface-card text-text-body border border-border-subtle hover:bg-surface-hover hover:text-text-strong"
+                }`}
+              >
+                <span
+                  className="size-2 rounded-full flex-none"
+                  style={{ backgroundColor: column.color }}
+                />
+                <span>{column.name}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[0.625rem] font-bold ${
+                    isSelected
+                      ? "bg-white/25 text-white"
+                      : "bg-surface-inset text-text-muted"
+                  }`}
+                >
+                  {column.card_count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Vista de etapa activa en móvil (estirada a pantalla completa) */}
+      {columns.length > 0 && (
+        <div className="md:hidden flex-1 p-4 min-h-[calc(100dvh-14rem)] flex flex-col">
+          {(() => {
+            const activeCol =
+              columns.find((c) => c.id === (selectedColumnId ?? columns[0]?.id)) ??
+              columns[0];
+            return (
+              <KanbanColumn
+                column={activeCol}
+                cards={cardsInColumn(activeCol.id)}
+                tenders={tenders}
+                onRename={(id, name) => void renameColumn(id, name)}
+                onRecolor={(id, color) => void recolorColumn(id, color)}
+                onDelete={(id) => void deleteColumn(id)}
+                onAddCard={addCard}
+                onRemoveCard={(tender_id) => void removeCard(tender_id)}
+                boardTenderIds={boardTenderIds}
+                onArchiveCard={(card_id) => void archiveCard(card_id)}
+                isMobileView={true}
+              />
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Tablero clásico multicanal para pantallas anchas (md+) */}
+      <div className="hidden md:flex flex-1 overflow-x-auto px-6 py-5 min-h-[calc(100dvh-14rem)]">
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
@@ -245,7 +310,7 @@ export function KanbanBoard() {
                         setNewColumnName("");
                         setAddingColumn(false);
                       }}
-                      className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100 transition-colors"
+                      className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-surface-hover transition-colors"
                     >
                       <Icon name="x" size={16} />
                     </button>

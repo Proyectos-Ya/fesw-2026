@@ -202,7 +202,7 @@ export function SearchFilters({
           <Icon name="sliders-horizontal" size={18} color="var(--primary)" />
           <span>Filtros avanzados</span>
           {activeFilterCount > 0 && (
-            <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
+            <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[0.6875rem] font-bold text-white">
               {activeFilterCount}
             </span>
           )}
@@ -243,7 +243,7 @@ export function SearchFilters({
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 border border-border-subtle rounded-md bg-white">
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 border border-border-subtle rounded-md bg-surface-card">
               {SEARCH_REGIONS.map((region) => {
                 const isSelected = regions.includes(region);
                 return (
@@ -254,7 +254,7 @@ export function SearchFilters({
                     className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
                       isSelected
                         ? "bg-primary-soft text-primary font-semibold border border-primary/30"
-                        : "bg-surface-hover/70 text-text-muted hover:bg-warm-100 hover:text-text-strong border border-transparent"
+                        : "bg-surface-hover/70 text-text-muted hover:bg-surface-hover hover:text-text-strong border border-transparent"
                     }`}
                   >
                     {isSelected && <Icon name="check" size={12} />}
@@ -293,9 +293,9 @@ export function SearchFilters({
                 value={provinceId ?? ""}
                 onChange={handleProvinceSelect}
                 disabled={!selectedRegion || availableProvinces.length === 0}
-                className={`w-full rounded-md border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${
+                className={`w-full rounded-md border border-border-subtle bg-surface-card px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${
                   !selectedRegion
-                    ? "opacity-60 bg-gray-50 cursor-not-allowed text-text-muted"
+                    ? "opacity-60 bg-surface-inset cursor-not-allowed text-text-muted"
                     : "cursor-pointer"
                 }`}
               >
@@ -313,7 +313,7 @@ export function SearchFilters({
                 ))}
               </select>
               {!selectedRegion && (
-                <p className="mt-1 text-[11px] text-text-muted">
+                <p className="mt-1 text-[0.6875rem] text-text-muted">
                   {regions.length > 1
                     ? "Elige solo una región para filtrar por provincia y comuna."
                     : "Selecciona una región para habilitar las provincias."}
@@ -347,9 +347,9 @@ export function SearchFilters({
                 value={communeId ?? ""}
                 onChange={handleCommuneSelect}
                 disabled={!selectedProvince || availableCommunes.length === 0}
-                className={`w-full rounded-md border border-border-subtle bg-white px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${
+                className={`w-full rounded-md border border-border-subtle bg-surface-card px-3 py-2 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary ${
                   !selectedProvince
-                    ? "opacity-60 bg-gray-50 cursor-not-allowed text-text-muted"
+                    ? "opacity-60 bg-surface-inset cursor-not-allowed text-text-muted"
                     : "cursor-pointer"
                 }`}
               >
@@ -367,7 +367,7 @@ export function SearchFilters({
                 ))}
               </select>
               {selectedRegion && !selectedProvince && (
-                <p className="mt-1 text-[11px] text-text-muted">
+                <p className="mt-1 text-[0.6875rem] text-text-muted">
                   Selecciona una provincia para habilitar las comunas.
                 </p>
               )}
@@ -418,30 +418,32 @@ export function SearchFilters({
                 </button>
               )}
             </div>
-            <form onSubmit={handleApplyDates} className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 flex-1 min-w-[140px]">
-                <span className="text-xs text-text-muted font-medium">Desde:</span>
-                <input
-                  type="date"
-                  aria-label="Fecha de cierre desde"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-white px-3 py-1.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div className="flex items-center gap-2 flex-1 min-w-[140px]">
-                <span className="text-xs text-text-muted font-medium">Hasta:</span>
-                <input
-                  type="date"
-                  aria-label="Fecha de cierre hasta"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-white px-3 py-1.5 text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+            <form onSubmit={handleApplyDates} className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="grid grid-cols-2 gap-3 flex-1 sm:flex sm:items-center">
+                <div className="flex items-center gap-2 flex-1 min-w-0 sm:min-w-[140px]">
+                  <span className="text-xs text-text-muted font-medium shrink-0">Desde:</span>
+                  <input
+                    type="date"
+                    aria-label="Fecha de cierre desde"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="w-full min-w-0 rounded-md border border-border-subtle bg-surface-card px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0 sm:min-w-[140px]">
+                  <span className="text-xs text-text-muted font-medium shrink-0">Hasta:</span>
+                  <input
+                    type="date"
+                    aria-label="Fecha de cierre hasta"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="w-full min-w-0 rounded-md border border-border-subtle bg-surface-card px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-text-strong focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-teal-100 transition-colors cursor-pointer"
+                className="w-full sm:w-auto justify-center inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary-border/40 transition-colors cursor-pointer"
               >
                 Aplicar fechas
               </button>
@@ -463,7 +465,7 @@ export function SearchFilters({
                   placeholder="$ 0"
                   value={minInput}
                   onChange={(e) => setMinInput(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-white px-3 py-1.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div className="flex items-center gap-2 flex-1 min-w-[140px]">
@@ -475,12 +477,12 @@ export function SearchFilters({
                   placeholder="$ Sin límite"
                   value={maxInput}
                   onChange={(e) => setMaxInput(e.target.value)}
-                  className="w-full rounded-md border border-border-subtle bg-white px-3 py-1.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-strong placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-teal-100 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-3.5 py-1.5 text-xs font-bold text-primary hover:bg-primary-border/40 transition-colors cursor-pointer"
               >
                 Aplicar montos
               </button>

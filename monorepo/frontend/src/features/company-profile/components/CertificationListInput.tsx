@@ -93,7 +93,7 @@ export function CertificationListInput({
           {items.map((item, index) => (
             <li
               key={`${item.name}-${index}`}
-              className="flex items-center justify-between gap-3 rounded-md border border-border-default bg-white px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface-card px-3 py-2"
             >
               <div className="flex min-w-0 flex-col">
                 <span className="text-sm font-medium text-text-strong break-words">

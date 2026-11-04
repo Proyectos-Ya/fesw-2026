@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, Index, Text, text
+from sqlalchemy import JSON, Column, Double, Index, Text, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.shared.datetime_utils import utc_now_naive
@@ -103,6 +103,15 @@ class TenderModel(SQLModel, table=True):
     delivery_term_days: int | None = Field(default=None)
     requires_environmental_criteria: bool | None = Field(default=None)
     requires_social_impact_criteria: bool | None = Field(default=None)
+    # Dónde cae la dirección de entrega en el mapa (HU-22, #314). Las escribe el
+    # scheduler de geocodificación, nunca la ingesta. `delivery_geocoded_at`
+    # nulo = pendiente; con fecha y sin coordenadas = se intentó y no se
+    # encontró (`delivery_geo_precision = 'no_encontrada'`). Nullable y sin
+    # default, como las columnas de arriba.
+    delivery_lat: float | None = Field(default=None, sa_type=Double)
+    delivery_lng: float | None = Field(default=None, sa_type=Double)
+    delivery_geo_precision: str | None = Field(default=None, sa_type=Text)
+    delivery_geocoded_at: datetime | None = Field(default=None)
     created_at: datetime
     updated_at: datetime
     # Cuándo se vio por última vez la lista oficial de anexos (plan 233,
@@ -132,6 +141,15 @@ class TenderModel(SQLModel, table=True):
     __table_args__ = (
         Index("ix_tender_estado_cierre", "status_id", "closing_at"),
         Index("ix_tender_published_at", "published_at"),
+        # La cola de geocodificación (#314): con dirección y sin intento. Es una
+        # fracción mínima de la tabla, y el scheduler la recorre por cierre.
+        Index(
+            "ix_tender_geocodificacion_pendiente",
+            "closing_at",
+            postgresql_where=text(
+                "delivery_address IS NOT NULL AND delivery_geocoded_at IS NULL"
+            ),
+        ),
     )
 
 

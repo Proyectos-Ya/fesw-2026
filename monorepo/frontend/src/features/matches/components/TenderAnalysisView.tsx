@@ -253,7 +253,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
       ) : analysis ? (
         <div className="flex flex-col gap-6">
           {/* Tarjeta Principal de Análisis */}
-          <div className="rounded-lg border border-primary-border bg-gradient-to-b from-teal-50/40 to-white p-6 shadow-xs">
+          <div className="rounded-lg border border-primary-border bg-gradient-to-b from-primary-soft/50 to-surface-card p-6 shadow-xs">
             <div className="flex flex-col gap-5">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
@@ -272,7 +272,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                 <button
                   type="button"
                   onClick={() => setReportModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-danger-soft hover:text-danger hover:border-danger/30 transition-colors cursor-pointer"
                   title="Reportar análisis de compatibilidad incorrecto"
                 >
                   <Icon name="flag" size={14} />
@@ -288,7 +288,7 @@ export function TenderAnalysisView({ tenderId }: TenderAnalysisViewProps) {
                     thresholds={ANALYSIS_THRESHOLDS}
                     colors={ANALYSIS_COLORS}
                   />
-                  <div className="mt-2 text-[10px] font-bold uppercase tracking-caps text-text-subtle text-center">
+                  <div className="mt-2 text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle text-center">
                     Score de Compatibilidad
                   </div>
                 </div>

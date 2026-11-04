@@ -19,7 +19,6 @@ import { SmartQuestionCard } from "./SmartQuestionCard";
 import { TenderCard } from "./TenderCard";
 import { TenderCardSkeleton } from "./TenderCardSkeleton";
 import { PendingInvitationsList } from "@/features/workspaces/components/PendingInvitationsList";
-import { RecentWorkspacesBar } from "@/features/workspaces/components/RecentWorkspacesBar";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
 
 const GREEN_THRESHOLD = 70;
@@ -124,7 +123,6 @@ export function HomeDashboard() {
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <div className="flex flex-col gap-4">
           <TenderCardSkeleton />
           <TenderCardSkeleton />
@@ -139,7 +137,6 @@ export function HomeDashboard() {
       return (
         <section className="mx-auto w-full max-w-3xl">
           <PageHeader />
-          <RecentWorkspacesBar />
           <EmptyGreen />
         </section>
       );
@@ -147,7 +144,6 @@ export function HomeDashboard() {
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <PendingInvitationsList />
         <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary-soft">
@@ -176,7 +172,6 @@ export function HomeDashboard() {
     return (
       <section className="mx-auto w-full max-w-3xl">
         <PageHeader />
-        <RecentWorkspacesBar />
         <div className="rounded-lg border border-danger/20 bg-danger-soft/30 p-6 text-center">
           <p className="text-sm font-medium text-danger">{state.message}</p>
           <Button variant="primary" className="mt-4" onClick={() => setRetryNonce((n) => n + 1)}>
@@ -192,7 +187,6 @@ export function HomeDashboard() {
   return (
     <section className="mx-auto w-full max-w-3xl">
       <PageHeader />
-      <RecentWorkspacesBar />
       {!showCard ? (
         <SmartQuestionsBanner questions={pendingQuestions} onOpen={handleBannerOpen} />
       ) : pendingQuestions[0] ? (
@@ -237,7 +231,7 @@ export function HomeDashboard() {
           <div className="mt-6 text-center">
             <Link
               href="/matches"
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-white px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
+              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
             >
               Ver todos los matches
               <Icon name="arrow-right" size={16} />
@@ -266,7 +260,7 @@ function PageHeader() {
 function EmptyGreen() {
   return (
     <div className="rounded-lg border border-border-subtle bg-surface-card p-10 text-center shadow-xs">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-warm-100">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-surface-inset">
         <Icon name="search" size={22} color="var(--text-subtle)" />
       </div>
       <h2 className="font-display text-xl font-semibold text-text-strong">
@@ -278,7 +272,7 @@ function EmptyGreen() {
       </p>
       <Link
         href="/matches"
-        className="mt-6 inline-flex items-center gap-2 rounded-full border border-border-default bg-white px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
+        className="mt-6 inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-6 py-3 text-sm font-bold text-text-strong shadow-xs hover:border-primary hover:text-primary transition-colors"
       >
         Ver todos los matches
         <Icon name="arrow-right" size={16} />

@@ -183,3 +183,38 @@ async def test_delete_prohibido_lanza() -> None:
 
     with pytest.raises(AttachmentStorageError):
         await _almacenamiento().delete(KEY)
+
+
+@respx.mock
+async def test_put_bytes_firma_el_hash_del_cuerpo() -> None:
+    # R2 compara x-amz-content-sha256 con el cuerpo que recibe: firmar el hash del
+    # cuerpo vacío hace que rechace la subida con XAmzContentSHA256Mismatch.
+    ruta = respx.put(URL_OBJETO).mock(return_value=httpx.Response(200))
+
+    await _almacenamiento().put_bytes(KEY, b"hola")
+
+    peticion = ruta.calls.last.request
+    assert peticion.content == b"hola"
+    assert peticion.headers["x-amz-content-sha256"] == HOLA_HEX
+    assert peticion.headers["x-amz-checksum-sha256"] == HOLA_B64
+    firmadas = "SignedHeaders=content-length;content-type;host;x-amz-checksum-sha256;"
+    assert firmadas in peticion.headers["authorization"]
+
+
+@respx.mock
+async def test_put_bytes_rechazado_lanza() -> None:
+    respx.put(URL_OBJETO).mock(return_value=httpx.Response(400))
+
+    with pytest.raises(AttachmentStorageError):
+        await _almacenamiento().put_bytes(KEY, b"hola")
+
+
+@respx.mock
+async def test_get_sigue_firmando_el_cuerpo_vacio() -> None:
+    ruta = respx.get(URL_OBJETO).mock(return_value=httpx.Response(200, content=b"hola"))
+
+    await _almacenamiento().get_bytes(KEY)
+
+    assert ruta.calls.last.request.headers["x-amz-content-sha256"] == (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )

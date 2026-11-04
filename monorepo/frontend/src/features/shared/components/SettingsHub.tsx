@@ -158,12 +158,12 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
           {commentSuccess ? (
             <div
               role="alert"
-              className="mt-6 flex items-start gap-3 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-900"
+              className="mt-6 flex items-start gap-3 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-strong"
             >
-              <Icon name="circle-check" className="size-5 text-teal-600 shrink-0 mt-0.5" />
+              <Icon name="circle-check" className="size-5 text-primary shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">¡Gracias por tu mensaje!</p>
-                <p className="text-xs text-teal-700">
+                <p className="text-xs text-text-muted">
                   Tu comentario o queja ha sido registrado exitosamente y será revisado por nuestro
                   equipo.
                 </p>
@@ -223,12 +223,12 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
           {reviewSuccess ? (
             <div
               role="alert"
-              className="mt-6 flex items-start gap-3 rounded-lg border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-900"
+              className="mt-6 flex items-start gap-3 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-strong"
             >
-              <Icon name="circle-check" className="size-5 text-teal-600 shrink-0 mt-0.5" />
+              <Icon name="circle-check" className="size-5 text-primary shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold mb-0.5">¡Gracias por tu reseña!</p>
-                <p className="text-xs text-teal-700">
+                <p className="text-xs text-text-muted">
                   Agradecemos el tiempo que te tomaste para valorar la plataforma.
                 </p>
                 <Button
@@ -261,7 +261,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
                     aria-label="0 estrellas"
                     className={`px-2 py-1 text-xs rounded border transition-colors cursor-pointer ${
                       rating === 0
-                        ? "bg-slate-800 text-white border-slate-800"
+                        ? "bg-primary text-text-inverse border-primary"
                         : "border-border-subtle text-text-muted hover:bg-surface-hover"
                     }`}
                   >
@@ -280,7 +280,7 @@ export function SettingsHub({ initialTab = "notificaciones" }: SettingsHubProps)
                         className={`size-6 ${
                           rating !== null && rating >= star
                             ? "fill-amber-400 text-amber-400"
-                            : "text-slate-300 hover:text-slate-400"
+                            : "text-border-strong hover:text-text-muted"
                         }`}
                       />
                     </button>

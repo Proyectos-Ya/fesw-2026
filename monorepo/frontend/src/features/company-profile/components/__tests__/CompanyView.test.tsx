@@ -113,7 +113,10 @@ describe("CompanyView", () => {
       },
     ]);
 
+    const user = userEvent.setup();
     render(<CompanyView />);
+
+    await user.click(screen.getByRole("tab", { name: /equipo/i }));
 
     expect(
       await screen.findByRole("heading", { name: /equipo de la empresa/i }),

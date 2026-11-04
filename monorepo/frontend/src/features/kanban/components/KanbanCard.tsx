@@ -83,7 +83,7 @@ export function KanbanCard({ card, tender, onRemove, onArchive }: Props) {
       {tender ? (
         <>
           <div className="flex items-center gap-1 min-w-0">
-            <p className="text-[11px] text-text-subtle font-mono truncate leading-none flex-1">
+            <p className="text-[0.6875rem] text-text-subtle font-mono truncate leading-none flex-1">
               {tender.code}
             </p>
             {onArchive && (
@@ -112,7 +112,7 @@ export function KanbanCard({ card, tender, onRemove, onArchive }: Props) {
                         setMenuOpen(false);
                         setConfirmArchive(true);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-body hover:bg-warm-100"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-body hover:bg-surface-hover"
                     >
                       <Icon name="archive" size={12} />
                       Archivar
@@ -152,7 +152,7 @@ export function KanbanCard({ card, tender, onRemove, onArchive }: Props) {
           <DeadlineBadge closingAt={tender.closing_at} />
           {tender.available_amount_clp != null && (
             <div className="mt-0.5 pt-2 border-t border-border-subtle flex items-center justify-between">
-              <span className="font-mono text-[12px] font-semibold text-text-strong">
+              <span className="font-mono text-xs font-semibold text-text-strong">
                 {formatCLP(tender.available_amount_clp)}
               </span>
               <span className="text-xs text-text-muted">Sin asignar</span>
@@ -186,7 +186,7 @@ export function KanbanCard({ card, tender, onRemove, onArchive }: Props) {
               <button
                 type="button"
                 onClick={() => setConfirmArchive(false)}
-                className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-warm-100"
+                className="px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong rounded-md hover:bg-surface-hover"
               >
                 Cancelar
               </button>

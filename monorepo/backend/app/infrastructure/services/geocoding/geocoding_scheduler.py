@@ -1,0 +1,58 @@
+"""Loop de la cola de geocodificación de las direcciones de entrega (HU-22, #314).
+
+Mismo enfoque que los demás schedulers: una tarea asyncio en el lifespan, que
+asume una sola instancia de la API. Con dos, Nominatim recibiría el doble de
+peticiones.
+"""
+
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
+
+from app.application.use_cases.tender.geocode_pending_tenders import GeocodingRun
+
+logger = logging.getLogger(__name__)
+
+
+class GeocodingScheduler:
+    def __init__(
+        self,
+        geocode: Callable[[], Awaitable[GeocodingRun]],
+        interval_seconds: int,
+        batch_size: int | None = None,
+    ):
+        self.geocode = geocode
+        self.interval_seconds = interval_seconds
+        self.batch_size = batch_size
+
+    async def start_loop(self) -> None:
+        logger.info(
+            "Geocodificando direcciones de entrega cada %s segundos",
+            self.interval_seconds,
+        )
+        while True:
+            ubicadas = 0
+            try:
+                run = await self.geocode()
+                ubicadas = run.ubicadas
+                if ubicadas:
+                    # Las consultas son las que gastan cuota de Nominatim; si la
+                    # caché no absorbe la mayoría, la instancia pública no alcanza.
+                    logger.info(
+                        "%s licitaciones ubicadas en el mapa "
+                        "(%s consultas a la red, %s resueltas por la caché)",
+                        ubicadas,
+                        run.consultas,
+                        run.cacheadas,
+                    )
+            except Exception as error:
+                # Un fallo no puede matar el loop: la próxima vuelta lo reintenta.
+                logger.warning(
+                    "Error al geocodificar direcciones de entrega: %s", error
+                )
+            # Un lote lleno indica que queda cola: se sigue sin esperar el
+            # intervalo: el ritmo ya lo limita `ThrottledGeocodingService`.
+            if self.batch_size and ubicadas >= self.batch_size:
+                await asyncio.sleep(0)
+                continue
+            await asyncio.sleep(self.interval_seconds)

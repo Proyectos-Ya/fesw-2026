@@ -146,7 +146,7 @@ export function ProfileWizard() {
   if (submitState === "success") {
     return (
       <div className="mx-auto w-full max-w-2xl">
-        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+        <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
           <SuccessView onRedirect={() => { window.location.href = "/"; }} />
         </div>
       </div>
@@ -156,7 +156,7 @@ export function ProfileWizard() {
   if (submitState === "creating" || submitState === "verifying") {
     return (
       <div className="mx-auto w-full max-w-2xl">
-        <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+        <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
           <CreatingCompanyView phase={submitState} />
         </div>
       </div>
@@ -166,7 +166,7 @@ export function ProfileWizard() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <WizardProgress currentStep={currentStep} totalSteps={totalSteps} />
-      <div className="rounded-lg bg-white p-8 shadow-premium border border-border-subtle">
+      <div className="rounded-lg bg-surface-card p-4 sm:p-6 md:p-8 shadow-premium border border-border-subtle">
         {currentStep === 1 && (
           <Step1Identity
             defaultValues={{ legal_name: formData.legal_name, rut: formData.rut }}

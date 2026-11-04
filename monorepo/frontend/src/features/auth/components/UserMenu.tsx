@@ -36,7 +36,7 @@ export function UserMenu() {
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div
             role="menu"
-            className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-border-subtle bg-white p-2 shadow-premium"
+            className="absolute right-0 top-full z-20 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-surface-card p-2 shadow-premium"
           >
             <div className="px-3 py-2 border-b border-border-subtle mb-1">
               <div className="text-sm font-bold text-text-strong truncate">

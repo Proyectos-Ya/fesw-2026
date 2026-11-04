@@ -43,7 +43,7 @@ export function ChipSelect({
               className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                 isSelected
                   ? "border-primary bg-primary-soft text-primary shadow-sm"
-                  : "border-border-default bg-white text-text-muted hover:border-border-strong hover:bg-bg-page"
+                  : "border-border-default bg-surface-card text-text-muted hover:border-border-strong hover:bg-bg-page"
               }`}
             >
               {option}

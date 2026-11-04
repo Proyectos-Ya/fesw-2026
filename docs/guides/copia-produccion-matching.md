@@ -7,7 +7,11 @@ de la API de Mercado Público.
 Necesitas un acceso de solo lectura a la base de producción (usuario
 `matching_lectura`), que te entrega quien administra producción junto con la URI
 de conexión. Con él exportas las licitaciones cuando quieras. Los vectores los
-recalculas en tu máquina: no necesitas acceso a Qdrant Cloud.
+recalcula `cargar` con DeepInfra (`EMBEDDING_PROVIDER=deepinfra` y tu
+`EMBEDDING_API_KEY`): no necesitas acceso a Qdrant Cloud.
+
+Si solo quieres usar el dump que ya está en el repositorio, no necesitas nada de
+esto: `python -m scripts.dump cargar` y listo.
 
 ---
 
@@ -15,8 +19,8 @@ recalculas en tu máquina: no necesitas acceso a Qdrant Cloud.
 
 | Incluye | No incluye |
 |---|---|
-| `tender`, `tender_item`, `buyer_institution`, `region`, `tender_status` (solo licitaciones **vigentes**) | Usuarios, empresas, invitaciones, chats, cotizaciones, notificaciones |
-| Vectores de la colección `tenders`, recalculados en local | La colección `suppliers` (cada uno crea su empresa en local) |
+| `tender` (todas sus columnas, incluidas dirección de entrega y coordenadas), `tender_item`, `buyer_institution`, `region`, `tender_status` (solo licitaciones **vigentes**) | Usuarios, empresas, invitaciones, chats, cotizaciones, notificaciones |
+| Vectores de `tenders`, `tender_items` y `tender_lexical`, recalculados al cargar | La colección `suppliers` (cada uno crea su empresa en local) |
 | | `matching_result` (se recalcula al entrar al dashboard) |
 
 Todo lo que incluye es información pública de Mercado Público.
@@ -52,49 +56,58 @@ read -s "PROD_RO_PASS?Password de matching_lectura: "
 ```
 
 ```bash
-DATABASE_URL="postgresql://matching_lectura.<project-ref>:${PROD_RO_PASS}@<host>:5432/postgres" python tests/matching_evaluation/export_dataset.py
+DATABASE_URL="postgresql://matching_lectura.<project-ref>:${PROD_RO_PASS}@<host>:5432/postgres" python -m scripts.dump exportar --limite 300
 ```
+
+Sin `--limite` exporta todas las vigentes (miles). Con `--limite N`, `--limite N` (por ejemplo
+`--limite 500`). Primero van las que traen dirección de entrega y, entre esas, las
+que ya tienen coordenadas; el resto se reparte entre regiones. Para la misma base,
+el pedazo sale siempre igual. `--archivo <ruta>` escribe en otro lugar sin pisar
+el dump del repo. El export solo hace `SELECT`.
 
 `DATABASE_URL` va delante del comando y **no con `export`**: así solo ese comando
 apunta a producción y el resto de los scripts sigue usando tu `.env` local. Si la
 contraseña tiene caracteres especiales (`@`, `#`, `/`, `:`, `%`), hay que
 codificarlos (por ejemplo `@` → `%40`).
 
-Sobrescribe `project-data/chiripa_tenders.xlsx`. **No lo commitees en cada
-refresco**: es un binario y cada versión queda para siempre en el historial.
-Para descartarlo después: `git restore project-data/chiripa_tenders.xlsx`.
+Sobrescribe `project-data/chiripa_tenders.xlsx`. Commitéalo solo cuando quieras
+compartir un dump nuevo con el equipo: es un binario y cada versión queda para
+siempre en el historial. Para descartarlo: `git restore project-data/chiripa_tenders.xlsx`.
 
-**2.2. Vaciar el catálogo local:**
+**2.2. Cargarlo.** Un solo comando: carga el dump, corre sus fechas para que
+quede vigente e indexa con el mismo código que la ingesta de producción.
 
-```bash
-docker exec supabase_db_fesw-2026 psql -U postgres -c "truncate tender_item, tender, tender_metadata, matching_result, buyer_institution cascade;"
-```
-
-```bash
-curl -X DELETE http://localhost:6333/collections/tenders
-```
-
-**2.3. Cargar Postgres:**
+**Borra todo el entorno local sin preguntar**: el catálogo, las cuentas (también
+los logins de Supabase Auth), las empresas y lo que cuelga de ellas (guardadas,
+kanban, chats, cotizaciones, alertas, vectores de `suppliers`). Después de
+cargar hay que registrarse de nuevo en `/register`; si el navegador tenía una
+sesión abierta, cierra sesión primero.
 
 ```bash
-python tests/matching_evaluation/load_postgres_robust.py
+python -m scripts.dump cargar
 ```
 
-**2.4. Calcular los vectores.** Indexa en tu Qdrant local con el mismo modelo y
-el mismo código que la ingesta de producción. Tarda un rato: calcula BGE-M3 en
-CPU.
+Antes de borrar nada comprueba que el proveedor de embeddings responde. Se niega
+a correr contra una base o un Qdrant que no sean locales.
+
+**2.3. Cuando vuelva a vencer.** Las compras ágiles duran unos diez días. Sin
+recargar nada:
 
 ```bash
-python tests/matching_evaluation/load_dataset.py
+python -m scripts.dump revivir
 ```
 
-**2.5. Comprobar que Postgres y Qdrant cuadran.** Solo mide, no escribe:
+Corre todo el catálogo del dump los mismos días, hasta que la publicación más
+reciente quede de hoy, y actualiza el payload de Qdrant sin recalcular vectores.
+Las licitaciones que bajaste con la ingesta real no se tocan.
+
+**2.4. Comprobar que Postgres y Qdrant cuadran.** Solo mide, no escribe:
 
 ```bash
 python -m scripts.check_tender_vector_orphans
 ```
 
-**2.6. Crear la cuenta** (solo la primera vez) en `/register`, confirmar el correo
+**2.5. Crear la cuenta** (después de cada `cargar`) en `/register`, confirmar el correo
 en Mailpit (http://localhost:54324) y completar el perfil de la empresa.
 
 ---

@@ -44,6 +44,7 @@ class SupplierModel(SQLModel, table=True):
     )
     years_experience: int | None = None
     num_employees: int | None = None
+    logo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime
     updated_at: datetime
     profile_changed_at: datetime | None = None

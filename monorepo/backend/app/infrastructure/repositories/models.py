@@ -41,6 +41,9 @@ from app.infrastructure.repositories.feedback_model import (
     AssistantMessageFeedbackModel,
     MatchReportModel,
 )
+from app.infrastructure.repositories.geocoding_cache_model import (
+    GeocodingCacheModel,
+)
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -138,6 +141,7 @@ __all__ = [
     "BuyerInstitutionModel",
     "DeepAnalysisModel",
     "ExportJobModel",
+    "GeocodingCacheModel",
     "KanbanCardModel",
     "KanbanColumnModel",
     "MatchingResultModel",

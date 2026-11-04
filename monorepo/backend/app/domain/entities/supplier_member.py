@@ -91,6 +91,7 @@ class WorkspaceContext(BaseModel):
     role: MemberRole
     permissions: list[str] = Field(default_factory=list)
     is_admin: bool = False
+    logo_url: str | None = None
 
 
 class UserWorkspaceSummary(BaseModel):
@@ -101,3 +102,4 @@ class UserWorkspaceSummary(BaseModel):
     role: MemberRole
     status: MemberStatus = MemberStatus.ACTIVE
     is_active_context: bool = False
+    logo_url: str | None = None

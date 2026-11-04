@@ -21,7 +21,7 @@ export function NextSteps({ view, tenderCode }: NextStepsProps) {
   return (
     <section
       aria-labelledby="proximos-pasos"
-      className="mb-6 rounded-lg border border-primary/20 bg-teal-50/40 p-5"
+      className="mb-6 rounded-lg border border-primary/20 bg-primary-soft/50 p-5"
     >
       <h2 id="proximos-pasos" className="mb-3 text-sm font-bold text-text-strong">
         Próximos pasos para postular

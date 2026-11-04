@@ -43,13 +43,13 @@ export function DiscrepancyModal({
           Las bases exigen: <strong>{requisito.text}</strong>
         </p>
         {origen && (
-          <p className="rounded-md bg-warm-100 px-3 py-2 text-xs text-text-muted">
+          <p className="rounded-md bg-surface-inset px-3 py-2 text-xs text-text-muted">
             La empresa respondió &quot;No&quot; el {formatDateTime(origen.answeredAt)}
             {origen.fromAnotherTender ? " en otra licitación" : ""}. Si ya no es así,
             actualiza la respuesta.
           </p>
         )}
-        <p className="font-semibold text-red-600">
+        <p className="font-semibold text-danger-text">
           Recomendamos no postular: la empresa declaró no cumplir esta exigencia
           excluyente.
         </p>
@@ -65,7 +65,7 @@ export function DiscrepancyModal({
                   <Button
                     key={opcion.label}
                     variant="ghost"
-                    className="border border-border-strong bg-white"
+                    className="border border-border-strong bg-surface-card"
                     disabled={busy}
                     onClick={() => onUpdateAnswer(pregunta.id, opcion.label)}
                   >

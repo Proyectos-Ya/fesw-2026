@@ -151,7 +151,7 @@ export function MilestonesSection({ tenderId, refreshKey, now }: MilestonesSecti
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
-              <tr className="border-b border-border-subtle text-[10px] font-bold uppercase tracking-caps text-text-subtle">
+              <tr className="border-b border-border-subtle text-[0.625rem] font-bold uppercase tracking-caps text-text-subtle">
                 {selectable && (
                   <th scope="col" className="w-8 py-2 pr-2">
                     <input
