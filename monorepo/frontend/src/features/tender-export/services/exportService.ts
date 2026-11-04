@@ -46,6 +46,10 @@ export function getExportJob(jobId: string): Promise<ExportJob> {
   return apiFetch<ExportJob>(`/exports/${encodeURIComponent(jobId)}`);
 }
 
+export function listWorkspaceExports(limit = 50, offset = 0): Promise<ExportJob[]> {
+  return apiFetch<ExportJob[]>(`/exports?limit=${limit}&offset=${offset}`);
+}
+
 export async function downloadExportFile(jobId: string): Promise<DownloadedFile> {
   const resultado = await apiDownloadOrAccepted(`/exports/${encodeURIComponent(jobId)}/file`);
   if (resultado.kind !== "file") {

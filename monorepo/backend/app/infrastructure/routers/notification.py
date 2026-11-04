@@ -38,6 +38,7 @@ def _to_preference_response(
         threshold_pct=round(preference.threshold * 100),
         delivery_mode=preference.delivery_mode,
         email_delivery_enabled=preference.email_delivery_enabled,
+        kanban_notifications_enabled=preference.kanban_notifications_enabled,
         last_failure_reason=preference.last_failure_reason,
         last_failure_at=preference.last_failure_at,
     )
@@ -103,6 +104,7 @@ def create_notification_router(
                 ),
                 delivery_mode=payload.delivery_mode,
                 reactivate_email=payload.reactivate_email,
+                kanban_notifications_enabled=payload.kanban_notifications_enabled,
             )
         except ValueError as e:
             raise HTTPException(

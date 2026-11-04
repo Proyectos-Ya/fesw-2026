@@ -11,6 +11,7 @@ from app.application.use_cases.exports.build_export_snapshot import (
 from app.application.use_cases.exports.export_jobs import (
     DownloadExportFileUseCase,
     GetExportJobUseCase,
+    ListWorkspaceExportJobsUseCase,
 )
 from app.application.use_cases.exports.export_tender import ExportTenderUseCase
 from app.application.use_cases.sharing.tender_sharing import (
@@ -60,6 +61,12 @@ def get_download_export_file_use_case(
     jobs: ExportJobRepoDep,
 ) -> DownloadExportFileUseCase:
     return DownloadExportFileUseCase(jobs)
+
+
+def get_list_workspace_export_jobs_use_case(
+    jobs: ExportJobRepoDep,
+) -> ListWorkspaceExportJobsUseCase:
+    return ListWorkspaceExportJobsUseCase(jobs)
 
 
 def get_create_share_link_use_case(

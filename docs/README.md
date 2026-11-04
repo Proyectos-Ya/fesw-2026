@@ -34,6 +34,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [306-retencion-licitaciones-cerradas.md](./plans/306-retencion-licitaciones-cerradas.md): Borrado nocturno de las licitaciones cerradas sin uso (plazo configurable) y limpieza de las tres colecciones de Qdrant al cerrar.
   * [312-hu-30/plan.md](./plans/312-hu-30/plan.md): Cotizaciones recibidas, llamado y ficha ordenada por secciones (HU-30). Tareas en [312-hu-30/task.md](./plans/312-hu-30/task.md).
   * [294-entrega-y-documentos-detalle/plan.md](./plans/294-entrega-y-documentos-detalle/plan.md): Dirección y plazo de entrega y flags del detalle de Compra Ágil, y recomendación de bases que nombra los documentos (#294). Tareas en [294-entrega-y-documentos-detalle/task.md](./plans/294-entrega-y-documentos-detalle/task.md).
+  * [313-hdu18-workspaces-integration.md](./plans/313-hdu18-workspaces-integration.md): Integración workspaces — kanban compartido, historial, notificaciones, guardadas y umbral de match (HU-18).
   * [314-hu-22-mapa-licitaciones/plan.md](./plans/314-hu-22-mapa-licitaciones/plan.md): Mapa de las direcciones de entrega de las licitaciones abiertas de la zona, con geocodificación por Nominatim (HU-22). Tareas en [314-hu-22-mapa-licitaciones/task.md](./plans/314-hu-22-mapa-licitaciones/task.md).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)

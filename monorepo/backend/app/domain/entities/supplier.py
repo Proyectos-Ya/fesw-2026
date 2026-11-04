@@ -126,6 +126,10 @@ class Supplier(BaseModel):
     updated_at: UtcDateTime = Field(default_factory=utc_now_naive)
     # Última vez que cambió el contenido que alimenta el matching (embedding)
     profile_changed_at: UtcDateTime | None = None
+    # HU-18: umbral de compatibilidad a nivel de workspace. Si no es None,
+    # `scan_supplier_for_alerts` lo usa para todos los miembros; si es None,
+    # cada miembro conserva su umbral individual en `NotificationPreference`.
+    match_threshold: float | None = None
 
     @field_validator("certifications", mode="before")
     @classmethod
@@ -151,3 +155,14 @@ class Supplier(BaseModel):
         if not is_valid_rut(value.strip()):
             raise ValueError("RUT format is invalid")
         return format_rut(value)
+
+    @field_validator("match_threshold")
+    @classmethod
+    def validate_match_threshold(cls, value: float | None) -> float | None:
+        # Mismo rango que NotificationPreference.threshold: un 0 avisaría de
+        # todo y un valor > 1 no avisaría nunca.
+        if value is None:
+            return None
+        if not 0 < value <= 1:
+            raise ValueError("match_threshold debe estar en el rango (0, 1]")
+        return value

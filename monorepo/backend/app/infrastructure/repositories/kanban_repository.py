@@ -5,11 +5,15 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.application.repositories.kanban_repository import (
-    IKanbanColumnRepository,
     IKanbanCardRepository,
+    IKanbanColumnRepository,
 )
 from app.domain.entities.kanban import KanbanCard, KanbanColumn
-from app.infrastructure.repositories.kanban_model import KanbanCardModel, KanbanColumnModel
+from app.infrastructure.repositories.kanban_model import (
+    KanbanCardModel,
+    KanbanColumnModel,
+)
+
 
 class KanbanColumnRepository(IKanbanColumnRepository):
     def __init__(self, session: AsyncSession):
@@ -18,6 +22,7 @@ class KanbanColumnRepository(IKanbanColumnRepository):
     def _to_entity(self, model: KanbanColumnModel) -> KanbanColumn:
         return KanbanColumn(
             id=model.id,
+            supplier_id=model.supplier_id,
             user_id=model.user_id,
             name=model.name,
             position=model.position,
@@ -28,6 +33,7 @@ class KanbanColumnRepository(IKanbanColumnRepository):
     def _to_model(self, entity: KanbanColumn) -> KanbanColumnModel:
         return KanbanColumnModel(
             id=entity.id,
+            supplier_id=entity.supplier_id,
             user_id=entity.user_id,
             name=entity.name,
             position=entity.position,
@@ -35,17 +41,21 @@ class KanbanColumnRepository(IKanbanColumnRepository):
             created_at=entity.created_at,
         )
 
-    async def get_by_user_id(self, user_id: UUID) -> list[KanbanColumn]:
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[KanbanColumn]:
         result = await self.session.exec(
-            select(KanbanColumnModel).where(KanbanColumnModel.user_id == user_id)
+            select(KanbanColumnModel).where(
+                KanbanColumnModel.supplier_id == supplier_id
+            )
         )
         return [self._to_entity(m) for m in result.all()]
 
-    async def get(self, column_id: UUID, user_id: UUID) -> KanbanColumn | None:
+    async def get(
+        self, column_id: UUID, supplier_id: UUID
+    ) -> KanbanColumn | None:
         result = await self.session.exec(
             select(KanbanColumnModel).where(
                 KanbanColumnModel.id == column_id,
-                KanbanColumnModel.user_id == user_id,
+                KanbanColumnModel.supplier_id == supplier_id,
             )
         )
         model = result.first()
@@ -69,11 +79,11 @@ class KanbanColumnRepository(IKanbanColumnRepository):
         await self.session.commit()
         return self._to_entity(model)
 
-    async def delete(self, column_id: UUID, user_id: UUID) -> bool:
+    async def delete(self, column_id: UUID, supplier_id: UUID) -> bool:
         result = await self.session.exec(
             select(KanbanColumnModel).where(
                 KanbanColumnModel.id == column_id,
-                KanbanColumnModel.user_id == user_id,
+                KanbanColumnModel.supplier_id == supplier_id,
             )
         )
         model = result.first()
@@ -95,10 +105,12 @@ class KanbanColumnRepository(IKanbanColumnRepository):
         return len(result.all())
 
     async def reorder(
-        self, user_id: UUID, ordered_ids: list[UUID]
+        self, supplier_id: UUID, ordered_ids: list[UUID]
     ) -> list[KanbanColumn]:
         result = await self.session.exec(
-            select(KanbanColumnModel).where(KanbanColumnModel.user_id == user_id)
+            select(KanbanColumnModel).where(
+                KanbanColumnModel.supplier_id == supplier_id
+            )
         )
         models = {m.id: m for m in result.all()}
         for idx, col_id in enumerate(ordered_ids):
@@ -119,6 +131,7 @@ class KanbanCardRepository(IKanbanCardRepository):
     def _to_entity(self, model: KanbanCardModel) -> KanbanCard:
         return KanbanCard(
             id=model.id,
+            supplier_id=model.supplier_id,
             user_id=model.user_id,
             tender_id=model.tender_id,
             column_id=model.column_id,
@@ -133,6 +146,7 @@ class KanbanCardRepository(IKanbanCardRepository):
     def _to_model(self, entity: KanbanCard) -> KanbanCardModel:
         return KanbanCardModel(
             id=entity.id,
+            supplier_id=entity.supplier_id,
             user_id=entity.user_id,
             tender_id=entity.tender_id,
             column_id=entity.column_id,
@@ -144,23 +158,25 @@ class KanbanCardRepository(IKanbanCardRepository):
             archived_reason=entity.archived_reason,
         )
 
-    async def get_by_user_id(self, user_id: UUID) -> list[KanbanCard]:
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[KanbanCard]:
         # Oculta las archivadas: el tablero activo nunca las muestra (CA4).
         result = await self.session.exec(
             select(KanbanCardModel).where(
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
                 KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
             )
         )
         return [self._to_entity(m) for m in result.all()]
 
-    async def get(self, user_id: UUID, tender_id: UUID) -> KanbanCard | None:
+    async def get(
+        self, supplier_id: UUID, tender_id: UUID
+    ) -> KanbanCard | None:
         # Devuelve solo la tarjeta activa. Si la licitación está archivada,
         # el flujo de "agregar al tablero" la trata como ausente y crea una
         # nueva (el índice único parcial lo permite).
         result = await self.session.exec(
             select(KanbanCardModel).where(
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
                 KanbanCardModel.tender_id == tender_id,
                 KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
             )
@@ -168,11 +184,13 @@ class KanbanCardRepository(IKanbanCardRepository):
         model = result.first()
         return self._to_entity(model) if model else None
 
-    async def get_by_id(self, card_id: UUID, user_id: UUID) -> KanbanCard | None:
+    async def get_by_id(
+        self, card_id: UUID, supplier_id: UUID
+    ) -> KanbanCard | None:
         result = await self.session.exec(
             select(KanbanCardModel).where(
                 KanbanCardModel.id == card_id,
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
             )
         )
         model = result.first()
@@ -192,11 +210,6 @@ class KanbanCardRepository(IKanbanCardRepository):
         model.column_id = card.column_id
         model.position = card.position
         model.updated_at = card.updated_at
-        # El soft-delete y la restauración viajan por `update`: lo que mueve
-        # entre tablero activo e historial es `archived_at`/`archived_reason`.
-        # `board_entered_at` también se actualiza: solo cambia al restaurar,
-        # para que el reloj de 90 días empiece de nuevo (regla de negocio
-        # discutida en el plan).
         model.board_entered_at = card.board_entered_at
         model.archived_at = card.archived_at
         model.archived_reason = card.archived_reason
@@ -204,13 +217,10 @@ class KanbanCardRepository(IKanbanCardRepository):
         await self.session.commit()
         return self._to_entity(model)
 
-    async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
-        # Borra la fila activa (si existe). Con soft-delete, los flujos de
-        # usuario llegan a archive/restore; este método sigue acá para quitar
-        # la fila sin dejar historial, por si lo pide otro flujo.
+    async def delete(self, supplier_id: UUID, tender_id: UUID) -> bool:
         result = await self.session.exec(
             select(KanbanCardModel).where(
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
                 KanbanCardModel.tender_id == tender_id,
                 KanbanCardModel.archived_at.is_(None),  # type: ignore[union-attr]
             )
@@ -222,11 +232,11 @@ class KanbanCardRepository(IKanbanCardRepository):
         await self.session.commit()
         return True
 
-    async def list_archived(self, user_id: UUID) -> list[KanbanCard]:
+    async def list_archived(self, supplier_id: UUID) -> list[KanbanCard]:
         result = await self.session.exec(
             select(KanbanCardModel)
             .where(
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
                 KanbanCardModel.archived_at.is_not(None),  # type: ignore[union-attr]
             )
             .order_by(KanbanCardModel.archived_at.desc())  # type: ignore[union-attr]
@@ -234,9 +244,8 @@ class KanbanCardRepository(IKanbanCardRepository):
         return [self._to_entity(m) for m in result.all()]
 
     async def list_archived_with_context(
-        self, user_id: UUID
+        self, supplier_id: UUID
     ) -> list[tuple[KanbanCard, str, str, str]]:
-        # Importes locales para no forzar cargas cruzadas entre repositorios.
         from app.infrastructure.repositories.tender_model import TenderModel
 
         result = await self.session.exec(
@@ -247,7 +256,7 @@ class KanbanCardRepository(IKanbanCardRepository):
             )
             .join(TenderModel, TenderModel.id == KanbanCardModel.tender_id)
             .where(
-                KanbanCardModel.user_id == user_id,
+                KanbanCardModel.supplier_id == supplier_id,
                 KanbanCardModel.archived_at.is_not(None),  # type: ignore[union-attr]
             )
             .order_by(KanbanCardModel.archived_at.desc())  # type: ignore[union-attr]

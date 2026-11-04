@@ -72,3 +72,14 @@ class WorkspaceMemberDetailSchema(BaseModel):
 
 class SwitchWorkspaceSchema(BaseModel):
     supplier_id: UUID
+
+
+class UpdateMatchThresholdRequest(BaseModel):
+    """HU-18. `None` restaura el fallback por preferencia individual."""
+
+    match_threshold: float | None = Field(default=None)
+
+
+class WorkspaceMatchThresholdResponse(BaseModel):
+    supplier_id: UUID
+    match_threshold: float | None

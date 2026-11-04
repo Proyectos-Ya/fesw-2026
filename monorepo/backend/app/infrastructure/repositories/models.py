@@ -44,6 +44,7 @@ from app.infrastructure.repositories.feedback_model import (
 from app.infrastructure.repositories.geocoding_cache_model import (
     GeocodingCacheModel,
 )
+from app.infrastructure.repositories.kanban_event_model import KanbanEventModel
 from app.infrastructure.repositories.kanban_model import (
     KanbanCardModel,
     KanbanColumnModel,
@@ -144,6 +145,7 @@ __all__ = [
     "GeocodingCacheModel",
     "KanbanCardModel",
     "KanbanColumnModel",
+    "KanbanEventModel",
     "MatchingResultModel",
     "MatchingShadowScoreModel",
     "NotificationDeliveryModel",

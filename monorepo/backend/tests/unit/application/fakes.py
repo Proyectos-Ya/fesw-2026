@@ -871,24 +871,31 @@ class InMemoryTenderRepository(ITenderRepository):
 
 
 class InMemorySavedTenderRepository(ISavedTenderRepository):
-    """Fake repository en memoria para las licitaciones guardadas por un usuario."""
+    """Fake de guardadas por workspace (HU-18)."""
 
     def __init__(self) -> None:
-        # La clave replica la constraint única (user_id, tender_id) de la tabla.
+        # La clave replica la constraint única (supplier_id, tender_id).
         self.saved: dict[tuple[UUID, UUID], SavedTender] = {}
 
-    async def get_by_user_id(self, user_id: UUID) -> list[SavedTender]:
-        return [s for (uid, _), s in self.saved.items() if uid == user_id]
+    async def get_by_supplier_id(self, supplier_id: UUID) -> list[SavedTender]:
+        return [s for (sid, _), s in self.saved.items() if sid == supplier_id]
 
-    async def get(self, user_id: UUID, tender_id: UUID) -> SavedTender | None:
-        return self.saved.get((user_id, tender_id))
+    async def get(
+        self, supplier_id: UUID, tender_id: UUID
+    ) -> SavedTender | None:
+        return self.saved.get((supplier_id, tender_id))
 
     async def save(self, saved_tender: SavedTender) -> SavedTender:
-        self.saved[(saved_tender.user_id, saved_tender.tender_id)] = saved_tender
+        # Idempotencia: respeta la fila existente (ON CONFLICT DO NOTHING).
+        key = (saved_tender.supplier_id, saved_tender.tender_id)
+        existing = self.saved.get(key)
+        if existing is not None:
+            return existing
+        self.saved[key] = saved_tender
         return saved_tender
 
-    async def delete(self, user_id: UUID, tender_id: UUID) -> bool:
-        return self.saved.pop((user_id, tender_id), None) is not None
+    async def delete(self, supplier_id: UUID, tender_id: UUID) -> bool:
+        return self.saved.pop((supplier_id, tender_id), None) is not None
 
 
 class InMemoryNotificationPreferenceRepository(INotificationPreferenceRepository):
@@ -953,6 +960,9 @@ class InMemoryNotificationRepository(INotificationRepository):
         for n in notifications:
             self.notifications[n.id] = n
         return notifications
+
+    async def save_kanban_change(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "kanban_change")
 
     async def save_date_change(self, notification: Notification) -> Notification:
         return await self._upsert_por_tipo(notification, "date_changed")

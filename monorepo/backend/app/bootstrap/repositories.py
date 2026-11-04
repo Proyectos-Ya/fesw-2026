@@ -39,6 +39,9 @@ from app.application.repositories.feedback_repository import (
 from app.application.repositories.gemini_usage_repository import (
     IGeminiUsageRepository,
 )
+from app.application.repositories.kanban_event_repository import (
+    IKanbanEventRepository,
+)
 from app.application.repositories.kanban_repository import (
     IKanbanCardRepository,
     IKanbanColumnRepository,
@@ -100,6 +103,9 @@ from app.infrastructure.repositories.feedback_repository import (
     AppFeedbackRepository,
     AssistantFeedbackRepository,
     MatchReportRepository,
+)
+from app.infrastructure.repositories.kanban_event_repository import (
+    KanbanEventRepository,
 )
 from app.infrastructure.repositories.kanban_repository import (
     KanbanCardRepository,
@@ -316,6 +322,10 @@ def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
     return KanbanCardRepository(session)
 
 
+def get_kanban_event_repo(session: SessionDep) -> IKanbanEventRepository:
+    return KanbanEventRepository(session)
+
+
 def get_tender_attachment_repo(session: SessionDep) -> ITenderAttachmentRepository:
     return SqlTenderAttachmentRepository(session)
 
@@ -457,6 +467,13 @@ KanbanColumnRepoDep = Annotated[IKanbanColumnRepository, Depends(get_kanban_colu
 
 KanbanCardRepoDep = Annotated[IKanbanCardRepository, Depends(get_kanban_card_repo)]
 
+
+KanbanEventRepoDep = Annotated[IKanbanEventRepository, Depends(get_kanban_event_repo)]
+
+
+SupplierMemberRepoDep = Annotated[
+    ISupplierMemberRepository, Depends(get_supplier_member_repo)
+]
 
 MatchReportRepoDep = Annotated[IMatchReportRepository, Depends(get_match_report_repo)]
 AssistantFeedbackRepoDep = Annotated[

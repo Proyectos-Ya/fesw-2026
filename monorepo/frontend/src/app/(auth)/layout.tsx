@@ -15,8 +15,11 @@ export default function AuthLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="h-full antialiased">
-      <body className="h-full bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong">
+    <html lang="es" className="h-full antialiased" suppressHydrationWarning>
+      <body
+        className="h-full bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong"
+        suppressHydrationWarning
+      >
         <PreferencesProvider>
           <AuthProvider>
             <RedirectIfAuthenticated>{children}</RedirectIfAuthenticated>

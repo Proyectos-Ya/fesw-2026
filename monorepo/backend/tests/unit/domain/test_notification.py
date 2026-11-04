@@ -22,6 +22,20 @@ class TestNotificationPreference:
         assert preferencia.delivery_mode == "immediate"
         assert preferencia.wants_email() is True
 
+    def test_por_defecto_no_recibe_avisos_del_tablero_kanban(self):
+        # HU-18: la funcionalidad de notificaciones del tablero se activa
+        # explícitamente por el usuario; nunca se enciende por default.
+        preferencia = NotificationPreference(user_id=uuid4())
+
+        assert preferencia.kanban_notifications_enabled is False
+
+    def test_acepta_activar_avisos_del_tablero_kanban(self):
+        preferencia = NotificationPreference(
+            user_id=uuid4(), kanban_notifications_enabled=True
+        )
+
+        assert preferencia.kanban_notifications_enabled is True
+
     @pytest.mark.parametrize("valor", [0, -0.1, 1.5])
     def test_rechaza_umbrales_fuera_del_rango(self, valor: float):
         # Un 0 avisaría de todo y un valor mayor que 1 no avisaría nunca:

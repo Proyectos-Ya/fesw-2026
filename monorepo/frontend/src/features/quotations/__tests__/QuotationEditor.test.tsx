@@ -53,7 +53,7 @@ describe("editor de cotización", () => {
     fireEvent.change(screen.getByLabelText("Cantidad 1"), { target: { value: "3" } });
     expect(screen.getByLabelText("Subtotal 1")).toHaveTextContent("300 CLP");
     fireEvent.click(screen.getByRole("button", { name: "Cerrar cotización" }));
-    fireEvent.click(screen.getByRole("button", { name: "Generar cotización" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir cotización" }));
     expect(screen.getByLabelText("Cantidad 1")).toHaveValue(3);
     fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
     await screen.findByText("Cotización guardada.");
@@ -160,4 +160,44 @@ it("actualiza el subtotal con miles y guarda los valores numéricos", async () =
   fireEvent.click(screen.getByRole("button", {name: "Guardar cotización"}));
   await screen.findByText("Cotización guardada.");
   expect(apiFetch).toHaveBeenLastCalledWith("/tenders/tender/quotation", {method: "PUT", body: JSON.stringify({currency: "CLP", items: [{description: "Cemento", unit: "saco", quantity: "2000", unit_price: "2500"}]})});
+});
+
+describe("aviso de cotización existente del espacio de trabajo", () => {
+  it("avisa que ya existe una cotización y cuándo se modificó, antes de abrir el panel", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(saved);
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} />);
+    expect(await screen.findByText(/Ya existe una cotización guardada/)).toHaveTextContent("2026");
+    expect(screen.getByText(/Última modificación/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir cotización" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generar cotización" })).not.toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("abrir el panel no vuelve a consultar la cotización", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(saved);
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir cotización" }));
+    expect(await screen.findByLabelText("Descripción 1")).toHaveValue("Cemento");
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin cotización previa lo dice y ofrece generarla", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new ApiError(404, "No existe"));
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[]} />);
+    expect(await screen.findByText(/Aún no se ha generado una cotización/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ya existe una cotización guardada/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generar cotización" })).toBeInTheDocument();
+  });
+
+  it("tras guardar, el aviso muestra la nueva fecha de modificación", async () => {
+    vi.mocked(apiFetch)
+      .mockRejectedValueOnce(new ApiError(404, "No existe"))
+      .mockResolvedValueOnce({ ...saved, updated_at: "2027-03-05T12:00:00Z" });
+    render(<QuotationEditor tenderId="tender" tenderCode="123-45" tenderItems={[{ name: "Cemento", description: "Cemento", unit_of_measure: "saco", quantity: 2 }]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Generar cotización" }));
+    fireEvent.change(await screen.findByLabelText("Precio unitario 1"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cotización" }));
+    await screen.findByText("Cotización guardada.");
+    expect(screen.getByText(/Ya existe una cotización guardada/)).toHaveTextContent("2027");
+  });
 });

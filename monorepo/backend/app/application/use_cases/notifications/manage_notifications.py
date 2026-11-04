@@ -134,6 +134,7 @@ class UpdateNotificationPreferencesUseCase:
         threshold: float | None = None,
         delivery_mode: str | None = None,
         reactivate_email: bool = False,
+        kanban_notifications_enabled: bool | None = None,
     ) -> NotificationPreference:
         actual = await self.preference_repo.get_by_user_id(user_id)
         if actual is None:
@@ -157,6 +158,8 @@ class UpdateNotificationPreferencesUseCase:
             actual.email_delivery_enabled = True
             actual.last_failure_reason = None
             actual.last_failure_at = None
+        if kanban_notifications_enabled is not None:
+            actual.kanban_notifications_enabled = kanban_notifications_enabled
 
         return await self.preference_repo.save(actual)
 

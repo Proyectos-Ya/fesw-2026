@@ -27,7 +27,9 @@ from app.application.schemas.workspace_schema import (
     InvitationDetailsSchema,
     RejectInvitationSchema,
     SwitchWorkspaceSchema,
+    UpdateMatchThresholdRequest,
     UserPendingInvitationSchema,
+    WorkspaceMatchThresholdResponse,
     WorkspaceMemberDetailSchema,
     WorkspaceMemberSummarySchema,
 )
@@ -691,5 +693,94 @@ def create_workspace_router(
             max_age=settings.access_token_expire_minutes * 60,
         )
         return context
+
+    # HU-18 — Umbral de match del workspace
+    @router.get(
+        "/{supplier_id}/match-threshold",
+        response_model=WorkspaceMatchThresholdResponse,
+        summary="Lee el umbral de match del workspace (HU-18)",
+        tags=["Workspaces & Invitations"],
+        responses={
+            403: {"description": "No eres miembro activo de este workspace"},
+            404: {"description": "Workspace no encontrado"},
+        },
+    )
+    async def get_match_threshold(
+        supplier_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
+    ):
+        supplier = await supplier_repo.get_by_id(supplier_id)
+        if not supplier:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Workspace no encontrado.",
+            )
+        is_owner = supplier.user_id == current_user.id
+        if not is_owner:
+            member = await member_repo.get_by_user_and_supplier(
+                current_user.id, supplier_id
+            )
+            if member is None or member.status != MemberStatus.ACTIVE:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No eres miembro activo de este workspace.",
+                )
+        return WorkspaceMatchThresholdResponse(
+            supplier_id=supplier.id, match_threshold=supplier.match_threshold
+        )
+
+    @router.patch(
+        "/{supplier_id}/match-threshold",
+        response_model=WorkspaceMatchThresholdResponse,
+        summary="Fija el umbral de match del workspace (solo admin, HU-18)",
+        responses={
+            403: {"description": "Solo el administrador del workspace puede modificarlo"},
+            404: {"description": "Workspace no encontrado"},
+            422: {"description": "Umbral fuera del rango (0, 1]"},
+        },
+    )
+    async def update_match_threshold(
+        supplier_id: UUID,
+        payload: UpdateMatchThresholdRequest,
+        current_user: Annotated[User, Depends(get_current_user)],
+        supplier_repo: Annotated[ISupplierRepository, Depends(get_supplier_repo)],
+        member_repo: Annotated[
+            ISupplierMemberRepository, Depends(get_supplier_member_repo)
+        ],
+    ):
+        from pydantic import ValidationError
+
+        from app.application.use_cases.workspace.set_workspace_match_threshold import (
+            SetWorkspaceMatchThresholdUseCase,
+        )
+
+        use_case = SetWorkspaceMatchThresholdUseCase(
+            supplier_repo=supplier_repo, member_repo=member_repo
+        )
+        try:
+            supplier = await use_case.execute(
+                user_id=current_user.id,
+                supplier_id=supplier_id,
+                threshold=payload.match_threshold,
+            )
+        except SupplierNotFound as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except UnauthorizedWorkspaceAction as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            ) from e
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
+        return WorkspaceMatchThresholdResponse(
+            supplier_id=supplier.id, match_threshold=supplier.match_threshold
+        )
 
     return router

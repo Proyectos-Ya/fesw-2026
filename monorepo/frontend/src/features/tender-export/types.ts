@@ -31,6 +31,7 @@ export type ExportJobStatus = "processing" | "ready" | "failed";
 
 export interface ExportJob {
   id: string;
+  user_id: string;
   status: ExportJobStatus;
   format: ExportFormat;
   file_name: string;

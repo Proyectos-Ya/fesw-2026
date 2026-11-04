@@ -993,4 +993,25 @@ describe("TenderDetailView: grilla de métricas", () => {
       expect(card.textContent).toContain("1.er llamado: No disponible");
     });
   });
+
+  describe("atributos de Onboarding Tour (HU-28)", () => {
+    it("renderiza los selectores data-tour y data-tab-target requeridos", async () => {
+      conTender({});
+      const { container } = render(<TenderDetailView tenderId="tender-50" />);
+
+      await waitFor(() => {
+        expect(container.querySelector('[data-tour="detail-header"]')).toBeInTheDocument();
+      });
+
+      expect(container.querySelector('[data-tour="detail-actions"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tour="detail-ai-panel"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tour="detail-bases"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tour="detail-anexos"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tour="detail-calendario"]')).toBeInTheDocument();
+
+      expect(container.querySelector('[data-tab-target="bases"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tab-target="anexos"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-tab-target="calendario"]')).toBeInTheDocument();
+    });
+  });
 });

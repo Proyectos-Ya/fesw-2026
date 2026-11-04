@@ -1,19 +1,16 @@
 "use client";
 
 /**
- * Panel lateral derecho con el historial de tarjetas archivadas (HdU 10, CA4).
- *
- * Monta un drawer que entra con slide-in desde la derecha. Carga el historial
- * cuando se abre (no se queda escuchando mientras está cerrado). Cada entrada
- * muestra la licitación, cuándo entró y salió del tablero, en qué columna
- * estaba y la razón; el botón "Restaurar" solo aparece para las archivadas
- * manualmente, consistente con la regla de negocio del backend.
+ * Panel lateral con el historial unificado del tablero del workspace (HU-18).
+ * Muestra todos los eventos (movimientos, archivados, columnas, etc.) en orden
+ * cronológico inverso. Para tarjetas archivadas que siguen en archivo ofrece
+ * el botón "Restaurar".
  */
 
 import { useEffect, useState } from "react";
 import { ApiError } from "@/features/shared/api/client";
 import { Icon } from "@/features/shared/components/Icon";
-import type { KanbanArchiveEntry } from "../kanbanTypes";
+import type { KanbanEvent, KanbanEventType } from "../kanbanTypes";
 import * as kanbanService from "../services/kanban.service";
 
 interface Props {
@@ -22,20 +19,57 @@ interface Props {
   onRestored?: () => void;
 }
 
-function formatDate(iso: string): string {
+function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString("es-CL", {
+    return new Date(iso).toLocaleString("es-CL", {
       day: "2-digit",
       month: "short",
-      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
     return iso;
   }
 }
 
+const EVENT_LABELS: Record<KanbanEventType, string> = {
+  card_added: "añadió al tablero",
+  card_moved: "movió",
+  card_archived: "archivó",
+  card_restored: "restauró",
+  card_removed: "eliminó del tablero",
+  column_created: "creó la columna",
+  column_renamed: "renombró la columna",
+  column_recolored: "cambió color de columna",
+  column_reordered: "reorganizó columnas",
+  column_deleted: "eliminó la columna",
+};
+
+function eventSummary(event: KanbanEvent): string {
+  const verb = EVENT_LABELS[event.event_type] ?? event.event_type;
+  const d = event.details as Record<string, unknown>;
+
+  if (event.tender_title) {
+    if (event.event_type === "card_moved") {
+      const from = typeof d.from_column === "string" ? d.from_column : null;
+      const to = typeof d.to_column === "string" ? d.to_column : null;
+      if (from && to) return `${verb} «${event.tender_title}» de ${from} a ${to}`;
+    }
+    return `${verb} «${event.tender_title}»`;
+  }
+
+  if (event.event_type === "column_renamed") {
+    const oldName = typeof d.old_name === "string" ? d.old_name : null;
+    const newName = typeof d.new_name === "string" ? d.new_name : null;
+    if (oldName && newName) return `renombró «${oldName}» a «${newName}»`;
+  }
+
+  if (typeof d.column_name === "string") return `${verb} «${d.column_name}»`;
+  return verb;
+}
+
 export function HistoryPanel({ open, onClose, onRestored }: Props) {
-  const [entries, setEntries] = useState<KanbanArchiveEntry[]>([]);
+  const [events, setEvents] = useState<KanbanEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -46,30 +80,26 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
     setLoading(true);
     setError(null);
     kanbanService
-      .listArchive()
-      .then((data) => {
-        if (!cancelled) setEntries(data);
-      })
-      .catch(() => {
-        if (!cancelled) setError("No se pudo cargar el historial.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .listEvents()
+      .then((data) => { if (!cancelled) setEvents(data); })
+      .catch(() => { if (!cancelled) setError("No se pudo cargar el historial."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [open]);
 
-  const handleRestore = async (entry: KanbanArchiveEntry) => {
-    setRestoringId(entry.id);
+  const handleRestore = async (cardId: string) => {
+    setRestoringId(cardId);
     try {
-      await kanbanService.restoreCard(entry.id);
-      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      await kanbanService.restoreCard(cardId);
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.entity_id === cardId && e.event_type === "card_archived"
+            ? { ...e, event_type: "card_restored" as KanbanEventType }
+            : e,
+        ),
+      );
       onRestored?.();
     } catch (err) {
-      // Si el backend cambió el estado y ya no se puede restaurar, mostramos
-      // un mensaje; de lo contrario, dejamos la entrada para reintentar.
       if (err instanceof ApiError && err.status === 409) {
         setError("Esta tarjeta ya no se puede restaurar.");
       } else {
@@ -113,7 +143,7 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto h-[calc(100%-57px)] px-4 py-3 space-y-2">
+        <div className="flex-1 overflow-y-auto h-[calc(100%-57px)] px-4 py-3">
           {loading && (
             <p className="text-sm text-text-subtle text-center py-6">
               Cargando historial…
@@ -122,54 +152,46 @@ export function HistoryPanel({ open, onClose, onRestored }: Props) {
           {error && (
             <p className="text-sm text-danger text-center py-3">{error}</p>
           )}
-          {!loading && !error && entries.length === 0 && (
+          {!loading && !error && events.length === 0 && (
             <p className="text-sm text-text-subtle text-center py-6">
-              Todavía no hay tarjetas archivadas.
+              Todavía no hay actividad registrada.
             </p>
           )}
-          {entries.map((entry) => (
-            <article
-              key={entry.id}
-              className="bg-bg-sunken border border-border-subtle rounded-lg p-3 flex flex-col gap-1.5"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[0.6875rem] text-text-subtle font-mono truncate">
-                    {entry.tender_external_id ?? entry.tender_id}
+          <ul className="space-y-0">
+            {events.map((event) => (
+              <li
+                key={event.id}
+                className="flex items-start gap-3 py-3 border-b border-border-subtle last:border-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-text-strong leading-snug">
+                    <span className="font-bold">
+                      {event.user_name ?? "Alguien"}
+                    </span>{" "}
+                    {eventSummary(event)}
                   </p>
-                  <p className="text-sm font-semibold text-text-strong line-clamp-2 mt-0.5">
-                    {entry.tender_title ?? "Licitación sin título"}
+                  {event.tender_code && (
+                    <p className="text-[0.6875rem] font-mono text-text-subtle mt-0.5">
+                      {event.tender_code}
+                    </p>
+                  )}
+                  <p className="text-xs text-text-subtle mt-0.5">
+                    {formatDateTime(event.created_at)}
                   </p>
                 </div>
-                {entry.archived_reason === "manual" && (
+                {event.event_type === "card_archived" && event.entity_id && (
                   <button
                     type="button"
-                    onClick={() => void handleRestore(entry)}
-                    disabled={restoringId === entry.id}
-                    className="text-xs font-semibold text-primary hover:text-primary-hover disabled:opacity-50 whitespace-nowrap"
+                    onClick={() => void handleRestore(event.entity_id!)}
+                    disabled={restoringId === event.entity_id}
+                    className="text-xs font-semibold text-primary hover:text-primary-hover disabled:opacity-50 whitespace-nowrap mt-0.5"
                   >
-                    {restoringId === entry.id ? "Restaurando…" : "Restaurar"}
+                    {restoringId === event.entity_id ? "Restaurando…" : "Restaurar"}
                   </button>
                 )}
-              </div>
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-text-muted">
-                <dt className="text-text-subtle">Columna</dt>
-                <dd className="text-text-strong truncate">
-                  {entry.column_name ?? "—"}
-                </dd>
-                <dt className="text-text-subtle">Entró</dt>
-                <dd>{formatDate(entry.board_entered_at)}</dd>
-                <dt className="text-text-subtle">Archivada</dt>
-                <dd>{formatDate(entry.archived_at)}</dd>
-                <dt className="text-text-subtle">Razón</dt>
-                <dd>
-                  {entry.archived_reason === "manual"
-                    ? "Manual"
-                    : "Inactividad (+90 días)"}
-                </dd>
-              </dl>
-            </article>
-          ))}
+              </li>
+            ))}
+          </ul>
         </div>
       </aside>
     </>

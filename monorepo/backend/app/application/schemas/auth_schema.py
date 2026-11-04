@@ -17,4 +17,7 @@ class UserPublicSchema(BaseModel):
     phone: str | None = None
     active: bool
     email_verified: bool
+    tour_home_completed: bool = False
+    tour_detail_completed: bool = False
+    tour_draft_completed: bool = False
     created_at: datetime
