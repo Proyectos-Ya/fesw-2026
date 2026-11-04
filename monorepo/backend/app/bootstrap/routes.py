@@ -39,7 +39,9 @@ from app.bootstrap.kanban import (
     get_list_archived_tenders_use_case,
     get_list_kanban_cards_use_case,
     get_list_kanban_columns_use_case,
+    get_list_kanban_events_use_case,
     get_move_kanban_card_use_case,
+    get_notify_kanban_change_use_case,
     get_remove_tender_from_board_use_case,
     get_restore_tender_use_case,
     get_reorder_kanban_columns_use_case,
@@ -151,6 +153,10 @@ def register_routes(app: FastAPI) -> None:
         get_member_repo=get_supplier_member_repo,
         get_supplier_repo=get_supplier_repo,
     )
+    # Las dependencias se guardan en app.state para que los tests e2e puedan
+    # usarlas como clave de `dependency_overrides` sin reconstruirlas.
+    app.state.get_current_workspace_context = get_current_workspace_context
+    app.state.get_optional_workspace_context = get_optional_workspace_context
 
     # Cada router recibe solo los providers que usa. El orden de registro es el
     # orden en que FastAPI prueba las rutas, así que no se reordena a la ligera.
@@ -239,6 +245,9 @@ def register_routes(app: FastAPI) -> None:
             get_list_archived_tenders_use_case=get_list_archived_tenders_use_case,
             get_restore_tender_use_case=get_restore_tender_use_case,
             get_reorder_kanban_columns_use_case=get_reorder_kanban_columns_use_case,
+            get_list_kanban_events_use_case=get_list_kanban_events_use_case,
+            get_notify_kanban_change_use_case=get_notify_kanban_change_use_case,
+            get_current_workspace_context=get_optional_workspace_context,
         )
     )
     app.include_router(

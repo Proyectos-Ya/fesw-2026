@@ -30,7 +30,7 @@ from app.domain.errors.tender_errors import (
     TenderNotFound,
 )
 from app.main import app
-from tests.support.api_auth import autenticar
+from tests.support.api_auth import autenticar, override_workspace_context
 
 
 @pytest.fixture(autouse=True)
@@ -690,6 +690,11 @@ async def test_unsave_tender_not_saved(api: AsyncClient) -> None:
     app.dependency_overrides[get_unsave_tender_use_case] = lambda: mock_uc
 
     await _login(api, "quitar_404@example.com", "Ignacio Fuentes")
+    override_workspace_context(
+        app,
+        user_id=UUID("11111111-1111-4111-8111-111111111111"),
+        supplier_id=uuid4(),
+    )
 
     response = await api.delete(f"/tenders/{tender_id}/saved")
 

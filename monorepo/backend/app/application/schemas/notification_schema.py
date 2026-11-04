@@ -21,6 +21,9 @@ class NotificationPreferenceResponse(BaseModel):
     )
     delivery_mode: str
     email_delivery_enabled: bool
+    kanban_notifications_enabled: bool = Field(
+        description="Avisos cuando otro miembro del workspace mueve el tablero (HU-18)"
+    )
     last_failure_reason: str | None = None
     last_failure_at: UtcDateTime | None = None
 
@@ -32,6 +35,7 @@ class UpdateNotificationPreferencesRequest(BaseModel):
         default=None, description="'immediate' o 'daily_digest'"
     )
     reactivate_email: bool = False
+    kanban_notifications_enabled: bool | None = None
 
 
 class DateChangeResponse(BaseModel):
@@ -49,7 +53,9 @@ class MilestoneReminderResponse(BaseModel):
 class NotificationResponse(BaseModel):
     id: UUID
     tender_id: UUID
-    kind: Literal["match", "date_changed", "milestone_reminder"] = "match"
+    kind: Literal["match", "date_changed", "milestone_reminder", "kanban_change"] = (
+        "match"
+    )
     # Solo los avisos de compatibilidad tienen puntaje.
     score_pct: int | None = None
     date_changes: list[DateChangeResponse] = Field(default_factory=list)

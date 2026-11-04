@@ -290,24 +290,39 @@ def create_tender_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
             ) from e
 
+    def _require_workspace(context: WorkspaceContext | None) -> UUID:
+        """HU-18: las guardadas viven a nivel de workspace."""
+        if context is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes seleccionar un workspace activo para ver o modificar las guardadas.",
+            )
+        return context.active_supplier_id
+
     # Declarada antes que las rutas con `{tender_id}` para que el segmento
     # estático "saved" nunca sea capturado como parámetro de path.
-    @router.get("/saved", response_model=list[MatchingResult])
+    @router.get(
+        "/saved",
+        response_model=list[MatchingResult],
+        summary="Lista las licitaciones guardadas del workspace",
+    )
     async def get_saved_tenders(
-        current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[
             ListSavedTendersUseCase, Depends(get_list_saved_tenders_use_case)
         ],
     ):
-        """
-        Retorna únicamente las licitaciones que el usuario autenticado marcó como de interés.
-        """
-        return await use_case.execute(user_id=current_user.id)
+        """Lista compartida del workspace (HU-18): todos los miembros ven lo mismo."""
+        supplier_id = _require_workspace(workspace_context)
+        return await use_case.execute(supplier_id=supplier_id)
 
     @router.post(
         "/{tender_id}/saved",
         response_model=SavedTender,
-        status_code=status.HTTP_201_CREATED,
+        status_code=status.HTTP_200_OK,
+        summary="Guarda una licitación como de interés del workspace",
         responses={
             404: {"description": "La licitación no existe"},
         },
@@ -315,15 +330,23 @@ def create_tender_router(
     async def save_tender(
         tender_id: UUID,
         current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[SaveTenderUseCase, Depends(get_save_tender_use_case)],
     ):
-        """
-        Marca una licitación como de interés para el usuario autenticado.
+        """Marca una licitación como de interés para todo el workspace.
 
-        Es idempotente: repetir la llamada no duplica la licitación en la lista.
+        Idempotente a nivel de workspace: si otro miembro ya la había guardado,
+        devuelve la fila existente (200) en vez de 409. HU-18.
         """
+        supplier_id = _require_workspace(workspace_context)
         try:
-            return await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+            return await use_case.execute(
+                supplier_id=supplier_id,
+                user_id=current_user.id,
+                tender_id=tender_id,
+            )
         except TenderNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -332,20 +355,22 @@ def create_tender_router(
     @router.delete(
         "/{tender_id}/saved",
         status_code=status.HTTP_204_NO_CONTENT,
+        summary="Retira una licitación de la lista del workspace",
         responses={
             404: {"description": "La licitación no está en la lista de guardadas"},
         },
     )
     async def unsave_tender(
         tender_id: UUID,
-        current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[UnsaveTenderUseCase, Depends(get_unsave_tender_use_case)],
     ):
-        """
-        Retira una licitación de la lista de guardadas del usuario autenticado.
-        """
+        """Cualquier miembro del workspace puede desguardar (HU-18)."""
+        supplier_id = _require_workspace(workspace_context)
         try:
-            await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+            await use_case.execute(supplier_id=supplier_id, tender_id=tender_id)
         except SavedTenderNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)

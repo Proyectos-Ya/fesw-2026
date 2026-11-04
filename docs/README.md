@@ -25,6 +25,7 @@ Antes de implementar cualquier historia de usuario o cambio arquitectónico no t
   * [227-mejoras-cotizaciones.md](./plans/227-mejoras-cotizaciones.md): Cantidades automáticas, enteros y PDF.
   * [255-revocacion-acceso-equipo.md](./plans/255-revocacion-acceso-equipo.md): Gestión y revocación de acceso de miembros del equipo (HU-13).
   * [292-postulacion-preguntas-y-feedback.md](./plans/292-postulacion-preguntas-y-feedback.md): Preguntas basadas en las bases y feedback de carga en la postulación (mejoras a HU-20).
+  * [313-hdu18-workspaces-integration.md](./plans/313-hdu18-workspaces-integration.md): Integración workspaces — kanban compartido, historial, notificaciones, guardadas y umbral de match (HU-18).
 
 ## 2. Decisiones de Arquitectura (`docs/decisions/`)
 Registros de decisiones técnicas significativas o difíciles de revertir (ADR - Architecture Decision Record).

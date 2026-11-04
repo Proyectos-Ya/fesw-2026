@@ -40,6 +40,32 @@ def preparar_auth(app, cliente: AsyncClient) -> None:
     cliente.directorio_de_identidad = directorio
 
 
+def override_workspace_context(
+    app, *, user_id: UUID, supplier_id: UUID, is_admin: bool = True
+) -> None:
+    """Inyecta un `WorkspaceContext` activo para los tests e2e (HU-18).
+
+    Los endpoints que dependen de `get_optional_workspace_context` devuelven
+    403 cuando no hay workspace. Esta función sobreescribe esa dependencia
+    con un contexto de prueba, para que los tests que mockean el use case
+    pero no la auth real puedan igualmente pasar el guard del router.
+    """
+    from app.domain.entities.supplier_member import MemberRole, WorkspaceContext
+
+    def _dep() -> WorkspaceContext:
+        return WorkspaceContext(
+            user_id=user_id,
+            active_supplier_id=supplier_id,
+            active_supplier_name="Test Workspace",
+            role=MemberRole.ADMIN if is_admin else MemberRole.MEMBER,
+            permissions=[],
+            is_admin=is_admin,
+        )
+
+    app.dependency_overrides[app.state.get_optional_workspace_context] = _dep
+    app.dependency_overrides[app.state.get_current_workspace_context] = _dep
+
+
 async def autenticar(
     api: AsyncClient,
     *,
