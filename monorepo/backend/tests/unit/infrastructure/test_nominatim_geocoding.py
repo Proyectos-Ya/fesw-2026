@@ -66,6 +66,21 @@ async def test_sin_resultados_es_none():
     assert await _servicio().geocode("Calle que no existe 0, Chile") is None
 
 
+@respx.mock
+async def test_con_api_key_manda_key_y_404_es_sin_resultados():
+    ruta = respx.get("https://us1.locationiq.com/v1/search").mock(
+        return_value=httpx.Response(404, json={"error": "Unable to geocode"})
+    )
+    servicio = NominatimGeocodingService(
+        api_key="pk.test_123", base_url="https://us1.locationiq.com/v1"
+    )
+
+    assert await servicio.geocode("Calle Sin Numero, Chile") is None
+    peticion = ruta.calls.last.request
+    assert peticion.url.params["key"] == "pk.test_123"
+    assert peticion.url.params["format"] == "json"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -83,7 +98,19 @@ async def test_una_respuesta_rara_es_none(payload):
     assert await _servicio().geocode("Algo, Chile") is None
 
 
-@pytest.mark.parametrize("codigo", [429, 500, 503])
+@respx.mock
+async def test_una_consulta_rechazada_con_400_es_sin_resultados():
+    """Direcciones con horarios y teléfonos pasan el largo máximo del proveedor.
+
+    El 400 es de esa consulta, no del servicio: si cortara el lote, la cola
+    quedaría trabada para siempre en esa licitación.
+    """
+    respx.get(URL).mock(return_value=httpx.Response(400, json={"error": "Invalid"}))
+
+    assert await _servicio().geocode("x" * 300) is None
+
+
+@pytest.mark.parametrize("codigo", [401, 403, 429, 500, 503])
 @respx.mock
 async def test_un_error_del_servidor_es_no_disponible(codigo):
     respx.get(URL).mock(return_value=httpx.Response(codigo))
