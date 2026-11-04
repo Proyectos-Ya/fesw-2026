@@ -270,6 +270,7 @@ def build_geocoding_service() -> IGeocodingService | None:
         "Geocodificación de entregas servida por %s.", settings.geocoding_provider
     )
     return NominatimGeocodingService(
-        contact_email=settings.geocoding_contact_email or "",
+        contact_email=settings.geocoding_contact_email,
+        api_key=settings.geocoding_api_key,
         base_url=settings.geocoding_base_url,
     )
