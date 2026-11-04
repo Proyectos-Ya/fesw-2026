@@ -280,4 +280,89 @@ describe("ContentScriptBridge", () => {
       defaultOrigin
     );
   });
+
+  describe("validaciones de seguridad", () => {
+    const makeBridge = () => {
+      const postMessage = vi.fn();
+      const sendRuntime = vi.fn();
+      const bridge = new ContentScriptBridge({
+        currentOrigin: defaultOrigin,
+        extensionVersion: "0.2.0",
+        postMessageToWindow: postMessage,
+        sendMessageToRuntime: sendRuntime,
+      });
+      return { bridge, postMessage, sendRuntime };
+    };
+
+    it("rechaza mensajes sin origen", () => {
+      const { bridge, postMessage, sendRuntime } = makeBridge();
+      const handled = bridge.handleWindowMessage({
+        origin: "",
+        data: { target: "CHIRIPA_EXTENSION", type: "PING", nonce: "n" },
+      });
+      expect(handled).toBe(false);
+      expect(postMessage).not.toHaveBeenCalled();
+      expect(sendRuntime).not.toHaveBeenCalled();
+    });
+
+    it("rechaza OPEN_POSTULATION con mp_url fuera de mercadopublico.cl", () => {
+      const { bridge, sendRuntime } = makeBridge();
+      for (const mp_url of [
+        "https://evil.example/resumen-cotizacion/1-1-COT26",
+        "https://mercadopublico.cl.evil.example/x",
+        "javascript:alert(1)",
+        "http://compra-agil.mercadopublico.cl/resumen-cotizacion/1-1-COT26",
+      ]) {
+        const handled = bridge.handleWindowMessage({
+          origin: defaultOrigin,
+          data: {
+            target: "CHIRIPA_EXTENSION",
+            type: "OPEN_POSTULATION",
+            nonce: "d3b07384-d113-4f9e-b248-b4b732560e90",
+            payload: { tender_code: "1-1-COT26", mp_url },
+          },
+        });
+        expect(handled, mp_url).toBe(false);
+      }
+      expect(sendRuntime).not.toHaveBeenCalled();
+    });
+
+    it("acepta OPEN_POSTULATION con mp_url https de un subdominio de mercadopublico.cl", () => {
+      const { bridge, sendRuntime } = makeBridge();
+      const handled = bridge.handleWindowMessage({
+        origin: defaultOrigin,
+        data: {
+          target: "CHIRIPA_EXTENSION",
+          type: "OPEN_POSTULATION",
+          nonce: "d3b07384-d113-4f9e-b248-b4b732560e90",
+          payload: {
+            tender_code: "1-1-COT26",
+            mp_url: "https://compra-agil.mercadopublico.cl/resumen-cotizacion/1-1-COT26",
+          },
+        },
+      });
+      expect(handled).toBe(true);
+      expect(sendRuntime).toHaveBeenCalledTimes(1);
+    });
+
+    it("rechaza PAIR_SESSION con api_url sin https fuera de localhost", () => {
+      const { bridge, sendRuntime } = makeBridge();
+      const handled = bridge.handleWindowMessage({
+        origin: defaultOrigin,
+        data: {
+          target: "CHIRIPA_EXTENSION",
+          type: "PAIR_SESSION",
+          nonce: "d3b07384-d113-4f9e-b248-b4b732560e90",
+          payload: {
+            pairing_ticket: "TKT-1",
+            api_url: "http://attacker.example",
+            access_token: "token",
+            timestamp: Date.now(),
+          },
+        },
+      });
+      expect(handled).toBe(false);
+      expect(sendRuntime).not.toHaveBeenCalled();
+    });
+  });
 });

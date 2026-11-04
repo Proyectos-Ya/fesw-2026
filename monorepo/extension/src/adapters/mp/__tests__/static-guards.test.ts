@@ -93,4 +93,16 @@ describe("Static Security Guards (CA5, CA8)", () => {
       "mp.content.ts lee document.cookie"
     ).toBe(false);
   });
+
+  it("el bridge nunca publica mensajes a la ventana con targetOrigin comodín", () => {
+    const sources = readSourceFiles(path.join(srcDir, "services/bridge"));
+    sources.push({
+      file: "entrypoints/bridge.content.ts",
+      content: fs.readFileSync(path.join(srcDir, "entrypoints/bridge.content.ts"), "utf-8"),
+    });
+    for (const { file, content } of sources) {
+      expect(/postMessage\([^)]*["']\*["']/.test(content), `Archivo ${file} usa "*"`).toBe(false);
+      expect(/\|\|\s*["']\*["']/.test(content), `Archivo ${file} cae a "*"`).toBe(false);
+    }
+  });
 });

@@ -19,7 +19,7 @@ describe("buildManifest", () => {
     // Origenes validos
     expect(hosts).toContain("*://*.mercadopublico.cl/*");
     expect(hosts).toContain("*://*.chiripa.cl/*");
-    expect(hosts).toContain("*://*.vercel.app/*");
+    expect(hosts).not.toContain("*://*.vercel.app/*");
   });
 
   it("en modo e2e o dev incluye localhost:3000", () => {
@@ -44,5 +44,14 @@ describe("buildManifest", () => {
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png",
     });
+  });
+
+  it("los orígenes web del bridge no incluyen comodines de hosting compartido", async () => {
+    const { CHIRIPA_WEB_MATCHES } = await import("../web-origins");
+    expect(CHIRIPA_WEB_MATCHES).toContain("*://*.chiripa.cl/*");
+    expect(CHIRIPA_WEB_MATCHES.some((m) => m.includes("vercel.app"))).toBe(false);
+    const manifest = buildManifest({ mode: "production", browser: "chrome" });
+    const hosts = (manifest.host_permissions as string[]) ?? [];
+    for (const m of CHIRIPA_WEB_MATCHES) expect(hosts).toContain(m);
   });
 });

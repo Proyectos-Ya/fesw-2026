@@ -1,4 +1,5 @@
 import pkg from "../../package.json";
+import { CHIRIPA_WEB_MATCHES } from "./web-origins";
 
 export interface ManifestOptions {
   mode?: string;
@@ -12,12 +13,7 @@ export function buildManifest(options: ManifestOptions = {}) {
   const isFirefox = options.browser === "firefox";
   const version = options.version ?? pkg.version ?? "0.2.0";
 
-  const hostPermissions: string[] = [
-    "*://*.mercadopublico.cl/*",
-    "*://*.chiripa.cl/*",
-    "*://*.proyectosya.cl/*",
-    "*://*.vercel.app/*",
-  ];
+  const hostPermissions: string[] = ["*://*.mercadopublico.cl/*", ...CHIRIPA_WEB_MATCHES];
 
   if (options.origins) {
     for (const origin of options.origins) {

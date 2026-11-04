@@ -4,6 +4,7 @@ import {
   BridgeOpenPostulationMessageSchema,
   BridgePairingMessageSchema,
 } from "../../types/schemas";
+import { isAllowedApiUrl, isMercadoPublicoUrl } from "../../config/web-origins";
 
 export interface BridgeConfig {
   currentOrigin: string;
@@ -26,8 +27,8 @@ export class ContentScriptBridge {
     origin: string;
     data: Record<string, unknown>;
   }): boolean {
-    // 1. Origen: si viene definido, debe coincidir con el origen actual
-    if (event.origin && event.origin !== this.config.currentOrigin) {
+    // 1. Origen estricto: debe coincidir exactamente con el origen actual
+    if (event.origin !== this.config.currentOrigin) {
       return false;
     }
 
@@ -38,7 +39,6 @@ export class ContentScriptBridge {
 
     // 2. Protocolo Handshake PING -> PONG
     if (data.type === "PING") {
-      console.log("[Chiripa Extension] Handshake PING recibido, enviando PONG:", data.nonce);
       this.config.postMessageToWindow(
         {
           target: "CHIRIPA_WEB",
@@ -56,7 +56,7 @@ export class ContentScriptBridge {
     // 3. Emparejamiento de sesión
     if (data.type === "PAIR_SESSION") {
       const parsed = BridgePairingMessageSchema.safeParse(data);
-      if (!parsed.success) {
+      if (!parsed.success || !isAllowedApiUrl(parsed.data.payload.api_url)) {
         return false;
       }
 
@@ -90,6 +90,10 @@ export class ContentScriptBridge {
     if (data.type === "OPEN_POSTULATION") {
       const parsed = BridgeOpenPostulationMessageSchema.safeParse(data);
       if (!parsed.success) {
+        return false;
+      }
+      const mpUrl = parsed.data.payload.mp_url;
+      if (mpUrl !== undefined && !isMercadoPublicoUrl(mpUrl)) {
         return false;
       }
 

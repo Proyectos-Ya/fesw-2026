@@ -1,17 +1,13 @@
 import { defineContentScript } from "wxt/sandbox";
+import { CHIRIPA_WEB_MATCHES, DEV_WEB_MATCHES } from "../config/web-origins";
 import { ContentScriptBridge } from "../services/bridge/content-script-bridge";
 
+const buildMode = (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE;
+
 export default defineContentScript({
-  matches: [
-    "*://*.chiripa.cl/*",
-    "*://*.proyectosya.cl/*",
-    "*://*.vercel.app/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*",
-  ],
+  matches: buildMode === "production" ? CHIRIPA_WEB_MATCHES : [...CHIRIPA_WEB_MATCHES, ...DEV_WEB_MATCHES],
   runAt: "document_idle",
   main() {
-    console.log("[Chiripa Extension] Content script bridge cargado en:", window.location.href);
     const bridge = new ContentScriptBridge({
       currentOrigin: window.location.origin,
       extensionVersion: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
@@ -23,23 +19,15 @@ export default defineContentScript({
         }
       },
       postMessageToWindow: (message, targetOrigin) => {
-        try {
-          // En Firefox, los objetos del content script deben clonarse en el scope de la ventana de la página
-          const cloneFn = (globalThis as unknown as { cloneInto?: (obj: unknown, target: unknown) => unknown }).cloneInto;
-          const payload = typeof cloneFn === "function" ? cloneFn(message, window) : message;
-          window.postMessage(payload, targetOrigin || "*");
-        } catch (err) {
-          console.warn("[Chiripa Extension] Error en cloneInto/postMessage, reintentando directo:", err);
-          window.postMessage(message, targetOrigin || "*");
-        }
+        // En Firefox, los objetos del content script deben clonarse en el scope de la ventana de la página
+        const cloneFn = (globalThis as unknown as { cloneInto?: (obj: unknown, target: unknown) => unknown }).cloneInto;
+        const payload = typeof cloneFn === "function" ? cloneFn(message, window) : message;
+        window.postMessage(payload, targetOrigin);
       },
     });
 
     window.addEventListener("message", (event) => {
       const data = event.data as Record<string, unknown> | undefined;
-      if (data?.target === "CHIRIPA_EXTENSION") {
-        console.log("[Chiripa Extension] Mensaje recibido en bridge:", data.type, "origin:", event.origin);
-      }
       bridge.handleWindowMessage({
         origin: event.origin,
         data: data ?? {},
