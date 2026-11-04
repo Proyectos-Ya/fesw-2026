@@ -15,7 +15,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.application.repositories.quotation_repository import IQuotationRepository
-from app.application.services.compatibility_scorer import CompatibilityScorer
 from app.application.use_cases.deep_analysis.get_or_create_deep_analysis import (
     GetOrCreateDeepAnalysisUseCase,
 )
@@ -26,11 +25,10 @@ from app.domain.entities.supplier import Supplier
 from app.domain.entities.tender import Tender
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
-    FakeRerankerService,
-    FakeWeightingService,
     InMemoryMatchingResultRepository,
     InMemorySupplierRepository,
     InMemoryTenderRepository,
+    armar_scorer,
 )
 from tests.unit.application.test_get_or_create_deep_analysis import (
     FakeDeepAnalysisService,
@@ -83,7 +81,7 @@ async def test_ca5_user_b_reads_analysis_created_for_workspace() -> None:
     tender_repo = InMemoryTenderRepository()
     matching_repo = InMemoryMatchingResultRepository()
     ai_service = FakeDeepAnalysisService()
-    scorer = CompatibilityScorer(FakeRerankerService(), FakeWeightingService(), matching_repo)
+    scorer = armar_scorer(matching_result_repo=matching_repo)
 
     supplier_id = uuid4()
     user_a = uuid4()
@@ -139,7 +137,7 @@ async def test_ca5_sin_supplier_id_user_b_no_ve_analisis_ajeno() -> None:
     tender_repo = InMemoryTenderRepository()
     matching_repo = InMemoryMatchingResultRepository()
     ai_service = FakeDeepAnalysisService()
-    scorer = CompatibilityScorer(FakeRerankerService(), FakeWeightingService(), matching_repo)
+    scorer = armar_scorer(matching_result_repo=matching_repo)
 
     supplier_id = uuid4()
     user_a = uuid4()
