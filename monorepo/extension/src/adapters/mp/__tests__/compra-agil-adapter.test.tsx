@@ -189,3 +189,43 @@ describe("CompraAgilAdapter: llenado", () => {
     expect(clicks).not.toHaveBeenCalled();
   });
 });
+
+describe("CompraAgilAdapter: vigencia y adjuntos", () => {
+  it("fija la vigencia en hoy + validity_days con formato dd/mm/aaaa", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 4, 12, 0, 0));
+    await render();
+    await fill(basePackage({ validity_days: 10 }));
+    const vigencia = document.getElementById(":r0:") as HTMLInputElement;
+    expect(vigencia.value).toBe("14/11/2026");
+    expect(vigencia.getAttribute("data-chiripa-field-status")).toBe("filled");
+  });
+
+  it("adjunta el documento permitido y lo marca como completado", async () => {
+    await render();
+    const pdf = btoa("%PDF-1.7 prueba");
+    const res = await fill(
+      basePackage({ files: [{ name: "propuesta-tecnica.pdf", type: "application/pdf", size: 15, data_base64: pdf }] })
+    );
+    const fileInput = document.querySelector<HTMLInputElement>("input[type='file']")!;
+    expect(fileInput.files?.[0]?.name).toBe("propuesta-tecnica.pdf");
+    expect(fileInput.getAttribute("data-chiripa-field-status")).toBe("filled");
+    expect(res.pending).not.toContain("propuesta-tecnica.pdf");
+  });
+
+  it("deja pendientes los archivos con extensión no aceptada, los que sobran o los de más de 20 MB", async () => {
+    await render();
+    const res = await fill(
+      basePackage({
+        files: [
+          { name: "foto.png", type: "image/png", size: 10, data_base64: btoa("x") },
+          { name: "grande.pdf", type: "application/pdf", size: 21 * 1024 * 1024, data_base64: btoa("x") },
+          { name: "uno.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
+          { name: "dos.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
+        ],
+      })
+    );
+    expect(document.querySelector<HTMLInputElement>("input[type='file']")!.files?.[0]?.name).toBe("uno.pdf");
+    expect(res.pending).toEqual(expect.arrayContaining(["foto.png", "grande.pdf", "dos.pdf"]));
+  });
+});

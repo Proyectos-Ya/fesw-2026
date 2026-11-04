@@ -61,6 +61,7 @@ export function CompraAgilForm({ code, items }: Props) {
   const [shipping, setShipping] = useState("");
   const [detail, setDetail] = useState("");
   const [validity, setValidity] = useState("04/12/2026");
+  const [annex, setAnnex] = useState("");
 
   const net = items.reduce((acc, it, i) => acc + Number(digits(prices[i]) || 0) * it.quantity, 0);
   const canSend = net > 0;
@@ -105,9 +106,14 @@ export function CompraAgilForm({ code, items }: Props) {
       <div>
         <p>Adjuntar archivos</p>
         <span>documento anexo (opcional)</span>
-        <input type="text" readOnly value="" />
+        <input type="text" readOnly value={annex} />
         <button type="button">Examinar</button>
-        <input type="file" style={{ display: "none" }} />
+        <input
+          type="file"
+          accept=".doc,.docx,.xls,.xlsx,.pdf"
+          style={{ display: "none" }}
+          onChange={(e) => setAnnex(e.target.files?.[0]?.name ?? "")}
+        />
       </div>
       <button type="button">Volver</button>
       <button type="button" disabled={!canSend}>

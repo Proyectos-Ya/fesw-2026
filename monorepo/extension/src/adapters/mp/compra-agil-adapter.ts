@@ -1,4 +1,8 @@
-import { PostulationItemPayload, PostulationPackagePayload } from "../../types/schemas";
+import {
+  PostulationFileAttachment,
+  PostulationItemPayload,
+  PostulationPackagePayload,
+} from "../../types/schemas";
 import { COMPRA_AGIL } from "./compra-agil-selectors";
 
 export interface CompraAgilFillResult {
@@ -43,6 +47,21 @@ export function normalizeRut(rut: string): string {
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const ownText = (el: Element) => el.textContent?.trim() ?? "";
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Fecha local dentro de `days` días, en el formato del datepicker de MP (dd/mm/aaaa). */
+export function validityDate(days: number, now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+function toFile(attachment: PostulationFileAttachment): File {
+  const binary = atob(attachment.data_base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], attachment.name, { type: attachment.type });
+}
+
 const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
 
 /**
@@ -109,6 +128,7 @@ export class CompraAgilAdapter {
 
     const writes: PendingWrite[] = [];
     const pending: string[] = [];
+    let filledCountExtra = 0;
 
     const blocks = this.findItemBlocks();
     blocks.forEach((block, idx) => {
@@ -149,12 +169,35 @@ export class CompraAgilAdapter {
       pending.push(COMPRA_AGIL.labels.shipping);
     }
 
+    const validity = this.controlNear(COMPRA_AGIL.labels.validity);
+    if (validity) {
+      const expected = validityDate(pkg.validity_days);
+      writes.push({
+        el: validity,
+        expected,
+        label: COMPRA_AGIL.labels.validity,
+        matches: (value) => value === expected,
+      });
+    }
+
     for (const write of writes) {
       this.setNativeValue(write.el, write.expected);
     }
+
+    const annex = this.attachFiles(pkg.files, pending);
     await nextTick();
 
-    let filledCount = 0;
+    if (annex) {
+      const attached = annex.input.files?.[0]?.name === annex.name;
+      this.mark(annex.input, attached ? "filled" : "incomplete");
+      if (attached) {
+        filledCountExtra = 1;
+      } else {
+        pending.push(annex.name);
+      }
+    }
+
+    let filledCount = filledCountExtra;
     for (const write of writes) {
       if (write.matches(write.el.value)) {
         this.mark(write.el, "filled");
@@ -166,6 +209,38 @@ export class CompraAgilAdapter {
     }
 
     return { success: true, filledCount, incompleteCount: pending.length, pending };
+  }
+
+  /**
+   * Adjunta el primer archivo aceptado por Compra Ágil (un solo «documento anexo»).
+   * Los demás quedan pendientes para subirlos a mano.
+   */
+  private attachFiles(
+    files: PostulationFileAttachment[],
+    pending: string[]
+  ): { input: HTMLInputElement; name: string } | null {
+    if (files.length === 0) return null;
+    const label = this.findLabels(this.doc, COMPRA_AGIL.labels.annex)[0];
+    let input: HTMLInputElement | null = null;
+    for (let a = label?.parentElement ?? null, depth = 0; a && depth < 4; depth++, a = a.parentElement) {
+      input = a.querySelector<HTMLInputElement>("input[type='file']");
+      if (input) break;
+    }
+
+    const accepted = files.filter(
+      (f) =>
+        f.size <= COMPRA_AGIL.annexMaxBytes &&
+        COMPRA_AGIL.annexExtensions.some((ext) => f.name.toLowerCase().endsWith(ext))
+    );
+    const chosen = input ? accepted[0] : undefined;
+    for (const f of files) if (f !== chosen) pending.push(f.name);
+    if (!input || !chosen) return null;
+
+    const transfer = new DataTransfer();
+    transfer.items.add(toFile(chosen));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return { input, name: chosen.name };
   }
 
   public clearHighlighting(): void {

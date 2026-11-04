@@ -13,6 +13,10 @@ export const COMPRA_AGIL = {
     unitPrice: "Valor unitario",
     shipping: "Despacho",
     detail: "Detalle cotización",
+    validity: "Fecha de vigencia",
+    annex: "documento anexo (opcional)",
   },
   detailMaxLength: 255,
+  annexMaxBytes: 20 * 1024 * 1024,
+  annexExtensions: [".doc", ".docx", ".xls", ".xlsx", ".pdf"],
 } as const;
