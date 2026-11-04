@@ -1,14 +1,76 @@
 import { defineContentScript } from "wxt/sandbox";
+import { CompraAgilAdapter, parseCompraAgilCode } from "../adapters/mp/compra-agil-adapter";
+import { waitForSessionRut } from "../adapters/mp/compra-agil-session";
 import { MpFichaAdapter } from "../adapters/mp/mp-ficha-adapter";
 import { MpPostulationAdapter } from "../adapters/mp/mp-postulation-adapter";
 import { PostulationPackagePayload } from "../types/schemas";
+import { runCompraAgilFlow } from "../services/postulation/compra-agil-flow";
 import { PostulationPanel } from "../ui/postulation-panel";
+
+const requestPendingPackage = (tenderCode: string) =>
+  new Promise<PostulationPackagePayload | null>((resolve) => {
+    chrome.runtime.sendMessage({ action: "GET_PENDING_POSTULATION", tender_code: tenderCode }, (r) =>
+      resolve((r as { packageData?: PostulationPackagePayload | null } | undefined)?.packageData ?? null)
+    );
+  });
+
+/** Compra Ágil (SPA): espera el formulario y aplica el paquete pendiente. */
+function startCompraAgil(): void {
+  const adapter = new CompraAgilAdapter(document);
+  let panel: PostulationPanel | null = null;
+  let running = false;
+
+  const apply = async () => {
+    const tenderCode = parseCompraAgilCode(window.location.href);
+    if (!tenderCode || running) return;
+    running = true;
+    try {
+      await runCompraAgilFlow({
+        tenderCode,
+        getPackage: requestPendingPackage,
+        waitForForm: () => adapter.waitForForm(30_000),
+        getSessionRut: () => waitForSessionRut(),
+        fill: (pkg, options) => adapter.fill(pkg, options),
+        render: (state) => {
+          panel ??= new PostulationPanel({ doc: document, onClearHighlight: () => adapter.clearHighlighting() });
+          panel.render(state);
+        },
+      });
+    } catch (e) {
+      console.error("[Chiripa] Error aplicando el paquete en Compra Ágil:", e);
+    } finally {
+      running = false;
+    }
+  };
+
+  void apply();
+
+  // El usuario confirma en Chiripa con la pestaña ya abierta
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.action === "PACKAGE_READY" && message?.tender_code === parseCompraAgilCode(window.location.href)) {
+      void apply();
+    }
+  });
+
+  // La SPA navega con History API: reintentar al llegar a otra cotización
+  let lastHref = window.location.href;
+  setInterval(() => {
+    if (window.location.href !== lastHref) {
+      lastHref = window.location.href;
+      void apply();
+    }
+  }, 1000);
+}
 
 export default defineContentScript({
   matches: ["*://*.mercadopublico.cl/*"],
-  allFrames: true,
   runAt: "document_idle",
   async main() {
+    if (window.location.hostname === "compra-agil.mercadopublico.cl") {
+      startCompraAgil();
+      return;
+    }
+
     const postulationAdapter = new MpPostulationAdapter(document);
     const state = postulationAdapter.detectState();
 

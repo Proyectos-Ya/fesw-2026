@@ -93,4 +93,20 @@ describe("PostulationPanel (Shadow DOM UI)", () => {
     panel.destroy();
     expect(document.getElementById("chiripa-postulation-panel-host")).toBeNull();
   });
+
+  it("CA7: lista los campos pendientes y muestra avisos como texto", () => {
+    const panel = new PostulationPanel({ doc: document });
+    panel.render({
+      packageData: samplePackage,
+      filledCount: 2,
+      incompleteCount: 2,
+      pending: ["Despacho", "<img src=x onerror=alert(1)>"],
+      notice: "No pudimos verificar la empresa.",
+    });
+    const shadow = document.getElementById("chiripa-postulation-panel-host")!.shadowRoot!;
+    const items = Array.from(shadow.querySelectorAll(".pending-list li")).map((li) => li.textContent);
+    expect(items).toEqual(["Despacho", "<img src=x onerror=alert(1)>"]);
+    expect(shadow.querySelector("img")).toBeNull();
+    expect(shadow.querySelector(".notice")?.textContent).toBe("No pudimos verificar la empresa.");
+  });
 });

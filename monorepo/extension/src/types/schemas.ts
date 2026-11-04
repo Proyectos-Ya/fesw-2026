@@ -75,6 +75,7 @@ export type PostulationFileAttachment = z.infer<typeof PostulationFileAttachment
 
 export const PostulationItemPayloadSchema = z.object({
   line_number: z.number().int().positive(),
+  product_code: z.string().nullable().optional(),
   name: z.string().min(1),
   quantity: z.number().positive(),
   unit: z.string().optional(),

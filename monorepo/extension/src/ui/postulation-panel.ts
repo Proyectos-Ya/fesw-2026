@@ -10,6 +10,10 @@ export interface RenderPanelOptions {
   packageData: PostulationPackagePayload;
   filledCount: number;
   incompleteCount: number;
+  /** Campos que el usuario debe revisar o completar a mano. */
+  pending?: string[];
+  /** Aviso cuando no se completó nada (formulario ausente, empresa no verificada…). */
+  notice?: string;
 }
 
 const HOST_ID = "chiripa-postulation-panel-host";
@@ -48,6 +52,20 @@ export class PostulationPanel {
         right: 24px;
         z-index: 2147483647;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .notice {
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+      .pending-list {
+        margin: 0 0 10px;
+        padding-left: 18px;
+        font-size: 12px;
+        color: #fcd34d;
       }
       .panel {
         width: 320px;
@@ -238,6 +256,24 @@ export class PostulationPanel {
     metrics.appendChild(boxFilled);
     metrics.appendChild(boxInc);
     panel.appendChild(metrics);
+
+    if (opts.notice) {
+      const notice = this.doc.createElement("div");
+      notice.className = "notice";
+      notice.textContent = opts.notice;
+      panel.appendChild(notice);
+    }
+
+    if (opts.pending && opts.pending.length > 0) {
+      const list = this.doc.createElement("ul");
+      list.className = "pending-list";
+      for (const label of opts.pending) {
+        const li = this.doc.createElement("li");
+        li.textContent = label;
+        list.appendChild(li);
+      }
+      panel.appendChild(list);
+    }
 
     // Aviso de seguridad y manual submission (CA8)
     const warning = this.doc.createElement("div");
