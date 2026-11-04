@@ -58,16 +58,19 @@ class NotifyKanbanChangeUseCase:
         if not recipients:
             return []
 
-        notifications = [
-            Notification(
-                user_id=uid,
-                tender_id=tender_id or supplier_id,
-                kind="kanban_change",
-                score=None,
-            )
-            for uid in recipients
-        ]
         # El tender_id es NOT NULL en el schema actual de notification; para
         # eventos de columna (sin tender) usamos el supplier_id como placeholder.
         # Si la DB termina siendo nullable, cambiar a None explícito.
-        return await self.notification_repo.save_bulk(notifications)
+        # Un aviso por usuario y licitación: el siguiente cambio lo reemplaza y
+        # lo vuelve a marcar sin leer, en vez de chocar con el unique de la tabla.
+        return [
+            await self.notification_repo.save_kanban_change(
+                Notification(
+                    user_id=uid,
+                    tender_id=tender_id or supplier_id,
+                    kind="kanban_change",
+                    score=None,
+                )
+            )
+            for uid in recipients
+        ]

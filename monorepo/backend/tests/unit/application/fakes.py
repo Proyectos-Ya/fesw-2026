@@ -961,6 +961,9 @@ class InMemoryNotificationRepository(INotificationRepository):
             self.notifications[n.id] = n
         return notifications
 
+    async def save_kanban_change(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "kanban_change")
+
     async def save_date_change(self, notification: Notification) -> Notification:
         return await self._upsert_por_tipo(notification, "date_changed")
 

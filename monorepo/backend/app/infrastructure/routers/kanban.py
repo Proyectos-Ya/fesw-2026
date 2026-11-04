@@ -8,6 +8,7 @@ Las mutaciones encolan `notify_kanban_change` como BackgroundTask: la
 notificación es informativa y no debe bloquear la respuesta.
 """
 
+import logging
 from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
@@ -69,6 +70,9 @@ from app.domain.errors.kanban_errors import (
     KanbanColumnNotFound,
     TenderAlreadyOnBoard,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _require_workspace(context: WorkspaceContext | None) -> UUID:

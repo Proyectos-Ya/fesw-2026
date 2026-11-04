@@ -157,6 +157,9 @@ class NotificationRepository(INotificationRepository):
             ]
         return payload or None
 
+    async def save_kanban_change(self, notification: Notification) -> Notification:
+        return await self._upsert_por_tipo(notification, "kanban_change")
+
     async def save_date_change(self, notification: Notification) -> Notification:
         return await self._upsert_por_tipo(notification, "date_changed")
 
