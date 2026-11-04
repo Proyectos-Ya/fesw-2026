@@ -163,7 +163,7 @@ Orden por prioridad. Cada tarea con TDD (Red → Green → Refactor).
 ### Fase E — Vigencia y adjuntos
 - [x] E1 Red-Green: fecha de vigencia = hoy + `validity_days` en `dd/mm/aaaa`, verificada tras re-render.
 - [x] E2 Red-Green: adjunto vía `DataTransfer` con validación de tamaño y tipo.
-- [ ] E3 Verificación real de adjuntos **solo con autorización** (ver 2.7).
+- [x] E3 Verificación real de adjuntos **solo con autorización** (ver 2.7).
 
 ### Fase F — Resaltado y verificación final
 - [x] F1 Red-Green: panel con completados, pendientes y aviso de envío manual.
@@ -213,3 +213,20 @@ Verificación manual (F3), por CA:
 - La prueba del 2026-11-04 se hizo en el mundo de la página. En un content script (mundo aislado)
   el `.value` directo podría bastar, porque React no ve el interceptor; el setter nativo funciona
   en ambos casos y es lo que usa el adaptador.
+
+## 7. Verificación en el sitio real (2026-11-04, 5626-943-COT26)
+
+El adaptador compilado se ejecutó en la página con sesión iniciada (en el mundo de la página,
+no como extensión instalada). Nunca se pulsó «Enviar cotización».
+
+- Detección: código de la URL y del encabezado, formulario listo en 0,6 s tras cargar, RUT de la
+  empresa en sesión leído de `/proveedor/empresa/<RUT>` y el ítem 42070220 emparejado por código.
+- Llenado: precio 11.111 (MP recalculó IVA 2.111 y total 13.222), detalle, vigencia y anexo
+  quedaron `filled`. Despacho `incomplete`. «Enviar cotización» se habilitó.
+- **El anexo se sube al servidor de MP apenas se selecciona** (`POST …/cotizacion/adjuntar`),
+  antes de enviar la cotización. Se quitó con «Eliminar» y se verificó tras recargar.
+  Consecuencia: el adjunto debe pedir confirmación explícita en el panel antes de subirse
+  (pendiente) o dejarse como acción del usuario.
+- Pendiente C1: confirmar que el content script (mundo aislado) ve las entradas de
+  `performance` de la página, con la extensión cargada.
+
