@@ -66,6 +66,21 @@ async def test_sin_resultados_es_none():
     assert await _servicio().geocode("Calle que no existe 0, Chile") is None
 
 
+@respx.mock
+async def test_con_api_key_manda_key_y_404_es_sin_resultados():
+    ruta = respx.get("https://us1.locationiq.com/v1/search").mock(
+        return_value=httpx.Response(404, json={"error": "Unable to geocode"})
+    )
+    servicio = NominatimGeocodingService(
+        api_key="pk.test_123", base_url="https://us1.locationiq.com/v1"
+    )
+
+    assert await servicio.geocode("Calle Sin Numero, Chile") is None
+    peticion = ruta.calls.last.request
+    assert peticion.url.params["key"] == "pk.test_123"
+    assert peticion.url.params["format"] == "json"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
