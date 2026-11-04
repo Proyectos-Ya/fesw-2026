@@ -112,3 +112,8 @@ export interface UpdateWorkspaceMatchThresholdPayload {
   /** Null para volver al fallback por preferencia individual. */
   match_threshold: number | null;
 }
+
+export interface WorkspaceMatchThresholdResponse {
+  supplier_id: string;
+  match_threshold: number | null;
+}
