@@ -16,7 +16,8 @@ on:
 jobs:
   playwright:
     name: Pruebas End-to-End
-    runs-on: ubuntu-latest
+    # Fijado: ubuntu-latest pasó a 26.04 y Playwright no instala Chromium ahí.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: monorepo/frontend
