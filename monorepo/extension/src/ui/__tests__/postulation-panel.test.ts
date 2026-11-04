@@ -109,4 +109,22 @@ describe("PostulationPanel (Shadow DOM UI)", () => {
     expect(shadow.querySelector("img")).toBeNull();
     expect(shadow.querySelector(".notice")?.textContent).toBe("No pudimos verificar la empresa.");
   });
+
+  it("pide confirmación antes de subir el anexo y llama al callback al confirmar", () => {
+    const onConfirmAnnex = vi.fn();
+    const panel = new PostulationPanel({ doc: document });
+    panel.render({
+      packageData: samplePackage,
+      filledCount: 2,
+      incompleteCount: 1,
+      annexToConfirm: "anexo_tecnico.docx",
+      onConfirmAnnex,
+    });
+    const shadow = document.getElementById("chiripa-postulation-panel-host")!.shadowRoot!;
+    const btn = shadow.querySelector<HTMLButtonElement>("#btnChiripaConfirmAnnex")!;
+    expect(btn.textContent).toContain("anexo_tecnico.docx");
+    expect(shadow.textContent).toContain("se sube a Mercado Público");
+    btn.click();
+    expect(onConfirmAnnex).toHaveBeenCalledTimes(1);
+  });
 });

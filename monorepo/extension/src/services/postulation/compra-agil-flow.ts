@@ -1,5 +1,5 @@
 import type { CompraAgilFillResult } from "../../adapters/mp/compra-agil-adapter";
-import { PostulationPackagePayload } from "../../types/schemas";
+import { PostulationFileAttachment, PostulationPackagePayload } from "../../types/schemas";
 
 export interface CompraAgilPanelState {
   packageData: PostulationPackagePayload;
@@ -7,6 +7,9 @@ export interface CompraAgilPanelState {
   incompleteCount: number;
   pending: string[];
   notice?: string;
+  /** Anexo que espera la confirmación del usuario antes de subirse a Mercado Público. */
+  annexToConfirm?: string;
+  onConfirmAnnex?: () => Promise<void>;
 }
 
 export interface CompraAgilFlowDeps {
@@ -15,6 +18,7 @@ export interface CompraAgilFlowDeps {
   waitForForm: () => Promise<boolean>;
   getSessionRut: () => Promise<string | null>;
   fill: (pkg: PostulationPackagePayload, options: { sessionRut: string | null }) => Promise<CompraAgilFillResult>;
+  attachAnnex: (files: PostulationFileAttachment[]) => Promise<{ attached: string | null; pending: string[] }>;
   render: (state: CompraAgilPanelState) => void;
 }
 
@@ -43,10 +47,28 @@ export async function runCompraAgilFlow(deps: CompraAgilFlowDeps): Promise<void>
     return;
   }
 
-  deps.render({
+  const fieldsPending = result.pending.filter((p) => !pkg.files.some((f) => f.name === p));
+  const state: CompraAgilPanelState = {
     packageData: pkg,
     filledCount: result.filledCount,
     incompleteCount: result.incompleteCount,
     pending: result.pending,
-  });
+  };
+
+  if (result.annexReady) {
+    state.annexToConfirm = result.annexReady;
+    state.onConfirmAnnex = async () => {
+      const annex = await deps.attachAnnex(pkg.files);
+      const pending = [...fieldsPending, ...annex.pending];
+      deps.render({
+        packageData: pkg,
+        filledCount: result.filledCount + (annex.attached ? 1 : 0),
+        incompleteCount: pending.length,
+        pending,
+        annexToConfirm: undefined,
+      });
+    };
+  }
+
+  deps.render(state);
 }

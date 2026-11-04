@@ -14,6 +14,9 @@ export interface RenderPanelOptions {
   pending?: string[];
   /** Aviso cuando no se completó nada (formulario ausente, empresa no verificada…). */
   notice?: string;
+  /** Anexo que espera confirmación: Compra Ágil lo sube a su servidor al seleccionarlo. */
+  annexToConfirm?: string;
+  onConfirmAnnex?: () => void | Promise<void>;
 }
 
 const HOST_ID = "chiripa-postulation-panel-host";
@@ -273,6 +276,24 @@ export class PostulationPanel {
         list.appendChild(li);
       }
       panel.appendChild(list);
+    }
+
+    if (opts.annexToConfirm && opts.onConfirmAnnex) {
+      const annexBox = this.doc.createElement("div");
+      annexBox.className = "notice";
+      annexBox.textContent =
+        "El anexo se sube a Mercado Público apenas lo adjuntamos, aunque aún no envíes la cotización.";
+      const confirmBtn = this.doc.createElement("button");
+      confirmBtn.id = "btnChiripaConfirmAnnex";
+      confirmBtn.className = "btn btn-outline";
+      confirmBtn.textContent = `Subir «${opts.annexToConfirm}»`;
+      const onConfirm = opts.onConfirmAnnex;
+      confirmBtn.addEventListener("click", () => {
+        confirmBtn.disabled = true;
+        void onConfirm();
+      });
+      annexBox.appendChild(confirmBtn);
+      panel.appendChild(annexBox);
     }
 
     // Aviso de seguridad y manual submission (CA8)

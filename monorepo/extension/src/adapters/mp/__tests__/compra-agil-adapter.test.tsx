@@ -201,31 +201,33 @@ describe("CompraAgilAdapter: vigencia y adjuntos", () => {
     expect(vigencia.getAttribute("data-chiripa-field-status")).toBe("filled");
   });
 
-  it("adjunta el documento permitido y lo marca como completado", async () => {
+  it("no sube anexos al llenar: quedan pendientes hasta que el usuario confirme", async () => {
     await render();
     const pdf = btoa("%PDF-1.7 prueba");
     const res = await fill(
       basePackage({ files: [{ name: "propuesta-tecnica.pdf", type: "application/pdf", size: 15, data_base64: pdf }] })
     );
     const fileInput = document.querySelector<HTMLInputElement>("input[type='file']")!;
-    expect(fileInput.files?.[0]?.name).toBe("propuesta-tecnica.pdf");
-    expect(fileInput.getAttribute("data-chiripa-field-status")).toBe("filled");
-    expect(res.pending).not.toContain("propuesta-tecnica.pdf");
+    expect(fileInput.files?.length ?? 0).toBe(0);
+    expect(res.pending).toContain("propuesta-tecnica.pdf");
+    expect(res.annexReady).toBe("propuesta-tecnica.pdf");
   });
 
-  it("deja pendientes los archivos con extensión no aceptada, los que sobran o los de más de 20 MB", async () => {
+  it("attachAnnex adjunta el primer archivo aceptado tras la confirmación", async () => {
     await render();
-    const res = await fill(
-      basePackage({
-        files: [
-          { name: "foto.png", type: "image/png", size: 10, data_base64: btoa("x") },
-          { name: "grande.pdf", type: "application/pdf", size: 21 * 1024 * 1024, data_base64: btoa("x") },
-          { name: "uno.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
-          { name: "dos.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
-        ],
-      })
-    );
-    expect(document.querySelector<HTMLInputElement>("input[type='file']")!.files?.[0]?.name).toBe("uno.pdf");
-    expect(res.pending).toEqual(expect.arrayContaining(["foto.png", "grande.pdf", "dos.pdf"]));
+    const adapter = new CompraAgilAdapter(document);
+    let res!: Awaited<ReturnType<CompraAgilAdapter["attachAnnex"]>>;
+    await act(async () => {
+      res = await adapter.attachAnnex([
+        { name: "foto.png", type: "image/png", size: 10, data_base64: btoa("x") },
+        { name: "grande.pdf", type: "application/pdf", size: 21 * 1024 * 1024, data_base64: btoa("x") },
+        { name: "uno.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
+        { name: "dos.pdf", type: "application/pdf", size: 1, data_base64: btoa("x") },
+      ]);
+    });
+    const fileInput = document.querySelector<HTMLInputElement>("input[type='file']")!;
+    expect(fileInput.files?.[0]?.name).toBe("uno.pdf");
+    expect(fileInput.getAttribute("data-chiripa-field-status")).toBe("filled");
+    expect(res).toEqual({ attached: "uno.pdf", pending: ["foto.png", "grande.pdf", "dos.pdf"] });
   });
 });

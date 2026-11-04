@@ -11,6 +11,8 @@ export interface CompraAgilFillResult {
   incompleteCount: number;
   /** Nombres visibles de los campos que el usuario debe revisar o completar a mano. */
   pending: string[];
+  /** Anexo listo para subir; Compra Ágil lo sube al servidor al seleccionarlo, así que espera confirmación. */
+  annexReady?: string;
   error?: "TENDER_CODE_MISMATCH" | "IDENTITY_UNVERIFIED" | "RUT_MISMATCH" | "FORM_NOT_FOUND";
 }
 
@@ -128,7 +130,6 @@ export class CompraAgilAdapter {
 
     const writes: PendingWrite[] = [];
     const pending: string[] = [];
-    let filledCountExtra = 0;
 
     const blocks = this.findItemBlocks();
     blocks.forEach((block, idx) => {
@@ -184,20 +185,9 @@ export class CompraAgilAdapter {
       this.setNativeValue(write.el, write.expected);
     }
 
-    const annex = this.attachFiles(pkg.files, pending);
     await nextTick();
 
-    if (annex) {
-      const attached = annex.input.files?.[0]?.name === annex.name;
-      this.mark(annex.input, attached ? "filled" : "incomplete");
-      if (attached) {
-        filledCountExtra = 1;
-      } else {
-        pending.push(annex.name);
-      }
-    }
-
-    let filledCount = filledCountExtra;
+    let filledCount = 0;
     for (const write of writes) {
       if (write.matches(write.el.value)) {
         this.mark(write.el, "filled");
@@ -208,39 +198,60 @@ export class CompraAgilAdapter {
       }
     }
 
-    return { success: true, filledCount, incompleteCount: pending.length, pending };
+    // Los anexos no se tocan hasta que el usuario confirme en el panel (ver attachAnnex).
+    const annexReady = this.pickAnnex(pkg.files);
+    pending.push(...pkg.files.map((f) => f.name));
+
+    return {
+      success: true,
+      filledCount,
+      incompleteCount: pending.length,
+      pending,
+      ...(annexReady ? { annexReady: annexReady.name } : {}),
+    };
   }
 
   /**
    * Adjunta el primer archivo aceptado por Compra Ágil (un solo «documento anexo»).
-   * Los demás quedan pendientes para subirlos a mano.
+   * Solo debe llamarse tras la confirmación del usuario: Mercado Público sube el
+   * archivo a su servidor apenas se selecciona. Los demás quedan pendientes.
    */
-  private attachFiles(
-    files: PostulationFileAttachment[],
-    pending: string[]
-  ): { input: HTMLInputElement; name: string } | null {
-    if (files.length === 0) return null;
-    const label = this.findLabels(this.doc, COMPRA_AGIL.labels.annex)[0];
-    let input: HTMLInputElement | null = null;
-    for (let a = label?.parentElement ?? null, depth = 0; a && depth < 4; depth++, a = a.parentElement) {
-      input = a.querySelector<HTMLInputElement>("input[type='file']");
-      if (input) break;
-    }
-
-    const accepted = files.filter(
-      (f) =>
-        f.size <= COMPRA_AGIL.annexMaxBytes &&
-        COMPRA_AGIL.annexExtensions.some((ext) => f.name.toLowerCase().endsWith(ext))
-    );
-    const chosen = input ? accepted[0] : undefined;
-    for (const f of files) if (f !== chosen) pending.push(f.name);
-    if (!input || !chosen) return null;
+  public async attachAnnex(
+    files: PostulationFileAttachment[]
+  ): Promise<{ attached: string | null; pending: string[] }> {
+    const input = this.annexInput();
+    const chosen = input ? this.pickAnnex(files) : null;
+    const pending = files.filter((f) => f !== chosen).map((f) => f.name);
+    if (!input || !chosen) return { attached: null, pending };
 
     const transfer = new DataTransfer();
     transfer.items.add(toFile(chosen));
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
-    return { input, name: chosen.name };
+    await nextTick();
+
+    const attached = input.files?.[0]?.name === chosen.name;
+    this.mark(input, attached ? "filled" : "incomplete");
+    return attached ? { attached: chosen.name, pending } : { attached: null, pending: [chosen.name, ...pending] };
+  }
+
+  private pickAnnex(files: PostulationFileAttachment[]): PostulationFileAttachment | null {
+    return (
+      files.find(
+        (f) =>
+          f.size <= COMPRA_AGIL.annexMaxBytes &&
+          COMPRA_AGIL.annexExtensions.some((ext) => f.name.toLowerCase().endsWith(ext))
+      ) ?? null
+    );
+  }
+
+  private annexInput(): HTMLInputElement | null {
+    const label = this.findLabels(this.doc, COMPRA_AGIL.labels.annex)[0];
+    for (let a = label?.parentElement ?? null, depth = 0; a && depth < 4; depth++, a = a.parentElement) {
+      const input = a.querySelector<HTMLInputElement>("input[type='file']");
+      if (input) return input;
+    }
+    return null;
   }
 
   public clearHighlighting(): void {

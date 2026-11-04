@@ -31,6 +31,7 @@ function startCompraAgil(): void {
         waitForForm: () => adapter.waitForForm(30_000),
         getSessionRut: () => waitForSessionRut(),
         fill: (pkg, options) => adapter.fill(pkg, options),
+        attachAnnex: (files) => adapter.attachAnnex(files),
         render: (state) => {
           panel ??= new PostulationPanel({ doc: document, onClearHighlight: () => adapter.clearHighlighting() });
           panel.render(state);
