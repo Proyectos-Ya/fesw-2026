@@ -155,7 +155,7 @@ export function KanbanBoard() {
           type="button"
           onClick={() => setHistoryOpen(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-subtle hover:text-text-strong border border-border-subtle hover:border-border-default rounded-md transition-colors"
-          aria-label="Ver historial de tarjetas archivadas"
+          aria-label="Ver historial y actividad del tablero"
         >
           <Icon name="clock" size={16} />
           <span>Historial</span>
