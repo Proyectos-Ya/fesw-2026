@@ -48,6 +48,7 @@ export function PostulationConfirmDialog({
             : 0;
         return {
           line_number: it.line_number ?? it.position ?? idx + 1,
+          product_code: it.product_code ?? null,
           name: it.name,
           quantity: it.quantity,
           unit: it.unit ?? it.unit_of_measure ?? "UN",
@@ -92,6 +93,7 @@ export function PostulationConfirmDialog({
       contact_phone: packageData.company.contact_phone,
       items: items.map((it) => ({
         line_number: it.line_number,
+        product_code: it.product_code,
         name: it.name,
         quantity: it.quantity,
         unit: it.unit,

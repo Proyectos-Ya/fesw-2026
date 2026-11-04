@@ -22,6 +22,7 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
     items: [
       {
         line_number: 1,
+        product_code: "42132203",
         name: "Guantes de Látex",
         quantity: 100,
         unit: "Caja",
@@ -130,6 +131,7 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
         observations: "Oferta conforme a bases.",
         delivery_term_days: 10,
         validity_days: 60,
+        items: [expect.objectContaining({ line_number: 1, product_code: "42132203", unit_price: 3500 })],
       })
     );
   });

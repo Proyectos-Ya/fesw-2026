@@ -12,6 +12,7 @@ export interface PostulationFilePayload {
 
 export interface PostulationItemPayload {
   line_number: number;
+  product_code?: string | null;
   name: string;
   quantity: number;
   unit?: string;
