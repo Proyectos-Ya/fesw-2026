@@ -90,20 +90,69 @@ class BuildPostulationPackageUseCase:
                 "Los precios no se cargarán automáticamente."
             )
 
+        _STOPWORDS = {
+            "servicio",
+            "servicios",
+            "adquisicion",
+            "compra",
+            "suministro",
+            "para",
+            "este",
+            "esta",
+            "con",
+            "por",
+            "del",
+            "las",
+            "los",
+            "una",
+            "uno",
+            "que",
+        }
+
         # Matching determinista de ítems
         for pos, item in enumerate(tender.items, start=1):
             key = normalizar_texto(item.description or item.name)
+            key_name = normalizar_texto(item.name or "")
+            key_desc = normalizar_texto(item.description or "")
             matched_material = None
             matched_idx = None
 
             if is_clp and quotation:
+                # 1. Coincidencia exacta
                 for idx, mat in enumerate(quotation.items):
                     if idx in used_materials:
                         continue
-                    if normalizar_texto(mat.description) == key:
+                    mat_norm = normalizar_texto(mat.description)
+                    if mat_norm == key or mat_norm == key_name or mat_norm == key_desc:
                         matched_material = mat
                         matched_idx = idx
                         break
+
+                # 2. Coincidencia por solapamiento semántico de palabras clave relevantes
+                if matched_material is None:
+                    words_tender = {
+                        w
+                        for w in (key_desc + " " + key_name).split()
+                        if len(w) > 3 and w not in _STOPWORDS
+                    }
+                    best_overlap_count = 0
+                    best_overlap_idx = None
+                    for idx, mat in enumerate(quotation.items):
+                        if idx in used_materials:
+                            continue
+                        words_mat = {
+                            w
+                            for w in normalizar_texto(mat.description).split()
+                            if len(w) > 3 and w not in _STOPWORDS
+                        }
+                        overlap = words_tender & words_mat
+                        if len(overlap) >= 2 and len(overlap) > best_overlap_count:
+                            best_overlap_count = len(overlap)
+                            best_overlap_idx = idx
+
+                    if best_overlap_idx is not None:
+                        matched_material = quotation.items[best_overlap_idx]
+                        matched_idx = best_overlap_idx
 
             if matched_material is not None and matched_idx is not None:
                 used_materials.add(matched_idx)

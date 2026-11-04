@@ -37,7 +37,7 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
     required_documents: [],
   };
 
-  it("renderiza datos de licitación, empresa, precios editables y total", () => {
+  it("renderiza datos de licitación, empresa, precios cargados automáticamente y total", () => {
     render(
       <PostulationConfirmDialog
         open={true}
@@ -48,36 +48,18 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
       />
     );
 
-    expect(screen.getByText(/2499-12-L126/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/2499-12-L126/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Inversiones Médicas SpA/i)).toBeInTheDocument();
     expect(screen.getByText(/76.086.428-5/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("3500")).toBeInTheDocument();
+    expect(screen.getByText(/\$3\.500/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$350\.000/i).length).toBeGreaterThan(0);
   });
 
-  it("permite editar el precio unitario y recalcula el total", () => {
+  it("requiere marcar la casilla de revisión rigurosa para habilitar la confirmación", () => {
     render(
       <PostulationConfirmDialog
         open={true}
         packageData={samplePackage}
-        busy={false}
-        onClose={vi.fn()}
-        onConfirm={vi.fn()}
-      />
-    );
-
-    const inputPrecio = screen.getByDisplayValue("3500");
-    fireEvent.change(inputPrecio, { target: { value: "4000" } });
-
-    // 4000 * 100 = 400.000
-    expect(screen.getAllByText(/\$400\.000/i).length).toBeGreaterThan(0);
-  });
-
-  it("bloquea confirmación si el texto de observaciones supera 255 caracteres", () => {
-    const longText = "a".repeat(256);
-    render(
-      <PostulationConfirmDialog
-        open={true}
-        packageData={{ ...samplePackage, observations: longText }}
         busy={false}
         onClose={vi.fn()}
         onConfirm={vi.fn()}
@@ -86,10 +68,43 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
 
     const confirmBtn = screen.getByRole("button", { name: /Confirmar y Cargar en Mercado Público/i });
     expect(confirmBtn).toBeDisabled();
-    expect(screen.getByText(/Supera los 255 caracteres/i)).toBeInTheDocument();
+
+    const checkbox = screen.getByRole("checkbox", { name: /He revisado rigurosamente/i });
+    fireEvent.click(checkbox);
+
+    expect(confirmBtn).not.toBeDisabled();
   });
 
-  it("ejecuta onConfirm con los datos actualizados al confirmar", () => {
+  it("bloquea confirmación si el monto total es cero", () => {
+    const zeroPackage: PostulationPackage = {
+      ...samplePackage,
+      items: [
+        {
+          ...samplePackage.items[0],
+          suggested_unit_price: 0,
+        },
+      ],
+    };
+
+    render(
+      <PostulationConfirmDialog
+        open={true}
+        packageData={zeroPackage}
+        busy={false}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: /He revisado rigurosamente/i });
+    fireEvent.click(checkbox);
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirmar y Cargar en Mercado Público/i });
+    expect(confirmBtn).toBeDisabled();
+    expect(screen.getByText(/Falta ingresar precios en la cotización/i)).toBeInTheDocument();
+  });
+
+  it("ejecuta onConfirm con los datos cargados automáticamente al confirmar tras marcar la revisión", () => {
     const onConfirmMock = vi.fn();
     render(
       <PostulationConfirmDialog
@@ -101,6 +116,9 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
       />
     );
 
+    const checkbox = screen.getByRole("checkbox", { name: /He revisado rigurosamente/i });
+    fireEvent.click(checkbox);
+
     const confirmBtn = screen.getByRole("button", { name: /Confirmar y Cargar en Mercado Público/i });
     fireEvent.click(confirmBtn);
 
@@ -109,7 +127,52 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
         tender_code: "2499-12-L126",
         company_rut: "76.086.428-5",
         total_clp: 350000,
+        observations: "Oferta conforme a bases.",
+        delivery_term_days: 10,
+        validity_days: 60,
       })
     );
+  });
+
+  it("tolera packageData con observations undefined y campos del backend", () => {
+    const backendPackage: PostulationPackage = {
+      tender: {
+        id: "t-2",
+        code: "1234-56-L126",
+        name: "Servicios de Mantenimiento",
+      },
+      company: {
+        rut: "77.123.456-7",
+        legal_name: "Soluciones Integrales S.A.",
+        trade_name: "Soluciones SpA",
+      },
+      offer_name: "Propuesta de Mantenimiento",
+      offer_description: "Oferta técnica detallada",
+      items: [
+        {
+          position: 1,
+          name: "Servicio Mensual",
+          quantity: 2,
+          unit_of_measure: "mes",
+          unit_price: 50000,
+        },
+      ],
+    };
+
+    render(
+      <PostulationConfirmDialog
+        open={true}
+        packageData={backendPackage}
+        busy={false}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText(/1234-56-L126/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Soluciones SpA/i)).toBeInTheDocument();
+    expect(screen.getByText(/Oferta técnica detallada/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$50\.000/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$100\.000/i).length).toBeGreaterThan(0);
   });
 });

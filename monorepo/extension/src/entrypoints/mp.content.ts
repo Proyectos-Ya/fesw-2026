@@ -6,6 +6,7 @@ import { PostulationPanel } from "../ui/postulation-panel";
 
 export default defineContentScript({
   matches: ["*://*.mercadopublico.cl/*"],
+  allFrames: true,
   runAt: "document_idle",
   async main() {
     const postulationAdapter = new MpPostulationAdapter(document);

@@ -26,8 +26,8 @@ export class ContentScriptBridge {
     origin: string;
     data: Record<string, unknown>;
   }): boolean {
-    // 1. Origen estricto: debe coincidir exactamente con el origen actual
-    if (event.origin !== this.config.currentOrigin) {
+    // 1. Origen: si viene definido, debe coincidir con el origen actual
+    if (event.origin && event.origin !== this.config.currentOrigin) {
       return false;
     }
 
@@ -38,6 +38,7 @@ export class ContentScriptBridge {
 
     // 2. Protocolo Handshake PING -> PONG
     if (data.type === "PING") {
+      console.log("[Chiripa Extension] Handshake PING recibido, enviando PONG:", data.nonce);
       this.config.postMessageToWindow(
         {
           target: "CHIRIPA_WEB",

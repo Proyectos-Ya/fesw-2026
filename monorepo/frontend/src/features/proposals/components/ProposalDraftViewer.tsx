@@ -23,6 +23,10 @@ interface ProposalDraftViewerProps {
   onRegenerate: (instructions: string) => void;
   onDownload: () => void;
   onRequestTechnical: () => void;
+  /** Si se muestra el botón de postular directamente en la cabecera del borrador */
+  showPostulateButton?: boolean;
+  /** Acción para avanzar al paso de postulación */
+  onContinueToPostulation?: () => void;
 }
 
 function textoDe(seccion: DraftSection): string {
@@ -188,6 +192,8 @@ export function ProposalDraftViewer({
   onRegenerate,
   onDownload,
   onRequestTechnical,
+  showPostulateButton = true,
+  onContinueToPostulation,
 }: ProposalDraftViewerProps) {
   const [regenerando, setRegenerando] = useState(false);
 
@@ -251,12 +257,14 @@ export function ProposalDraftViewer({
             </Button>
           )}
 
-          <PostularEnMercadoPublicoButton
-            canWrite={canWrite}
-            isExpired={view.is_expired}
-            busy={postulationBusy || busy}
-            onClick={startPostulation}
-          />
+          {showPostulateButton && (
+            <PostularEnMercadoPublicoButton
+              canWrite={canWrite}
+              isExpired={view.is_expired}
+              busy={postulationBusy || busy}
+              onClick={startPostulation}
+            />
+          )}
         </div>
       </div>
 
@@ -392,6 +400,20 @@ export function ProposalDraftViewer({
           )}
         </div>
 
+        {onContinueToPostulation && (
+          <div className="mt-6 flex items-center justify-between rounded-lg border border-border-subtle bg-surface-card p-4">
+            <p className="text-sm text-text-muted">
+              Si tu cotización y borrador están listos, avanza a la postulación asistida.
+            </p>
+            <Button
+              onClick={onContinueToPostulation}
+              className="px-5 py-2 text-sm font-semibold"
+            >
+              Continuar a Postulación
+              <Icon name="arrow-right" size={16} />
+            </Button>
+          </div>
+        )}
       </div>
 
       <RegenerateDialog

@@ -123,27 +123,23 @@ describe("ProposalView", () => {
     expect(svc.startFeasibility).toHaveBeenCalledWith("t-1");
   });
 
-  it("navega por pestañas entre análisis, borrador y cotización", async () => {
+  it("navega por pestañas entre Cotización y Borrador y Postulación", async () => {
     svc.getProposal.mockResolvedValue(vista());
     render(<ProposalView tenderId="t-1" />);
 
-    expect(await screen.findByRole("region", { name: "Análisis de las bases" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Borrador de la oferta" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Análisis de las bases y exigencias" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Borrador de la oferta" })).toBeInTheDocument();
+    expect(screen.getByTestId("cotizador")).toHaveTextContent("657-70-COT26");
 
-    await userEvent.click(screen.getByRole("tab", { name: /2\. Borrador de Oferta/i }));
-    expect(screen.getByRole("region", { name: "Borrador de la oferta" })).toHaveTextContent(
-      "Responde las preguntas",
-    );
-
-    await userEvent.click(screen.getByRole("tab", { name: /3\. Cotización Financiera/i }));
-    expect(await screen.findByTestId("cotizador")).toHaveTextContent("657-70-COT26");
+    await userEvent.click(screen.getByRole("tab", { name: /2\. Postulación/i }));
+    expect(screen.getByRole("region", { name: "Postulación en Mercado Público" })).toBeInTheDocument();
   });
 
   it("no renderiza el panel redundante de anexos dentro de la vista de postulación", async () => {
     svc.getProposal.mockResolvedValue(vista());
     render(<ProposalView tenderId="t-1" />);
 
-    await screen.findByRole("region", { name: "Análisis de las bases" });
+    await screen.findByRole("region", { name: "Análisis de las bases y exigencias" });
     expect(screen.queryByTestId("panel-anexos")).not.toBeInTheDocument();
   });
 
@@ -153,7 +149,6 @@ describe("ProposalView", () => {
     svc.getProposal.mockResolvedValue(vista());
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /3\. Cotización Financiera/i }));
     await userEvent.click(
       await screen.findByRole("button", { name: "Simular cotización guardada" }),
     );
@@ -280,7 +275,6 @@ describe("ProposalView", () => {
 
     const banner = await screen.findByRole("region", { name: "Estado de la postulación" });
     expect(banner).toHaveTextContent("Faltan 2 respuestas");
-    await userEvent.click(screen.getByRole("tab", { name: /2\. Borrador de Oferta/i }));
     expect(screen.getByRole("region", { name: "Borrador de la oferta" })).toHaveTextContent(
       "Responde las preguntas del análisis y luego redacta el borrador.",
     );
@@ -338,7 +332,6 @@ describe("ProposalView", () => {
     );
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /2\. Borrador de Oferta/i }));
     const borrador = await screen.findByRole("region", { name: "Borrador de la oferta" });
     expect(borrador).toHaveTextContent(
       "La Compra Ágil publica Bases.pdf: súbelos y vuelve a analizar.",
@@ -366,7 +359,6 @@ describe("ProposalView", () => {
     );
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /2\. Borrador de Oferta/i }));
     const borrador = await screen.findByRole("region", { name: "Borrador de la oferta" });
     expect(borrador).toHaveTextContent("Este borrador se hizo solo con la ficha");
     expect(borrador).toHaveTextContent("la ficha menciona bases o anexos que no se subieron");
@@ -385,7 +377,6 @@ describe("ProposalView", () => {
     );
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /2\. Borrador de Oferta/i }));
     expect(
       await screen.findByText(
         "Subiste archivos después del análisis. Vuelve a analizar para usarlos.",
@@ -399,7 +390,6 @@ describe("ProposalView", () => {
     );
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /2\. Borrador de Oferta/i }));
     await screen.findByRole("region", { name: "Borrador de la oferta" });
     expect(screen.queryByText(/se hizo solo con la ficha/)).not.toBeInTheDocument();
   });
@@ -411,7 +401,6 @@ describe("ProposalView", () => {
     svc.regenerateProposal.mockResolvedValue(vista());
     render(<ProposalView tenderId="t-1" />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: /2\. Borrador de Oferta/i }));
     await userEvent.click(await screen.findByRole("button", { name: /Regenerar/ }));
     const dialogo = screen.getByRole("dialog");
     await userEvent.type(within(dialogo).getByRole("textbox"), "Más formal");

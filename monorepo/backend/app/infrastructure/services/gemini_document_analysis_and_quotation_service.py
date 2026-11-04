@@ -113,7 +113,11 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
             *partes_de_documentos,
         ]
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         payload = {
             "contents": [{"parts": parts}],
             "generationConfig": {
@@ -175,7 +179,7 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=60.0)
+                response = await client.post(url, headers=headers, json=payload, timeout=60.0)
         except httpx.HTTPError as e:
             raise DocumentAnalysisAndQuotationServiceError(
                 f"Error de conexión con la API de Gemini: {e}"

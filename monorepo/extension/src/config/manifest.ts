@@ -28,8 +28,12 @@ export function buildManifest(options: ManifestOptions = {}) {
   }
 
   if (isDevOrE2E) {
+    hostPermissions.push("http://localhost/*");
+    hostPermissions.push("http://127.0.0.1/*");
     hostPermissions.push("http://localhost:3000/*");
+    hostPermissions.push("http://127.0.0.1:3000/*");
     hostPermissions.push("http://localhost:8000/*");
+    hostPermissions.push("http://127.0.0.1:8000/*");
   }
 
   const baseManifest: Record<string, unknown> = {

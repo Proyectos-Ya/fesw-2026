@@ -27,13 +27,20 @@ interface QuotationEditorProps {
   tenderItems?: TenderMaterial[];
   /** Se llama después de guardar la cotización con éxito (la ficha lo usa para su telemetría). */
   onSaved?: () => void;
+  defaultOpen?: boolean;
 }
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });
 
-export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
-  const [open, setOpen] = useState(false);
-  const [opened, setOpened] = useState(false);
+export function QuotationEditor({
+  tenderId,
+  tenderCode,
+  tenderItems = noTenderItems,
+  onSaved,
+  defaultOpen = false,
+}: QuotationEditorProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [opened, setOpened] = useState(defaultOpen);
   return <section className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-lg font-bold text-text-strong">Cotización de materiales</h2>

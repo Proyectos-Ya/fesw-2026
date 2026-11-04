@@ -38,6 +38,7 @@ export function getRecommendedTenders(
 export function calculateTenderScore(tenderId: string): Promise<TenderScore> {
   return apiFetch<TenderScore>(`/tenders/${encodeURIComponent(tenderId)}/score`, {
     method: "POST",
+    timeoutMs: 120_000,
   });
 }
 

@@ -74,7 +74,10 @@ describe("useMercadoPublicoPostulation", () => {
       await result.current.startPostulation();
     });
 
-    expect(bridge.openPostulationTab).toHaveBeenCalledWith("2499-12-L126");
+    expect(bridge.openPostulationTab).toHaveBeenCalledWith(
+      "2499-12-L126",
+      "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx"
+    );
     expect(proposalService.getPostulationPackage).toHaveBeenCalledWith("t-1");
     expect(result.current.showConfirmDialog).toBe(true);
     expect(result.current.packageData).toEqual(samplePackage);

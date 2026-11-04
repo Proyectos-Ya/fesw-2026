@@ -66,7 +66,7 @@ export class PostulationCoordinator {
     try {
       const url =
         mpUrl ||
-        `https://www.mercadopublico.cl/ficha.html?code=${encodeURIComponent(tenderCode)}`;
+        "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx";
 
       const tab = await this.tabsCreate({
         url,

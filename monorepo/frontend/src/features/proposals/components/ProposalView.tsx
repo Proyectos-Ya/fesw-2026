@@ -16,10 +16,14 @@ import { useProposal } from "../hooks/useProposal";
 import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
+import { ExtensionRequiredDialog } from "./ExtensionRequiredDialog";
 import { FeasibilityStep } from "./FeasibilityStep";
+import { PostularEnMercadoPublicoButton } from "./PostularEnMercadoPublicoButton";
+import { PostulationConfirmDialog } from "./PostulationConfirmDialog";
 import { ProposalDraftViewer } from "./ProposalDraftViewer";
 import { ProposalStatusBanner } from "./ProposalStatusBanner";
 import { StageNotice } from "./StageNotice";
+import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 
 interface ProposalViewProps {
   tenderId: string;
@@ -60,7 +64,21 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
   const [confirmarAnalisis, setConfirmarAnalisis] = useState(false);
-  const [activeTab, setActiveTab] = useState<"analisis" | "borrador" | "cotizacion">("analisis");
+  const [activeTab, setActiveTab] = useState<"cotizacion-borrador" | "postulacion">("cotizacion-borrador");
+
+  const {
+    busy: postulationBusy,
+    packageData,
+    showExtensionRequiredDialog,
+    showConfirmDialog,
+    startPostulation,
+    confirm: handleConfirmPostulation,
+    setShowExtensionRequiredDialog,
+    setShowConfirmDialog,
+  } = useMercadoPublicoPostulation({
+    tenderId,
+    tenderCode: tender?.data.code ?? null,
+  });
 
   useEffect(() => {
     let cancelado = false;
@@ -215,99 +233,100 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === "analisis"}
-            onClick={() => setActiveTab("analisis")}
+            aria-selected={activeTab === "cotizacion-borrador"}
+            onClick={() => setActiveTab("cotizacion-borrador")}
             className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
-              activeTab === "analisis"
+              activeTab === "cotizacion-borrador"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
             }`}
           >
-            1. Factibilidad y Exigencias
+            1. Cotización y Borrador
           </button>
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === "borrador"}
-            onClick={() => setActiveTab("borrador")}
+            aria-selected={activeTab === "postulacion"}
+            onClick={() => setActiveTab("postulacion")}
             className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
-              activeTab === "borrador"
+              activeTab === "postulacion"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
             }`}
           >
-            2. Borrador de Oferta
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "cotizacion"}
-            onClick={() => setActiveTab("cotizacion")}
-            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
-              activeTab === "cotizacion"
-                ? "border-primary text-text-strong font-medium"
-                : "border-transparent text-text-muted hover:text-text-strong"
-            }`}
-          >
-            3. Cotización Financiera
+            2. Postulación
           </button>
         </div>
       )}
 
-      {activeTab === "analisis" && (state.kind === "not-started" || view) && (
-        <Seccion id="analisis" titulo="Análisis de las bases">
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card p-4">
-              <p className="text-sm text-text-body">
-                {view
-                  ? "Si subiste bases nuevas o cambiaste el perfil de tu empresa, vuelve a analizar."
-                  : "Cruzamos las bases con el perfil de tu empresa. Si falta algún dato, te lo preguntamos."}
-              </p>
-              {puedeAvanzar &&
-                (view ? (
-                  <Button
-                    variant="ghost"
-                    className="border border-border-strong"
-                    disabled={busy}
-                    onClick={volverAAnalizar}
-                  >
-                    <Icon name="refresh-cw" size={16} />
-                    Volver a analizar
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => void proposal.start()}
-                    disabled={busy}
-                    isLoading={busy}
-                  >
-                    <Icon name="sparkles" size={16} />
-                    Iniciar análisis
-                  </Button>
-                ))}
-              {puedeAvanzar && !view && sinBases && (
-                // Informativo y sin diálogo: iniciar sin bases es válido.
-                <p className="flex basis-full items-start gap-2 text-xs text-text-link">
-                  <Icon name="info" size={14} className="mt-px shrink-0" />
-                  {anexosPendientes.length > 0
-                    ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
-                    : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
-                </p>
-              )}
-              {!canWrite && !view && (
-                <p className="text-sm text-text-muted">
-                  Solo quienes pueden generar postulaciones en esta empresa pueden
-                  iniciarla.
-                </p>
-              )}
-            </div>
+      {activeTab === "cotizacion-borrador" && (
+        <div className="flex flex-col gap-8">
+          {(state.kind === "not-started" || view) && (
+            <Seccion id="analisis" titulo="Análisis de las bases y exigencias">
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card p-4">
+                  <p className="text-sm text-text-body">
+                    {view
+                      ? "Si subiste bases nuevas o cambiaste el perfil de tu empresa, vuelve a analizar."
+                      : "Cruzamos las bases con el perfil de tu empresa. Si falta algún dato, te lo preguntamos."}
+                  </p>
+                  {puedeAvanzar &&
+                    (view ? (
+                      <Button
+                        variant="ghost"
+                        className="border border-border-strong"
+                        disabled={busy}
+                        onClick={volverAAnalizar}
+                      >
+                        <Icon name="refresh-cw" size={16} />
+                        Volver a analizar
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => void proposal.start()}
+                        disabled={busy}
+                        isLoading={busy}
+                      >
+                        <Icon name="sparkles" size={16} />
+                        Iniciar análisis
+                      </Button>
+                    ))}
+                  {puedeAvanzar && !view && sinBases && (
+                    // Informativo y sin diálogo: iniciar sin bases es válido.
+                    <p className="flex basis-full items-start gap-2 text-xs text-text-link">
+                      <Icon name="info" size={14} className="mt-px shrink-0" />
+                      {anexosPendientes.length > 0
+                        ? `No has subido anexos. La Compra Ágil publica ${nombrarDocumentos(anexosPendientes)}: súbelos antes en los anexos para que el análisis salga más preciso. Puedes iniciar igual.`
+                        : "No has subido anexos. Puedes iniciar igual, pero si la Compra Ágil tiene bases, súbelas antes en los anexos: el análisis sale más preciso."}
+                    </p>
+                  )}
+                  {!canWrite && !view && (
+                    <p className="text-sm text-text-muted">
+                      Solo quienes pueden generar postulaciones en esta empresa pueden
+                      iniciarla.
+                    </p>
+                  )}
+                </div>
 
-            {view &&
-              (view.status === "READY" ? (
-                <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
-                  <summary className="cursor-pointer text-sm font-semibold text-text-strong">
-                    Ver exigencias evaluadas ({view.requirements.length})
-                  </summary>
-                  <div className="mt-4">
+                {view &&
+                  (view.status === "READY" ? (
+                    <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-text-strong">
+                        Ver exigencias evaluadas ({view.requirements.length})
+                      </summary>
+                      <div className="mt-4">
+                        <FeasibilityStep
+                          view={view}
+                          canWrite={canWrite}
+                          busy={busy}
+                          answering={answering}
+                          onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
+                          onGenerate={() => void proposal.generate()}
+                          {...evidencia}
+                        />
+                      </div>
+                    </details>
+                  ) : (
                     <FeasibilityStep
                       view={view}
                       canWrite={canWrite}
@@ -317,60 +336,138 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                       onGenerate={() => void proposal.generate()}
                       {...evidencia}
                     />
-                  </div>
-                </details>
-              ) : (
-                <FeasibilityStep
+                  ))}
+              </div>
+            </Seccion>
+          )}
+
+          {tender && (
+            <Seccion id="cotizacion" titulo="Cotización de materiales">
+              <QuotationEditor
+                tenderId={tenderId}
+                tenderCode={tender.data.code}
+                tenderItems={tender.data.items}
+                onSaved={() => reportInteraction("cotizacion")}
+                defaultOpen={true}
+              />
+            </Seccion>
+          )}
+
+          {view && (
+            <Seccion id="borrador" titulo="Borrador de la oferta">
+              {avisoBases && (
+                <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link">
+                  <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+                  <span>{avisoBases}</span>
+                </p>
+              )}
+              {view.content ? (
+                <ProposalDraftViewer
                   view={view}
+                  tenderCode={tender?.data.code ?? null}
                   canWrite={canWrite}
                   busy={busy}
-                  answering={answering}
-                  onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
-                  onGenerate={() => void proposal.generate()}
-                  {...evidencia}
+                  stage={stage}
+                  onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
+                  onDownload={() => void proposal.download()}
+                  onRequestTechnical={() => void proposal.requestTechnical()}
+                  showPostulateButton={false}
+                  onContinueToPostulation={() => setActiveTab("postulacion")}
                 />
-              ))}
+              ) : (
+                <p className="rounded-lg border border-dashed border-border-default bg-surface-card p-6 text-sm text-text-muted">
+                  {estado?.detail ?? 'Cuando quieras, usa "Redactar borrador" en el análisis.'}
+                </p>
+              )}
+            </Seccion>
+          )}
+        </div>
+      )}
+
+      {activeTab === "postulacion" && (
+        <Seccion id="postulacion" titulo="Postulación en Mercado Público">
+          <div className="rounded-lg border border-border-subtle bg-surface-card p-6">
+            <div className="mb-6 flex flex-col gap-1">
+              <h3 className="text-base font-bold text-text-strong">
+                Postulación asistida con Extensión oficial de Chiripa
+              </h3>
+              <p className="text-sm text-text-muted">
+                Transfiere tu cotización y propuesta redactada directamente a la ficha oficial de Mercado Público.
+              </p>
+            </div>
+
+            {view?.content ? (
+              <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border border-border-subtle bg-surface-inset p-4 text-sm">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Licitación
+                    </span>
+                    <p className="font-bold text-text-strong">{tender?.data.code ?? view.tender_id}</p>
+                    <p className="text-xs text-text-muted">{tender?.data.name ?? "Sin nombre"}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Propuesta redactada
+                    </span>
+                    <p className="font-bold text-text-strong">
+                      {view.content.offer_name.paragraphs[0]?.text || "Oferta estándar"}
+                    </p>
+                    <p className="line-clamp-2 text-xs text-text-muted">
+                      {view.content.offer_description.paragraphs[0]?.text || "Sin descripción"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-soft/30 p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text-strong">
+                      ¿Todo listo para cargar en Mercado Público?
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Al presionar el botón se abrirá la ventana de confirmación previa para verificar precios finales antes de cargarlos.
+                    </p>
+                  </div>
+                  <PostularEnMercadoPublicoButton
+                    canWrite={puedeAvanzar}
+                    isExpired={cerrada}
+                    busy={postulationBusy || busy}
+                    onClick={startPostulation}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
+                <Icon name="file-text" size={40} className="text-text-muted" />
+                <div className="max-w-md">
+                  <p className="font-semibold text-text-strong">
+                    Aún no se ha redactado el borrador de la oferta
+                  </p>
+                  <p className="mt-1 text-sm text-text-muted">
+                    Para postular con la extensión, primero debes completar la cotización y generar el borrador en el paso 1.
+                  </p>
+                </div>
+                <Button onClick={() => setActiveTab("cotizacion-borrador")}>
+                  Ir al Paso 1: Cotización y Borrador
+                </Button>
+              </div>
+            )}
           </div>
         </Seccion>
       )}
 
-      {activeTab === "borrador" && view && (
-        <Seccion id="borrador" titulo="Borrador de la oferta">
-          {avisoBases && (
-            <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link">
-              <Icon name="info" size={16} className="mt-0.5 shrink-0" />
-              <span>{avisoBases}</span>
-            </p>
-          )}
-          {view.content ? (
-            <ProposalDraftViewer
-              view={view}
-              tenderCode={tender?.data.code ?? null}
-              canWrite={canWrite}
-              busy={busy}
-              stage={stage}
-              onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
-              onDownload={() => void proposal.download()}
-              onRequestTechnical={() => void proposal.requestTechnical()}
-            />
-          ) : (
-            <p className="rounded-lg border border-dashed border-border-default bg-surface-card p-6 text-sm text-text-muted">
-              {estado?.detail ?? 'Cuando quieras, usa "Redactar borrador" en el análisis.'}
-            </p>
-          )}
-        </Seccion>
-      )}
+      <ExtensionRequiredDialog
+        open={showExtensionRequiredDialog}
+        onClose={() => setShowExtensionRequiredDialog(false)}
+      />
 
-      {activeTab === "cotizacion" && tender && (
-        <Seccion id="cotizacion" titulo="Cotización">
-          <QuotationEditor
-            tenderId={tenderId}
-            tenderCode={tender.data.code}
-            tenderItems={tender.data.items}
-            onSaved={() => reportInteraction("cotizacion")}
-          />
-        </Seccion>
-      )}
+      <PostulationConfirmDialog
+        open={showConfirmDialog}
+        packageData={packageData}
+        busy={postulationBusy}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmPostulation}
+      />
 
       {view && (
         <DiscrepancyModal
