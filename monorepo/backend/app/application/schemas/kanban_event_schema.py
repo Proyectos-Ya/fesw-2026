@@ -11,6 +11,7 @@ class KanbanEventResponse(BaseModel):
     id: UUID
     supplier_id: UUID
     user_id: UUID
+    user_name: str | None = None
     event_type: str
     entity_type: str | None = None
     entity_id: UUID | None = None

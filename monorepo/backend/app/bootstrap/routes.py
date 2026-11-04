@@ -309,6 +309,7 @@ def register_routes(app: FastAPI) -> None:
             get_reorder_kanban_columns_use_case=get_reorder_kanban_columns_use_case,
             get_list_kanban_events_use_case=get_list_kanban_events_use_case,
             get_notify_kanban_change_use_case=get_notify_kanban_change_use_case,
+            get_user_repo=get_user_repo,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

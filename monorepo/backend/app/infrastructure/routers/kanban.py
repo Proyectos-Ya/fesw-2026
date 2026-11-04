@@ -59,6 +59,7 @@ from app.application.use_cases.kanban.restore_tender import RestoreTenderUseCase
 from app.application.use_cases.kanban.update_kanban_column import (
     UpdateKanbanColumnUseCase,
 )
+from app.application.repositories.user_repository import IUserRepository
 from app.domain.entities.supplier_member import WorkspaceContext
 from app.domain.entities.user import User
 from app.domain.errors.kanban_errors import (
@@ -99,6 +100,7 @@ def create_kanban_router(
     get_reorder_kanban_columns_use_case: Callable,
     get_list_kanban_events_use_case: Callable,
     get_notify_kanban_change_use_case: Callable,
+    get_user_repo: Callable | None = None,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     workspace_context_dep = get_current_workspace_context or (lambda: None)
@@ -586,6 +588,8 @@ def create_kanban_router(
         )
         return card
 
+    user_repo_dep: Callable = get_user_repo or (lambda: None)
+
     @router.get(
         "/events",
         response_model=list[KanbanEventResponse],
@@ -598,6 +602,7 @@ def create_kanban_router(
         use_case: Annotated[
             ListKanbanEventsUseCase, Depends(get_list_kanban_events_use_case)
         ],
+        user_repo: Annotated[IUserRepository | None, Depends(user_repo_dep)],
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ):
@@ -605,11 +610,20 @@ def create_kanban_router(
         events = await use_case.execute(
             supplier_id=supplier_id, limit=limit, offset=offset
         )
+
+        name_cache: dict[UUID, str] = {}
+        if user_repo is not None:
+            for uid in {e.user_id for e in events}:
+                user = await user_repo.get_by_id(uid)
+                if user is not None:
+                    name_cache[uid] = user.full_name or user.email
+
         return [
             KanbanEventResponse(
                 id=e.id,
                 supplier_id=e.supplier_id,
                 user_id=e.user_id,
+                user_name=name_cache.get(e.user_id),
                 event_type=e.event_type,
                 entity_type=e.entity_type,
                 entity_id=e.entity_id,

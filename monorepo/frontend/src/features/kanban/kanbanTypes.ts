@@ -71,6 +71,7 @@ export interface KanbanEvent {
   supplier_id: string;
   /** Autor del evento (quién hizo el cambio). */
   user_id: string;
+  user_name: string | null;
   event_type: KanbanEventType;
   entity_type: KanbanEntityType | null;
   entity_id: string | null;
