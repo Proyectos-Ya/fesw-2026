@@ -30,51 +30,73 @@ interface QuotationEditorProps {
 }
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });
+/** Resultado de consultar la cotización del espacio de trabajo: la consulta se hace una vez, al montar. */
+type Stored = { status: "loading" } | { status: "missing" } | { status: "found"; quotation: Quotation } | { status: "error"; message: string };
+const formatModified = (iso: string) => new Date(iso).toLocaleString("es-CL", { dateStyle: "long", timeStyle: "short" });
 
 export function QuotationEditor({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
+  const [stored, setStored] = useState<Stored>({ status: "loading" });
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const endpoint = `/tenders/${tenderId}/quotation`;
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<Quotation>(endpoint).then(quotation => {
+      if (cancelled) return;
+      setStored({ status: "found", quotation });
+      setUpdatedAt(quotation.updated_at);
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      if (error instanceof ApiError && error.status === 404) setStored({ status: "missing" });
+      else setStored({ status: "error", message: error instanceof Error ? error.message : "No se pudo cargar la cotización." });
+    });
+    return () => { cancelled = true; };
+  }, [endpoint, attempt]);
+
+  const exists = updatedAt !== null;
   return <section className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-lg font-bold text-text-strong">Cotización de materiales</h2>
-        <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p></div>
-      <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : "Generar cotización"}</Button>
+        <p className="text-sm text-text-muted">Estima los costos de esta licitación y descarga tu cotización.</p>
+        {exists && updatedAt && <p className="mt-1 text-sm font-medium text-text-strong">Ya existe una cotización guardada para esta licitación en tu espacio de trabajo. <span className="font-normal text-text-muted">Última modificación: {formatModified(updatedAt)}.</span></p>}
+        {stored.status === "missing" && !exists && <p className="mt-1 text-sm text-text-muted">Aún no se ha generado una cotización para esta licitación.</p>}</div>
+      <Button onClick={() => { setOpened(true); setOpen(!open); }} aria-expanded={open}>{open ? "Cerrar cotización" : exists ? "Abrir cotización" : "Generar cotización"}</Button>
     </div>
-    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} onSaved={onSaved} /></div>}
+    {opened && <div hidden={!open}><QuotationForm key={tenderId} tenderId={tenderId} tenderCode={tenderCode} tenderItems={tenderItems} stored={stored} onRetry={() => { setStored({ status: "loading" }); setAttempt(attempt + 1); }} onPersisted={quotation => setUpdatedAt(quotation.updated_at)} onSaved={onSaved} /></div>}
   </section>;
 }
 
-function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSaved }: QuotationEditorProps) {
+interface QuotationFormProps extends QuotationEditorProps {
+  stored: Stored;
+  onRetry: () => void;
+  onPersisted: (quotation: Quotation) => void;
+}
+
+function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, stored, onRetry, onPersisted, onSaved }: QuotationFormProps) {
   const [items, setItems] = useState<Row[]>([]);
   const [initialTenderItems] = useState(tenderItems);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [attempt, setAttempt] = useState(0);
+  const [initialized, setInitialized] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
   const endpoint = `/tenders/${tenderId}/quotation`;
+  const loadError = stored.status === "error" ? stored.message
+    : stored.status === "found" && stored.quotation.currency !== "CLP" ? `La cotización guardada está en ${stored.quotation.currency}. No se puede convertir a CLP sin revisar sus precios.` : "";
+  const loading = stored.status === "loading" || (!initialized && !loadError);
 
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch<Quotation>(endpoint).then(data => {
-      if (cancelled) return;
-      if (data.currency !== "CLP") {
-        setLoadError(`La cotización guardada está en ${data.currency}. No se puede convertir a CLP sin revisar sus precios.`);
-        return;
-      }
-      setItems(data.items.map(item => row({ ...item, quantity: normalizeInteger(item.quantity), unit_price: normalizeInteger(item.unit_price) })));
-    }).catch((error: unknown) => {
-      if (cancelled) return;
-      if (error instanceof ApiError && error.status === 404) {
-        const materials = materialsFromTender(initialTenderItems);
-        setItems((materials.length ? materials : [blank()]).map(row));
-      }
-      else setLoadError(error instanceof Error ? error.message : "No se pudo cargar la cotización.");
-    }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [endpoint, attempt, initialTenderItems]);
+  // Los materiales se cargan una sola vez: guardar actualiza `stored` solo en el aviso, no reinicia la edición.
+  if (!initialized && stored.status === "found" && stored.quotation.currency === "CLP") {
+    setItems(stored.quotation.items.map(item => row({ ...item, quantity: normalizeInteger(item.quantity), unit_price: normalizeInteger(item.unit_price) })));
+    setInitialized(true);
+  } else if (!initialized && stored.status === "missing") {
+    const materials = materialsFromTender(initialTenderItems);
+    setItems((materials.length ? materials : [blank()]).map(row));
+    setInitialized(true);
+  }
 
   useEffect(() => {
     if (!dirty) return;
@@ -97,6 +119,7 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSa
     try {
       const saved = await apiFetch<Quotation>(endpoint, { method: "PUT", body: JSON.stringify({ currency, items: data }) });
       setDirty(false);
+      onPersisted(saved);
       onSaved?.();
       if (download) {
         const normalized = { ...saved, items: saved.items.map(item => ({ ...item, quantity: normalizeInteger(item.quantity), unit_price: normalizeInteger(item.unit_price) })) };
@@ -116,7 +139,7 @@ function QuotationForm({ tenderId, tenderCode, tenderItems = noTenderItems, onSa
   }
 
   if (loading) return <p role="status" className="mt-4">Cargando cotización…</p>;
-  if (loadError) return <div className="mt-4"><p role="alert">{loadError}</p><Button onClick={() => { setLoading(true); setLoadError(""); setAttempt(attempt + 1); }}>Reintentar</Button></div>;
+  if (loadError) return <div className="mt-4"><p role="alert">{loadError}</p><Button onClick={onRetry}>Reintentar</Button></div>;
   const inputClass = "w-full rounded-md border border-border-default bg-surface-inset px-3 py-2 text-sm text-text-strong transition-colors focus:border-primary focus:bg-surface-card focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50";
   return <form className="mt-6 space-y-4" noValidate onSubmit={event => { event.preventDefault(); void save(null); }}>
     <div className="space-y-4">
