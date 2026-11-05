@@ -11,6 +11,8 @@ pnpm-debug.log*
 venv/
 env/
 ENV/
+# Datos de ejecución del backend (adjuntos, subidas del chat). No se versionan.
+monorepo/backend/storage/
 __pycache__/
 *.pyc
 *.pyo
