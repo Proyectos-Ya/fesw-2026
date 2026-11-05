@@ -24,9 +24,9 @@ describe("ContentScriptBridge", () => {
     expect(sendRuntime).not.toHaveBeenCalled();
   });
 
-  it("responde PONG con nonce y versión ante PING", () => {
+  it("responde PONG con nonce, versión y el estado real de vinculación", () => {
     const postMessage = vi.fn();
-    const sendRuntime = vi.fn();
+    const sendRuntime = vi.fn((_msg: unknown, cb?: (r: unknown) => void) => cb?.({ paired: true }));
     const bridge = new ContentScriptBridge({
       currentOrigin: defaultOrigin,
       extensionVersion: "0.2.0",
@@ -36,14 +36,11 @@ describe("ContentScriptBridge", () => {
 
     const handled = bridge.handleWindowMessage({
       origin: defaultOrigin,
-      data: {
-        target: "CHIRIPA_EXTENSION",
-        type: "PING",
-        nonce: "test-nonce-123",
-      },
+      data: { target: "CHIRIPA_EXTENSION", type: "PING", nonce: "test-nonce-123" },
     });
 
     expect(handled).toBe(true);
+    expect(sendRuntime).toHaveBeenCalledWith({ action: "GET_STATUS" }, expect.any(Function));
     expect(postMessage).toHaveBeenCalledWith(
       {
         target: "CHIRIPA_WEB",
@@ -52,9 +49,26 @@ describe("ContentScriptBridge", () => {
         version: "0.2.0",
         features: ["postulation"],
         mp_access: true,
+        paired: true,
       },
       defaultOrigin
     );
+  });
+
+  it("responde PONG con paired=false si el service worker no contesta", () => {
+    const postMessage = vi.fn();
+    const sendRuntime = vi.fn((_msg: unknown, cb?: (r: unknown) => void) => cb?.(undefined));
+    const bridge = new ContentScriptBridge({
+      currentOrigin: defaultOrigin,
+      extensionVersion: "0.2.0",
+      postMessageToWindow: postMessage,
+      sendMessageToRuntime: sendRuntime,
+    });
+    bridge.handleWindowMessage({
+      origin: defaultOrigin,
+      data: { target: "CHIRIPA_EXTENSION", type: "PING", nonce: "n" },
+    });
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "PONG", paired: false }), defaultOrigin);
   });
 
   it("rechaza mensaje de pairing expirado (> 60 segundos)", () => {

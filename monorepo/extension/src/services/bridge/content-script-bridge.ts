@@ -39,17 +39,22 @@ export class ContentScriptBridge {
 
     // 2. Protocolo Handshake PING -> PONG
     if (data.type === "PING") {
-      this.config.postMessageToWindow(
-        {
-          target: "CHIRIPA_WEB",
-          type: "PONG",
-          nonce: data.nonce,
-          version: this.config.extensionVersion,
-          features: ["postulation"],
-          mp_access: true,
-        },
-        this.config.currentOrigin
-      );
+      // El estado de vinculación lo confirma el service worker, no se supone.
+      this.config.sendMessageToRuntime({ action: "GET_STATUS" }, (response: unknown) => {
+        const status = response as { paired?: boolean } | undefined;
+        this.config.postMessageToWindow(
+          {
+            target: "CHIRIPA_WEB",
+            type: "PONG",
+            nonce: data.nonce,
+            version: this.config.extensionVersion,
+            features: ["postulation"],
+            mp_access: true,
+            paired: Boolean(status?.paired),
+          },
+          this.config.currentOrigin
+        );
+      });
       return true;
     }
 
