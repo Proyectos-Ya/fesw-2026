@@ -143,6 +143,15 @@ describe("CompraAgilAdapter: llenado", () => {
     expect(precioA.getAttribute("data-chiripa-field-status")).toBe("filled");
   });
 
+  it("pega el valor de despacho cuando viene en el paquete", async () => {
+    await render();
+    const res = await fill(basePackage({ shipping_clp: 25000 }));
+    const despacho = textInputs()[2];
+    expect(despacho.value).toBe("25000");
+    expect(despacho.getAttribute("data-chiripa-field-status")).toBe("filled");
+    expect(res.pending).not.toContain("Despacho");
+  });
+
   it("recorta el detalle a 255 caracteres", async () => {
     await render();
     await fill(basePackage({ observations: "x".repeat(400) }));

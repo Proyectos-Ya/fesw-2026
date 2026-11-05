@@ -163,9 +163,17 @@ export class CompraAgilAdapter {
       pending.push(COMPRA_AGIL.labels.detail);
     }
 
-    // El paquete aún no trae el valor de despacho: queda para el usuario.
+    // El despacho viene de la cotización; si no lo trae, queda para el usuario.
     const shipping = this.controlNear(COMPRA_AGIL.labels.shipping);
-    if (shipping) {
+    if (shipping && typeof pkg.shipping_clp === "number") {
+      const expected = String(Math.round(pkg.shipping_clp));
+      writes.push({
+        el: shipping,
+        expected,
+        label: COMPRA_AGIL.labels.shipping,
+        matches: (value) => onlyDigits(value) === expected,
+      });
+    } else if (shipping) {
       this.mark(shipping, "incomplete");
       pending.push(COMPRA_AGIL.labels.shipping);
     }

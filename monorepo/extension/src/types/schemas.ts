@@ -98,6 +98,7 @@ export const PostulationPackagePayloadSchema = z.object({
   observations: z.string().max(500).default(""),
   validity_days: z.number().int().positive().default(30),
   delivery_term_days: z.number().int().positive().default(15),
+  shipping_clp: z.number().int().nonnegative().nullable().optional(),
   files: z.array(PostulationFileAttachmentSchema).default([]),
 });
 export type PostulationPackagePayload = z.infer<typeof PostulationPackagePayloadSchema>;
