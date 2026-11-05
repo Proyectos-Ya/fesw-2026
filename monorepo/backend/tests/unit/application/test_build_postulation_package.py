@@ -179,11 +179,13 @@ async def test_matching_exacto_por_descripcion_normalizada():
                 unit_price=Decimal("12500"),
             )
         ],
+        shipping_clp=Decimal("15000"),
     )
     quotations.items[(supplier.id, tender_id)] = quotation
 
     package = await use_case.execute(user_id=user_id, supplier_id=supplier.id, tender_id=tender_id)
 
+    assert package.shipping_clp == 15000
     assert package.tender.code == "1234-56-COT26"
     assert package.company.rut == "76.086.428-5"
     assert package.offer_name == "Servicio de Café y Banquetería"

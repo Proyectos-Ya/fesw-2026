@@ -490,3 +490,39 @@ async def test_omite_lo_que_pasa_el_tope_de_tamano(service, monkeypatch):
 
     parts = json.loads(route.calls[0].request.content)["contents"][0]["parts"]
     assert len([p for p in parts if "inlineData" in p]) == 1
+
+
+def _gemini_response(quotation: dict) -> Response:
+    analysis = {"compatibility_score": 80.0, "recommendation": "Postular", "justification": "ok"}
+    text = json.dumps({"analysis": analysis, "quotation": quotation})
+    return Response(200, json={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("shipping", "expected"),
+    [(18000, Decimal("18000")), (None, None), (-5, None), ("abc", None)],
+)
+@respx.mock
+async def test_genera_valor_de_despacho_en_la_cotizacion(service, shipping, expected):
+    quotation = {
+        "currency": "CLP",
+        "items": [{"description": "Cable", "unit": "rollo", "quantity": 1, "unit_price": 1000, "subtotal": 1000}],
+        "total": 1000,
+    }
+    if shipping is not None:
+        quotation["shipping_clp"] = shipping
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    ).mock(return_value=_gemini_response(quotation))
+
+    result = await service.analyze_and_quote(
+        documents=[DocumentContextDTO(document_name="b.pdf", file_type="pdf", file_bytes=b"%PDF-1.4")],
+        tender=create_test_tender(),
+        supplier=create_test_supplier(),
+        matching_score=80.0,
+    )
+
+    assert result.quotation.shipping_clp == expected
+    schema = json.loads(route.calls[0].request.content)["generationConfig"]["responseSchema"]
+    assert "shipping_clp" in schema["properties"]["quotation"]["properties"]

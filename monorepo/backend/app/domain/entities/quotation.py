@@ -54,6 +54,14 @@ class QuotationData(BaseModel):
 
     currency: Literal["CLP"] = "CLP"
     items: list[StoredMaterialItem] = Field(min_length=1, max_length=200)
+    # Valor de despacho de la oferta (campo «Despacho» de Compra Ágil). Opcional.
+    shipping_clp: Decimal | None = Field(
+        default=None, ge=0, max_digits=12, decimal_places=0, allow_inf_nan=False
+    )
+
+    @field_serializer("shipping_clp")
+    def serialize_shipping(self, value: Decimal | None) -> str | None:
+        return None if value is None else format(value.quantize(Decimal("1")), "f")
 
     @computed_field
     @property

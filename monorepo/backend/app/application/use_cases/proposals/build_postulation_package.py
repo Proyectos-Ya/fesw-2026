@@ -249,4 +249,9 @@ class BuildPostulationPackageUseCase:
             required_documents=req_docs,
             warnings=warnings,
             quotation_updated_at=quot_updated_iso,
+            shipping_clp=(
+                int(quotation.shipping_clp)
+                if is_clp and quotation and quotation.shipping_clp is not None
+                else None
+            ),
         )

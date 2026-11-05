@@ -99,3 +99,4 @@ class PostulationPackage(BaseModel):
     required_documents: list[PostulationRequiredDocument] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     quotation_updated_at: str | None = None
+    shipping_clp: int | None = None

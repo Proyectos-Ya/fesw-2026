@@ -168,6 +168,10 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
                                     },
                                 },
                                 "total": {"type": "NUMBER", "description": "Monto total estimado"},
+                                "shipping_clp": {
+                                    "type": "NUMBER",
+                                    "description": "Valor estimado de despacho en CLP",
+                                },
                             },
                             "required": ["currency", "items", "total"],
                         },
@@ -270,12 +274,26 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
         quotation_input = QuotationInput(
             currency="CLP",
             items=material_items,
+            shipping_clp=_parse_shipping(quotation_data.get("shipping_clp")),
         )
 
         return DocumentAnalysisAndQuotationResult(
             analysis=deep_analysis,
             quotation=quotation_input,
         )
+
+
+def _parse_shipping(raw: object) -> Decimal | None:
+    """Despacho sugerido por el modelo: entero CLP >= 0, o None si falta o no es válido."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = Decimal(str(raw))
+    except Exception:
+        return None
+    if not value.is_finite() or value < 0:
+        return None
+    return value.quantize(Decimal("1"))
 
 
 # Gemini acepta unos 20 MB por petición con archivos en línea, y base64 suma un
