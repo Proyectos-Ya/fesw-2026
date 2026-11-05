@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { detectBrowser, getExtensionStoreUrl } from "../extensionLinks";
+import {
+  EXTENSION_DISTRIBUTION,
+  detectBrowser,
+  getExtensionInstallUrl,
+  getExtensionStoreUrl,
+  getExtensionZipUrl,
+} from "../extensionLinks";
 
 describe("extensionLinks", () => {
   it("retorna enlace de Chrome Web Store para Chrome y Edge", () => {
@@ -24,5 +30,14 @@ describe("extensionLinks", () => {
     expect(detectBrowser(chromeUA)).toBe("chrome");
     expect(detectBrowser(firefoxUA)).toBe("firefox");
     expect(detectBrowser(edgeUA)).toBe("edge");
+  });
+
+  it("mientras no se publique en las tiendas, la instalación es por .zip", () => {
+    expect(EXTENSION_DISTRIBUTION).toBe("zip");
+    expect(getExtensionZipUrl("chrome")).toBe("/extension/chiripa-chrome.zip");
+    expect(getExtensionZipUrl("edge")).toBe("/extension/chiripa-chrome.zip");
+    expect(getExtensionZipUrl("firefox")).toBe("/extension/chiripa-firefox.zip");
+    expect(getExtensionZipUrl("safari")).toBeNull();
+    expect(getExtensionInstallUrl("firefox")).toBe("/extension/chiripa-firefox.zip");
   });
 });
