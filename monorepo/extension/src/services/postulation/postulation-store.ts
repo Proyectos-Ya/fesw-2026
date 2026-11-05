@@ -1,3 +1,4 @@
+import { localRemove, localSet } from "../storage/local-storage";
 import { PostulationPackagePayload } from "../../types/schemas";
 
 interface StoredPackageEntry {
@@ -65,7 +66,7 @@ export class PostulationStore {
     // Sincronizar metadatos en chrome.storage.local si está presente
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       const metaKey = `postulation_meta_${packageData.tender_code}`;
-      await chrome.storage.local.set({
+      await localSet({
         [metaKey]: {
           tender_code: packageData.tender_code,
           company_rut: packageData.company_rut,
@@ -121,7 +122,7 @@ export class PostulationStore {
 
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       const metaKey = `postulation_meta_${tender_code}`;
-      await chrome.storage.local.remove([metaKey]);
+      await localRemove([metaKey]);
     }
   }
 }
