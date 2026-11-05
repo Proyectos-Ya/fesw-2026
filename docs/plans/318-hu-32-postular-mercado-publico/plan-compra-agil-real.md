@@ -230,3 +230,11 @@ no como extensión instalada). Nunca se pulsó «Enviar cotización».
 - Pendiente C1: confirmar que el content script (mundo aislado) ve las entradas de
   `performance` de la página, con la extensión cargada.
 
+## 8. Cambios tras la verificación
+
+- El anexo ya no se adjunta al llenar: el panel muestra «Subir «archivo»» y solo lo sube si el
+  usuario confirma (Compra Ágil lo sube al servidor apenas se selecciona).
+- Despacho: se genera con la cotización (`Quotation.shipping_clp`, Gemini lo estima; migración
+  nullable `b7d2e4f6a813`), viaja en el paquete y la extensión lo pega en «Despacho».
+  Pendiente: poder editarlo en `QuotationEditor`.
+
