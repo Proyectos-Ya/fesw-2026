@@ -3,6 +3,9 @@
  * No utiliza `any` y valida orígenes y nonces estrictamente.
  */
 
+import { crearClienteNavegador } from "@/features/auth/supabase/client";
+import { apiFetch } from "@/features/shared/api/client";
+
 export interface PostulationFilePayload {
   name: string;
   type: string;
@@ -43,6 +46,8 @@ export interface ProbeExtensionResult {
   version?: string;
   postulation_enabled?: boolean;
   mp_access?: boolean;
+  /** La extensión confirma que tiene guardada la vinculación con Chiripa. */
+  paired?: boolean;
 }
 
 interface BridgeIncomingMessage {
@@ -52,6 +57,7 @@ interface BridgeIncomingMessage {
   version?: string;
   features?: string[];
   mp_access?: boolean;
+  paired?: boolean;
   tab_id?: number;
   tender_code?: string;
   ok?: boolean;
@@ -91,6 +97,7 @@ export async function probeExtension(timeoutMs: number = 1200): Promise<ProbeExt
           version: data.version,
           postulation_enabled: hasPostulation,
           mp_access: data.mp_access,
+          paired: data.paired === true,
         });
       }
     };
@@ -267,3 +274,76 @@ export async function focusPostulationTab(
     }, timeoutMs);
   });
 }
+
+function detectBrowser(): "chrome" | "firefox" | "edge" | "safari" | "other" {
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("edg/")) return "edge";
+  if (ua.includes("firefox")) return "firefox";
+  if (ua.includes("safari") && !ua.includes("chrome")) return "safari";
+  return "chrome";
+}
+
+/**
+ * Vincula la extensión con la sesión actual de Chiripa. Solo resuelve `ok: true` si la
+ * extensión confirma con PAIR_SUCCESS. Se envía el access token de la sesión (lo usa la
+ * extensión para hablar con la API), nunca el refresh token.
+ */
+export async function pairExtension(options: {
+  workspaceId?: string | null;
+  extensionVersion?: string;
+  timeoutMs?: number;
+} = {}): Promise<{ ok: boolean; error?: string }> {
+  if (typeof window === "undefined") return { ok: false, error: "Window undefined" };
+  const timeoutMs = options.timeoutMs ?? 5000;
+
+  try {
+    const { data } = await crearClienteNavegador().auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return { ok: false, error: "No hay una sesión activa para vincular." };
+
+    const start = await apiFetch<{ pairing_ticket: string }>("/extension/pairing/start", {
+      method: "POST",
+      body: JSON.stringify({
+        browser: detectBrowser(),
+        extension_version: options.extensionVersion ?? "0.2.0",
+      }),
+    });
+
+    const nonce = crypto.randomUUID();
+    return await new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent<unknown>) => {
+        if (!isSameOrigin(event.origin)) return;
+        const msg = event.data as BridgeIncomingMessage | null | undefined;
+        if (msg?.target === "CHIRIPA_WEB" && msg.type === "PAIR_SUCCESS" && msg.nonce === nonce) {
+          clearTimeout(timer);
+          window.removeEventListener("message", handleMessage);
+          resolve({ ok: true });
+        }
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", handleMessage);
+        resolve({ ok: false, error: "La extensión no confirmó la vinculación." });
+      }, timeoutMs);
+      window.addEventListener("message", handleMessage);
+
+      window.postMessage(
+        {
+          target: "CHIRIPA_EXTENSION",
+          type: "PAIR_SESSION",
+          nonce,
+          payload: {
+            pairing_ticket: start.pairing_ticket,
+            api_url: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+            workspace_id: options.workspaceId ?? null,
+            access_token: accessToken,
+            timestamp: Date.now(),
+          },
+        },
+        window.location.origin
+      );
+    });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Error al vincular la extensión." };
+  }
+}
+

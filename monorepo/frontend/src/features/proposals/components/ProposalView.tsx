@@ -16,6 +16,7 @@ import { useProposal } from "../hooks/useProposal";
 import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
+import { ExtensionPairingRequiredDialog } from "./ExtensionPairingRequiredDialog";
 import { ExtensionRequiredDialog } from "./ExtensionRequiredDialog";
 import { FeasibilityStep } from "./FeasibilityStep";
 import { PostularEnMercadoPublicoButton } from "./PostularEnMercadoPublicoButton";
@@ -75,6 +76,12 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
     confirm: handleConfirmPostulation,
     setShowExtensionRequiredDialog,
     setShowConfirmDialog,
+    pairingRequired,
+    pairAndContinue,
+    retry: retryPostulation,
+    postManually,
+    setPairingRequired,
+    error: postulationError,
   } = useMercadoPublicoPostulation({
     tenderId,
     tenderCode: tender?.data.code ?? null,
@@ -456,6 +463,15 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         </Seccion>
       )}
 
+      <ExtensionPairingRequiredDialog
+        open={Boolean(pairingRequired)}
+        busy={postulationBusy}
+        error={postulationError ?? null}
+        onPair={() => void pairAndContinue()}
+        onRetry={() => void retryPostulation()}
+        onPostManually={postManually}
+        onClose={() => setPairingRequired(false)}
+      />
       <ExtensionRequiredDialog
         open={showExtensionRequiredDialog}
         onClose={() => setShowExtensionRequiredDialog(false)}

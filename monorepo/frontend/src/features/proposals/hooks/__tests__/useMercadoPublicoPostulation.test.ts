@@ -34,6 +34,7 @@ describe("useMercadoPublicoPostulation", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it("si la extensión no está instalada, abre ExtensionRequiredDialog (CA2)", async () => {
@@ -59,6 +60,7 @@ describe("useMercadoPublicoPostulation", () => {
       installed: true,
       version: "0.2.0",
       postulation_enabled: true,
+      paired: true,
     });
     vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 10 });
     vi.mocked(proposalService.getPostulationPackage).mockResolvedValue(samplePackage);
@@ -88,6 +90,7 @@ describe("useMercadoPublicoPostulation", () => {
       installed: true,
       version: "0.2.0",
       postulation_enabled: true,
+      paired: true,
     });
     vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 11 });
     vi.mocked(proposalService.getPostulationPackage).mockResolvedValue(samplePackage);
@@ -137,4 +140,87 @@ describe("useMercadoPublicoPostulation", () => {
     expect(bridge.focusPostulationTab).toHaveBeenCalledWith("2499-12-L126");
     expect(result.current.showConfirmDialog).toBe(false);
   });
+
+  describe("vinculación automática", () => {
+    const installedNotPaired = { installed: true, version: "0.2.0", postulation_enabled: true, paired: false };
+
+    it("vincula sola si la extensión está instalada pero no vinculada, y sigue el flujo", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(installedNotPaired);
+      vi.mocked(bridge.pairExtension).mockResolvedValue({ ok: true });
+      vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 12 });
+      vi.mocked(proposalService.getPostulationPackage).mockResolvedValue(samplePackage);
+
+      const { result } = renderHook(() =>
+        useMercadoPublicoPostulation({ tenderId: "t-3", tenderCode: "5626-943-COT26" })
+      );
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+
+      expect(bridge.pairExtension).toHaveBeenCalledTimes(1);
+      expect(bridge.openPostulationTab).toHaveBeenCalled();
+      expect(result.current.pairingRequired).toBe(false);
+      expect(result.current.showConfirmDialog).toBe(true);
+    });
+
+    it("si no logra vincular, pide vincular y no abre Mercado Público", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(installedNotPaired);
+      vi.mocked(bridge.pairExtension).mockResolvedValue({ ok: false, error: "sin respuesta" });
+
+      const { result } = renderHook(() =>
+        useMercadoPublicoPostulation({ tenderId: "t-3", tenderCode: "5626-943-COT26" })
+      );
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+
+      expect(result.current.pairingRequired).toBe(true);
+      expect(result.current.showConfirmDialog).toBe(false);
+      expect(bridge.openPostulationTab).not.toHaveBeenCalled();
+      expect(proposalService.getPostulationPackage).not.toHaveBeenCalled();
+    });
+
+    it("«Vincular» reintenta la vinculación y, si funciona, continúa", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(installedNotPaired);
+      vi.mocked(bridge.pairExtension).mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true });
+      vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 12 });
+      vi.mocked(proposalService.getPostulationPackage).mockResolvedValue(samplePackage);
+
+      const { result } = renderHook(() =>
+        useMercadoPublicoPostulation({ tenderId: "t-3", tenderCode: "5626-943-COT26" })
+      );
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+      await act(async () => {
+        await result.current.pairAndContinue();
+      });
+
+      expect(result.current.pairingRequired).toBe(false);
+      expect(result.current.showConfirmDialog).toBe(true);
+    });
+
+    it("«Postular manualmente» abre la ficha de Mercado Público sin llenado", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(installedNotPaired);
+      vi.mocked(bridge.pairExtension).mockResolvedValue({ ok: false });
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+      const { result } = renderHook(() =>
+        useMercadoPublicoPostulation({ tenderId: "t-3", tenderCode: "5626-943-COT26" })
+      );
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+      act(() => result.current.postManually());
+
+      expect(open).toHaveBeenCalledWith(
+        "https://compra-agil.mercadopublico.cl/resumen-cotizacion/5626-943-COT26",
+        "_blank",
+        "noopener,noreferrer"
+      );
+      expect(result.current.pairingRequired).toBe(false);
+      expect(bridge.confirmPostulation).not.toHaveBeenCalled();
+    });
+  });
 });
+

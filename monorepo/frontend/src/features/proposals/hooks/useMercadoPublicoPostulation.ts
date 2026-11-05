@@ -6,6 +6,7 @@ import {
   confirmPostulation,
   focusPostulationTab,
   openPostulationTab,
+  pairExtension,
   probeExtension,
   type PostulationConfirmPayload,
 } from "@/features/shared/extension/extensionBridge";
@@ -25,42 +26,91 @@ export function useMercadoPublicoPostulation({
   const [packageData, setPackageData] = useState<PostulationPackage | null>(null);
   const [showExtensionRequiredDialog, setShowExtensionRequiredDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pairingRequired, setPairingRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const startPostulation = useCallback(async () => {
-    setBusy(true);
-    setError(null);
+  const postulationUrl = tenderCode
+    ? isCompraAgilCode(tenderCode)
+      ? compraAgilCotizacionUrl(tenderCode)
+      : "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx"
+    : null;
 
-    try {
-      // 1. Probar si la extensión está instalada (CA2)
-      const probe = await probeExtension(1200);
-      if (!probe.installed) {
-        setShowExtensionRequiredDialog(true);
-        setBusy(false);
-        return;
-      }
-
-      // 2. Abrir la pestaña de Mercado Público inactiva en background (CA3)
-      // Compra Ágil se cotiza en su ficha (resumen-cotizacion); el buscador público no
-      // permite cotizar. Las licitaciones siguen por el Escritorio Proveedor (Menu.aspx).
-      if (tenderCode) {
-        const url = isCompraAgilCode(tenderCode)
-          ? compraAgilCotizacionUrl(tenderCode)
-          : "https://www.mercadopublico.cl/Portal/Modules/Menu/Menu.aspx";
-        await openPostulationTab(tenderCode, url);
-      }
-
-      // 3. Obtener el paquete de postulación desde la API de Chiripa
-      const pkg = await getPostulationPackage(tenderId);
-      setPackageData(pkg);
-      setShowConfirmDialog(true);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error preparando postulación";
-      setError(msg);
-    } finally {
-      setBusy(false);
+  // Abre la pestaña de MP y prepara el paquete; requiere la extensión vinculada.
+  const continueWithPairedExtension = useCallback(async () => {
+    // 2. Abrir la pestaña de Mercado Público inactiva en background (CA3)
+    // Compra Ágil se cotiza en su ficha (resumen-cotizacion); el buscador público no
+    // permite cotizar. Las licitaciones siguen por el Escritorio Proveedor (Menu.aspx).
+    if (tenderCode && postulationUrl) {
+      await openPostulationTab(tenderCode, postulationUrl);
     }
-  }, [tenderId, tenderCode]);
+
+    // 3. Obtener el paquete de postulación desde la API de Chiripa
+    const pkg = await getPostulationPackage(tenderId);
+    setPackageData(pkg);
+    setShowConfirmDialog(true);
+  }, [tenderId, tenderCode, postulationUrl]);
+
+  const run = useCallback(
+    async (step: () => Promise<void>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await step();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error preparando postulación";
+        setError(msg);
+      } finally {
+        setBusy(false);
+      }
+    },
+    []
+  );
+
+  const startPostulation = useCallback(
+    () =>
+      run(async () => {
+        // 1. Probar si la extensión está instalada (CA2)
+        const probe = await probeExtension(1200);
+        if (!probe.installed) {
+          setShowExtensionRequiredDialog(true);
+          return;
+        }
+
+        // Vinculación automática: el estado lo confirma la extensión, no se supone.
+        if (!probe.paired) {
+          const paired = await pairExtension({ extensionVersion: probe.version });
+          if (!paired?.ok) {
+            setPairingRequired(true);
+            return;
+          }
+        }
+
+        setPairingRequired(false);
+        await continueWithPairedExtension();
+      }),
+    [run, continueWithPairedExtension]
+  );
+
+  /** «Vincular»: reintenta la vinculación y, si funciona, sigue con la postulación. */
+  const pairAndContinue = useCallback(
+    () =>
+      run(async () => {
+        const paired = await pairExtension();
+        if (!paired?.ok) {
+          setError(paired?.error ?? "No se pudo vincular la extensión.");
+          return;
+        }
+        setPairingRequired(false);
+        await continueWithPairedExtension();
+      }),
+    [run, continueWithPairedExtension]
+  );
+
+  /** «Postular manualmente»: abre Mercado Público sin llenado asistido. */
+  const postManually = useCallback(() => {
+    setPairingRequired(false);
+    if (postulationUrl) window.open(postulationUrl, "_blank", "noopener,noreferrer");
+  }, [postulationUrl]);
 
   const confirm = useCallback(
     async (payload: PostulationConfirmPayload) => {
@@ -100,6 +150,11 @@ export function useMercadoPublicoPostulation({
     showConfirmDialog,
     error,
     startPostulation,
+    pairingRequired,
+    pairAndContinue,
+    retry: startPostulation,
+    postManually,
+    setPairingRequired,
     confirm,
     setShowExtensionRequiredDialog,
     setShowConfirmDialog,
