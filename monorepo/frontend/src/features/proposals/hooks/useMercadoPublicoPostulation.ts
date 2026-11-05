@@ -10,8 +10,27 @@ import {
   probeExtension,
   type PostulationConfirmPayload,
 } from "@/features/shared/extension/extensionBridge";
-import { getPostulationPackage } from "../services/proposalService";
+import { downloadTechnicalDocument, getPostulationPackage } from "../services/proposalService";
 import type { PostulationPackage } from "../types";
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/** Si la descarga falla, se postula igual sin el anexo. */
+async function loadTechnicalDocx(tenderId: string): Promise<string | null> {
+  try {
+    const { blob } = await downloadTechnicalDocument(tenderId);
+    return await blobToBase64(blob);
+  } catch {
+    return null;
+  }
+}
 
 interface UseMercadoPublicoPostulationProps {
   tenderId: string;
@@ -27,6 +46,7 @@ export function useMercadoPublicoPostulation({
   const [showExtensionRequiredDialog, setShowExtensionRequiredDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pairingRequired, setPairingRequired] = useState(false);
+  const [technicalDocxBase64, setTechnicalDocxBase64] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const postulationUrl = tenderCode
@@ -47,6 +67,8 @@ export function useMercadoPublicoPostulation({
     // 3. Obtener el paquete de postulación desde la API de Chiripa
     const pkg = await getPostulationPackage(tenderId);
     setPackageData(pkg);
+    // El borrador de postulación (documento técnico) va como anexo si existe.
+    setTechnicalDocxBase64(pkg.technical_document_available ? await loadTechnicalDocx(tenderId) : null);
     setShowConfirmDialog(true);
   }, [tenderId, tenderCode, postulationUrl]);
 
@@ -150,6 +172,7 @@ export function useMercadoPublicoPostulation({
     showConfirmDialog,
     error,
     startPostulation,
+    technicalDocxBase64,
     pairingRequired,
     pairAndContinue,
     retry: startPostulation,

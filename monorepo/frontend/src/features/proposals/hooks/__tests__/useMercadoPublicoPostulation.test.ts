@@ -222,5 +222,49 @@ describe("useMercadoPublicoPostulation", () => {
       expect(bridge.confirmPostulation).not.toHaveBeenCalled();
     });
   });
+
+  describe("borrador de postulación como anexo", () => {
+    const paired = { installed: true, version: "0.2.0", postulation_enabled: true, paired: true };
+
+    it("adjunta el documento técnico al paquete cuando está disponible", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(paired);
+      vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 1 });
+      vi.mocked(proposalService.getPostulationPackage).mockResolvedValue({
+        ...samplePackage,
+        technical_document_available: true,
+      });
+      vi.mocked(proposalService.downloadTechnicalDocument).mockResolvedValue({
+        blob: new Blob(["hola"]),
+        filename: "documento-tecnico.docx",
+      });
+
+      const { result } = renderHook(() => useMercadoPublicoPostulation({ tenderId: "t-9", tenderCode: "5626-943-COT26" }));
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+
+      expect(proposalService.downloadTechnicalDocument).toHaveBeenCalledWith("t-9");
+      expect(result.current.technicalDocxBase64).toBe(btoa("hola"));
+      expect(result.current.showConfirmDialog).toBe(true);
+    });
+
+    it("sigue sin anexo si no hay documento o falla la descarga", async () => {
+      vi.mocked(bridge.probeExtension).mockResolvedValue(paired);
+      vi.mocked(bridge.openPostulationTab).mockResolvedValue({ ok: true, tab_id: 1 });
+      vi.mocked(proposalService.getPostulationPackage).mockResolvedValue({
+        ...samplePackage,
+        technical_document_available: true,
+      });
+      vi.mocked(proposalService.downloadTechnicalDocument).mockRejectedValue(new Error("404"));
+
+      const { result } = renderHook(() => useMercadoPublicoPostulation({ tenderId: "t-9", tenderCode: "5626-943-COT26" }));
+      await act(async () => {
+        await result.current.startPostulation();
+      });
+
+      expect(result.current.technicalDocxBase64).toBeNull();
+      expect(result.current.showConfirmDialog).toBe(true);
+    });
+  });
 });
 

@@ -179,4 +179,29 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
     expect(screen.getByText(/\$50\.000/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\$100\.000/i).length).toBeGreaterThan(0);
   });
+
+  it("incluye el borrador de postulación como archivo aunque llegue después de montar el diálogo", () => {
+    const onConfirmMock = vi.fn();
+    const { rerender } = render(
+      <PostulationConfirmDialog open={false} busy={false} packageData={samplePackage} onClose={vi.fn()} onConfirm={onConfirmMock} />
+    );
+    rerender(
+      <PostulationConfirmDialog
+        open
+        busy={false}
+        packageData={samplePackage}
+        onClose={vi.fn()}
+        onConfirm={onConfirmMock}
+        technicalDocxBase64={btoa("docx")}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /He revisado rigurosamente/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar y Cargar en Mercado Público/i }));
+    expect(onConfirmMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: [expect.objectContaining({ name: "oferta_tecnica_2499-12-L126.docx", data_base64: btoa("docx") })],
+      })
+    );
+  });
 });
+

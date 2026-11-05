@@ -213,6 +213,7 @@ export function ProposalDraftViewer({
     postManually,
     setPairingRequired,
     error: postulationError,
+    technicalDocxBase64,
   } = useMercadoPublicoPostulation({
     tenderId: view.tender_id,
     tenderCode,
@@ -453,6 +454,7 @@ export function ProposalDraftViewer({
         busy={postulationBusy}
         onClose={() => setShowConfirmDialog(false)}
         onConfirm={handleConfirmPostulation}
+        technicalDocxBase64={technicalDocxBase64}
       />
     </div>
   );

@@ -61,7 +61,8 @@ export function PostulationConfirmDialog({
 
   const validityDays = packageData.validity_days || 30;
   const deliveryDays = packageData.delivery_term_days || 15;
-  const [includeTechnicalDoc, setIncludeTechnicalDoc] = useState(Boolean(technicalDocxBase64));
+  // Marcado por defecto: el documento puede llegar después de montar el diálogo.
+  const [includeTechnicalDoc, setIncludeTechnicalDoc] = useState(true);
   const [rigorouslyReviewed, setRigorouslyReviewed] = useState(false);
 
   const totalClp = useMemo(() => {

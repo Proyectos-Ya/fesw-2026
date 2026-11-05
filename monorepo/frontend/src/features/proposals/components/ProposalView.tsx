@@ -82,6 +82,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
     postManually,
     setPairingRequired,
     error: postulationError,
+    technicalDocxBase64,
   } = useMercadoPublicoPostulation({
     tenderId,
     tenderCode: tender?.data.code ?? null,
@@ -483,6 +484,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
         busy={postulationBusy}
         onClose={() => setShowConfirmDialog(false)}
         onConfirm={handleConfirmPostulation}
+        technicalDocxBase64={technicalDocxBase64}
       />
 
       {view && (
