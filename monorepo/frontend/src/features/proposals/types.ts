@@ -179,3 +179,72 @@ export interface PendingAnswer {
 
 /** Las que no se preguntan: definen la oferta, no a la empresa. */
 export const KINDS_SIN_PREGUNTA: readonly RequirementKind[] = ["condicion", "documento"];
+
+// --- Postulación en Mercado Público (HU-032) ---
+
+export interface PostulationTenderInfo {
+  id: string;
+  code: string;
+  title?: string;
+  name?: string;
+  closing_at?: string | null;
+  url?: string;
+}
+
+export interface PostulationCompanyInfo {
+  rut: string;
+  name?: string;
+  legal_name?: string;
+  trade_name?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+}
+
+export interface PostulationItem {
+  line_number?: number;
+  position?: number;
+  product_code?: string | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unit?: string;
+  unit_of_measure?: string | null;
+  suggested_unit_price?: number;
+  unit_price?: number | null;
+  suggested_total_price?: number;
+  price_source?: string;
+  quotation_quantity?: number | null;
+  technical_spec?: string | null;
+}
+
+export interface PostulationRequiredDocument {
+  id?: string;
+  name: string;
+  type?: string;
+  description?: string | null;
+  matched_file_name?: string | null;
+  status?: "attached" | "placeholder" | "missing" | string;
+  download_url?: string | null;
+  is_mandatory?: boolean;
+  kind?: string;
+}
+
+export interface PostulationPackage {
+  tender: PostulationTenderInfo;
+  company: PostulationCompanyInfo;
+  items: PostulationItem[];
+  total_suggested_clp?: number;
+  observations?: string;
+  offer_name?: string;
+  offer_description?: string;
+  offer_description_placeholders?: string[];
+  validity_days?: number;
+  delivery_term_days?: number;
+  technical_document_available?: boolean;
+  required_documents?: PostulationRequiredDocument[];
+  warnings?: string[];
+  quotation_updated_at?: string | null;
+  shipping_clp?: number | null;
+}
+

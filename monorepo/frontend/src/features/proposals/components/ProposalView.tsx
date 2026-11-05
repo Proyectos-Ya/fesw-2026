@@ -12,11 +12,16 @@ import { Icon } from "@/features/shared/components/Icon";
 import { Toast } from "@/features/shared/components/Toast";
 import { useTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
+import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 import { useProposal } from "../hooks/useProposal";
 import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
 import { DiscrepancyModal } from "./DiscrepancyModal";
+import { ExtensionPairingRequiredDialog } from "./ExtensionPairingRequiredDialog";
+import { ExtensionRequiredDialog } from "./ExtensionRequiredDialog";
 import { FeasibilityStep } from "./FeasibilityStep";
+import { PostularEnMercadoPublicoButton } from "./PostularEnMercadoPublicoButton";
+import { PostulationConfirmDialog } from "./PostulationConfirmDialog";
 import { ProposalDraftViewer } from "./ProposalDraftViewer";
 import { ProposalStatusBanner } from "./ProposalStatusBanner";
 import { StageNotice } from "./StageNotice";
@@ -60,7 +65,30 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
   const [confirmarAnalisis, setConfirmarAnalisis] = useState(false);
-  const [activeTab, setActiveTab] = useState<"analisis" | "borrador" | "cotizacion">("analisis");
+  const [activeTab, setActiveTab] = useState<"analisis" | "borrador" | "cotizacion" | "postulacion">(
+    "analisis",
+  );
+
+  const {
+    busy: postulationBusy,
+    packageData,
+    showExtensionRequiredDialog,
+    showConfirmDialog,
+    startPostulation,
+    confirm: handleConfirmPostulation,
+    setShowExtensionRequiredDialog,
+    setShowConfirmDialog,
+    pairingRequired,
+    pairAndContinue,
+    retry: retryPostulation,
+    postManually,
+    setPairingRequired,
+    error: postulationError,
+    technicalDocxBase64,
+  } = useMercadoPublicoPostulation({
+    tenderId,
+    tenderCode: tender?.data.code ?? null,
+  });
 
   useEffect(() => {
     let cancelado = false;
@@ -254,6 +282,20 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
           >
             3. Cotización Financiera
           </button>
+          <button
+            type="button"
+            role="tab"
+            data-tab-target="postulacion"
+            aria-selected={activeTab === "postulacion"}
+            onClick={() => setActiveTab("postulacion")}
+            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+              activeTab === "postulacion"
+                ? "border-primary text-text-strong font-medium"
+                : "border-transparent text-text-muted hover:text-text-strong"
+            }`}
+          >
+            4. Postulación
+          </button>
         </div>
       )}
 
@@ -356,6 +398,8 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                 onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
                 onDownload={() => void proposal.download()}
                 onRequestTechnical={() => void proposal.requestTechnical()}
+                showPostulateButton={false}
+                onContinueToPostulation={() => setActiveTab("postulacion")}
               />
             ) : (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-subtle bg-surface-card p-10 text-center shadow-xs">
@@ -397,6 +441,101 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
           />
         </Seccion>
       )}
+
+      {activeTab === "postulacion" && (
+        <Seccion id="postulacion" titulo="Postulación en Mercado Público">
+          <div className="rounded-lg border border-border-subtle bg-surface-card p-6">
+            <div className="mb-6 flex flex-col gap-1">
+              <h3 className="text-base font-bold text-text-strong">
+                Postulación asistida con Extensión oficial de Chiripa
+              </h3>
+              <p className="text-sm text-text-muted">
+                Transfiere tu cotización y propuesta redactada directamente a la ficha oficial de Mercado Público.
+              </p>
+            </div>
+
+            {view?.content ? (
+              <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border border-border-subtle bg-surface-inset p-4 text-sm">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Licitación
+                    </span>
+                    <p className="font-bold text-text-strong">{tender?.data.code ?? view.tender_id}</p>
+                    <p className="text-xs text-text-muted">{tender?.data.name ?? "Sin nombre"}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Propuesta redactada
+                    </span>
+                    <p className="font-bold text-text-strong">
+                      {view.content.offer_name.paragraphs[0]?.text || "Oferta estándar"}
+                    </p>
+                    <p className="line-clamp-2 text-xs text-text-muted">
+                      {view.content.offer_description.paragraphs[0]?.text || "Sin descripción"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-soft/30 p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text-strong">
+                      ¿Todo listo para cargar en Mercado Público?
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Al presionar el botón se abrirá la ventana de confirmación previa para verificar precios finales antes de cargarlos.
+                    </p>
+                  </div>
+                  <PostularEnMercadoPublicoButton
+                    canWrite={puedeAvanzar}
+                    isExpired={cerrada}
+                    busy={postulationBusy || busy}
+                    onClick={startPostulation}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
+                <Icon name="file-text" size={40} className="text-text-muted" />
+                <div className="max-w-md">
+                  <p className="font-semibold text-text-strong">
+                    Aún no se ha redactado el borrador de la oferta
+                  </p>
+                  <p className="mt-1 text-sm text-text-muted">
+                    Para postular con la extensión, primero debes generar el borrador (paso 2) y completar la cotización (paso 3).
+                  </p>
+                </div>
+                <Button onClick={() => setActiveTab("borrador")}>
+                  Ir al Paso 2: Borrador de Oferta
+                </Button>
+              </div>
+            )}
+          </div>
+        </Seccion>
+      )}
+
+      <ExtensionPairingRequiredDialog
+        open={Boolean(pairingRequired)}
+        busy={postulationBusy}
+        error={postulationError ?? null}
+        onPair={() => void pairAndContinue()}
+        onRetry={() => void retryPostulation()}
+        onPostManually={postManually}
+        onClose={() => setPairingRequired(false)}
+      />
+      <ExtensionRequiredDialog
+        open={showExtensionRequiredDialog}
+        onClose={() => setShowExtensionRequiredDialog(false)}
+      />
+
+      <PostulationConfirmDialog
+        open={showConfirmDialog}
+        packageData={packageData}
+        busy={postulationBusy}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmPostulation}
+        technicalDocxBase64={technicalDocxBase64}
+      />
 
       {view && (
         <DiscrepancyModal

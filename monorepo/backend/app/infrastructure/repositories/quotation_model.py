@@ -18,6 +18,7 @@ class QuotationModel(SQLModel, table=True):
     supplier_id: UUID = Field(foreign_key="supplier.id", index=True)
     tender_id: UUID = Field(foreign_key="tender.id", index=True)
     currency: str = Field(max_length=3)
+    shipping_clp: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
     updated_at: datetime
 
 

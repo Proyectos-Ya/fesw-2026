@@ -597,10 +597,14 @@ class GeminiProposalService(IProposalAIService):
     async def _generar(self, payload: dict) -> str:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model_name}:generateContent?key={self.api_key}"
+            f"{self.model_name}:generateContent"
         )
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         inicio = self.reloj()
-        response = await self._post(url, payload, _TIMEOUT_SEGUNDOS)
+        response = await self._post(url, payload, _TIMEOUT_SEGUNDOS, headers=headers)
         restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
         pasajero = response is None or response.status_code in _ESTADOS_PASAJEROS
         if (
@@ -613,7 +617,9 @@ class GeminiProposalService(IProposalAIService):
             # algo que se arregla solo. Usa solo lo que queda del presupuesto.
             await asyncio.sleep(_ESPERA_REINTENTO_SEGUNDOS)
             restante = _PRESUPUESTO_SEGUNDOS - (self.reloj() - inicio)
-            response = await self._post(url, payload, min(_TIMEOUT_SEGUNDOS, restante))
+            response = await self._post(
+                url, payload, min(_TIMEOUT_SEGUNDOS, restante), headers=headers
+            )
 
         if response is None:
             raise ProposalAIServiceError(
@@ -633,7 +639,9 @@ class GeminiProposalService(IProposalAIService):
             ) from error
 
     @staticmethod
-    async def _post(url: str, payload: dict, timeout: float) -> httpx.Response | None:
+    async def _post(
+        url: str, payload: dict, timeout: float, headers: dict[str, str] | None = None
+    ) -> httpx.Response | None:
         """Un intento. `None` si Gemini no respondió a tiempo, que se reintenta.
 
         Otros errores de red (sin conexión, DNS) no se reintentan: es poco
@@ -641,7 +649,7 @@ class GeminiProposalService(IProposalAIService):
         """
         try:
             async with httpx.AsyncClient() as client:
-                return await client.post(url, json=payload, timeout=timeout)
+                return await client.post(url, json=payload, timeout=timeout, headers=headers)
         except httpx.TimeoutException:
             return None
         except httpx.HTTPError as error:

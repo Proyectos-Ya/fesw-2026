@@ -46,3 +46,20 @@ class TechnicalDocumentNotRequired(Exception):
             "descripción y los documentos desde la pestaña del borrador."
         )
         self.tender_id = tender_id
+
+
+class PostulationFeatureDisabled(Exception):
+    """La función de postulación asistida no está habilitada en el entorno. La API da 503."""
+
+    def __init__(self) -> None:
+        super().__init__("La postulación asistida en Mercado Público no está habilitada.")
+
+
+class ProposalDraftNotReady(Exception):
+    """El borrador no tiene contenido redactado para postular. La API da 409."""
+
+    def __init__(self, tender_id: object) -> None:
+        super().__init__(
+            f"El borrador de postulación para la licitación {tender_id} aún no está redactado."
+        )
+        self.tender_id = tender_id

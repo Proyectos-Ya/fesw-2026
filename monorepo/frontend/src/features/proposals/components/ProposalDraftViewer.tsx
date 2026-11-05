@@ -6,6 +6,11 @@ import { Icon } from "@/features/shared/components/Icon";
 import { HighlightedText } from "./HighlightedText";
 import { NextSteps } from "./NextSteps";
 import { RegenerateDialog } from "./RegenerateDialog";
+import { PostularEnMercadoPublicoButton } from "./PostularEnMercadoPublicoButton";
+import { ExtensionPairingRequiredDialog } from "./ExtensionPairingRequiredDialog";
+import { ExtensionRequiredDialog } from "./ExtensionRequiredDialog";
+import { PostulationConfirmDialog } from "./PostulationConfirmDialog";
+import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 import { MAX_DETALLE_COTIZACION } from "../utils/proposal";
 import type { DraftParagraph, DraftSection, ProposalStage, ProposalView } from "../types";
 
@@ -19,6 +24,10 @@ interface ProposalDraftViewerProps {
   onRegenerate: (instructions: string) => void;
   onDownload: () => void;
   onRequestTechnical: () => void;
+  /** Si se muestra el botón de postular directamente en la cabecera del borrador */
+  showPostulateButton?: boolean;
+  /** Acción para avanzar al paso de postulación */
+  onContinueToPostulation?: () => void;
 }
 
 function textoDe(seccion: DraftSection): string {
@@ -184,8 +193,32 @@ export function ProposalDraftViewer({
   onRegenerate,
   onDownload,
   onRequestTechnical,
+  showPostulateButton = true,
+  onContinueToPostulation,
 }: ProposalDraftViewerProps) {
   const [regenerando, setRegenerando] = useState(false);
+
+  const {
+    busy: postulationBusy,
+    packageData,
+    showExtensionRequiredDialog,
+    showConfirmDialog,
+    startPostulation,
+    confirm: handleConfirmPostulation,
+    setShowExtensionRequiredDialog,
+    setShowConfirmDialog,
+    pairingRequired,
+    pairAndContinue,
+    retry: retryPostulation,
+    postManually,
+    setPairingRequired,
+    error: postulationError,
+    technicalDocxBase64,
+  } = useMercadoPublicoPostulation({
+    tenderId: view.tender_id,
+    tenderCode,
+  });
+
   const contenido = view.content;
   if (!contenido) return null;
 
@@ -218,18 +251,29 @@ export function ProposalDraftViewer({
             &quot;Fuentes&quot; en cada párrafo.
           </p>
         </div>
-        {canWrite && !view.is_expired && (
-          <Button
-            variant="ghost"
-            className="border border-border-strong"
-            disabled={busy}
-            isLoading={stage === "regenerating"}
-            onClick={() => setRegenerando(true)}
-          >
-            <Icon name="refresh-cw" size={16} />
-            Regenerar
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canWrite && !view.is_expired && (
+            <Button
+              variant="ghost"
+              className="border border-border-strong"
+              disabled={busy}
+              isLoading={stage === "regenerating"}
+              onClick={() => setRegenerando(true)}
+            >
+              <Icon name="refresh-cw" size={16} />
+              Regenerar
+            </Button>
+          )}
+
+          {showPostulateButton && (
+            <PostularEnMercadoPublicoButton
+              canWrite={canWrite}
+              isExpired={view.is_expired}
+              busy={postulationBusy || busy}
+              onClick={startPostulation}
+            />
+          )}
+        </div>
       </div>
 
       {view.warnings.length > 0 && (
@@ -364,6 +408,20 @@ export function ProposalDraftViewer({
           )}
         </div>
 
+        {onContinueToPostulation && (
+          <div className="mt-6 flex items-center justify-between rounded-lg border border-border-subtle bg-surface-card p-4">
+            <p className="text-sm text-text-muted">
+              Si tu cotización y borrador están listos, avanza a la postulación asistida.
+            </p>
+            <Button
+              onClick={onContinueToPostulation}
+              className="px-5 py-2 text-sm font-semibold"
+            >
+              Continuar a Postulación
+              <Icon name="arrow-right" size={16} />
+            </Button>
+          </div>
+        )}
       </div>
 
       <RegenerateDialog
@@ -374,6 +432,29 @@ export function ProposalDraftViewer({
           setRegenerando(false);
           onRegenerate(instrucciones);
         }}
+      />
+
+      <ExtensionPairingRequiredDialog
+        open={Boolean(pairingRequired)}
+        busy={postulationBusy}
+        error={postulationError ?? null}
+        onPair={() => void pairAndContinue()}
+        onRetry={() => void retryPostulation()}
+        onPostManually={postManually}
+        onClose={() => setPairingRequired(false)}
+      />
+      <ExtensionRequiredDialog
+        open={showExtensionRequiredDialog}
+        onClose={() => setShowExtensionRequiredDialog(false)}
+      />
+
+      <PostulationConfirmDialog
+        open={showConfirmDialog}
+        packageData={packageData}
+        busy={postulationBusy}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmPostulation}
+        technicalDocxBase64={technicalDocxBase64}
       />
     </div>
   );

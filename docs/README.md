@@ -46,6 +46,7 @@ Registros de decisiones técnicas significativas o difíciles de revertir (ADR -
   * [0002-confianza-de-anexos-compartidos.md](./decisions/0002-confianza-de-anexos-compartidos.md): Modelo de confianza, privacidad y ciclo de vida de anexos oficiales compartidos entre empresas (Plan 233, Decisión 6).
   * [0003-arquitectura-extension-navegador.md](./decisions/0003-arquitectura-extension-navegador.md): Arquitectura de la extensión de navegador, compatibilidad multi-navegador con WXT, Bridge y adaptador de Mercado Público (Plan 233, Decisión 7).
   * [0005-matching-en-sombra-con-anexos.md](./decisions/0005-matching-en-sombra-con-anexos.md): Matching enriquecido en sombra con anexos oficiales, recorte de tokens a 512, variantes att-text-v1 y att-items-v1, y replay con NDCG (Plan 233, Decisión 9).
+  * [0006-postulacion-asistida-mercado-publico.md](./decisions/0006-postulacion-asistida-mercado-publico.md): Postulación asistida en Mercado Público mediante extensión de navegador: aislamiento de credenciales, transferencia local por chunks, matching determinista y no-envío automático (HU-32, Plan 318).
 
 ## 3. Guías Operativas (`docs/guides/`)
 Manuales prácticos para el equipo de desarrollo:

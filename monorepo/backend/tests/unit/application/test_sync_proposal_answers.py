@@ -32,6 +32,30 @@ from tests.unit.application.test_generate_proposal import (
 )
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
 
+
+@pytest.fixture(autouse=True)
+def reloj_que_avanza(monkeypatch):
+    """Cada lectura del reloj avanza 1 ms.
+
+    Estas pruebas comparan "se respondió después de redactar". En Windows el
+    reloj tiene resolución gruesa y dos llamadas seguidas dan el mismo instante,
+    así que redactar y volver a responder empataban y la prueba fallaba.
+    """
+    from datetime import timedelta
+
+    from app.shared.datetime_utils import utc_now_naive as reloj_real
+
+    inicio = reloj_real()
+    pasos = iter(range(1, 10**9))
+
+    def ahora():
+        return inicio + timedelta(milliseconds=next(pasos))
+
+    monkeypatch.setattr(
+        "app.application.use_cases.capabilities.answer_capability_question.utc_now_naive", ahora
+    )
+    monkeypatch.setattr("app.domain.entities.proposal.utc_now_naive", ahora)
+
 SEC = CapabilityQuestion(
     question="¿Cuenta con certificación SEC?",
     target_field="sec",

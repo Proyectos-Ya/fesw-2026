@@ -233,7 +233,7 @@ export function TenderDetailView({
     if (loadedTenderId === tenderId) reportInteraction("detalle");
   }, [loadedTenderId, tenderId, reportInteraction]);
 
-  const prevReadyKeyRef = useRef<string | null>(null);
+  const prevReadyKeyRef = useRef<string>("");
 
   const triggerScoreRecalculation = useCallback(async () => {
     setActionError(null);
@@ -248,27 +248,27 @@ export function TenderDetailView({
         setAnalysis((prev) => (prev ? { ...prev, is_outdated: true } : null));
       }
     } catch (err) {
-      console.error("Error al recalcular la compatibilidad:", err);
+      console.warn("No se pudo recalcular la compatibilidad en segundo plano:", err);
     } finally {
       setPendingAction(null);
     }
   }, [tenderId, analysis]);
 
   // El análisis + cotización con los anexos corre en segundo plano (plan 233):
-  // al terminar se vuelve a leer el análisis guardado.
+  // al terminar se vuelve a leer el análisis guardado y se actualiza la compatibilidad.
   const handleAnalysisFinished = useCallback(() => {
+    void triggerScoreRecalculation();
     void getDeepAnalysisOnly(tenderId)
       .then((ana) => setAnalysis(ana))
       .catch((err: unknown) => {
         console.error("Error al recargar el análisis de compatibilidad:", err);
       });
-  }, [tenderId]);
+  }, [tenderId, triggerScoreRecalculation]);
 
   const handleReadyKeyChange = useCallback(
     (newKey: string) => {
       setDigestRefreshKey(newKey);
       if (
-        prevReadyKeyRef.current !== null &&
         prevReadyKeyRef.current !== newKey &&
         newKey !== ""
       ) {
@@ -798,7 +798,6 @@ export function TenderDetailView({
               onReadyKeyChange={handleReadyKeyChange}
               onUploadSuccess={() => {
                 reportInteraction("anexo");
-                void triggerScoreRecalculation();
                 // Subir un anexo dispara la extracción de hitos (plan 233): la sección
                 // empieza a consultar mientras la IA lee.
                 setMilestonesRefreshKey((k) => k + 1);

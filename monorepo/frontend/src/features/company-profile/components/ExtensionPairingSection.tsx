@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Puzzle, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
-import { apiFetch } from "@/features/shared/api/client";
-import { crearClienteNavegador } from "@/features/auth/supabase/client";
 import { Button } from "@/features/shared/components/Button";
+import { pairExtension, probeExtension } from "@/features/shared/extension/extensionBridge";
 
 interface ExtensionPairingSectionProps {
   supplierId: string;
@@ -12,126 +11,47 @@ interface ExtensionPairingSectionProps {
 
 type PairingStatus = "idle" | "checking" | "not_installed" | "pairing" | "success" | "error";
 
-interface StartPairingResponse {
-  pairing_ticket: string;
-  expires_in_seconds: number;
-}
-
+/**
+ * Estado de la extensión en este navegador. La vinculación ocurre sola al postular; aquí
+ * solo se ve el estado real (lo confirma la extensión) y se puede re-vincular.
+ */
 export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionProps) {
-  const [status, setStatus] = useState<PairingStatus>("idle");
+  const [status, setStatus] = useState<PairingStatus>("checking");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handlePair = async () => {
+  const statusFromProbe = (probe: Awaited<ReturnType<typeof probeExtension>>): PairingStatus =>
+    !probe.installed ? "not_installed" : probe.paired ? "success" : "idle";
+
+  const refresh = useCallback(async () => {
     setStatus("checking");
-    setErrorMessage(null);
+    setStatus(statusFromProbe(await probeExtension(1500)));
+  }, []);
 
-    const nonce = crypto.randomUUID();
-    let extensionDetected = false;
-
-    // 1. Escuchar PONG desde el Content Script Bridge
-    const onMessage = async (event: MessageEvent) => {
-      if (event.origin && window.location.origin && event.origin !== window.location.origin) return;
-      const data = event.data;
-      if (data?.target !== "CHIRIPA_WEB") return;
-
-      if (data.type === "PONG" && data.nonce === nonce) {
-        extensionDetected = true;
-        window.removeEventListener("message", onMessage);
-        await proceedWithPairing(data.version);
-      }
+  // El estado inicial ya es "checking": al montar solo se espera la respuesta.
+  useEffect(() => {
+    let active = true;
+    void probeExtension(1500).then((probe) => {
+      if (active) setStatus(statusFromProbe(probe));
+    });
+    return () => {
+      active = false;
     };
+  }, []);
 
-    window.addEventListener("message", onMessage);
-
-    // Enviar PING
-    window.postMessage(
-      {
-        target: "CHIRIPA_EXTENSION",
-        type: "PING",
-        nonce,
-      },
-      window.location.origin
-    );
-
-    // Si en 1.5 segundos no responde, asumir que no está instalada
-    setTimeout(() => {
-      if (!extensionDetected) {
-        window.removeEventListener("message", onMessage);
-        setStatus("not_installed");
-      }
-    }, 1500);
-  };
-
-  const proceedWithPairing = async (extensionVersion: string) => {
+  const handlePair = async () => {
+    setErrorMessage(null);
+    const probe = await probeExtension(1500);
+    if (!probe.installed) {
+      setStatus("not_installed");
+      return;
+    }
     setStatus("pairing");
-    try {
-      // 2. Iniciar pairing en backend para obtener ticket
-      const userAgent = navigator.userAgent.toLowerCase();
-      let browser: "chrome" | "firefox" | "edge" | "safari" | "other" = "chrome";
-      if (userAgent.includes("edg/")) browser = "edge";
-      else if (userAgent.includes("firefox")) browser = "firefox";
-      else if (userAgent.includes("safari") && !userAgent.includes("chrome")) browser = "safari";
-
-      const startRes = await apiFetch<StartPairingResponse>("/extension/pairing/start", {
-        method: "POST",
-        body: JSON.stringify({
-          browser,
-          extension_version: extensionVersion || "0.1.0",
-        }),
-      });
-
-      // 3. Obtener sesión de Supabase
-      const supabase = crearClienteNavegador();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      const refreshToken = sessionData.session?.refresh_token;
-
-      if (!token) {
-        throw new Error("No hay una sesión activa para vincular.");
-      }
-
-      // 4. Enviar PAIR_SESSION al Content Script Bridge
-      const pairNonce = crypto.randomUUID();
-
-      const onPairSuccess = (event: MessageEvent) => {
-        if (event.origin && window.location.origin && event.origin !== window.location.origin) return;
-        const data = event.data;
-        if (data?.target === "CHIRIPA_WEB" && data.type === "PAIR_SUCCESS" && data.nonce === pairNonce) {
-          window.removeEventListener("message", onPairSuccess);
-          setStatus("success");
-        }
-      };
-
-      window.addEventListener("message", onPairSuccess);
-
-      // apiUrl para la extensión: en local apunta a 8000, o vía variable de entorno
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-      window.postMessage(
-        {
-          target: "CHIRIPA_EXTENSION",
-          type: "PAIR_SESSION",
-          nonce: pairNonce,
-          payload: {
-            pairing_ticket: startRes.pairing_ticket,
-            api_url: apiUrl,
-            workspace_id: supplierId,
-            access_token: token,
-            refresh_token: refreshToken || "",
-            timestamp: Date.now(),
-          },
-        },
-        window.location.origin
-      );
-
-      // Timeout para confirmar
-      setTimeout(() => {
-        window.removeEventListener("message", onPairSuccess);
-        setStatus((prev) => (prev === "pairing" ? "success" : prev));
-      }, 3000);
-    } catch (err: unknown) {
+    const res = await pairExtension({ workspaceId: supplierId, extensionVersion: probe.version });
+    if (res.ok) {
+      setStatus("success");
+    } else {
       setStatus("error");
-      setErrorMessage(err instanceof Error ? err.message : "Error al vincular extensión.");
+      setErrorMessage(res.error ?? "Error al vincular extensión.");
     }
   };
 
@@ -182,7 +102,7 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
               Asegúrate de haber instalado y habilitado la extensión oficial de Chiripa.
             </p>
             <div className="flex justify-end pt-1">
-              <Button variant="primary" className="px-3 py-1.5 text-xs" onClick={handlePair}>
+              <Button variant="primary" className="px-3 py-1.5 text-xs" onClick={() => void refresh()}>
                 Volver a intentar
               </Button>
             </div>

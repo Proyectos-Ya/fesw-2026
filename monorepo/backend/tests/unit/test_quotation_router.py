@@ -66,6 +66,27 @@ def test_roundtrip_integer_response(api):
     assert client.get(path).json()["items"][0]["subtotal"] == "200"
 
 
+def test_shipping_is_optional_integer_and_saved(api):
+    client, use_case, path, *_ = api
+    item = {"description": "Cemento", "unit": "saco", "quantity": "2", "unit_price": "100"}
+    response = client.put(path, json={"items": [item], "shipping_clp": "25000"})
+    assert response.status_code == 200
+    saved = use_case.save.call_args.args[-1]
+    assert saved.shipping_clp == 25000
+
+    client.put(path, json={"items": [item]})
+    assert use_case.save.call_args.args[-1].shipping_clp is None
+
+
+@pytest.mark.parametrize("shipping", ["-1", "10.5"])
+def test_invalid_shipping_is_rejected(api, shipping):
+    client, use_case, path, *_ = api
+    item = {"description": "Cemento", "unit": "saco", "quantity": "2", "unit_price": "100"}
+    response = client.put(path, json={"items": [item], "shipping_clp": shipping})
+    assert response.status_code in (400, 422)
+    use_case.save.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "payload",
     [

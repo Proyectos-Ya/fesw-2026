@@ -55,8 +55,15 @@ class InMemoryKanbanEventRepository(IKanbanEventRepository):
     async def list_by_supplier(
         self, supplier_id: UUID, limit: int = 50, offset: int = 0
     ) -> list[KanbanEvent]:
-        workspace_events = [e for e in self.events if e.supplier_id == supplier_id]
-        workspace_events.sort(key=lambda e: e.created_at, reverse=True)
+        # Más reciente primero; ante el mismo instante (en Windows el reloj tiene
+        # resolución gruesa), desempata el orden en que se guardaron.
+        workspace_events = [
+            e for _, e in sorted(
+                ((i, e) for i, e in enumerate(self.events) if e.supplier_id == supplier_id),
+                key=lambda pair: (pair[1].created_at, pair[0]),
+                reverse=True,
+            )
+        ]
         return workspace_events[offset : offset + limit]
 
 

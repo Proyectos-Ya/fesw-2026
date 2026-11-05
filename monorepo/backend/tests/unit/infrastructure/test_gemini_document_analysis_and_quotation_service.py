@@ -119,7 +119,7 @@ async def test_analyze_and_quote_pdf_success_exactly_one_call(service):
     }
 
     gemini_route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
@@ -138,6 +138,9 @@ async def test_analyze_and_quote_pdf_success_exactly_one_call(service):
 
     # Verificar estructura del request enviado
     sent_request = gemini_route.calls[0].request
+    # La clave va en el header, nunca en la URL (quedaría en logs y proxies).
+    assert sent_request.headers["x-goog-api-key"] == "test-api-key"
+    assert "key=" not in str(sent_request.url)
     sent_data = json.loads(sent_request.content)
     assert "contents" in sent_data
     assert "generationConfig" in sent_data
@@ -208,7 +211,7 @@ async def test_analyze_and_quote_enforces_matching_score_if_provided(service):
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     # Pasamos matching_score=75.5 explícito
@@ -267,7 +270,7 @@ async def test_analyze_and_quote_uses_model_score_when_no_matching_score(service
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
@@ -325,7 +328,7 @@ async def test_analyze_and_quote_handles_png_multimodal(service):
     }
 
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     result = await service.analyze_and_quote(
@@ -352,7 +355,7 @@ async def test_analyze_and_quote_gemini_500_raises_service_error(service):
     supplier = create_test_supplier()
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(500, text="Internal Server Error"))
 
     with pytest.raises(DocumentAnalysisAndQuotationServiceError, match="HTTP 500"):
@@ -388,7 +391,7 @@ async def test_analyze_and_quote_invalid_json_raises_service_error(service):
     }
 
     respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=mock_gemini_payload))
 
     with pytest.raises(DocumentAnalysisAndQuotationServiceError, match="No se pudo decodificar"):
@@ -443,7 +446,7 @@ def _respuesta_valida() -> dict:
 async def test_varios_anexos_van_en_una_sola_llamada(service):
     # El análisis considera todas las bases a la vez (plan 233).
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=_respuesta_valida()))
 
     await service.analyze_and_quote(
@@ -476,7 +479,7 @@ async def test_omite_lo_que_pasa_el_tope_de_tamano(service, monkeypatch):
 
     monkeypatch.setattr(modulo, "MAX_INLINE_BYTES", 10)
     route = respx.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     ).mock(return_value=Response(200, json=_respuesta_valida()))
 
     await service.analyze_and_quote(
@@ -490,3 +493,39 @@ async def test_omite_lo_que_pasa_el_tope_de_tamano(service, monkeypatch):
 
     parts = json.loads(route.calls[0].request.content)["contents"][0]["parts"]
     assert len([p for p in parts if "inlineData" in p]) == 1
+
+
+def _gemini_response(quotation: dict) -> Response:
+    analysis = {"compatibility_score": 80.0, "recommendation": "Postular", "justification": "ok"}
+    text = json.dumps({"analysis": analysis, "quotation": quotation})
+    return Response(200, json={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("shipping", "expected"),
+    [(18000, Decimal("18000")), (None, None), (-5, None), ("abc", None)],
+)
+@respx.mock
+async def test_genera_valor_de_despacho_en_la_cotizacion(service, shipping, expected):
+    quotation = {
+        "currency": "CLP",
+        "items": [{"description": "Cable", "unit": "rollo", "quantity": 1, "unit_price": 1000, "subtotal": 1000}],
+        "total": 1000,
+    }
+    if shipping is not None:
+        quotation["shipping_clp"] = shipping
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    ).mock(return_value=_gemini_response(quotation))
+
+    result = await service.analyze_and_quote(
+        documents=[DocumentContextDTO(document_name="b.pdf", file_type="pdf", file_bytes=b"%PDF-1.4")],
+        tender=create_test_tender(),
+        supplier=create_test_supplier(),
+        matching_score=80.0,
+    )
+
+    assert result.quotation.shipping_clp == expected
+    schema = json.loads(route.calls[0].request.content)["generationConfig"]["responseSchema"]
+    assert "shipping_clp" in schema["properties"]["quotation"]["properties"]

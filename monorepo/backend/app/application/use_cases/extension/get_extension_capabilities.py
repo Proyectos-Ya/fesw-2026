@@ -20,7 +20,7 @@ class GetExtensionCapabilitiesUseCase:
             latest_version=self.settings.extension_latest_version,
             mp_adapter_enabled=is_enabled,
             fetch_jobs_enabled=is_enabled and (self.settings.extension_max_daily_fetches > 0),
-            postulation_enabled=False,
+            postulation_enabled=is_enabled and bool(getattr(self.settings, "extension_postulation_enabled", False)),
             max_daily_fetches=self.settings.extension_max_daily_fetches if is_enabled else 0,
             polling_interval_seconds=self.settings.extension_polling_interval_seconds,
             supported_mp_hosts=[

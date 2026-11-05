@@ -113,7 +113,11 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
             *partes_de_documentos,
         ]
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         payload = {
             "contents": [{"parts": parts}],
             "generationConfig": {
@@ -164,6 +168,10 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
                                     },
                                 },
                                 "total": {"type": "NUMBER", "description": "Monto total estimado"},
+                                "shipping_clp": {
+                                    "type": "NUMBER",
+                                    "description": "Valor estimado de despacho en CLP",
+                                },
                             },
                             "required": ["currency", "items", "total"],
                         },
@@ -175,7 +183,7 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=60.0)
+                response = await client.post(url, headers=headers, json=payload, timeout=60.0)
         except httpx.HTTPError as e:
             raise DocumentAnalysisAndQuotationServiceError(
                 f"Error de conexión con la API de Gemini: {e}"
@@ -266,12 +274,26 @@ class GeminiDocumentAnalysisAndQuotationService(IDocumentAnalysisAndQuotationSer
         quotation_input = QuotationInput(
             currency="CLP",
             items=material_items,
+            shipping_clp=_parse_shipping(quotation_data.get("shipping_clp")),
         )
 
         return DocumentAnalysisAndQuotationResult(
             analysis=deep_analysis,
             quotation=quotation_input,
         )
+
+
+def _parse_shipping(raw: object) -> Decimal | None:
+    """Despacho sugerido por el modelo: entero CLP >= 0, o None si falta o no es válido."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = Decimal(str(raw))
+    except Exception:
+        return None
+    if not value.is_finite() or value < 0:
+        return None
+    return value.quantize(Decimal("1"))
 
 
 # Gemini acepta unos 20 MB por petición con archivos en línea, y base64 suma un
