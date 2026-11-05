@@ -53,3 +53,50 @@ class RegenerateProposalInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     instructions: str = Field(min_length=1, max_length=1000)
+
+
+# --- HU-032: Postulación en Mercado Público ---
+
+class PostulationTenderInfo(BaseModel):
+    id: str
+    code: str
+    name: str
+    closing_at: str | None = None
+
+
+class PostulationCompanyInfo(BaseModel):
+    rut: str
+    legal_name: str
+    trade_name: str | None = None
+
+
+class PostulationItem(BaseModel):
+    position: int
+    product_code: str | None = None
+    name: str
+    description: str | None = None
+    quantity: float
+    unit_of_measure: str | None = None
+    unit_price: int | None = None
+    price_source: str = "sin_precio"  # "cotizacion" | "sin_precio"
+    quotation_quantity: float | None = None
+
+
+class PostulationRequiredDocument(BaseModel):
+    name: str
+    is_mandatory: bool = True
+    kind: str = "documento"
+
+
+class PostulationPackage(BaseModel):
+    tender: PostulationTenderInfo
+    company: PostulationCompanyInfo
+    offer_name: str
+    offer_description: str
+    offer_description_placeholders: list[str] = Field(default_factory=list)
+    items: list[PostulationItem] = Field(default_factory=list)
+    technical_document_available: bool = False
+    required_documents: list[PostulationRequiredDocument] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    quotation_updated_at: str | None = None
+    shipping_clp: int | None = None

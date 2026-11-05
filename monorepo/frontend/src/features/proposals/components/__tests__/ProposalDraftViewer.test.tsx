@@ -415,4 +415,22 @@ describe("ProposalDraftViewer", () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Servicio de bacheo para Pica.");
     });
   });
+
+  describe("HU-032 / CA1: Botón Postular en Mercado Público", () => {
+    it("muestra el botón 'Postular en Mercado Público' en la vista de borrador", () => {
+      renderViewer(listo(), true);
+
+      const boton = screen.getByRole("button", { name: /Postular en Mercado Público/i });
+      expect(boton).toBeInTheDocument();
+      expect(boton).not.toBeDisabled();
+    });
+
+    it("deshabilita el botón si la licitación ya cerró", () => {
+      renderViewer(listo({ is_expired: true }), true);
+
+      const boton = screen.getByRole("button", { name: /Postular en Mercado Público/i });
+      expect(boton).toBeDisabled();
+      expect(screen.getByText(/La licitación ya cerró/i)).toBeInTheDocument();
+    });
+  });
 });

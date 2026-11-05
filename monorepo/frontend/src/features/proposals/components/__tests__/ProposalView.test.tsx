@@ -139,6 +139,15 @@ describe("ProposalView", () => {
     expect(await screen.findByTestId("cotizador")).toHaveTextContent("657-70-COT26");
   });
 
+  it("la cuarta pestaña, Postulación, ofrece postular en Mercado Público (HU-32)", async () => {
+    svc.getProposal.mockResolvedValue(vista());
+    render(<ProposalView tenderId="t-1" />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: /4\. Postulación/i }));
+    expect(screen.getByRole("region", { name: "Postulación en Mercado Público" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Análisis de las bases" })).not.toBeInTheDocument();
+  });
+
   it("no renderiza el panel redundante de anexos dentro de la vista de postulación", async () => {
     svc.getProposal.mockResolvedValue(vista());
     render(<ProposalView tenderId="t-1" />);

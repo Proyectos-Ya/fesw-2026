@@ -1,4 +1,10 @@
-import { BridgePairingMessageSchema } from "../../types/schemas";
+import {
+  BridgeConfirmPostulationMessageSchema,
+  BridgeFocusTabMessageSchema,
+  BridgeOpenPostulationMessageSchema,
+  BridgePairingMessageSchema,
+} from "../../types/schemas";
+import { isAllowedApiUrl, isMercadoPublicoUrl } from "../../config/web-origins";
 
 export interface BridgeConfig {
   currentOrigin: string;
@@ -33,22 +39,29 @@ export class ContentScriptBridge {
 
     // 2. Protocolo Handshake PING -> PONG
     if (data.type === "PING") {
-      this.config.postMessageToWindow(
-        {
-          target: "CHIRIPA_WEB",
-          type: "PONG",
-          nonce: data.nonce,
-          version: this.config.extensionVersion,
-        },
-        this.config.currentOrigin
-      );
+      // El estado de vinculación lo confirma el service worker, no se supone.
+      this.config.sendMessageToRuntime({ action: "GET_STATUS" }, (response: unknown) => {
+        const status = response as { paired?: boolean } | undefined;
+        this.config.postMessageToWindow(
+          {
+            target: "CHIRIPA_WEB",
+            type: "PONG",
+            nonce: data.nonce,
+            version: this.config.extensionVersion,
+            features: ["postulation"],
+            mp_access: true,
+            paired: Boolean(status?.paired),
+          },
+          this.config.currentOrigin
+        );
+      });
       return true;
     }
 
     // 3. Emparejamiento de sesión
     if (data.type === "PAIR_SESSION") {
       const parsed = BridgePairingMessageSchema.safeParse(data);
-      if (!parsed.success) {
+      if (!parsed.success || !isAllowedApiUrl(parsed.data.payload.api_url)) {
         return false;
       }
 
@@ -73,6 +86,90 @@ export class ContentScriptBridge {
               this.config.currentOrigin
             );
           }
+        }
+      );
+      return true;
+    }
+
+    // 4. Apertura de pestaña de Mercado Público para postulación (HU-032 / CA3)
+    if (data.type === "OPEN_POSTULATION") {
+      const parsed = BridgeOpenPostulationMessageSchema.safeParse(data);
+      if (!parsed.success) {
+        return false;
+      }
+      const mpUrl = parsed.data.payload.mp_url;
+      if (mpUrl !== undefined && !isMercadoPublicoUrl(mpUrl)) {
+        return false;
+      }
+
+      this.config.sendMessageToRuntime(
+        { action: "OPEN_POSTULATION", payload: parsed.data.payload },
+        (response: unknown) => {
+          const resp = response as { ok?: boolean; tab_id?: number; error?: string } | undefined;
+          this.config.postMessageToWindow(
+            {
+              target: "CHIRIPA_WEB",
+              type: "POSTULATION_TAB_OPENED",
+              nonce: parsed.data.nonce,
+              tab_id: resp?.tab_id,
+              ok: resp?.ok ?? false,
+              error: resp?.error,
+            },
+            this.config.currentOrigin
+          );
+        }
+      );
+      return true;
+    }
+
+    // 5. Confirmación y carga de paquete de postulación (HU-032 / CA4)
+    if (data.type === "CONFIRM_POSTULATION") {
+      const parsed = BridgeConfirmPostulationMessageSchema.safeParse(data);
+      if (!parsed.success) {
+        return false;
+      }
+
+      this.config.sendMessageToRuntime(
+        { action: "CONFIRM_POSTULATION", payload: parsed.data.payload },
+        (response: unknown) => {
+          const resp = response as { ok?: boolean; error?: string } | undefined;
+          this.config.postMessageToWindow(
+            {
+              target: "CHIRIPA_WEB",
+              type: "CONFIRM_POSTULATION_ACK",
+              nonce: parsed.data.nonce,
+              tender_code: parsed.data.payload.tender_code,
+              ok: resp?.ok ?? false,
+              error: resp?.error,
+            },
+            this.config.currentOrigin
+          );
+        }
+      );
+      return true;
+    }
+
+    // 6. Enfocar pestaña de postulación
+    if (data.type === "FOCUS_POSTULATION_TAB") {
+      const parsed = BridgeFocusTabMessageSchema.safeParse(data);
+      if (!parsed.success) {
+        return false;
+      }
+
+      this.config.sendMessageToRuntime(
+        { action: "FOCUS_POSTULATION_TAB", payload: parsed.data.payload },
+        (response: unknown) => {
+          const resp = response as { ok?: boolean; error?: string } | undefined;
+          this.config.postMessageToWindow(
+            {
+              target: "CHIRIPA_WEB",
+              type: "FOCUS_POSTULATION_TAB_ACK",
+              nonce: parsed.data.nonce,
+              ok: resp?.ok ?? false,
+              error: resp?.error,
+            },
+            this.config.currentOrigin
+          );
         }
       );
       return true;

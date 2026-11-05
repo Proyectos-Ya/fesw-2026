@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mercado Público - Ofertar en Licitación</title>
+</head>
+<body>
+  <header>
+    <div class="user-session">
+      <span id="lblUsuarioRUT">76.086.428-5</span>
+      <span id="lblUsuarioRazonSocial">Inversiones Médicas SpA</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="tender-header">
+      <h1>Ofertar en Compra Ágil / Licitación</h1>
+      <span id="lblNumeroLicitacion">2499-12-L126</span>
+      <span id="lblNombreLicitacion">Adquisición de Insumos Médicos</span>
+    </div>
+
+    <form id="formPostulacion" action="/Oferta/Guardar" method="POST">
+      <table id="tblItems" class="table-items">
+        <thead>
+          <tr>
+            <th>Línea</th>
+            <th>Producto</th>
+            <th>Cantidad</th>
+            <th>Precio Unitario (Neto)</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-line="1">
+            <td class="col-line">1</td>
+            <td class="col-name"><span id="lblNombre_0">Guantes de Látex</span></td>
+            <td class="col-qty"><span id="lblCantidad_0">100</span></td>
+            <td>
+              <input type="text" id="txtPrecioUnitario_0" name="items[0].precio" class="input-precio" value="">
+            </td>
+            <td>
+              <input type="text" id="txtSubtotal_0" name="items[0].subtotal" readonly>
+            </td>
+          </tr>
+          <tr data-line="2">
+            <td class="col-line">2</td>
+            <td class="col-name"><span id="lblNombre_1">Mascarillas Quirúrgicas</span></td>
+            <td class="col-qty"><span id="lblCantidad_1">50</span></td>
+            <td>
+              <input type="text" id="txtPrecioUnitario_1" name="items[1].precio" class="input-precio" value="">
+            </td>
+            <td>
+              <input type="text" id="txtSubtotal_1" name="items[1].subtotal" readonly>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="form-section">
+        <label for="txtObservaciones">Descripción u Observaciones de la Oferta (Máx 255 car.)</label>
+        <textarea id="txtObservaciones" name="observaciones" maxlength="255"></textarea>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="txtPlazoEntrega">Plazo de Entrega (días corridos)</label>
+          <input type="number" id="txtPlazoEntrega" name="plazo_entrega" value="">
+        </div>
+        <div>
+          <label for="txtValidezOferta">Días de Validez de la Oferta</label>
+          <input type="number" id="txtValidezOferta" name="validez_oferta" value="">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label for="fileAdjunto">Adjuntar Documentos (Propuesta Técnica / Anexos)</label>
+        <input type="file" id="fileAdjunto" name="archivos" multiple>
+      </div>
+
+      <div class="form-section">
+        <label>
+          <input type="checkbox" id="chkDeclaracionJurada" name="declaracion_jurada">
+          Declaro bajo juramento que cumplo con los requisitos para contratar con el Estado
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="btnGuardarBorrador">Guardar Borrador</button>
+        <button type="submit" id="btnEnviarOferta">Enviar Oferta Definitiva</button>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

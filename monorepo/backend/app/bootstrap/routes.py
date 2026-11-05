@@ -89,6 +89,7 @@ from app.bootstrap.notifications import (
 )
 from app.bootstrap.proposals import (
     get_answer_proposal_question_use_case,
+    get_build_postulation_package_use_case,
     get_decide_discrepancy_use_case,
     get_export_proposal_use_case,
     get_generate_proposal_use_case,
@@ -345,6 +346,7 @@ def register_routes(app: FastAPI) -> None:
             get_generate_proposal_use_case=get_generate_proposal_use_case,
             get_regenerate_proposal_use_case=get_regenerate_proposal_use_case,
             get_export_proposal_use_case=get_export_proposal_use_case,
+            get_build_postulation_package_use_case=get_build_postulation_package_use_case,
             get_current_workspace_context=get_optional_workspace_context,
         )
     )

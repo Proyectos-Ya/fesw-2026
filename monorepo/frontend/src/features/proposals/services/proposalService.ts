@@ -1,5 +1,5 @@
 import { apiDownload, apiFetch, type ArchivoDescargado } from "@/features/shared/api/client";
-import type { DecisionAction, ProposalDraft, ProposalView } from "../types";
+import type { DecisionAction, PostulationPackage, ProposalDraft, ProposalView } from "../types";
 
 const base = (tenderId: string) => `/tenders/${tenderId}/proposal`;
 
@@ -106,3 +106,9 @@ export function regenerateProposal(
 export function downloadTechnicalDocument(tenderId: string): Promise<ArchivoDescargado> {
   return apiDownload(`${base(tenderId)}/export.docx`, "documento-tecnico.docx");
 }
+
+/** HU-032: Obtiene el paquete preparado para postulación en Mercado Público. */
+export function getPostulationPackage(tenderId: string): Promise<PostulationPackage> {
+  return apiFetch<PostulationPackage>(`${base(tenderId)}/postulation-package`);
+}
+

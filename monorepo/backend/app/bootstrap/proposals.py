@@ -10,6 +10,9 @@ from app.application.use_cases.capabilities.list_pending_questions import (
 from app.application.use_cases.proposals.answer_proposal_question import (
     AnswerProposalQuestionUseCase,
 )
+from app.application.use_cases.proposals.build_postulation_package import (
+    BuildPostulationPackageUseCase,
+)
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
 )
@@ -36,6 +39,7 @@ from app.bootstrap.repositories import (
     CapabilityAnswerRepoDep,
     CapabilityQuestionRepoDep,
     ProposalDraftRepoDep,
+    QuotationRepoDep,
     SupplierRepoDep,
     TenderAttachmentRepoDep,
     TenderRepoDep,
@@ -186,3 +190,18 @@ def get_resume_proposal_use_case(
     draft_repo: ProposalDraftRepoDep,
 ) -> ResumeProposalUseCase:
     return ResumeProposalUseCase(supplier_repo, tender_repo, draft_repo)
+
+
+def get_build_postulation_package_use_case(
+    supplier_repo: SupplierRepoDep,
+    tender_repo: TenderRepoDep,
+    draft_repo: ProposalDraftRepoDep,
+    quotation_repo: QuotationRepoDep,
+) -> BuildPostulationPackageUseCase:
+    return BuildPostulationPackageUseCase(
+        supplier_repo=supplier_repo,
+        tender_repo=tender_repo,
+        draft_repo=draft_repo,
+        quotation_repo=quotation_repo,
+    )
+

@@ -27,6 +27,7 @@ interface QuotationEditorProps {
   tenderItems?: TenderMaterial[];
   /** Se llama después de guardar la cotización con éxito (la ficha lo usa para su telemetría). */
   onSaved?: () => void;
+  defaultOpen?: boolean;
 }
 type Row = Material & { key: string };
 const row = (item: Material): Row => ({ ...item, key: crypto.randomUUID() });

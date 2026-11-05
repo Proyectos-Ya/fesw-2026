@@ -14,12 +14,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.application.schemas.proposal_schema import (
     AnswerProposalQuestionInput,
     DecideDiscrepancyInput,
+    PostulationPackage,
     ProposalDraftView,
     RegenerateProposalInput,
 )
 from app.application.services.proposal_ai_service import ProposalAIServiceError
 from app.application.use_cases.proposals.answer_proposal_question import (
     AnswerProposalQuestionUseCase,
+)
+from app.application.use_cases.proposals.build_postulation_package import (
+    BuildPostulationPackageUseCase,
 )
 from app.application.use_cases.proposals.decide_discrepancy import (
     DecideDiscrepancyUseCase,
@@ -51,7 +55,9 @@ from app.domain.errors.capability_errors import (
 from app.domain.errors.deep_analysis_errors import InvalidPromptInstruction
 from app.domain.errors.proposal_errors import (
     InvalidProposalTransition,
+    PostulationFeatureDisabled,
     ProposalDraftNotFound,
+    ProposalDraftNotReady,
     QuestionNotInProposal,
     TechnicalDocumentNotRequired,
 )
@@ -75,6 +81,7 @@ def create_proposal_router(
     get_generate_proposal_use_case: Callable,
     get_regenerate_proposal_use_case: Callable,
     get_export_proposal_use_case: Callable,
+    get_build_postulation_package_use_case: Callable | None = None,
     get_current_workspace_context: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter(
@@ -128,6 +135,53 @@ def create_proposal_router(
             ProposalDraftNotFound,
         ) as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+    @router.get(
+        "/{tender_id}/proposal/postulation-package",
+        response_model=PostulationPackage,
+        summary="Paquete de postulación para Mercado Público",
+        responses={
+            403: {"description": "Sin permiso para postular"},
+            404: {"description": "No hay licitación, empresa o postulación iniciada"},
+            409: {"description": "Licitación cerrada o borrador no redactado"},
+            503: {"description": "Postulación asistida deshabilitada"},
+        },
+    )
+    async def get_postulation_package(
+        tender_id: UUID,
+        user: Annotated[User, Depends(get_current_user)],
+        use_case: Annotated[
+            BuildPostulationPackageUseCase,
+            Depends(get_build_postulation_package_use_case or (lambda: None)),
+        ],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(workspace_context_dep)
+        ],
+    ) -> PostulationPackage:
+        """Entrega el paquete preparado para que la extensión cargue los datos en Mercado Público."""
+        _exigir_permiso(workspace_context)
+        try:
+            return await use_case.execute(
+                user_id=user.id,
+                supplier_id=_empresa_activa(workspace_context),
+                tender_id=tender_id,
+            )
+        except PostulationFeatureDisabled as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+        except (TenderNotFound, SupplierNotFoundForUser, ProposalDraftNotFound) as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+            ) from e
+        except (
+            TenderClosedForProposal,
+            ProposalDraftNotReady,
+            InvalidProposalTransition,
+        ) as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(e)
+            ) from e
 
     @router.post(
         "/{tender_id}/proposal/feasibility",
