@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.application.schemas.proposal_schema import PostulationPackage
 from app.application.use_cases.proposals.build_postulation_package import (
     BuildPostulationPackageUseCase,
     normalizar_texto,
@@ -29,7 +28,7 @@ from app.domain.errors.proposal_errors import (
     ProposalDraftNotFound,
     ProposalDraftNotReady,
 )
-from app.domain.errors.tender_errors import TenderClosedForProposal, TenderNotFound
+from app.domain.errors.tender_errors import TenderClosedForProposal
 from app.shared.constants import TENDER_STATUSES
 from tests.unit.application.fakes import (
     InMemoryProposalDraftRepository,

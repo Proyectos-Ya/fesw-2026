@@ -3,7 +3,8 @@
 from app.application.schemas.extension_schema import (
     ExtensionCapabilitiesResponse,
 )
-from app.config import Settings, settings as default_settings
+from app.config import Settings
+from app.config import settings as default_settings
 
 
 class GetExtensionCapabilitiesUseCase:
