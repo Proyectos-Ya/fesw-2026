@@ -12,6 +12,7 @@ import { Icon } from "@/features/shared/components/Icon";
 import { Toast } from "@/features/shared/components/Toast";
 import { useTenderAttachments } from "@/features/tender-attachments/hooks/useTenderAttachments";
 import { useCanWriteProposal } from "../hooks/useCanWriteProposal";
+import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 import { useProposal } from "../hooks/useProposal";
 import { basesNotice, nombrarDocumentos, proposalStatus } from "../utils/proposal";
 import { ChangedAnswersNotice } from "./ChangedAnswersNotice";
@@ -24,7 +25,6 @@ import { PostulationConfirmDialog } from "./PostulationConfirmDialog";
 import { ProposalDraftViewer } from "./ProposalDraftViewer";
 import { ProposalStatusBanner } from "./ProposalStatusBanner";
 import { StageNotice } from "./StageNotice";
-import { useMercadoPublicoPostulation } from "../hooks/useMercadoPublicoPostulation";
 
 interface ProposalViewProps {
   tenderId: string;
@@ -65,7 +65,9 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
   const [tender, setTender] = useState<{ data: Tender; isClosed: boolean } | null>(null);
   const [avisoAbierto, setAvisoAbierto] = useState(true);
   const [confirmarAnalisis, setConfirmarAnalisis] = useState(false);
-  const [activeTab, setActiveTab] = useState<"cotizacion-borrador" | "postulacion">("cotizacion-borrador");
+  const [activeTab, setActiveTab] = useState<"analisis" | "borrador" | "cotizacion" | "postulacion">(
+    "analisis",
+  );
 
   const {
     busy: postulationBusy,
@@ -245,12 +247,12 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             aria-selected={activeTab === "analisis"}
             onClick={() => setActiveTab("analisis")}
             className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
-              activeTab === "cotizacion-borrador"
+              activeTab === "analisis"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
             }`}
           >
-            1. Cotización y Borrador
+            1. Factibilidad y Exigencias
           </button>
           <button
             type="button"
@@ -259,7 +261,7 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             aria-selected={activeTab === "borrador"}
             onClick={() => setActiveTab("borrador")}
             className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
-              activeTab === "postulacion"
+              activeTab === "borrador"
                 ? "border-primary text-text-strong font-medium"
                 : "border-transparent text-text-muted hover:text-text-strong"
             }`}
@@ -279,6 +281,20 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             }`}
           >
             3. Cotización Financiera
+          </button>
+          <button
+            type="button"
+            role="tab"
+            data-tab-target="postulacion"
+            aria-selected={activeTab === "postulacion"}
+            onClick={() => setActiveTab("postulacion")}
+            className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm transition-colors cursor-pointer ${
+              activeTab === "postulacion"
+                ? "border-primary text-text-strong font-medium"
+                : "border-transparent text-text-muted hover:text-text-strong"
+            }`}
+          >
+            4. Postulación
           </button>
         </div>
       )}
@@ -330,25 +346,13 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
               )}
             </div>
 
-                {view &&
-                  (view.status === "READY" ? (
-                    <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
-                      <summary className="cursor-pointer text-sm font-semibold text-text-strong">
-                        Ver exigencias evaluadas ({view.requirements.length})
-                      </summary>
-                      <div className="mt-4">
-                        <FeasibilityStep
-                          view={view}
-                          canWrite={canWrite}
-                          busy={busy}
-                          answering={answering}
-                          onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
-                          onGenerate={() => void proposal.generate()}
-                          {...evidencia}
-                        />
-                      </div>
-                    </details>
-                  ) : (
+            {view &&
+              (view.status === "READY" ? (
+                <details className="rounded-lg border border-border-subtle bg-surface-card p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-text-strong">
+                    Ver exigencias evaluadas ({view.requirements.length})
+                  </summary>
+                  <div className="mt-4">
                     <FeasibilityStep
                       view={view}
                       canWrite={canWrite}
@@ -358,43 +362,17 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                       onGenerate={() => void proposal.generate()}
                       {...evidencia}
                     />
-                  ))}
-              </div>
-            </Seccion>
-          )}
-
-          {tender && (
-            <Seccion id="cotizacion" titulo="Cotización de materiales">
-              <QuotationEditor
-                tenderId={tenderId}
-                tenderCode={tender.data.code}
-                tenderItems={tender.data.items}
-                onSaved={() => reportInteraction("cotizacion")}
-                defaultOpen={true}
-              />
-            </Seccion>
-          )}
-
-          {view && (
-            <Seccion id="borrador" titulo="Borrador de la oferta">
-              {avisoBases && (
-                <p className="mb-5 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary-soft p-4 text-sm text-text-link">
-                  <Icon name="info" size={16} className="mt-0.5 shrink-0" />
-                  <span>{avisoBases}</span>
-                </p>
-              )}
-              {view.content ? (
-                <ProposalDraftViewer
+                  </div>
+                </details>
+              ) : (
+                <FeasibilityStep
                   view={view}
-                  tenderCode={tender?.data.code ?? null}
                   canWrite={canWrite}
                   busy={busy}
-                  stage={stage}
-                  onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
-                  onDownload={() => void proposal.download()}
-                  onRequestTechnical={() => void proposal.requestTechnical()}
-                  showPostulateButton={false}
-                  onContinueToPostulation={() => setActiveTab("postulacion")}
+                  answering={answering}
+                  onAnswer={(questionId, label) => void proposal.answer(questionId, label)}
+                  onGenerate={() => void proposal.generate()}
+                  {...evidencia}
                 />
               ))}
           </div>
@@ -420,6 +398,8 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                 onRegenerate={(instrucciones) => void proposal.regenerate(instrucciones)}
                 onDownload={() => void proposal.download()}
                 onRequestTechnical={() => void proposal.requestTechnical()}
+                showPostulateButton={false}
+                onContinueToPostulation={() => setActiveTab("postulacion")}
               />
             ) : (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-subtle bg-surface-card p-10 text-center shadow-xs">
@@ -449,6 +429,17 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
             )}
           </Seccion>
         </div>
+      )}
+
+      {activeTab === "cotizacion" && tender && (
+        <Seccion id="cotizacion" titulo="Cotización">
+          <QuotationEditor
+            tenderId={tenderId}
+            tenderCode={tender.data.code}
+            tenderItems={tender.data.items}
+            onSaved={() => reportInteraction("cotizacion")}
+          />
+        </Seccion>
       )}
 
       {activeTab === "postulacion" && (
@@ -511,11 +502,11 @@ export function ProposalView({ tenderId }: ProposalViewProps) {
                     Aún no se ha redactado el borrador de la oferta
                   </p>
                   <p className="mt-1 text-sm text-text-muted">
-                    Para postular con la extensión, primero debes completar la cotización y generar el borrador en el paso 1.
+                    Para postular con la extensión, primero debes generar el borrador (paso 2) y completar la cotización (paso 3).
                   </p>
                 </div>
-                <Button onClick={() => setActiveTab("cotizacion-borrador")}>
-                  Ir al Paso 1: Cotización y Borrador
+                <Button onClick={() => setActiveTab("borrador")}>
+                  Ir al Paso 2: Borrador de Oferta
                 </Button>
               </div>
             )}
