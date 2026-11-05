@@ -1,5 +1,5 @@
 import { apiFetch } from "@/features/shared/api/client";
-import type { KanbanArchiveEntry, KanbanCard, KanbanColumn } from "../kanbanTypes";
+import type { KanbanArchiveEntry, KanbanCard, KanbanColumn, KanbanEvent } from "../kanbanTypes";
 
 export function fetchColumns(): Promise<KanbanColumn[]> {
   return apiFetch<KanbanColumn[]>("/kanban/columns");
@@ -76,4 +76,11 @@ export function restoreCard(card_id: string): Promise<KanbanCard> {
   return apiFetch<KanbanCard>(`/kanban/archive/${card_id}/restore`, {
     method: "POST",
   });
+}
+
+/** Historial de eventos del tablero del workspace (HU-18, más reciente primero). */
+export function listEvents(limit = 50, offset = 0): Promise<KanbanEvent[]> {
+  return apiFetch<KanbanEvent[]>(
+    `/kanban/events?limit=${limit}&offset=${offset}`,
+  );
 }

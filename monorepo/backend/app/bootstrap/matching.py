@@ -48,6 +48,7 @@ from app.application.use_cases.saved_tenders.list_saved_tenders import (
 from app.application.use_cases.saved_tenders.save_tender import SaveTenderUseCase
 from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUseCase
 from app.application.use_cases.tender.get_tender_detail import GetTenderDetailUseCase
+from app.application.use_cases.tender.get_tenders_map import GetTendersMapUseCase
 from app.application.use_cases.tender.search_tenders import SearchTendersUseCase
 from app.bootstrap.repositories import (
     AttachmentExtractionRepoDep,
@@ -57,6 +58,7 @@ from app.bootstrap.repositories import (
     SavedTenderRepoDep,
     SupplierRepoDep,
     TenderDigestRepoDep,
+    TenderMapRepoDep,
     TenderRepoDep,
 )
 from app.bootstrap.services import (
@@ -262,6 +264,10 @@ def get_tender_detail_use_case(
         supplier_repo=supplier_repo,
         matching_result_repo=matching_result_repo,
     )
+
+
+def get_tenders_map_use_case(repo: TenderMapRepoDep) -> GetTendersMapUseCase:
+    return GetTendersMapUseCase(repo)
 
 
 def get_get_or_create_deep_analysis_use_case(

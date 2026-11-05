@@ -23,5 +23,8 @@ export interface UserPublic {
   phone: string | null;
   active: boolean;
   email_verified: boolean;
+  tour_home_completed?: boolean;
+  tour_detail_completed?: boolean;
+  tour_draft_completed?: boolean;
   created_at: string;
 }

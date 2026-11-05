@@ -12,6 +12,7 @@ import { useUnreadCount } from "@/features/notifications/hooks/useNotifications"
 
 import { WorkspaceSelector } from "@/features/workspaces/components/WorkspaceSelector";
 import { useWorkspace } from "@/features/workspaces/WorkspaceContext";
+import { useOnboardingStore } from "@/features/onboarding/store/useOnboardingStore";
 
 interface NavItemProps {
   icon: string;
@@ -19,14 +20,16 @@ interface NavItemProps {
   href: string;
   active?: boolean;
   badge?: number;
+  dataTour?: string;
   onNavigate?: () => void;
 }
 
-function NavItem({ icon, label, href, active, badge, onNavigate }: NavItemProps) {
+function NavItem({ icon, label, href, active, badge, dataTour, onNavigate }: NavItemProps) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
+      data-tour={dataTour}
       aria-current={active ? "page" : undefined}
       className={`flex items-center gap-3 w-full px-3 py-1.5 rounded-md transition-all duration-200 group ${
         active
@@ -74,6 +77,7 @@ const BASE_NAV_SECTIONS: ReadonlyArray<NavSection> = [
     items: [
       { icon: "search", label: "Buscar", href: "/buscar" },
       { icon: "target", label: "Matches", href: "/matches" },
+      { icon: "map", label: "Mapa de licitaciones", href: "/mapa" },
     ],
   },
   {
@@ -130,6 +134,7 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const { company } = useCompany();
   const { activeWorkspace, invitations } = useWorkspace();
+  const { openHelpCenter } = useOnboardingStore();
   const unreadCount = useUnreadCount();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -168,6 +173,7 @@ export function Sidebar() {
       <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-card sticky top-0 z-30">
         <button
           type="button"
+          data-tour="mobile-menu-toggle"
           onClick={() => setMobileOpen(true)}
           aria-label="Abrir menú de navegación"
           aria-expanded={mobileOpen}
@@ -222,33 +228,67 @@ export function Sidebar() {
           className="flex-1 flex flex-col gap-0.5 overflow-y-auto"
           aria-label="Navegación principal"
         >
-          {navSections.map((section, sectionIndex) => (
-            <div
-              key={section.title ?? `section-${sectionIndex}`}
-              className="flex flex-col gap-0.5"
-            >
-              {section.title && (
-                <div className="mt-2 mb-0 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
-                  {section.title}
-                </div>
-              )}
-              {section.items.map((item) => (
-                <NavItem
-                  key={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  href={item.href}
-                  active={isActive(pathname, item.href)}
-                  // Alertas lleva contador de avisos no leídos + invitaciones pendientes
-                  badge={item.href === "/alertas" ? totalNotifications : undefined}
-                  onNavigate={() => setMobileOpen(false)}
-                />
-              ))}
-            </div>
-          ))}
+          {navSections.map((section, sectionIndex) => {
+            const sectionTour =
+              section.title === "Seguimiento"
+                ? "sidebar-seguimiento"
+                : section.title === "Administración"
+                  ? "sidebar-administracion"
+                  : undefined;
+
+            return (
+              <div
+                key={section.title ?? `section-${sectionIndex}`}
+                data-tour={sectionTour}
+                className="flex flex-col gap-0.5"
+              >
+                {section.title && (
+                  <div className="mt-2 mb-0 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
+                    {section.title}
+                  </div>
+                )}
+                {section.items.map((item) => (
+                  <NavItem
+                    key={item.href}
+                    icon={item.icon}
+                    label={item.label}
+                    href={item.href}
+                    active={isActive(pathname, item.href)}
+                    dataTour={
+                      item.href === "/buscar"
+                        ? "sidebar-search"
+                        : item.href === "/matches"
+                          ? "sidebar-matches"
+                          : undefined
+                    }
+                    // Alertas lleva contador de avisos no leídos + invitaciones pendientes
+                    badge={item.href === "/alertas" ? totalNotifications : undefined}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="pt-3 pb-2 border-t border-border-subtle">
+        <div className="pt-3 pb-2 border-t border-border-subtle flex flex-col gap-2">
+          <button
+            type="button"
+            data-tour="help-center-trigger"
+            onClick={() => {
+              setMobileOpen(false);
+              openHelpCenter();
+            }}
+            className="flex items-center gap-3 w-full px-3 py-1.5 rounded-md text-text-muted hover:bg-surface-hover hover:text-text-strong transition-all duration-200 group cursor-pointer"
+          >
+            <Icon
+              name="help-circle"
+              size={20}
+              color="var(--text-subtle)"
+              className="transition-colors group-hover:text-text-strong"
+            />
+            <span className="flex-1 text-left text-sm">Ayuda</span>
+          </button>
           <AccessibilityControls />
         </div>
 

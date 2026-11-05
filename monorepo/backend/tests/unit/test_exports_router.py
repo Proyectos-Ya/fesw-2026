@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.application.use_cases.exports.export_snapshot import ExportSection
 from app.application.use_cases.exports.export_tender import ExportFile, ExportQueued
-from app.domain.entities.export_job import ExportFormat, ExportJob
+from app.domain.entities.export_job import ExportFormat, ExportJob, ExportJobStatus
 from app.domain.entities.supplier_member import MemberRole, WorkspaceContext
 from app.domain.errors.export_errors import (
     ExportFileUnavailable,
@@ -45,10 +45,11 @@ def api():
         file_name="licitacion-COT26.pdf",
         now=AHORA,
     )
-    exportar, consultar, descargar = AsyncMock(), AsyncMock(), AsyncMock()
+    exportar, consultar, descargar, listar = AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
     exportar.execute.return_value = PDF
     consultar.execute.return_value = job
     descargar.execute.return_value = PDF
+    listar.execute.return_value = [job]
 
     app = FastAPI()
 
@@ -60,7 +61,7 @@ def api():
 
     app.include_router(
         create_exports_router(
-            workspace, current_user, lambda: exportar, lambda: consultar, lambda: descargar
+            workspace, current_user, lambda: exportar, lambda: consultar, lambda: descargar, lambda: listar
         )
     )
     return SimpleNamespace(
@@ -74,6 +75,7 @@ def api():
         exportar=exportar,
         consultar=consultar,
         descargar=descargar,
+        listar=listar,
         path=f"/tenders/{tender_id}/exports",
     )
 
@@ -153,9 +155,28 @@ class TestExportar:
         api.app.dependency_overrides[api.current_user] = denegado
 
         assert api.client.post(api.path, json={"format": "pdf"}).status_code == 401
+        assert api.client.get("/exports").status_code == 401
         assert api.client.get(f"/exports/{api.job.id}").status_code == 401
         assert api.client.get(f"/exports/{api.job.id}/file").status_code == 401
         api.exportar.execute.assert_not_awaited()
+
+
+class TestListar:
+    def test_devuelve_los_jobs_del_workspace(self, api):
+        respuesta = api.client.get("/exports")
+
+        assert respuesta.status_code == 200
+        cuerpo = respuesta.json()
+        assert len(cuerpo) == 1
+        assert cuerpo[0]["id"] == str(api.job.id)
+        assert cuerpo[0]["status"] == "processing"
+        assert "user_id" in cuerpo[0]
+        api.listar.execute.assert_awaited_once_with(api.contexto.active_supplier_id, limit=50, offset=0)
+
+    def test_acepta_paginacion(self, api):
+        api.client.get("/exports?limit=10&offset=20")
+
+        api.listar.execute.assert_awaited_once_with(api.contexto.active_supplier_id, limit=10, offset=20)
 
 
 class TestTrabajo:
@@ -167,9 +188,9 @@ class TestTrabajo:
         assert cuerpo["status"] == "processing"
         assert cuerpo["format"] == "pdf"
         assert "content" not in cuerpo
-        api.consultar.execute.assert_awaited_once_with(api.contexto.user_id, api.job.id)
+        api.consultar.execute.assert_awaited_once_with(api.contexto.active_supplier_id, api.job.id)
 
-    def test_uno_ajeno_es_404(self, api):
+    def test_uno_de_otro_workspace_es_404(self, api):
         api.consultar.execute.side_effect = ExportJobNotFound()
 
         assert api.client.get(f"/exports/{api.job.id}").status_code == 404

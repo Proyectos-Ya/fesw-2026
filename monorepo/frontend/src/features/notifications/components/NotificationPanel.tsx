@@ -29,14 +29,28 @@ function NotificationCard({
   const sinLeer = item.read_at === null;
   const esCambioDeFecha = item.kind === "date_changed";
   const esRecordatorio = item.kind === "milestone_reminder";
+  const esCambioKanban = item.kind === "kanban_change";
   // Los dos avisos de hitos comparten forma: ícono de calendario y una línea
   // por hito, en vez del organismo y el puntaje del aviso de compatibilidad.
   const esDeHitos = esCambioDeFecha || esRecordatorio;
 
+  const href = esCambioKanban ? "/tablero" : `/matches/${item.tender_id}`;
+  const iconName = esCambioKanban
+    ? "kanban"
+    : esDeHitos
+      ? "calendar-clock"
+      : "bell";
+
+  const titulo = esCambioKanban
+    ? item.tender?.name
+      ? `Tablero: ${item.tender.name}`
+      : "Actualización en el tablero kanban"
+    : item.tender?.name ?? "Licitación no disponible";
+
   return (
     <li>
       <Link
-        href={`/matches/${item.tender_id}`}
+        href={href}
         onClick={() => onOpen(item.id)}
         className={`flex items-start gap-4 rounded-lg border p-4 transition-colors hover:bg-surface-hover ${
           sinLeer
@@ -51,7 +65,7 @@ function NotificationCard({
           }`}
         >
           <Icon
-            name={esDeHitos ? "calendar-clock" : "bell"}
+            name={iconName}
             size={18}
             color={sinLeer ? "var(--primary)" : "var(--text-subtle)"}
           />
@@ -64,15 +78,16 @@ function NotificationCard({
                 sinLeer ? "font-bold text-text-strong" : "font-medium text-text-body"
               }`}
             >
-              {item.tender?.name ?? "Licitación no disponible"}
+              {titulo}
             </span>
             {esCambioDeFecha && <Badge tone="warning">Fecha modificada</Badge>}
             {esRecordatorio && <Badge tone="info">Recordatorio</Badge>}
-            {!esDeHitos && item.score_pct !== null && (
+            {esCambioKanban && <Badge tone="info">Tablero</Badge>}
+            {!esDeHitos && !esCambioKanban && item.score_pct !== null && (
               <Badge tone={tonoDelScore(item.score_pct)}>{item.score_pct}%</Badge>
             )}
             {/* El criterio pide avisar cuando la licitación de una alerta ya cerró. */}
-            {item.is_closed && <Badge tone="neutral">Cerrada</Badge>}
+            {!esCambioKanban && item.is_closed && <Badge tone="neutral">Cerrada</Badge>}
           </span>
 
           {esCambioDeFecha &&
@@ -87,14 +102,19 @@ function NotificationCard({
                 {`${hito.title}: ${formatMilestoneDate(hito.due_at, true)}`}
               </span>
             ))}
-          {!esDeHitos && (
+          {esCambioKanban && (
+            <span className="text-xs text-text-subtle">
+              Un miembro del equipo actualizó el tablero compartido
+            </span>
+          )}
+          {!esDeHitos && !esCambioKanban && (
             <span className="text-xs text-text-subtle">
               {item.tender?.buyer_name ?? "Organismo no informado"}
               {item.tender && ` · Cierra el ${formatClosingDate(item.tender.closing_at)}`}
             </span>
           )}
           <span className="text-xs text-text-subtle">
-            {esDeHitos ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
+            {esDeHitos || esCambioKanban ? "Avisado el" : "Detectada el"} {formatDateTime(item.created_at)}
           </span>
         </span>
 

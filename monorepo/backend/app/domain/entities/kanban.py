@@ -19,6 +19,8 @@ DEFAULT_COLUMN_COLORS = [
 
 class KanbanColumn(BaseModel):
     id: UUID = Field(default_factory=uuid4)
+    # HU-18: el tablero pertenece al workspace; `user_id` queda como autoría.
+    supplier_id: UUID
     user_id: UUID
     name: str
     position: int
@@ -32,6 +34,8 @@ ARCHIVE_REASON_AUTO = "auto_3m"
 
 class KanbanCard(BaseModel):
     id: UUID = Field(default_factory=uuid4)
+    # HU-18: la tarjeta pertenece al workspace; `user_id` es autoría.
+    supplier_id: UUID
     user_id: UUID
     tender_id: UUID
     column_id: UUID

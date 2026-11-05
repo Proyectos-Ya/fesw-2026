@@ -450,7 +450,10 @@ export function TenderDetailView({
         </div>
       )}
 
-      <header className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-5 sm:p-6 shadow-xs">
+      <header
+        data-tour="detail-header"
+        className="mb-6 rounded-lg border border-border-subtle bg-surface-card p-5 sm:p-6 shadow-xs"
+      >
         {/* Fila Principal: MatchMeter + Badges/Título/Metadatos */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
           <div className="flex-none w-28 flex flex-col items-center justify-center h-full self-center">
@@ -558,7 +561,10 @@ export function TenderDetailView({
         </div>
 
         {/* Fila Secundaria: Barra de herramientas de acciones */}
-        <div className="mt-5 pt-4 border-t border-border-subtle flex flex-wrap items-center justify-between gap-3">
+        <div
+          data-tour="detail-actions"
+          className="mt-5 pt-4 border-t border-border-subtle flex flex-wrap items-center justify-between gap-3"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <TenderBoardSelector tenderId={tenderId} />
 
@@ -653,6 +659,7 @@ export function TenderDetailView({
             <button
               type="button"
               role="tab"
+              data-tab-target="bases"
               aria-selected={activeTab === "bases"}
               onClick={() => setActiveTab("bases")}
               className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
@@ -668,6 +675,7 @@ export function TenderDetailView({
             <button
               type="button"
               role="tab"
+              data-tab-target="anexos"
               aria-selected={activeTab === "anexos"}
               onClick={() => setActiveTab("anexos")}
               className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
@@ -683,6 +691,7 @@ export function TenderDetailView({
             <button
               type="button"
               role="tab"
+              data-tab-target="calendario"
               aria-selected={activeTab === "calendario"}
               onClick={() => setActiveTab("calendario")}
               className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
@@ -699,6 +708,7 @@ export function TenderDetailView({
           {/* Pestaña "Bases" */}
           <div
             role="tabpanel"
+            data-tour="detail-bases"
             className={activeTab === "bases" ? "flex flex-col gap-5" : "hidden"}
           >
             <Section title="Entrega y requisitos" icon="package">
@@ -779,6 +789,7 @@ export function TenderDetailView({
           {/* Pestaña "Anexos y Resumen IA" */}
           <div
             role="tabpanel"
+            data-tour="detail-anexos"
             className={activeTab === "anexos" ? "flex flex-col gap-5" : "hidden"}
           >
             <TenderAttachmentsPanel
@@ -800,6 +811,7 @@ export function TenderDetailView({
           {/* Pestaña "Calendario" */}
           <div
             role="tabpanel"
+            data-tour="detail-calendario"
             className={
               activeTab === "calendario" ? "flex flex-col gap-5" : "hidden"
             }
@@ -822,11 +834,17 @@ export function TenderDetailView({
         </div>
 
         {/* Columna Derecha: Panel de Acciones (Sticky en Desktop, Top Stacking en Móvil) */}
-        <aside className="order-1 lg:order-2 w-full lg:w-[320px] shrink-0 lg:sticky lg:top-6 flex flex-col gap-5">
+        <aside
+          data-tour="detail-ai-panel"
+          className="order-1 lg:order-2 w-full lg:w-[320px] shrink-0 lg:sticky lg:top-6 flex flex-col gap-5"
+        >
           <ProposalEntryCard tenderId={tenderId} isClosed={cerrada} />
 
           {/* Acordeón Responsivo: Análisis y Asistencia IA */}
-          <div className="flex flex-col rounded-lg border border-border-subtle bg-surface-card shadow-xs">
+          <div
+            data-tour="match-detail-panel"
+            className="flex flex-col rounded-lg border border-border-subtle bg-surface-card shadow-xs"
+          >
             <button
               type="button"
               onClick={() => setIsAiSectionExpanded((prev) => !prev)}
