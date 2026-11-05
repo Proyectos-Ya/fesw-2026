@@ -23,6 +23,7 @@ const POLL = 10;
 function job(status: ExportJob["status"]): ExportJob {
   return {
     id: "j-1",
+    user_id: "u-1",
     status,
     format: "pdf",
     file_name: "licitacion-COT26.pdf",

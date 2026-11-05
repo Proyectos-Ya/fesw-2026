@@ -16,6 +16,12 @@ class IExportJobRepository(ABC):
 
 
     @abstractmethod
+    async def list_by_supplier(
+        self, supplier_id: UUID, limit: int = 20, offset: int = 0
+    ) -> list[ExportJob]:
+        """Trabajos del workspace, más recientes primero, sin contenido."""
+
+    @abstractmethod
     async def fail_stale(self, now: datetime, created_before: datetime) -> int:
         """Marca fallidos los que siguen en proceso y se crearon antes de `created_before`.
 

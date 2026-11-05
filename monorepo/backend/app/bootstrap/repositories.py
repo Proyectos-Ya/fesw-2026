@@ -39,6 +39,9 @@ from app.application.repositories.feedback_repository import (
 from app.application.repositories.gemini_usage_repository import (
     IGeminiUsageRepository,
 )
+from app.application.repositories.kanban_event_repository import (
+    IKanbanEventRepository,
+)
 from app.application.repositories.kanban_repository import (
     IKanbanCardRepository,
     IKanbanColumnRepository,
@@ -81,6 +84,7 @@ from app.application.repositories.tender_chat_repository import ITenderChatRepos
 from app.application.repositories.tender_digest_repository import (
     ITenderDigestRepository,
 )
+from app.application.repositories.tender_map_repository import ITenderMapRepository
 from app.application.repositories.tender_milestone_repository import (
     ITenderMilestoneRepository,
 )
@@ -99,6 +103,9 @@ from app.infrastructure.repositories.feedback_repository import (
     AppFeedbackRepository,
     AssistantFeedbackRepository,
     MatchReportRepository,
+)
+from app.infrastructure.repositories.kanban_event_repository import (
+    KanbanEventRepository,
 )
 from app.infrastructure.repositories.kanban_repository import (
     KanbanCardRepository,
@@ -165,6 +172,9 @@ from app.infrastructure.repositories.sql_tender_chat_repository import (
 from app.infrastructure.repositories.sql_tender_digest_repository import (
     SqlTenderDigestRepository,
 )
+from app.infrastructure.repositories.sql_tender_location_repository import (
+    SqlTenderLocationRepository,
+)
 from app.infrastructure.repositories.supplier_repository import SupplierRepository
 from app.infrastructure.repositories.tender_milestone_attachment_repository import (
     TenderMilestoneAttachmentRepository,
@@ -208,6 +218,10 @@ def get_user_repo(session: SessionDep) -> IUserRepository:
 
 def get_tender_repo(session: SessionDep) -> ITenderRepository:
     return TenderRepository(session)
+
+
+def get_tender_map_repo(session: SessionDep) -> ITenderMapRepository:
+    return SqlTenderLocationRepository(session)
 
 
 def get_matching_result_repo(session: SessionDep) -> IMatchingResultRepository:
@@ -308,6 +322,10 @@ def get_kanban_card_repo(session: SessionDep) -> IKanbanCardRepository:
     return KanbanCardRepository(session)
 
 
+def get_kanban_event_repo(session: SessionDep) -> IKanbanEventRepository:
+    return KanbanEventRepository(session)
+
+
 def get_tender_attachment_repo(session: SessionDep) -> ITenderAttachmentRepository:
     return SqlTenderAttachmentRepository(session)
 
@@ -362,6 +380,9 @@ SupplierRepoDep = Annotated[ISupplierRepository, Depends(get_supplier_repo)]
 
 
 TenderRepoDep = Annotated[ITenderRepository, Depends(get_tender_repo)]
+
+
+TenderMapRepoDep = Annotated[ITenderMapRepository, Depends(get_tender_map_repo)]
 
 
 MatchingResultRepoDep = Annotated[
@@ -446,6 +467,13 @@ KanbanColumnRepoDep = Annotated[IKanbanColumnRepository, Depends(get_kanban_colu
 
 KanbanCardRepoDep = Annotated[IKanbanCardRepository, Depends(get_kanban_card_repo)]
 
+
+KanbanEventRepoDep = Annotated[IKanbanEventRepository, Depends(get_kanban_event_repo)]
+
+
+SupplierMemberRepoDep = Annotated[
+    ISupplierMemberRepository, Depends(get_supplier_member_repo)
+]
 
 MatchReportRepoDep = Annotated[IMatchReportRepository, Depends(get_match_report_repo)]
 AssistantFeedbackRepoDep = Annotated[

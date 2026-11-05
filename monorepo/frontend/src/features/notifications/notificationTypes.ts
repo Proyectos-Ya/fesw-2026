@@ -7,9 +7,14 @@ export type DeliveryKind = "immediate" | "digest";
 /**
  * `match`: licitación compatible. `date_changed`: Mercado Público movió una
  * fecha (HU-16). `milestone_reminder`: se cumplió la anticipación que el
- * usuario pidió para un hito (HU-16).
+ * usuario pidió para un hito (HU-16). `kanban_change`: otro miembro del
+ * workspace mutó el tablero (HU-18).
  */
-export type NotificationKind = "match" | "date_changed" | "milestone_reminder";
+export type NotificationKind =
+  | "match"
+  | "date_changed"
+  | "milestone_reminder"
+  | "kanban_change";
 
 export interface NotificationDateChange {
   label: string;
@@ -47,6 +52,8 @@ export interface NotificationPreferences {
   delivery_mode: DeliveryMode;
   /** El sistema lo apaga solo si el proveedor de correo rechaza la dirección. */
   email_delivery_enabled: boolean;
+  /** HU-18: avisos cuando otro miembro del workspace mueve el tablero. */
+  kanban_notifications_enabled: boolean;
   last_failure_reason: string | null;
   last_failure_at: string | null;
 }
@@ -56,6 +63,8 @@ export interface UpdatePreferencesPayload {
   threshold_pct?: number;
   delivery_mode?: DeliveryMode;
   reactivate_email?: boolean;
+  /** HU-18. */
+  kanban_notifications_enabled?: boolean;
 }
 
 export interface NotificationDelivery {

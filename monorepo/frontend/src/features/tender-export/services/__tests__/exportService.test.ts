@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiDownloadOrAccepted, apiFetch } from "@/features/shared/api/client";
-import { downloadExportFile, exportTender, getExportJob } from "../exportService";
+import { downloadExportFile, exportTender, getExportJob, listWorkspaceExports } from "../exportService";
 
 vi.mock("@/features/shared/api/client", () => ({
   apiDownloadOrAccepted: vi.fn(),
@@ -72,6 +72,18 @@ describe("exportService", () => {
     await getExportJob("j-1");
 
     expect(apiFetch).toHaveBeenCalledWith("/exports/j-1");
+  });
+
+  it("lista los exports del workspace con paginación por defecto", async () => {
+    await listWorkspaceExports();
+
+    expect(apiFetch).toHaveBeenCalledWith("/exports?limit=50&offset=0");
+  });
+
+  it("lista los exports con paginación personalizada", async () => {
+    await listWorkspaceExports(10, 20);
+
+    expect(apiFetch).toHaveBeenCalledWith("/exports?limit=10&offset=20");
   });
 
   it("descarga el archivo terminado", async () => {

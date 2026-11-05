@@ -258,7 +258,8 @@ jobs:
   test-e2e:
     name: Tests E2E Criticos (Playwright)
     needs: [build-frontend, build-backend]
-    runs-on: ubuntu-latest
+    # Fijado: ubuntu-latest pasó a 26.04 y Playwright no instala Chromium ahí.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: monorepo/frontend

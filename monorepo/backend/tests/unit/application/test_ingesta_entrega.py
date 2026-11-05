@@ -118,3 +118,51 @@ class TestActualizacion:
         assert repo.existente.delivery_address == ENTREGA["DireccionEntrega"]
         assert repo.existente.delivery_term_days == 5
         assert repo.existente.requires_environmental_criteria is False
+
+
+def _ubicada(repo: RepoConLicitacion, direccion: str) -> None:
+    """Deja la licitación guardada con una dirección ya geocodificada (#314)."""
+    repo.existente.delivery_address = direccion
+    repo.existente.delivery_lat = -45.57
+    repo.existente.delivery_lng = -72.07
+    repo.existente.delivery_geo_precision = "direccion"
+    repo.existente.delivery_geocoded_at = AHORA
+
+
+class TestReencolarGeocodificacion:
+    """HU-22 (#314): una dirección nueva vuelve a la cola del mapa."""
+
+    async def test_otra_direccion_borra_el_punto_y_la_deja_pendiente(self):
+        repo = RepoConLicitacion(_dto())
+        _ubicada(repo, "SERVIU REGION DE AYSEN RAMON FREIRE 5")
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(_dto(DireccionEntrega="Baquedano 50"))
+
+        assert repo.existente.delivery_address == "Baquedano 50"
+        # El punto viejo es de otra dirección: mostrarlo sería inventar.
+        assert repo.existente.delivery_lat is None
+        assert repo.existente.delivery_lng is None
+        assert repo.existente.delivery_geo_precision is None
+        assert repo.existente.delivery_geocoded_at is None
+        assert repo.existente.updated_at == AHORA
+
+    async def test_la_misma_direccion_conserva_el_punto(self):
+        repo = RepoConLicitacion(_dto())
+        _ubicada(repo, ENTREGA["DireccionEntrega"])
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(_dto(**ENTREGA))
+
+        assert repo.existente.delivery_lat == -45.57
+        assert repo.existente.delivery_geocoded_at == AHORA
+
+    async def test_un_detalle_sin_direccion_conserva_el_punto(self):
+        repo = RepoConLicitacion(_dto())
+        _ubicada(repo, ENTREGA["DireccionEntrega"])
+        emb, vec = FakeEmbeddingService(), FakeTenderVectorRepository()
+
+        await _caso(repo, emb, vec).execute(_dto(PlazoEntregaDias=9))
+
+        assert repo.existente.delivery_lat == -45.57
+        assert repo.existente.delivery_geocoded_at == AHORA

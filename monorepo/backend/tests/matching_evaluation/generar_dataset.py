@@ -4,16 +4,15 @@ Primer paso para **regenerar** el dataset de prueba. El ciclo completo:
 
     # 1. Una persona, una vez (consume cuota del ticket):
     python tests/matching_evaluation/generar_dataset.py --limite 300
-    python tests/matching_evaluation/export_dataset.py
+    python -m scripts.dump exportar
 
     # 2. El resto del equipo (cuota: cero):
-    python tests/matching_evaluation/load_postgres_robust.py
-    python tests/matching_evaluation/load_dataset.py
+    python -m scripts.dump cargar
 
-Por qué hace falta regenerarlo: el dataset se llena de licitaciones **cerradas**.
-El matching descarta todo lo que tenga `closing_at` en el pasado, así que un
-volcado de hace unas semanas deja el dashboard vacío aunque la base tenga miles
-de filas. Conviene rehacerlo cuando eso pase.
+Lo habitual es sacar el dump de producción con `scripts.dump exportar`, sin
+gastar cuota. Este script sirve cuando no hay acceso a producción o se quiere un
+corpus distinto. Que las licitaciones venzan no obliga a regenerarlo:
+`python -m scripts.dump revivir` corre las fechas del catálogo cargado.
 
 Usa los mismos servicios que la ingesta de producción —no una copia paralela—,
 así que lo que queda en la base es exactamente lo que la aplicación habría
@@ -103,7 +102,7 @@ async def main(limite: int, retardo: float) -> None:
             "[AVISO] Ninguna vigente: el matching no va a mostrar resultados.",
             flush=True,
         )
-    print("Siguiente paso: export_dataset.py")
+    print("Siguiente paso: python -m scripts.dump exportar")
 
     await qdrant.close()
     await engine.dispose()

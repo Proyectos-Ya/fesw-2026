@@ -410,4 +410,27 @@ describe("ProposalView", () => {
       await screen.findByText("Borrador regenerado con tus instrucciones."),
     ).toBeInTheDocument();
   });
+
+  it("muestra el empty state del borrador cuando aún no ha sido generado y contiene selectores de tour", async () => {
+    svc.getProposal.mockRejectedValue(new ApiError(404, "Not found"));
+    const { container } = render(<ProposalView tenderId="t-1" />);
+
+    expect(await screen.findByRole("button", { name: /Iniciar análisis/ })).toBeInTheDocument();
+    expect(container.querySelector('[data-tour="draft-factibilidad"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-tab-target="factibilidad"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-tab-target="borrador"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-tab-target="cotizacion"]')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: /2\. Borrador de Oferta/i }));
+
+    expect(
+      screen.getByText(
+        "Aún no hay un borrador de oferta. Vuelve a la pestaña '1. Factibilidad y Exigencias' e inicia el análisis para generarlo.",
+      ),
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-tour="draft-borrador-container"]')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Ir a Factibilidad y Exigencias/i }));
+    expect(screen.getByRole("region", { name: "Análisis de las bases" })).toBeInTheDocument();
+  });
 });

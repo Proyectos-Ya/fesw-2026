@@ -48,3 +48,6 @@ class SupplierModel(SQLModel, table=True):
     created_at: datetime
     updated_at: datetime
     profile_changed_at: datetime | None = None
+    # HU-18: umbral de match a nivel de workspace. None → fallback a la
+    # preferencia individual de cada miembro en `NotificationPreference`.
+    match_threshold: float | None = Field(default=None)

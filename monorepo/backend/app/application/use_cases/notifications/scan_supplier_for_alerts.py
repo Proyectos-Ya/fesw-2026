@@ -5,6 +5,7 @@ from app.application.repositories.notification_repository import (
     INotificationPreferenceRepository,
     INotificationRepository,
 )
+from app.application.repositories.supplier_repository import ISupplierRepository
 from app.application.use_cases.matching.rank_tenders import RankTendersUseCase
 from app.domain.entities.notification import (
     Notification,
@@ -19,6 +20,11 @@ class ScanSupplierForAlertsUseCase:
     Es el corazón de la HdU 08. Se ejecuta desde el scheduler, sin petición HTTP
     de por medio: el usuario no tiene que entrar a la plataforma para que esto
     ocurra.
+
+    HU-18: la resolución del umbral de match es jerárquica:
+    1. Si `supplier.match_threshold` no es None, se usa ese valor para todos
+       los miembros del workspace.
+    2. Si no, se cae al `preference.threshold` del usuario individual.
     """
 
     def __init__(
@@ -27,13 +33,17 @@ class ScanSupplierForAlertsUseCase:
         preference_repo: INotificationPreferenceRepository,
         notification_repo: INotificationRepository,
         delivery_repo: INotificationDeliveryRepository,
+        supplier_repo: ISupplierRepository | None = None,
     ) -> None:
         self.rank_tenders_use_case = rank_tenders_use_case
         self.preference_repo = preference_repo
         self.notification_repo = notification_repo
         self.delivery_repo = delivery_repo
+        self.supplier_repo = supplier_repo
 
-    async def execute(self, user_id: UUID) -> list[Notification]:
+    async def execute(
+        self, user_id: UUID, supplier_id: UUID | None = None
+    ) -> list[Notification]:
         preference = await self.preference_repo.get_by_user_id(user_id)
         if preference is None:
             # Sin fila guardada valen los defaults del dominio (activadas, 70%).
@@ -43,6 +53,8 @@ class ScanSupplierForAlertsUseCase:
 
         if not preference.enabled:
             return []
+
+        threshold = await self._resolve_threshold(preference, supplier_id)
 
         matches = await self.rank_tenders_use_case.execute(user_id)
         if not matches:
@@ -60,7 +72,7 @@ class ScanSupplierForAlertsUseCase:
             )
             for match in matches
             if match.final_score is not None
-            and match.final_score >= preference.threshold
+            and match.final_score >= threshold
             and match.tender_id not in ya_avisadas
         ]
         if not nuevos:
@@ -81,3 +93,14 @@ class ScanSupplierForAlertsUseCase:
             )
 
         return nuevos
+
+    async def _resolve_threshold(
+        self, preference: NotificationPreference, supplier_id: UUID | None
+    ) -> float:
+        # Fallback a preferencia individual si no hay workspace o no hay repo.
+        if supplier_id is None or self.supplier_repo is None:
+            return preference.threshold
+        supplier = await self.supplier_repo.get_by_id(supplier_id)
+        if supplier is None or supplier.match_threshold is None:
+            return preference.threshold
+        return supplier.match_threshold

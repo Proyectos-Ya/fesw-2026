@@ -70,6 +70,16 @@ class INotificationRepository(ABC):
         pass
 
     @abstractmethod
+    async def save_kanban_change(self, notification: Notification) -> Notification:
+        """Crea o reemplaza el aviso de cambio en el tablero de esa licitación.
+
+        Hay uno por usuario y licitación: un nuevo cambio lo actualiza y lo
+        vuelve a marcar como no leído. Sin esto, el segundo cambio chocaría con
+        el unique de la tabla y no avisaría.
+        """
+        pass
+
+    @abstractmethod
     async def save_date_change(self, notification: Notification) -> Notification:
         """Crea o reemplaza el aviso de "Fecha modificada" de esa licitación.
 

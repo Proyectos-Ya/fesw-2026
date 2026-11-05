@@ -22,6 +22,7 @@ from app.application.schemas.ranking_telemetry_schema import (
     TenderInteractionRequest,
     TenderInteractionResponse,
 )
+from app.application.schemas.tender_map_schema import TenderMapResponse
 from app.application.schemas.tender_schema import (
     TenderFilterCriteria,
     TenderSearchResult,
@@ -48,6 +49,7 @@ from app.application.use_cases.saved_tenders.unsave_tender import UnsaveTenderUs
 from app.application.use_cases.tender.get_tender_detail import (
     GetTenderDetailUseCase,
 )
+from app.application.use_cases.tender.get_tenders_map import GetTendersMapUseCase
 from app.application.use_cases.tender.search_tenders import (
     DEFAULT_RESULT_LIMIT,
     MAX_RESULT_LIMIT,
@@ -142,6 +144,7 @@ def create_tender_router(
     get_ranking_impression_logger: Callable | None = None,
     get_ranking_registry: Callable | None = None,
     get_record_tender_interaction_use_case: Callable | None = None,
+    get_tenders_map_use_case: Callable | None = None,
 ) -> APIRouter:
     """
     Fábrica del router de licitaciones (tenders).
@@ -280,6 +283,51 @@ def create_tender_router(
                 ),
             ) from e
 
+    if get_tenders_map_use_case is not None:
+        # Como `/search`, antes de cualquier ruta con `/{tender_id}`.
+        @router.get(
+            "/map",
+            response_model=TenderMapResponse,
+            summary="Licitaciones abiertas con dirección de entrega ubicada, por región",
+            responses={
+                422: {"description": "Región desconocida o ausente"},
+                503: {"description": "No se pudo cargar el mapa: la base no responde"},
+            },
+        )
+        async def get_tenders_map(
+            use_case: Annotated[
+                GetTendersMapUseCase, Depends(get_tenders_map_use_case)
+            ],
+            region: Annotated[
+                str,
+                Query(
+                    min_length=1,
+                    max_length=80,
+                    description="Región del organismo comprador. Vale el nombre "
+                    'canónico ("Metropolitana de Santiago") o el del perfil de '
+                    'empresa ("Metropolitana").',
+                ),
+            ],
+        ):
+            """Marcadores del mapa de licitaciones (HU-22, #314).
+
+            Solo publicadas con cierre futuro y con la dirección de entrega ya
+            ubicada; las que cierran antes primero, hasta 3.000. `precision`
+            `comuna` es un punto aproximado: la dirección no se encontró y se usó
+            la comuna del organismo.
+            """
+            try:
+                return await use_case.execute(region)
+            except InvalidSearchCriteria as e:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+                ) from e
+            except (SQLAlchemyError, OSError) as e:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="No se pudo cargar el mapa. Inténtalo nuevamente.",
+                ) from e
+
     @router.get(
         "/recommended",
         response_model=list[RecommendedTenderResponse],
@@ -376,24 +424,39 @@ def create_tender_router(
             for posicion, resultado in enumerate(resultados, start=1)
         ]
 
+    def _require_workspace(context: WorkspaceContext | None) -> UUID:
+        """HU-18: las guardadas viven a nivel de workspace."""
+        if context is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes seleccionar un workspace activo para ver o modificar las guardadas.",
+            )
+        return context.active_supplier_id
+
     # Declarada antes que las rutas con `{tender_id}` para que el segmento
     # estático "saved" nunca sea capturado como parámetro de path.
-    @router.get("/saved", response_model=list[MatchingResult])
+    @router.get(
+        "/saved",
+        response_model=list[MatchingResult],
+        summary="Lista las licitaciones guardadas del workspace",
+    )
     async def get_saved_tenders(
-        current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[
             ListSavedTendersUseCase, Depends(get_list_saved_tenders_use_case)
         ],
     ):
-        """
-        Retorna únicamente las licitaciones que el usuario autenticado marcó como de interés.
-        """
-        return await use_case.execute(user_id=current_user.id)
+        """Lista compartida del workspace (HU-18): todos los miembros ven lo mismo."""
+        supplier_id = _require_workspace(workspace_context)
+        return await use_case.execute(supplier_id=supplier_id)
 
     @router.post(
         "/{tender_id}/saved",
         response_model=SavedTender,
-        status_code=status.HTTP_201_CREATED,
+        status_code=status.HTTP_200_OK,
+        summary="Guarda una licitación como de interés del workspace",
         responses={
             404: {"description": "La licitación no existe"},
         },
@@ -401,15 +464,23 @@ def create_tender_router(
     async def save_tender(
         tender_id: UUID,
         current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[SaveTenderUseCase, Depends(get_save_tender_use_case)],
     ):
-        """
-        Marca una licitación como de interés para el usuario autenticado.
+        """Marca una licitación como de interés para todo el workspace.
 
-        Es idempotente: repetir la llamada no duplica la licitación en la lista.
+        Idempotente a nivel de workspace: si otro miembro ya la había guardado,
+        devuelve la fila existente (200) en vez de 409. HU-18.
         """
+        supplier_id = _require_workspace(workspace_context)
         try:
-            return await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+            return await use_case.execute(
+                supplier_id=supplier_id,
+                user_id=current_user.id,
+                tender_id=tender_id,
+            )
         except TenderNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -418,20 +489,22 @@ def create_tender_router(
     @router.delete(
         "/{tender_id}/saved",
         status_code=status.HTTP_204_NO_CONTENT,
+        summary="Retira una licitación de la lista del workspace",
         responses={
             404: {"description": "La licitación no está en la lista de guardadas"},
         },
     )
     async def unsave_tender(
         tender_id: UUID,
-        current_user: Annotated[User, Depends(get_current_user)],
+        workspace_context: Annotated[
+            WorkspaceContext | None, Depends(actual_get_workspace)
+        ],
         use_case: Annotated[UnsaveTenderUseCase, Depends(get_unsave_tender_use_case)],
     ):
-        """
-        Retira una licitación de la lista de guardadas del usuario autenticado.
-        """
+        """Cualquier miembro del workspace puede desguardar (HU-18)."""
+        supplier_id = _require_workspace(workspace_context)
         try:
-            await use_case.execute(user_id=current_user.id, tender_id=tender_id)
+            await use_case.execute(supplier_id=supplier_id, tender_id=tender_id)
         except SavedTenderNotFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
