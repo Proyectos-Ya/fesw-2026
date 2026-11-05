@@ -49,7 +49,11 @@ describe("buildManifest", () => {
   it("los orígenes web del bridge no incluyen comodines de hosting compartido", async () => {
     const { CHIRIPA_WEB_MATCHES } = await import("../web-origins");
     expect(CHIRIPA_WEB_MATCHES).toContain("*://*.chiripa.cl/*");
-    expect(CHIRIPA_WEB_MATCHES.some((m) => m.includes("vercel.app"))).toBe(false);
+    expect(CHIRIPA_WEB_MATCHES.some((m) => m.includes("*.vercel.app"))).toBe(false);
+    expect(CHIRIPA_WEB_MATCHES).toContain("https://fesw-2026-zeta.vercel.app/*");
+    expect(CHIRIPA_WEB_MATCHES).toContain(
+      "https://fesw-2026-git-develop-benjaminulloaf-5015s-projects.vercel.app/*"
+    );
     const manifest = buildManifest({ mode: "production", browser: "chrome" });
     const hosts = (manifest.host_permissions as string[]) ?? [];
     for (const m of CHIRIPA_WEB_MATCHES) expect(hosts).toContain(m);
