@@ -281,12 +281,11 @@ export class PostulationPanel {
     if (opts.annexToConfirm && opts.onConfirmAnnex) {
       const annexBox = this.doc.createElement("div");
       annexBox.className = "notice";
-      annexBox.textContent =
-        "El anexo se sube a Mercado Público apenas lo adjuntamos, aunque aún no envíes la cotización.";
+      annexBox.textContent = `Borrador listo: ${opts.annexToConfirm}. El archivo se sube a Mercado Público apenas lo adjuntamos, aunque aún no envíes la cotización.`;
       const confirmBtn = this.doc.createElement("button");
       confirmBtn.id = "btnChiripaConfirmAnnex";
       confirmBtn.className = "btn btn-outline";
-      confirmBtn.textContent = `Subir «${opts.annexToConfirm}»`;
+      confirmBtn.textContent = "Subir borrador de postulación";
       const onConfirm = opts.onConfirmAnnex;
       confirmBtn.addEventListener("click", () => {
         confirmBtn.disabled = true;

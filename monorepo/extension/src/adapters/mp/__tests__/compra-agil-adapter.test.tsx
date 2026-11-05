@@ -180,6 +180,24 @@ describe("CompraAgilAdapter: llenado", () => {
     expect(textInputs()[1].value).toBe("2.000");
   });
 
+  it("empareja por orden si los códigos vienen de otro catálogo y la cantidad coincide", async () => {
+    await render();
+    const pkg = basePackage();
+    pkg.items = pkg.items.map((it, i) => ({ ...it, product_code: `8310180${i}` }));
+    await fill(pkg);
+    expect(textInputs()[0].value).toBe("11.111");
+    expect(textInputs()[1].value).toBe("2.000");
+  });
+
+  it("no empareja por orden si algún código coincide con la página pero otro no", async () => {
+    await render();
+    const pkg = basePackage();
+    pkg.items = [pkg.items[0], { ...pkg.items[1], product_code: "99999999" }];
+    await fill(pkg);
+    expect(textInputs()[0].value).toBe("11.111");
+    expect(textInputs()[1].value).toBe("");
+  });
+
   it("no adivina si los códigos de producto se repiten", async () => {
     await render([fixtureItems[0], { ...fixtureItems[0], name: "Servicio A bis" }]);
     const pkg = basePackage();

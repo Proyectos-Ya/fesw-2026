@@ -122,7 +122,8 @@ describe("PostulationPanel (Shadow DOM UI)", () => {
     });
     const shadow = document.getElementById("chiripa-postulation-panel-host")!.shadowRoot!;
     const btn = shadow.querySelector<HTMLButtonElement>("#btnChiripaConfirmAnnex")!;
-    expect(btn.textContent).toContain("anexo_tecnico.docx");
+    expect(btn.textContent).toContain("Subir borrador de postulación");
+    expect(shadow.textContent).toContain("anexo_tecnico.docx");
     expect(shadow.textContent).toContain("se sube a Mercado Público");
     btn.click();
     expect(onConfirmAnnex).toHaveBeenCalledTimes(1);

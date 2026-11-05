@@ -304,7 +304,13 @@ export class CompraAgilAdapter {
 
     if (items.length === blocks.length) {
       const byOrder = items[idx];
-      if (!byOrder.product_code || byOrder.product_code === block.productId) return byOrder;
+      // Chiripa puede traer códigos de otro catálogo que el «ID» de Compra Ágil: si
+      // ninguno coincide con la página, el orden manda; si alguno coincide, no se adivina.
+      const pageIds = new Set(blocks.map((b) => b.productId));
+      const codesFromOtherCatalog = items.every((it) => !it.product_code || !pageIds.has(it.product_code));
+      if (!byOrder.product_code || byOrder.product_code === block.productId || codesFromOtherCatalog) {
+        return byOrder;
+      }
     }
     return null;
   }
