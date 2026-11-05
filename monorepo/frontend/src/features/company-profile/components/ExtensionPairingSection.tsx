@@ -19,16 +19,24 @@ export function ExtensionPairingSection({ supplierId }: ExtensionPairingSectionP
   const [status, setStatus] = useState<PairingStatus>("checking");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const statusFromProbe = (probe: Awaited<ReturnType<typeof probeExtension>>): PairingStatus =>
+    !probe.installed ? "not_installed" : probe.paired ? "success" : "idle";
+
   const refresh = useCallback(async () => {
     setStatus("checking");
-    const probe = await probeExtension(1500);
-    if (!probe.installed) setStatus("not_installed");
-    else setStatus(probe.paired ? "success" : "idle");
+    setStatus(statusFromProbe(await probeExtension(1500)));
   }, []);
 
+  // El estado inicial ya es "checking": al montar solo se espera la respuesta.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    void probeExtension(1500).then((probe) => {
+      if (active) setStatus(statusFromProbe(probe));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handlePair = async () => {
     setErrorMessage(null);

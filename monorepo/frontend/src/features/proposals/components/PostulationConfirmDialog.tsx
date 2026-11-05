@@ -18,15 +18,20 @@ interface PostulationConfirmDialogProps {
   technicalDocxBase64?: string | null;
 }
 
-export function PostulationConfirmDialog({
+export function PostulationConfirmDialog(props: PostulationConfirmDialogProps) {
+  if (!props.packageData) return null;
+  return <PostulationConfirmDialogContent {...props} packageData={props.packageData} />;
+}
+
+// Los hooks viven aquí para no llamarlos después del return anticipado de arriba.
+function PostulationConfirmDialogContent({
   open,
   packageData,
   busy,
   onClose,
   onConfirm,
   technicalDocxBase64,
-}: PostulationConfirmDialogProps) {
-  if (!packageData) return null;
+}: PostulationConfirmDialogProps & { packageData: PostulationPackage }) {
 
   const rawObservations = packageData.observations ?? packageData.offer_description ?? "";
   const companyName =
