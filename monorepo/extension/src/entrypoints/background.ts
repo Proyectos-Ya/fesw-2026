@@ -25,7 +25,10 @@ export default defineBackground(() => {
           installationId,
         });
 
-        // Confirmar la instalación ante el backend
+        // La vinculación ya quedó guardada: se confirma a la página sin esperar al
+        // backend, que puede tardar más que el plazo de la web.
+        sendResponse({ success: true, installation_id: installationId });
+
         try {
           const res = await fetch(`${payload.api_url}/extension/pairing/confirm`, {
             method: "POST",
@@ -33,7 +36,7 @@ export default defineBackground(() => {
             body: JSON.stringify({
               pairing_ticket: payload.pairing_ticket,
               installation_id: installationId,
-              browser: "chrome",
+              browser: navigator.userAgent.toLowerCase().includes("firefox") ? "firefox" : "chrome",
               extension_version: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
             }),
           });
@@ -46,8 +49,6 @@ export default defineBackground(() => {
         } catch (e) {
           console.error("[Background] Error confirmando pairing:", e);
         }
-
-        sendResponse({ success: true, installation_id: installationId });
       })();
       return true; // async sendResponse
     }
