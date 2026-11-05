@@ -107,7 +107,9 @@ async def test_analyze_compatibility_success():
         args, kwargs = mock_post.call_args
         url = args[0]
         assert "fake_model" in url
-        assert "fake_key" in url
+        # La clave va en el header, nunca en la URL (quedaría en logs y proxies).
+        assert "fake_key" not in url
+        assert kwargs["headers"]["x-goog-api-key"] == "fake_key"
 
         # Verificar que el prompt contiene la instrucción y los datos
         payload = kwargs["json"]
