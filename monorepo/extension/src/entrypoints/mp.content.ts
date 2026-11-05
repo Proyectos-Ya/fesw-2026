@@ -150,13 +150,15 @@ export default defineContentScript({
         position: fixed;
         bottom: 16px;
         right: 16px;
-        background: #0f172a;
-        color: #f8fafc;
+        background: #FFFFFF;
+        color: #2A2620;
+        border: 1px solid #E8E1D5;
         padding: 8px 14px;
-        border-radius: 8px;
-        font-family: system-ui, sans-serif;
+        border-radius: 12px;
+        font-family: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
         font-size: 13px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        font-weight: 600;
+        box-shadow: 0 12px 32px rgba(27, 24, 20, 0.10), 0 3px 8px rgba(27, 24, 20, 0.05);
         z-index: 999999;
         display: flex;
         align-items: center;
@@ -164,7 +166,7 @@ export default defineContentScript({
       `;
       const dot = document.createElement("span");
       dot.style.cssText =
-        "display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;";
+        "display:inline-block;width:8px;height:8px;border-radius:50%;background:#6D8657;box-shadow:0 0 0 3px #F1F5EB;";
 
       const text = document.createElement("span");
       text.textContent = `Chiripa: ${attachments.length} anexo(s) detectado(s)`;

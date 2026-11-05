@@ -1,4 +1,6 @@
 import { PostulationPackagePayload } from "../types/schemas";
+import { FIELD_HIGHLIGHT_CSS } from "./design-tokens";
+import { POSTULATION_PANEL_CSS } from "./postulation-panel.css";
 
 export interface PostulationPanelConfig {
   doc?: Document;
@@ -47,148 +49,7 @@ export class PostulationPanel {
 
     // Estilos encapsulados en el Shadow DOM
     const style = this.doc.createElement("style");
-    style.textContent = `
-      :host {
-        all: initial;
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        z-index: 2147483647;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      }
-      .notice {
-        background: rgba(245, 158, 11, 0.15);
-        border: 1px solid #f59e0b;
-        border-radius: 8px;
-        padding: 8px 10px;
-        font-size: 12px;
-        margin-bottom: 10px;
-      }
-      .pending-list {
-        margin: 0 0 10px;
-        padding-left: 18px;
-        font-size: 12px;
-        color: #fcd34d;
-      }
-      .panel {
-        width: 320px;
-        background: #0f172a;
-        color: #f8fafc;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-        border: 1px solid #1e293b;
-        padding: 16px;
-        box-sizing: border-box;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 12px;
-      }
-      .title {
-        font-size: 14px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: #ffffff;
-      }
-      .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #10b981;
-      }
-      .close-btn {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        cursor: pointer;
-        font-size: 16px;
-        padding: 4px;
-        border-radius: 4px;
-      }
-      .close-btn:hover {
-        color: #f8fafc;
-        background: #334155;
-      }
-      .tender-info {
-        font-size: 12px;
-        color: #cbd5e1;
-        margin-bottom: 12px;
-        background: #1e293b;
-        padding: 8px;
-        border-radius: 6px;
-      }
-      .tender-code {
-        font-weight: 600;
-        color: #38bdf8;
-      }
-      .metrics {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-bottom: 14px;
-      }
-      .metric-box {
-        background: #1e293b;
-        padding: 8px 10px;
-        border-radius: 6px;
-        text-align: center;
-      }
-      .metric-num {
-        font-size: 18px;
-        font-weight: 700;
-      }
-      .metric-num.green {
-        color: #10b981;
-      }
-      .metric-num.amber {
-        color: #f59e0b;
-      }
-      .metric-label {
-        font-size: 11px;
-        color: #94a3b8;
-        margin-top: 2px;
-      }
-      .warning-box {
-        background: rgba(245, 158, 11, 0.1);
-        border: 1px solid rgba(245, 158, 11, 0.3);
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 11px;
-        color: #fde68a;
-        margin-bottom: 14px;
-        line-height: 1.4;
-      }
-      .actions {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .btn {
-        display: block;
-        width: 100%;
-        padding: 8px 12px;
-        font-size: 12px;
-        font-weight: 500;
-        border-radius: 6px;
-        cursor: pointer;
-        text-align: center;
-        border: none;
-        box-sizing: border-box;
-      }
-      .btn-outline {
-        background: transparent;
-        border: 1px solid #475569;
-        color: #e2e8f0;
-      }
-      .btn-outline:hover {
-        background: #1e293b;
-        border-color: #64748b;
-      }
-    `;
+    style.textContent = POSTULATION_PANEL_CSS;
     shadow.appendChild(style);
 
     // Contenedor principal
@@ -280,7 +141,7 @@ export class PostulationPanel {
 
     if (opts.annexToConfirm && opts.onConfirmAnnex) {
       const annexBox = this.doc.createElement("div");
-      annexBox.className = "notice";
+      annexBox.className = "annex-box";
       annexBox.textContent = `Borrador listo: ${opts.annexToConfirm}. El archivo se sube a Mercado Público apenas lo adjuntamos, aunque aún no envíes la cotización.`;
       const confirmBtn = this.doc.createElement("button");
       confirmBtn.id = "btnChiripaConfirmAnnex";
@@ -339,18 +200,7 @@ export class PostulationPanel {
     if (!this.doc.getElementById(styleId)) {
       const style = this.doc.createElement("style");
       style.id = styleId;
-      style.textContent = `
-        [data-chiripa-field-status="filled"] {
-          border: 2px solid #10b981 !important;
-          background-color: rgba(16, 185, 129, 0.08) !important;
-          transition: all 0.2s ease-in-out;
-        }
-        [data-chiripa-field-status="incomplete"] {
-          border: 2px solid #f59e0b !important;
-          background-color: rgba(245, 158, 11, 0.08) !important;
-          transition: all 0.2s ease-in-out;
-        }
-      `;
+      style.textContent = FIELD_HIGHLIGHT_CSS;
       this.doc.head.appendChild(style);
     }
   }
