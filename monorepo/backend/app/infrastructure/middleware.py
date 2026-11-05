@@ -32,15 +32,25 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 
+EXTENSION_ORIGIN_REGEX = (
+    r"moz-extension://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"|chrome-extension://[a-p]{32}"
+)
+
+
 def register_middleware(app: FastAPI) -> None:
     """Registra todos los middlewares de la aplicación en orden."""
 
     # CORS — orígenes desde configuración (CORS_ORIGINS, separados por coma).
     # Nunca "*": con allow_credentials=True el navegador rechaza el comodín, y
     # aunque lo aceptara sería abrir la API con cookies a cualquier sitio.
+    # La extensión llama a la API desde su página de fondo. Firefox le aplica CORS con
+    # origen moz-extension://<uuid> (distinto en cada instalación), así que se admite
+    # por patrón; la API se autentica con Bearer, no con cookies del navegador.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
+        allow_origin_regex=EXTENSION_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
