@@ -105,6 +105,7 @@ export function PostulationConfirmDialog({
       observations: rawObservations.slice(0, MAX_OBSERVATIONS_LENGTH),
       validity_days: validityDays,
       delivery_term_days: deliveryDays,
+      shipping_clp: packageData.shipping_clp ?? null,
       files,
     };
 

@@ -33,6 +33,7 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
     ],
     total_suggested_clp: 350000,
     observations: "Oferta conforme a bases.",
+    shipping_clp: 12000,
     validity_days: 60,
     delivery_term_days: 10,
     required_documents: [],
@@ -132,6 +133,7 @@ describe("PostulationConfirmDialog (CA3, CA4)", () => {
         delivery_term_days: 10,
         validity_days: 60,
         items: [expect.objectContaining({ line_number: 1, product_code: "42132203", unit_price: 3500 })],
+        shipping_clp: 12000,
       })
     );
   });

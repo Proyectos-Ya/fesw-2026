@@ -34,6 +34,7 @@ export interface PostulationConfirmPayload {
   observations: string;
   validity_days: number;
   delivery_term_days: number;
+  shipping_clp?: number | null;
   files: PostulationFilePayload[];
 }
 

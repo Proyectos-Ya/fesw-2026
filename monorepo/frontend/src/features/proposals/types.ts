@@ -245,5 +245,6 @@ export interface PostulationPackage {
   required_documents?: PostulationRequiredDocument[];
   warnings?: string[];
   quotation_updated_at?: string | null;
+  shipping_clp?: number | null;
 }
 
