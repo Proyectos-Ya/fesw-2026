@@ -3,7 +3,12 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import (
-    BaseModel, ConfigDict, Field, StringConstraints, computed_field, field_serializer,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_serializer,
 )
 
 from app.shared.datetime_utils import UtcDateTime

@@ -11,7 +11,6 @@ from app.application.schemas.extension_schema import (
     ExtensionAttachmentCheckRequest,
     ExtensionJobResultRequest,
     ExtensionPairingConfirmRequest,
-    ExtensionPairingStartRequest,
 )
 from app.application.use_cases.extension.check_extension_attachments import (
     CheckExtensionAttachmentsUseCase,
@@ -45,7 +44,6 @@ from app.domain.entities.tender_attachment import (
 from app.domain.errors.extension_errors import (
     ExtensionInstallationNotFound,
     InvalidPairingTicketError,
-    PairingTicketExpiredError,
 )
 
 

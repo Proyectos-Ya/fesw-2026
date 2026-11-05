@@ -86,9 +86,11 @@ from tests.unit.application.fakes import (
     InMemoryProposalDraftRepository,
     InMemoryTenderRepository,
 )
+from tests.unit.application.test_build_postulation_package import (
+    InMemoryQuotationRepository,
+)
 from tests.unit.application.test_score_tender_on_demand import crear_licitacion
 from tests.unit.application.test_start_feasibility import FakeProposalAI
-from tests.unit.application.test_build_postulation_package import InMemoryQuotationRepository
 
 # El rubro de las empresas de `_crear_empresa` es "Servicios".
 SEC = CapabilityQuestion(

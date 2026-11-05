@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "web-ext:lint": "web-ext lint --source-dir .output/firefox-mv2",
     "zip": "wxt zip -b chrome",
-    "zip:firefox": "wxt zip -b firefox"
+    "zip:firefox": "wxt zip -b firefox",
+    "release:zips": "wxt zip -b chrome && wxt zip -b firefox && node scripts/copy-zips.mjs"
   },
   "packageManager": "pnpm@10.3.0",
   "dependencies": {

@@ -16,7 +16,8 @@ from app.application.schemas.proposal_schema import (
     PostulationTenderInfo,
 )
 from app.application.use_cases.capabilities._empresa import empresa_o_error
-from app.config import Settings, settings as default_settings
+from app.config import Settings
+from app.config import settings as default_settings
 from app.domain.errors.proposal_errors import (
     PostulationFeatureDisabled,
     ProposalDraftNotFound,

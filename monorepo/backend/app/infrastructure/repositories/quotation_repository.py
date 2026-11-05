@@ -4,7 +4,7 @@ from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.domain.entities.quotation import StoredMaterialItem, Quotation, QuotationInput
+from app.domain.entities.quotation import Quotation, QuotationInput, StoredMaterialItem
 from app.infrastructure.repositories.quotation_model import (
     QuotationMaterialModel,
     QuotationModel,

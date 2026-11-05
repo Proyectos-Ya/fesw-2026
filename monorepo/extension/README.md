@@ -48,3 +48,19 @@ pnpm run zip:firefox
 pnpm run test
 pnpm run compile
 ```
+
+## Descarga directa mientras no esté en las tiendas (HU-32, CA2)
+
+Si la extensión no está instalada, el aviso de Chiripa ofrece descargar un `.zip` que sirve el
+frontend desde `monorepo/frontend/public/extension/` (`chiripa-chrome.zip`,
+`chiripa-firefox.zip` y `version.json`). Para regenerarlos con el build de producción:
+
+```bash
+pnpm run release:zips
+```
+
+Hay que hacerlo cada vez que cambie la extensión, y commitear los archivos generados.
+`wxt zip` deja en `.output/` el build de producción; para volver a probar con el frontend en
+localhost, recompilar con `pnpm run build:firefox:dev` o `pnpm exec wxt build -m development -b chrome`.
+Cuando la extensión se publique, cambiar `EXTENSION_DISTRIBUTION` a `"store"` en
+`monorepo/frontend/src/features/shared/extension/extensionLinks.ts`.
