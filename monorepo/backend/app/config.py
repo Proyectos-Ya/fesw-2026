@@ -352,12 +352,13 @@ class Settings(BaseSettings):
     attachment_processing_poll_seconds: int = Field(default=60, gt=0)
     attachment_processing_sweep_seconds: int = Field(default=15 * 60, gt=0)
 
-    # --- Extensión de navegador (plan 233, decisión 7) ---
+    # --- Extensión de navegador (plan 233, decisión 7; plan 318, HU-032) ---
     extension_enabled: bool = True
     extension_min_version: str = "0.1.0"
     extension_latest_version: str = "0.1.0"
     extension_max_daily_fetches: int = Field(default=50, ge=0)
     extension_polling_interval_seconds: int = Field(default=300, gt=0)
+    extension_postulation_enabled: bool = False
 
     # --- Matching en sombra con anexos (plan 233, decisión 9) ---
     matching_shadow_enabled: bool = False

@@ -1,4 +1,4 @@
-"""Historial de tarjetas archivadas de un usuario (HdU 10, CA4)."""
+"""Historial de tarjetas archivadas del workspace (HdU 10 CA4 + HU-18)."""
 
 from uuid import UUID
 
@@ -10,8 +10,8 @@ class ListArchivedTendersUseCase:
     def __init__(self, card_repo: IKanbanCardRepository):
         self.card_repo = card_repo
 
-    async def execute(self, user_id: UUID) -> list[KanbanArchiveResponse]:
-        rows = await self.card_repo.list_archived_with_context(user_id)
+    async def execute(self, supplier_id: UUID) -> list[KanbanArchiveResponse]:
+        rows = await self.card_repo.list_archived_with_context(supplier_id)
         return [
             KanbanArchiveResponse(
                 id=card.id,

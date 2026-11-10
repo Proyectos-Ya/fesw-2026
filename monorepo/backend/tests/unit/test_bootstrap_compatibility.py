@@ -215,6 +215,11 @@ async def test_el_escaneo_de_alertas_usa_el_mismo_scorer_que_los_endpoints(
         async def list_user_ids_with_profile(self):
             return [uuid.uuid4()]
 
+        async def get_by_user_id(self, _user_id):
+            supplier = MagicMock()
+            supplier.id = uuid.uuid4()
+            return supplier
+
     @asynccontextmanager
     async def sesion_falsa():
         yield MagicMock()

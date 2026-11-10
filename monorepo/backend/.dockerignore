@@ -3,10 +3,18 @@
 # ============================================================
 
 # Entornos virtuales locales (el README sugiere crear .venv aquí)
+.venv
 .venv/
+venv
 venv/
+env
 env/
+ENV
 ENV/
+qdrant_bin
+qdrant_bin/
+storage
+storage/
 
 # Artefactos de Python
 __pycache__/

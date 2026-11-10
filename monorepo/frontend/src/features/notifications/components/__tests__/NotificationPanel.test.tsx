@@ -216,6 +216,39 @@ describe("NotificationPanel", () => {
     });
   });
 
+  describe("cambio en tablero kanban (HU-18)", () => {
+    const cambioKanban = aviso({
+      id: "n4",
+      kind: "kanban_change",
+      score_pct: null,
+      tender: tender({ name: "Suministro de computadores" }),
+    });
+
+    it("muestra el badge de tablero y nombre de la licitación", async () => {
+      getNotifications.mockResolvedValue([cambioKanban]);
+
+      render(<NotificationPanel />);
+
+      expect(await screen.findByText("Tablero")).toBeInTheDocument();
+      expect(
+        screen.getByText("Tablero: Suministro de computadores"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Un miembro del equipo actualizó el tablero compartido"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Cerrada/)).not.toBeInTheDocument();
+    });
+
+    it("enlaza a la ruta del tablero", async () => {
+      getNotifications.mockResolvedValue([cambioKanban]);
+
+      render(<NotificationPanel />);
+
+      const enlace = await screen.findByRole("link", { name: /Tablero/ });
+      expect(enlace).toHaveAttribute("href", "/tablero");
+    });
+  });
+
   it("muestra un error con reintento si la carga falla", async () => {
     getNotifications.mockRejectedValue(new Error("boom"));
 

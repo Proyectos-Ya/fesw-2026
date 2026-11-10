@@ -112,7 +112,11 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         )
 
         # 3. Preparar payload estructurado para la API de Gemini
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -149,7 +153,7 @@ class GeminiDeepAnalysisService(IDeepAnalysisService):
         # 4. Consumir la API
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=30.0)
+                response = await client.post(url, headers=headers, json=payload, timeout=30.0)
         except httpx.HTTPError as e:
             raise DeepAnalysisServiceError(
                 f"Error de conexión con la API de Gemini: {e}"

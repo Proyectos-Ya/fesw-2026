@@ -1,130 +1,49 @@
-import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as bridge from "@/features/shared/extension/extensionBridge";
 import { ExtensionPairingSection } from "../ExtensionPairingSection";
-import * as apiClientModule from "@/features/shared/api/client";
-import * as supabaseClientModule from "@/features/auth/supabase/client";
 
-vi.mock("@/features/shared/api/client", () => ({
-  apiFetch: vi.fn(),
-}));
+vi.mock("@/features/shared/extension/extensionBridge");
 
-vi.mock("@/features/auth/supabase/client", () => ({
-  crearClienteNavegador: vi.fn(),
-}));
+const SUPPLIER = "7d0c1f5e-0f52-4a2e-9f3b-7a1d3a1b2c3d";
 
 describe("ExtensionPairingSection", () => {
-  const supplierId = "sup-test-123";
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  it("muestra «no detectada» si la extensión no responde", async () => {
+    vi.mocked(bridge.probeExtension).mockResolvedValue({ installed: false });
+    render(<ExtensionPairingSection supplierId={SUPPLIER} />);
+    expect(await screen.findByText(/No detectamos la extensión/i)).toBeInTheDocument();
   });
 
-  it("renderiza el estado inicial con el botón de vinculación", () => {
-    render(<ExtensionPairingSection supplierId={supplierId} />);
-
-    expect(screen.getByText("Extensión de Navegador")).toBeInTheDocument();
-    expect(screen.getByText("Vincular en este navegador")).toBeInTheDocument();
+  it("muestra el estado real: vinculada, con opción de re-vincular", async () => {
+    vi.mocked(bridge.probeExtension).mockResolvedValue({ installed: true, paired: true });
+    render(<ExtensionPairingSection supplierId={SUPPLIER} />);
+    expect(await screen.findByText(/Extensión vinculada/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Re-vincular" })).toBeInTheDocument();
   });
 
-  it("muestra estado de extensión no detectada si no hay respuesta PONG", async () => {
-    vi.useFakeTimers();
-    render(<ExtensionPairingSection supplierId={supplierId} />);
+  it("solo dice vinculada cuando la extensión confirma", async () => {
+    vi.mocked(bridge.probeExtension).mockResolvedValue({ installed: true, paired: false });
+    vi.mocked(bridge.pairExtension).mockResolvedValue({ ok: true });
+    render(<ExtensionPairingSection supplierId={SUPPLIER} />);
 
-    const button = screen.getByText("Vincular en este navegador");
-    fireEvent.click(button);
+    fireEvent.click(await screen.findByRole("button", { name: "Vincular en este navegador" }));
 
-    expect(screen.getByText("Detectando extensión en tu navegador...")).toBeInTheDocument();
-
-    // Avanzar temporizador dentro de act
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
-
-    expect(
-      screen.getByText("No detectamos la extensión activa en este navegador.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Extensión vinculada/i)).toBeInTheDocument();
+    expect(bridge.pairExtension).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: SUPPLIER }));
   });
 
-  it("completa emparejamiento cuando la extensión responde PONG y PAIR_SUCCESS", async () => {
-    vi.useRealTimers();
-    vi.mocked(apiClientModule.apiFetch).mockResolvedValueOnce({
-      pairing_ticket: "TKT-12345",
-      expires_in_seconds: 300,
-    });
+  it("si la extensión no confirma, muestra error y no dice vinculada", async () => {
+    vi.mocked(bridge.probeExtension).mockResolvedValue({ installed: true, paired: false });
+    vi.mocked(bridge.pairExtension).mockResolvedValue({ ok: false, error: "La extensión no confirmó la vinculación." });
+    render(<ExtensionPairingSection supplierId={SUPPLIER} />);
 
-    const mockGetSession = vi.fn().mockResolvedValue({
-      data: {
-        session: {
-          access_token: "jwt-token-123",
-          refresh_token: "refresh-token-123",
-        },
-      },
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Vincular en este navegador" }));
 
-    vi.mocked(supabaseClientModule.crearClienteNavegador).mockReturnValue({
-      auth: {
-        getSession: mockGetSession,
-      },
-    } as unknown as ReturnType<typeof supabaseClientModule.crearClienteNavegador>);
-
-    // Mock de window.postMessage para simular la extensión respondiendo
-    const originalPostMessage = window.postMessage;
-    window.postMessage = vi.fn((message, _targetOrigin) => {
-      queueMicrotask(() => {
-        if (message?.target === "CHIRIPA_EXTENSION" && message.type === "PING") {
-          window.dispatchEvent(
-            new MessageEvent("message", {
-              data: {
-                target: "CHIRIPA_WEB",
-                type: "PONG",
-                nonce: message.nonce,
-                version: "0.1.0",
-              },
-            })
-          );
-        } else if (message?.target === "CHIRIPA_EXTENSION" && message.type === "PAIR_SESSION") {
-          window.dispatchEvent(
-            new MessageEvent("message", {
-              data: {
-                target: "CHIRIPA_WEB",
-                type: "PAIR_SUCCESS",
-                nonce: message.nonce,
-                installation_id: "inst-123",
-              },
-            })
-          );
-        }
-      });
-    });
-
-    try {
-      render(<ExtensionPairingSection supplierId={supplierId} />);
-
-      const button = screen.getByText("Vincular en este navegador");
-      fireEvent.click(button);
-
-      await waitFor(
-        () => {
-          expect(
-            screen.getByText("¡Extensión vinculada y lista para sincronizar anexos!")
-          ).toBeInTheDocument();
-        },
-        { timeout: 3000 }
-      );
-
-      expect(apiClientModule.apiFetch).toHaveBeenCalledWith(
-        "/extension/pairing/start",
-        expect.objectContaining({
-          method: "POST",
-        })
-      );
-    } finally {
-      window.postMessage = originalPostMessage;
-    }
+    expect(await screen.findByText("La extensión no confirmó la vinculación.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Extensión vinculada/i)).not.toBeInTheDocument());
   });
 });

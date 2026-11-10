@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { ApiError, registrarProveedorDeToken } from "@/features/shared/api/client";
+import { useOnboardingStore } from "@/features/onboarding/store/useOnboardingStore";
 
 import type { UserPublic } from "./authSchema";
 import { cerrarSesion, getMe } from "./services/authService";
@@ -39,6 +40,9 @@ function sonUsuariosIguales(a: UserPublic | null, b: UserPublic | null): boolean
     a.phone === b.phone &&
     a.active === b.active &&
     a.email_verified === b.email_verified &&
+    a.tour_home_completed === b.tour_home_completed &&
+    a.tour_detail_completed === b.tour_detail_completed &&
+    a.tour_draft_completed === b.tour_draft_completed &&
     a.created_at === b.created_at
   );
 }
@@ -54,6 +58,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cargarPerfil = useCallback(async () => {
     try {
       const nuevo = await getMe();
+      if (
+        typeof nuevo.tour_home_completed === "boolean" ||
+        typeof nuevo.tour_detail_completed === "boolean" ||
+        typeof nuevo.tour_draft_completed === "boolean"
+      ) {
+        useOnboardingStore.getState().setToursStatus({
+          home: nuevo.tour_home_completed,
+          detail: nuevo.tour_detail_completed,
+          draft: nuevo.tour_draft_completed,
+        });
+      }
       setUser((prev) => (sonUsuariosIguales(prev, nuevo) ? prev : nuevo));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {

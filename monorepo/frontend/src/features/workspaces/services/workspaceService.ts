@@ -6,10 +6,12 @@ import type {
   RejectInvitationPayload,
   SupplierInvitation,
   SwitchWorkspacePayload,
+  UpdateWorkspaceMatchThresholdPayload,
   UserWorkspaceSummary,
   WorkspaceContext,
   WorkspaceMemberDetail,
   WorkspaceMemberSummary,
+  WorkspaceMatchThresholdResponse,
 } from "../types";
 
 export async function listWorkspaces(): Promise<UserWorkspaceSummary[]> {
@@ -112,4 +114,25 @@ export async function clearActiveWorkspace(): Promise<void> {
   return apiFetch<void>("/workspaces/clear-active", {
     method: "POST",
   });
+}
+
+export async function getWorkspaceMatchThreshold(
+  supplierId: string,
+): Promise<WorkspaceMatchThresholdResponse> {
+  return apiFetch<WorkspaceMatchThresholdResponse>(
+    `/workspaces/${encodeURIComponent(supplierId)}/match-threshold`,
+  );
+}
+
+export async function setWorkspaceMatchThreshold(
+  supplierId: string,
+  payload: UpdateWorkspaceMatchThresholdPayload,
+): Promise<WorkspaceMatchThresholdResponse> {
+  return apiFetch<WorkspaceMatchThresholdResponse>(
+    `/workspaces/${encodeURIComponent(supplierId)}/match-threshold`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }

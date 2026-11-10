@@ -20,20 +20,24 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
         Path(__file__).resolve().parents[2]
         / "alembic/versions/a227c0150001_cotizaciones_materiales.py"
     )
-    spec = importlib.util.spec_from_file_location("quotation_migration", path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
+    migrations = []
+    for name in ("a227c0150001_cotizaciones_materiales", "b7d2e4f6a813_despacho_en_cotizacion"):
+        spec = importlib.util.spec_from_file_location(name, path.with_name(f"{name}.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        migrations.append(module)
 
     def migrate(connection):
         with Operations.context(MigrationContext.configure(connection)):
-            migration.upgrade()
+            for migration in migrations:
+                migration.upgrade()
 
     supplier, tender = uuid4(), uuid4()
     async with engine.begin() as connection:
         # Esquema mínimo previo; las tablas de la funcionalidad las crea Alembic.
         await connection.execute(
             text(
-                "CREATE TABLE supplier (id CHAR(32) PRIMARY KEY, user_id CHAR(32), rut VARCHAR, legal_name VARCHAR, trade_name VARCHAR, description VARCHAR, regions JSON, sectors JSON, certifications JSON, keywords JSON, negative_keywords JSON, years_experience INTEGER, num_employees INTEGER, logo_url VARCHAR, created_at DATETIME, updated_at DATETIME, profile_changed_at DATETIME)"
+                "CREATE TABLE supplier (id CHAR(32) PRIMARY KEY, user_id CHAR(32), rut VARCHAR, legal_name VARCHAR, trade_name VARCHAR, description VARCHAR, regions JSON, sectors JSON, certifications JSON, keywords JSON, negative_keywords JSON, years_experience INTEGER, num_employees INTEGER, logo_url VARCHAR, created_at DATETIME, updated_at DATETIME, profile_changed_at DATETIME, match_threshold FLOAT)"
             )
         )
         await connection.execute(text("CREATE TABLE tender (id CHAR(32) PRIMARY KEY)"))
@@ -75,12 +79,15 @@ async def test_migration_save_read_replace_and_company_isolation(tmp_path):
                             description="Arena", unit="m3", quantity="1", unit_price="0"
                         )
                     ],
+                    shipping_clp="25000",
                 ),
             )
             assert updated.id == first.id
+            assert updated.shipping_clp == 25000
         async with AsyncSession(engine) as session:
             retrieved = await QuotationRepository(session).get(supplier, tender)
             assert retrieved.currency == "CLP"
+            assert retrieved.shipping_clp == 25000
             assert [item.description for item in retrieved.items] == ["Arena"]
             assert retrieved.total == 0
             serialized = retrieved.model_dump(mode="json")

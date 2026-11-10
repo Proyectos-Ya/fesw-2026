@@ -22,6 +22,7 @@ const PDF = new Blob(["%PDF"]);
 function job(overrides: Partial<ExportJob> = {}): ExportJob {
   return {
     id: "j-1",
+    user_id: "u-1",
     status: "ready",
     format: "pdf",
     file_name: "licitacion-COT26.pdf",

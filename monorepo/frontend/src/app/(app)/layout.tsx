@@ -6,6 +6,9 @@ import { Sidebar } from "@/features/shared/components/Sidebar";
 import { PreferencesProvider } from "@/features/shared/context/PreferencesContext";
 import { CompanyProvider } from "@/features/company-profile/components/CompanyProvider";
 import { WorkspaceProvider } from "@/features/workspaces/WorkspaceContext";
+import { WelcomeModal } from "@/features/onboarding/components/WelcomeModal";
+import { GuidedTour } from "@/features/onboarding/components/GuidedTour";
+import { HelpCenterDrawer } from "@/features/onboarding/components/HelpCenterDrawer";
 
 export const metadata: Metadata = {
   title: "Chiripa",
@@ -18,8 +21,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="h-full antialiased">
-      <body className="min-h-full flex flex-col md:flex-row bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong">
+    <html lang="es" className="h-full antialiased" suppressHydrationWarning>
+      <body
+        className="min-h-full flex flex-col md:flex-row bg-bg-page text-text-body font-sans selection:bg-primary-soft selection:text-text-strong"
+        suppressHydrationWarning
+      >
         <PreferencesProvider>
           <AuthProvider>
             <RequireAuth>
@@ -31,6 +37,9 @@ export default function RootLayout({
                       {children}
                     </main>
                   </div>
+                  <WelcomeModal />
+                  <GuidedTour />
+                  <HelpCenterDrawer />
                 </CompanyProvider>
               </WorkspaceProvider>
             </RequireAuth>

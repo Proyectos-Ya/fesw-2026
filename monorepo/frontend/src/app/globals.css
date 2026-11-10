@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..800&family=Spline+Sans+Mono:wght@400..600&display=swap');
+@import "driver.js/dist/driver.css";
 
 @import "tailwindcss";
 
@@ -419,4 +420,128 @@ html[data-font-scale="xlarge"] {
       scrollbar-color: var(--border-default) transparent;
     }
   }
+}
+
+/* ==========================================================================
+   Driver.js Overrides for Chiripa Theme
+   ========================================================================== */
+.driver-popover {
+  --driver-popover-bg: var(--surface-card, #1f2937);
+  --driver-popover-text: var(--text-strong, #ffffff);
+  --driver-popover-border-color: var(--border-subtle, #374151);
+
+  /* Tipografía y contenedor */
+  font-family: inherit !important;
+  background-color: var(--surface-card, #1f2937) !important;
+  color: var(--text-strong, #ffffff) !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--driver-popover-border-color) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3) !important;
+  padding: 1.25rem !important;
+  max-width: 360px !important;
+}
+
+.driver-popover-title {
+  color: var(--text-strong, #ffffff) !important;
+  font-family: var(--font-display, inherit) !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+}
+
+.driver-popover-description {
+  color: var(--text-muted, #d1d5db) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+  margin-top: 0.5rem !important;
+}
+
+.driver-popover-progress-text {
+  color: var(--text-subtle, #9ca3af) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+}
+
+/* Forzar diseño de la flecha */
+.driver-popover-arrow {
+  border-color: var(--driver-popover-border-color) !important;
+}
+
+.driver-popover-arrow-side-left {
+  border-left-color: var(--surface-card, #1f2937) !important;
+}
+
+.driver-popover-arrow-side-right {
+  border-right-color: var(--surface-card, #1f2937) !important;
+}
+
+.driver-popover-arrow-side-top {
+  border-top-color: var(--surface-card, #1f2937) !important;
+}
+
+.driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--surface-card, #1f2937) !important;
+}
+
+/* Botones primarios (Siguiente/Finalizar) */
+.driver-popover-next-btn,
+.driver-popover-done-btn,
+.driver-popover-footer-btn.driver-popover-next-btn {
+  background-color: var(--primary, #10b981) !important;
+  color: white !important;
+  text-shadow: none !important;
+  border: none !important;
+  font-weight: 500 !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 0.375rem !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease !important;
+}
+
+.driver-popover-next-btn:hover,
+.driver-popover-done-btn:hover,
+.driver-popover-footer-btn.driver-popover-next-btn:hover {
+  background-color: var(--primary-hover, #059669) !important;
+}
+
+/* Botón Secundario (Anterior) */
+.driver-popover-prev-btn,
+.driver-popover-footer-btn.driver-popover-prev-btn {
+  background-color: transparent !important;
+  border: 1px solid var(--border-subtle, #4b5563) !important;
+  color: var(--text-strong, #e5e7eb) !important;
+  text-shadow: none !important;
+  border-radius: 0.375rem !important;
+  padding: 0.5rem 1rem !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease !important;
+}
+
+.driver-popover-prev-btn:hover,
+.driver-popover-footer-btn.driver-popover-prev-btn:hover {
+  background-color: var(--surface-inset, rgba(255, 255, 255, 0.05)) !important;
+}
+
+/* Botón cerrar / Omitir */
+.driver-popover-close-btn {
+  color: var(--text-strong, #ffffff) !important;
+}
+
+.driver-popover-close-btn:hover {
+  color: var(--primary, #10b981) !important;
+}
+
+.driver-popover-skip-btn {
+  background: none !important;
+  border: none !important;
+  color: var(--text-subtle, #9ca3af) !important;
+  cursor: pointer !important;
+  font-size: 0.75rem !important;
+  text-decoration: underline !important;
+  padding: 0.25rem 0.5rem !important;
+  margin-right: auto !important;
+}
+
+.driver-popover-skip-btn:hover {
+  color: var(--text-strong, #ffffff) !important;
 }

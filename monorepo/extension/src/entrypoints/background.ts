@@ -1,5 +1,6 @@
 import { defineBackground } from "wxt/sandbox";
 import { JobRunner } from "../services/jobs/job-runner";
+import { postulationCoordinator } from "../services/postulation/postulation-coordinator";
 import { ExtensionStorage } from "../services/storage/extension-storage";
 import { Capabilities } from "../types/schemas";
 
@@ -24,7 +25,10 @@ export default defineBackground(() => {
           installationId,
         });
 
-        // Confirmar la instalación ante el backend
+        // La vinculación ya quedó guardada: se confirma a la página sin esperar al
+        // backend, que puede tardar más que el plazo de la web.
+        sendResponse({ success: true, installation_id: installationId });
+
         try {
           const res = await fetch(`${payload.api_url}/extension/pairing/confirm`, {
             method: "POST",
@@ -32,8 +36,8 @@ export default defineBackground(() => {
             body: JSON.stringify({
               pairing_ticket: payload.pairing_ticket,
               installation_id: installationId,
-              browser: "chrome",
-              extension_version: "0.1.0",
+              browser: navigator.userAgent.toLowerCase().includes("firefox") ? "firefox" : "chrome",
+              extension_version: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
             }),
           });
           if (res.ok) {
@@ -45,8 +49,6 @@ export default defineBackground(() => {
         } catch (e) {
           console.error("[Background] Error confirmando pairing:", e);
         }
-
-        sendResponse({ success: true, installation_id: installationId });
       })();
       return true; // async sendResponse
     }
@@ -60,6 +62,42 @@ export default defineBackground(() => {
           workspaceId: creds.workspaceId,
           capabilities: caps,
         });
+      })();
+      return true;
+    }
+
+    // --- Coordinador de Postulación (HU-032) ---
+    if (message?.action === "OPEN_POSTULATION") {
+      (async () => {
+        const res = await postulationCoordinator.openPostulationTab(
+          message.payload.tender_code,
+          message.payload.mp_url
+        );
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "CONFIRM_POSTULATION") {
+      (async () => {
+        const res = await postulationCoordinator.confirmPostulation(message.payload);
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "FOCUS_POSTULATION_TAB") {
+      (async () => {
+        const res = await postulationCoordinator.focusPostulationTab(message.payload.tender_code);
+        sendResponse(res);
+      })();
+      return true;
+    }
+
+    if (message?.action === "GET_PENDING_POSTULATION") {
+      (async () => {
+        const packageData = await postulationCoordinator.getPendingPackage(message.tender_code);
+        sendResponse({ packageData });
       })();
       return true;
     }
@@ -80,7 +118,7 @@ export default defineBackground(() => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             installation_id: creds.installationId,
-            extension_version: "0.1.0",
+            extension_version: chrome.runtime?.getManifest?.()?.version ?? "0.2.0",
           }),
         });
 
@@ -88,8 +126,10 @@ export default defineBackground(() => {
           const data = (await res.json()) as { capabilities?: Capabilities };
           if (data.capabilities) {
             await ExtensionStorage.saveCapabilities(data.capabilities);
-            // 2. Ejecutar ciclo distribuido
-            await jobRunner.runCycle(data.capabilities);
+            // 2. Ejecutar ciclo distribuido solo si fetch_jobs_enabled está activo
+            if (data.capabilities.fetch_jobs_enabled) {
+              await jobRunner.runCycle(data.capabilities);
+            }
           }
         }
       } catch (err) {

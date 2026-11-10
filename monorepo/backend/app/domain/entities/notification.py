@@ -24,7 +24,10 @@ DeliveryMode = Literal["immediate", "daily_digest"]
 # `match`: licitación compatible (HdU 08). `date_changed`: Mercado Público movió
 # una fecha de una licitación con hitos en el calendario del usuario (HU-16).
 # `milestone_reminder`: se acerca un hito con recordatorio activado (HU-16).
-NotificationKind = Literal["match", "date_changed", "milestone_reminder"]
+# `kanban_change`: otro miembro del workspace mutó el tablero (HU-18).
+NotificationKind = Literal[
+    "match", "date_changed", "milestone_reminder", "kanban_change"
+]
 DeliveryKind = Literal["immediate", "digest"]
 DeliveryStatus = Literal["pending", "sent", "failed_permanent"]
 
@@ -45,6 +48,9 @@ class NotificationPreference(BaseModel):
     enabled: bool = True
     threshold: float = HIGH_COMPATIBILITY_THRESHOLD
     delivery_mode: DeliveryMode = "immediate"
+    # HU-18: cada miembro del workspace decide si quiere avisos cuando otro
+    # miembro mueve el tablero. Default `false` para no spamear.
+    kanban_notifications_enabled: bool = False
     # Se apaga solo cuando el proveedor de correo rechaza la dirección de forma
     # definitiva. El aviso in-app sigue funcionando; lo único que se corta es el
     # correo, y el usuario puede reactivarlo tras corregir su dirección.

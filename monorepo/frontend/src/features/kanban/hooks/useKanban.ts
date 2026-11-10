@@ -36,8 +36,10 @@ export function useKanban() {
         }
       });
       setTenders(tenderMap);
-    } catch {
-      setError("No se pudo cargar el tablero. Intenta de nuevo.");
+    } catch (err: unknown) {
+      console.error("[useKanban] Error al cargar tablero:", err);
+      const msg = err instanceof Error ? err.message : "No se pudo cargar el tablero. Intenta de nuevo.";
+      setError(msg || "No se pudo cargar el tablero. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }

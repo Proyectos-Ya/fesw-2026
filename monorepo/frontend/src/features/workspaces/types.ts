@@ -94,3 +94,28 @@ export interface RejectInvitationPayload {
 export interface SwitchWorkspacePayload {
   supplier_id: string;
 }
+
+/**
+ * Detalle de un workspace para la vista de administración (HU-18).
+ *
+ * `match_threshold` es el umbral de compatibilidad por workspace, en escala
+ * (0, 1]. `null` significa que no hay override y cada miembro usa su umbral
+ * individual de `NotificationPreferences`.
+ */
+export interface WorkspaceDetail {
+  supplier_id: string;
+  legal_name: string;
+  trade_name: string | null;
+  rut: string;
+  match_threshold: number | null;
+}
+
+export interface UpdateWorkspaceMatchThresholdPayload {
+  /** Null para volver al fallback por preferencia individual. */
+  match_threshold: number | null;
+}
+
+export interface WorkspaceMatchThresholdResponse {
+  supplier_id: string;
+  match_threshold: number | null;
+}

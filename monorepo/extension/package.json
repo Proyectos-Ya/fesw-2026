@@ -1,6 +1,6 @@
 {
   "name": "@chiripa/extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,11 +9,16 @@
     "build": "wxt build",
     "build:chrome": "wxt build -b chrome",
     "build:firefox": "wxt build -b firefox",
+    "build:firefox:dev": "wxt build -m development -b firefox",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "web-ext:lint": "web-ext lint --source-dir .output/firefox-mv3"
+    "web-ext:lint": "web-ext lint --source-dir .output/firefox-mv2",
+    "zip": "wxt zip -b chrome",
+    "zip:firefox": "wxt zip -b firefox",
+    "release:zips": "wxt zip -b chrome && wxt zip -b firefox && node scripts/copy-zips.mjs"
   },
+  "packageManager": "pnpm@10.3.0",
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
     "lucide-react": "^0.475.0",
@@ -26,6 +31,8 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "^6.2.7",
+    "happy-dom": "^17.6.3",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.4",
