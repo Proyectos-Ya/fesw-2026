@@ -17,7 +17,10 @@ from app.infrastructure.services.api_embedding_service import (
     DeepInfraEmbeddingService,
     HuggingFaceEmbeddingService,
 )
-from app.infrastructure.services.api_reranker_service import ApiRerankerService
+from app.infrastructure.services.api_reranker_service import (
+    ApiRerankerService,
+    DeepInfraRerankerService,
+)
 from app.infrastructure.services.attachments.local_attachment_storage import (
     LocalDiskAttachmentStorage,
 )
@@ -188,16 +191,27 @@ def build_reranker_service() -> IRerankerService:
         )
         return MockRerankerService()
 
-    if settings.reranker_provider != "local":
+    if settings.reranker_provider == "pinecone":
         # Sin try/except: config.py ya garantizó que hay credencial, y construir
         # el cliente no toca la red. Un fallo acá sería un error de programación,
         # no una condición del entorno que tenga sentido absorber.
-        logger.info("Reranker servido por API (%s).", settings.pinecone_rerank_model)
+        logger.info("Reranker servido por Pinecone (%s).", settings.pinecone_rerank_model)
         return ApiRerankerService(
             api_key=settings.pinecone_api_key or "",
             base_url=settings.pinecone_base_url,
             model_name=settings.pinecone_rerank_model,
             api_version=settings.pinecone_api_version,
+        )
+
+    if settings.reranker_provider == "deepinfra":
+        logger.info(
+            "Reranker servido por DeepInfra (%s).",
+            settings.deepinfra_rerank_model,
+        )
+        return DeepInfraRerankerService(
+            api_key=settings.deepinfra_reranker_key or "",
+            base_url=settings.deepinfra_base_url,
+            model_name=settings.deepinfra_rerank_model,
         )
 
     try:
