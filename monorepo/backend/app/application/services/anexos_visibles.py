@@ -17,6 +17,8 @@ from app.domain.entities.attachment_file import AttachmentFile, AttachmentFileSt
 
 # Lo que los servicios de Gemini saben mandar: PDF y PNG en línea, XLSX como texto.
 TIPOS_QUE_LEE_LA_IA = frozenset({"pdf", "xlsx", "png"})
+# El análisis + cotización además lee Word (.docx) como texto. Los hitos, no.
+TIPOS_QUE_LEE_EL_ANALISIS = TIPOS_QUE_LEE_LA_IA | {"docx"}
 
 
 @dataclass(frozen=True)
