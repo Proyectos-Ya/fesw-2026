@@ -51,6 +51,18 @@ class TestCredencialesObligatoriasEnModoApi:
         with pytest.raises(ValidationError, match="PINECONE_API_KEY"):
             _construir(reranker_provider="pinecone")
 
+    def test_reranker_en_modo_deepinfra_exige_key_de_deepinfra_o_embedding(self):
+        with pytest.raises(ValidationError, match="DEEPINFRA_API_KEY"):
+            _construir(reranker_provider="deepinfra")
+
+    def test_una_key_vacia_de_deepinfra_no_cuenta_como_credencial(self):
+        with pytest.raises(ValidationError, match="DEEPINFRA_API_KEY"):
+            _construir(
+                reranker_provider="deepinfra",
+                deepinfra_api_key="   ",
+                embedding_api_key="   ",
+            )
+
     def test_en_modo_api_con_credencial_construye(self):
         s = _construir(
             embedding_provider="deepinfra",
@@ -60,6 +72,25 @@ class TestCredencialesObligatoriasEnModoApi:
         )
         assert s.embedding_provider == "deepinfra"
         assert s.reranker_provider == "pinecone"
+
+    def test_en_modo_deepinfra_con_credencial_propia_construye(self):
+        s = _construir(
+            reranker_provider="deepinfra",
+            deepinfra_api_key="di-secreto",
+        )
+        assert s.reranker_provider == "deepinfra"
+        assert s.deepinfra_reranker_key == "di-secreto"
+        assert s.deepinfra_base_url == "https://api.deepinfra.com/v1/inference"
+        assert s.deepinfra_rerank_model == "Qwen/Qwen3-Reranker-4B"
+
+    def test_en_modo_deepinfra_reutiliza_embedding_api_key_si_no_hay_propia(self):
+        s = _construir(
+            embedding_provider="deepinfra",
+            embedding_api_key="emb-secreto",
+            reranker_provider="deepinfra",
+        )
+        assert s.reranker_provider == "deepinfra"
+        assert s.deepinfra_reranker_key == "emb-secreto"
 
     def test_una_key_vacia_no_cuenta_como_credencial(self):
         """`EMBEDDING_API_KEY=` sin rellenar es el error de plantilla habitual."""

@@ -42,6 +42,7 @@ def test_desactivado_por_configuracion_usa_el_mock(monkeypatch):
 
 def test_en_desarrollo_el_fallo_cae_al_mock(monkeypatch, reranker_roto):
     monkeypatch.setattr(settings, "disable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_provider", "local")
     monkeypatch.setattr(settings, "is_dev", True)
 
     assert isinstance(build_reranker_service(), MockRerankerService)
@@ -50,6 +51,7 @@ def test_en_desarrollo_el_fallo_cae_al_mock(monkeypatch, reranker_roto):
 def test_en_desarrollo_el_fallo_queda_registrado(monkeypatch, reranker_roto, caplog):
     """Lo que costó una sesión de diagnóstico: que el error real fuera visible."""
     monkeypatch.setattr(settings, "disable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_provider", "local")
     monkeypatch.setattr(settings, "is_dev", True)
 
     with caplog.at_level(logging.ERROR):
@@ -67,7 +69,33 @@ def test_en_desarrollo_el_fallo_queda_registrado(monkeypatch, reranker_roto, cap
 def test_fuera_de_desarrollo_el_fallo_impide_arrancar(monkeypatch, reranker_roto):
     """En producción, degradarse en silencio es peor que no arrancar."""
     monkeypatch.setattr(settings, "disable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_provider", "local")
     monkeypatch.setattr(settings, "is_dev", False)
 
     with pytest.raises(RuntimeError, match="onnxruntime no pudo reservar memoria"):
         build_reranker_service()
+
+
+
+def test_proveedor_pinecone_construye_api_reranker(monkeypatch):
+    from app.infrastructure.services.api_reranker_service import ApiRerankerService
+
+    monkeypatch.setattr(settings, "disable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_provider", "pinecone")
+    monkeypatch.setattr(settings, "pinecone_api_key", "pc-secreto")
+
+    servicio = build_reranker_service()
+    assert isinstance(servicio, ApiRerankerService)
+
+
+def test_proveedor_deepinfra_construye_deepinfra_reranker(monkeypatch):
+    from app.infrastructure.services.api_reranker_service import (
+        DeepInfraRerankerService,
+    )
+
+    monkeypatch.setattr(settings, "disable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_provider", "deepinfra")
+    monkeypatch.setattr(settings, "deepinfra_api_key", "di-secreto")
+
+    servicio = build_reranker_service()
+    assert isinstance(servicio, DeepInfraRerankerService)

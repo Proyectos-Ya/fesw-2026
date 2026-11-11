@@ -92,7 +92,7 @@ Cuando responda `{"status":"healthy"}`, entra a http://localhost:3000.
 | | Local (compose) | Producción |
 |---|---|---|
 | `EMBEDDING_PROVIDER` | `local` (bge-m3 en proceso) | `huggingface` (por API) |
-| `RERANKER_PROVIDER` | `local` (ONNX en proceso) | `pinecone` (por API) |
+| `RERANKER_PROVIDER` | `local` (ONNX en proceso) | `pinecone` o `deepinfra` (por API) |
 | Imagen (`Dockerfile`) | target `dev`: con torch y onnxruntime, `--reload`, root | target `runtime` (por defecto): sin modelos, usuario `app` |
 
 El compose fija los dos proveedores en `local` a propósito, aunque el `.env` diga otra

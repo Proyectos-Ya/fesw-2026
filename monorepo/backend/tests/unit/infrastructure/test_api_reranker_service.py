@@ -162,3 +162,64 @@ class TestFallosDelProveedor:
 
         assert await _servicio().rerank("x", [], limit=3) == []
         assert not ruta.called
+
+
+class TestDeepInfraRerankerService:
+    """Reranker servido por DeepInfra (/v1/inference/<modelo>) con Qwen/Qwen3-Reranker-4B."""
+
+    DI_URL = "https://api.deepinfra.com/v1/inference/Qwen/Qwen3-Reranker-4B"
+
+    @staticmethod
+    def _servicio_di():
+        from app.infrastructure.services.api_reranker_service import (
+            DeepInfraRerankerService,
+        )
+
+        return DeepInfraRerankerService(api_key="di-secreto")
+
+    @staticmethod
+    def _respuesta_di(scores: list[float]) -> httpx.Response:
+        return httpx.Response(200, json={"scores": scores})
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_envia_formato_y_cabeceras_de_deepinfra_y_ordena_de_mayor_a_menor(self):
+        ruta = respx.post(self.DI_URL).mock(
+            return_value=self._respuesta_di([0.5, 0.1, 0.9])
+        )
+
+        resultado = await self._servicio_di().rerank(
+            "computadores", CANDIDATAS, limit=2
+        )
+
+        peticion = ruta.calls.last.request
+        assert peticion.headers["Authorization"] == "Bearer di-secreto"
+        cuerpo = json.loads(peticion.content)
+        assert cuerpo == {
+            "queries": ["computadores"],
+            "documents": [texto for _, texto in CANDIDATAS],
+        }
+        assert [tid for tid, _ in resultado] == [ID_C, ID_A]
+        assert [s for _, s in resultado] == [pytest.approx(0.9), pytest.approx(0.5)]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_valida_que_la_cantidad_de_scores_coincida_con_las_candidatas(self):
+        respx.post(self.DI_URL).mock(return_value=self._respuesta_di([0.9]))
+
+        with pytest.raises(ValueError, match="1 scores para 3 candidatas"):
+            await self._servicio_di().rerank("x", CANDIDATAS, limit=3)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_un_error_deja_en_el_log_el_motivo_y_se_propaga(self, caplog):
+        respx.post(self.DI_URL).mock(
+            return_value=httpx.Response(429, json={"detail": "rate limit exceeded"})
+        )
+
+        with caplog.at_level("ERROR"), pytest.raises(httpx.HTTPStatusError):
+            await self._servicio_di().rerank("x", CANDIDATAS, limit=3)
+
+        assert "rate limit exceeded" in caplog.text
+        assert str(ID_A) in caplog.text
+
