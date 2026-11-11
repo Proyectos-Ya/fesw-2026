@@ -144,3 +144,68 @@ class ApiRerankerService(IRerankerService):
         logit = math.log(p / (1.0 - p))
         calibrado = (logit + self._bias) / max(self._temperature, 0.1)
         return 1.0 / (1.0 + math.exp(-calibrado))
+
+
+class DeepInfraRerankerService(IRerankerService):
+    """Reranker servido por DeepInfra (/v1/inference/<model>) con Qwen/Qwen3-Reranker-4B."""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://api.deepinfra.com/v1/inference",
+        model_name: str = "Qwen/Qwen3-Reranker-4B",
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+        self._model_name = model_name.lstrip("/")
+        self._timeout = timeout
+
+    async def rerank(
+        self,
+        query_text: str,
+        candidates: list[tuple[UUID, str]],
+        limit: int,
+    ) -> list[tuple[UUID, float]]:
+        if not candidates:
+            return []
+
+        documentos = [texto for _, texto in candidates]
+
+        async with httpx.AsyncClient(timeout=self._timeout) as cliente:
+            respuesta = await cliente.post(
+                f"{self._base_url}/{self._model_name}",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "queries": [query_text],
+                    "documents": documentos,
+                },
+            )
+            if respuesta.is_error:
+                logger.error(
+                    "DeepInfra rechazó el rerank (%s): %s. Candidatas en orden: %s",
+                    respuesta.status_code,
+                    respuesta.text[:1000],
+                    [str(tid) for tid, _ in candidates],
+                )
+            respuesta.raise_for_status()
+
+        scores = respuesta.json().get("scores", [])
+        if len(scores) != len(candidates):
+            raise ValueError(
+                f"El proveedor devolvió {len(scores)} scores para "
+                f"{len(candidates)} candidatas."
+            )
+
+        ordenados = sorted(
+            (
+                (candidates[i][0], float(score))
+                for i, score in enumerate(scores)
+            ),
+            key=lambda par: par[1],
+            reverse=True,
+        )
+        return ordenados[:limit]

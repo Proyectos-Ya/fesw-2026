@@ -134,12 +134,15 @@ class Settings(BaseSettings):
     supplier_embedding_deadline_seconds: float = 45.0
 
     # Mismo esquema para el reranker, que en local es ONNX (~1,3 GB de RAM).
-    reranker_provider: Literal["local", "pinecone"] = "local"
+    reranker_provider: Literal["local", "pinecone", "deepinfra"] = "local"
     pinecone_api_key: str | None = None
     pinecone_base_url: str = "https://api.pinecone.io"
     pinecone_rerank_model: str = "bge-reranker-v2-m3"
     # La API de Pinecone versiona por header y rechaza las peticiones sin él.
     pinecone_api_version: str = "2025-04"
+    deepinfra_api_key: str | None = None
+    deepinfra_base_url: str = "https://api.deepinfra.com/v1/inference"
+    deepinfra_rerank_model: str = "Qwen/Qwen3-Reranker-4B"
 
     # --- Mercado Público ---
     # La cuota (10.000 peticiones al día) es del **ticket**, no de la máquina ni
@@ -559,6 +562,7 @@ class Settings(BaseSettings):
     @field_validator(
         "embedding_api_key",
         "pinecone_api_key",
+        "deepinfra_api_key",
         "postgres_password",
         "company_lookup_api_key",
         "geocoding_contact_email",
@@ -612,9 +616,11 @@ class Settings(BaseSettings):
             faltantes.append(
                 f"EMBEDDING_API_KEY (EMBEDDING_PROVIDER={self.embedding_provider})"
             )
-        if self.reranker_provider != "local" and not self.pinecone_api_key:
+        if self.reranker_provider == "pinecone" and not self.pinecone_api_key:
+            faltantes.append("PINECONE_API_KEY (RERANKER_PROVIDER=pinecone)")
+        if self.reranker_provider == "deepinfra" and not self.deepinfra_reranker_key:
             faltantes.append(
-                f"PINECONE_API_KEY (RERANKER_PROVIDER={self.reranker_provider})"
+                "DEEPINFRA_API_KEY o EMBEDDING_API_KEY (RERANKER_PROVIDER=deepinfra)"
             )
         if self.company_lookup_provider != "none" and not self.company_lookup_api_key:
             faltantes.append(
@@ -652,6 +658,11 @@ class Settings(BaseSettings):
             return None
         valor = valor.strip()
         return valor or None
+
+    @property
+    def deepinfra_reranker_key(self) -> str | None:
+        """Credencial para el reranker de DeepInfra; reutiliza EMBEDDING_API_KEY si no se define aparte."""
+        return self.deepinfra_api_key or self.embedding_api_key
 
     @property
     def embedding_api_url(self) -> str:
