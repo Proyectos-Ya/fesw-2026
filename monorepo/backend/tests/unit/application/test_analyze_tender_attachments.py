@@ -6,6 +6,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.application.services.anexos_visibles import (
+    TIPOS_QUE_LEE_EL_ANALISIS,
+    TIPOS_QUE_LEE_LA_IA,
+)
 from app.application.services.document_analysis_quotation_service import (
     DocumentAnalysisAndQuotationResult,
     IDocumentAnalysisAndQuotationService,
@@ -186,12 +190,33 @@ async def test_analiza_con_todos_los_anexos_visibles_en_una_llamada():
 async def test_los_tipos_que_la_ia_no_lee_no_se_mandan():
     escenario = await Escenario().con_empresa()
     await escenario.subir("bases.pdf")
-    await escenario.subir("formulario.docx")
+    await escenario.subir("formulario-antiguo.doc")
 
     await escenario.analizar()
 
     [llamada] = escenario.servicio.llamadas
     assert [d.document_name for d in llamada["documents"]] == ["bases.pdf"]
+
+
+async def test_el_analisis_lee_las_bases_en_word():
+    escenario = await Escenario().con_empresa()
+    await escenario.subir("bases.pdf")
+    await escenario.subir("bases-tecnicas.docx")
+
+    await escenario.analizar()
+
+    [llamada] = escenario.servicio.llamadas
+    assert sorted((d.document_name, d.file_type) for d in llamada["documents"]) == [
+        ("bases-tecnicas.docx", "docx"),
+        ("bases.pdf", "pdf"),
+    ]
+
+
+def test_los_hitos_siguen_sin_leer_word():
+    # Solo el análisis + cotización aprendió a leer .docx; la extracción de hitos
+    # sigue usando `legible`, que no lo incluye.
+    assert "docx" not in TIPOS_QUE_LEE_LA_IA
+    assert TIPOS_QUE_LEE_EL_ANALISIS == TIPOS_QUE_LEE_LA_IA | {"docx"}
 
 
 async def test_usa_el_puntaje_de_matching_si_existe():
@@ -242,7 +267,7 @@ async def test_no_pisa_una_cotizacion_que_ya_existe():
 
 async def test_sin_anexos_legibles_no_llama_a_la_ia():
     escenario = await Escenario().con_empresa()
-    await escenario.subir("formulario.docx")
+    await escenario.subir("formulario-antiguo.doc")
 
     assert await escenario.analizar() is None
     assert escenario.servicio.llamadas == []

@@ -16,6 +16,7 @@ from app.domain.errors.document_analysis_quotation_errors import (
 from app.infrastructure.services.gemini_document_analysis_and_quotation_service import (
     GeminiDocumentAnalysisAndQuotationService,
 )
+from tests.unit.infrastructure.attachment_documents import docx
 
 
 def create_test_tender() -> Tender:
@@ -453,7 +454,7 @@ async def test_varios_anexos_van_en_una_sola_llamada(service):
         documents=[
             DocumentContextDTO(document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF-1"),
             DocumentContextDTO(document_name="plano.png", file_type="png", file_bytes=b"png"),
-            DocumentContextDTO(document_name="formulario.docx", file_type="docx", file_bytes=b"doc"),
+            DocumentContextDTO(document_name="formulario.doc", file_type="doc", file_bytes=b"doc"),
         ],
         tender=create_test_tender(),
         supplier=create_test_supplier(),
@@ -466,7 +467,7 @@ async def test_varios_anexos_van_en_una_sola_llamada(service):
     textos = " ".join(p.get("text", "") for p in parts)
     assert "bases.pdf" in textos and "plano.png" in textos
     # El tipo que no sabe mandar se omite en vez de mandarlo con un MIME equivocado.
-    assert "formulario.docx" not in textos
+    assert "formulario.doc" not in textos
 
 
 @pytest.mark.asyncio
@@ -529,3 +530,77 @@ async def test_genera_valor_de_despacho_en_la_cotizacion(service, shipping, expe
     assert result.quotation.shipping_clp == expected
     schema = json.loads(route.calls[0].request.content)["generationConfig"]["responseSchema"]
     assert "shipping_clp" in schema["properties"]["quotation"]["properties"]
+
+
+# --- Bases en Word (.docx) ---
+
+
+async def _enviar(service, documentos: list[DocumentContextDTO]) -> list[dict]:
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    ).mock(return_value=Response(200, json=_respuesta_valida()))
+    await service.analyze_and_quote(
+        documents=documentos, tender=create_test_tender(), supplier=create_test_supplier()
+    )
+    return json.loads(route.calls[0].request.content)["contents"][0]["parts"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_el_word_va_como_texto_con_sus_parrafos_y_tablas(service):
+    contenido = docx(
+        ["Se requieren 10 rollos de cable calibre 12."],
+        tablas=([["Ítem", "Cantidad"], ["Conector RJ45", "40"]],),
+    )
+
+    parts = await _enviar(
+        service,
+        [DocumentContextDTO(document_name="bases-tecnicas.docx", file_type="docx", file_bytes=contenido)],
+    )
+
+    assert not any("inlineData" in p for p in parts)
+    [anexo] = [p["text"] for p in parts[1:] if "bases-tecnicas.docx" in p.get("text", "")]
+    assert anexo.startswith("Contenido del documento Word adjunto 'bases-tecnicas.docx':\n")
+    assert "Se requieren 10 rollos de cable calibre 12." in anexo
+    assert "Conector RJ45 | 40" in anexo
+    # El prompt lo cuenta entre los anexos que se mandaron.
+    assert "'bases-tecnicas.docx'" in parts[0]["text"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_un_word_danado_o_vacio_se_omite_sin_cortar_el_analisis(service):
+    parts = await _enviar(
+        service,
+        [
+            DocumentContextDTO(document_name="bases.pdf", file_type="pdf", file_bytes=b"%PDF-1"),
+            DocumentContextDTO(document_name="roto.docx", file_type="docx", file_bytes=b"no es un zip"),
+            DocumentContextDTO(document_name="vacio.docx", file_type="docx", file_bytes=docx([])),
+        ],
+    )
+
+    textos = " ".join(p.get("text", "") for p in parts)
+    assert "roto.docx" not in textos
+    assert "vacio.docx" not in textos
+    assert [p["inlineData"]["mimeType"] for p in parts if "inlineData" in p] == ["application/pdf"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_el_texto_del_word_cuenta_para_el_tope_de_tamano(service, monkeypatch):
+    from app.infrastructure.services import (
+        gemini_document_analysis_and_quotation_service as modulo,
+    )
+
+    monkeypatch.setattr(modulo, "MAX_INLINE_BYTES", 30)
+    parts = await _enviar(
+        service,
+        [
+            DocumentContextDTO(document_name="corto.docx", file_type="docx", file_bytes=docx(["Cable de cobre"])),
+            DocumentContextDTO(document_name="largo.docx", file_type="docx", file_bytes=docx(["x" * 40])),
+        ],
+    )
+
+    textos = " ".join(p.get("text", "") for p in parts)
+    assert "Cable de cobre" in textos
+    assert "largo.docx" not in textos

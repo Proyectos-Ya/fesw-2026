@@ -20,6 +20,7 @@ from app.domain.entities.tender import Tender
 from app.domain.errors.document_analysis_quotation_errors import (
     DocumentAnalysisAndQuotationServiceError,
 )
+from app.infrastructure.services.attachments.ooxml import docx_a_texto
 from app.infrastructure.services.document_text import xlsx_to_text
 from app.shared.datetime_utils import utc_now_naive
 
@@ -306,7 +307,7 @@ def _partes_de_documentos(
 ) -> tuple[list[str], list[dict]]:
     """Las partes de la petición para cada documento y los nombres de los enviados.
 
-    PDF y PNG van en línea, XLSX como texto. Los demás tipos se omiten: mandarlos
+    PDF y PNG van en línea; XLSX y DOCX, como texto. Los demás tipos se omiten: mandarlos
     con un MIME equivocado hace fallar la llamada entera.
     """
     enviados: list[str] = []
@@ -320,6 +321,18 @@ def _partes_de_documentos(
                 "text": f"Contenido de planilla adjunta '{nombre}':\n"
                 f"{xlsx_to_text(documento.file_bytes, nombre)}"
             })
+            enviados.append(nombre)
+            continue
+        if tipo == "docx":
+            texto = _texto_de_word(documento.file_bytes, nombre)
+            if texto is None:
+                continue
+            tamano = len(texto.encode("utf-8"))
+            if total + tamano > MAX_INLINE_BYTES:
+                logger.warning("Se omite el anexo '%s': pasa el tope de tamaño de la llamada.", nombre)
+                continue
+            total += tamano
+            partes.append({"text": f"Contenido del documento Word adjunto '{nombre}':\n{texto}"})
             enviados.append(nombre)
             continue
         if tipo not in ("pdf", "png"):
@@ -338,3 +351,16 @@ def _partes_de_documentos(
         partes.append({"text": f"Anexo adjunto: '{nombre}'"})
         enviados.append(nombre)
     return enviados, partes
+
+
+def _texto_de_word(datos: bytes, nombre: str) -> str | None:
+    """Texto de un .docx, o `None` si está dañado o vacío: se omite sin cortar el análisis."""
+    try:
+        texto = docx_a_texto(datos).strip()
+    except Exception:
+        logger.warning("Se omite el anexo '%s': no se pudo leer el Word.", nombre, exc_info=True)
+        return None
+    if not texto:
+        logger.info("Se omite el anexo '%s': el Word no tiene texto.", nombre)
+        return None
+    return texto

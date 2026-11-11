@@ -16,7 +16,10 @@ from app.application.repositories.tender_repository import (
     ITenderRepository,
     TenderFilters,
 )
-from app.application.services.anexos_visibles import anexos_visibles
+from app.application.services.anexos_visibles import (
+    TIPOS_QUE_LEE_EL_ANALISIS,
+    anexos_visibles,
+)
 from app.application.services.attachment_storage import IAttachmentStorage
 from app.application.services.document_analysis_quotation_service import (
     DocumentAnalysisAndQuotationResult,
@@ -103,7 +106,7 @@ class AnalyzeTenderAttachmentsUseCase:
         for anexo in await anexos_visibles(
             self.files, self.attachments, tender_id=tender_id, workspace_id=workspace_id
         ):
-            if not anexo.legible:
+            if anexo.tipo not in TIPOS_QUE_LEE_EL_ANALISIS:
                 continue
             try:
                 contenido = await self.storage.get_bytes(anexo.archivo.storage_key)
