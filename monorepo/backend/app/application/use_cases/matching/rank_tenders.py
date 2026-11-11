@@ -58,6 +58,31 @@ class ClientConnection(Protocol):
     async def is_disconnected(self) -> bool: ...
 
 
+class _VueloCompartido:
+    """Agrupa la tarea de recálculo de un proveedor y las conexiones que la esperan."""
+
+    def __init__(self) -> None:
+        self.conexiones: set[ClientConnection] = set()
+        self.sin_conexion: int = 0
+        self.esperando: int = 0
+        self.tarea: asyncio.Task[list[MatchingResult]] | None = None
+
+    async def is_disconnected(self) -> bool:
+        # El recálculo compartido solo aborta si no queda ningún llamador sin
+        # objeto request y todas las conexiones activas se desconectaron.
+        if self.sin_conexion > 0:
+            return False
+        if not self.conexiones:
+            return True
+        for conn in list(self.conexiones):
+            if not await conn.is_disconnected():
+                return False
+        return True
+
+
+_IN_FLIGHT_RANKINGS: dict[UUID, _VueloCompartido] = {}
+
+
 class RankTendersUseCase:
     """
     Caso de uso que orquesta el flujo completo de recomendación de licitaciones (tenders)
@@ -254,6 +279,64 @@ class RankTendersUseCase:
         if request is not None and await request.is_disconnected():
             raise asyncio.CancelledError()
 
+        # Singleflight por proveedor: si otra petición ya está recalculando el
+        # ranking para la misma empresa, reutiliza su resultado en vez de
+        # disparar llamadas duplicadas a Qdrant y al reranker.
+        vuelo = _IN_FLIGHT_RANKINGS.get(supplier.id)
+        if vuelo is None or (vuelo.tarea is not None and vuelo.tarea.done()):
+            vuelo = _VueloCompartido()
+            _IN_FLIGHT_RANKINGS[supplier.id] = vuelo
+            vuelo.tarea = asyncio.create_task(
+                self._recompute_ranking(
+                    supplier=supplier,
+                    now=now,
+                    request=vuelo,
+                )
+            )
+            vuelo.tarea.add_done_callback(
+                lambda t, sid=supplier.id, v=vuelo: (
+                    _IN_FLIGHT_RANKINGS.pop(sid, None)
+                    if _IN_FLIGHT_RANKINGS.get(sid) is v
+                    else None,
+                    t.exception() if not t.cancelled() else None,
+                )
+            )
+
+        vuelo.esperando += 1
+        if request is not None:
+            vuelo.conexiones.add(request)
+        else:
+            vuelo.sin_conexion += 1
+
+        try:
+            assert vuelo.tarea is not None
+            resultado = await asyncio.shield(vuelo.tarea)
+            if request is not None and await request.is_disconnected():
+                raise asyncio.CancelledError()
+            return list(resultado)
+        except asyncio.CancelledError:
+            if (
+                vuelo.esperando == 1
+                and vuelo.tarea is not None
+                and not vuelo.tarea.done()
+            ):
+                if _IN_FLIGHT_RANKINGS.get(supplier.id) is vuelo:
+                    _IN_FLIGHT_RANKINGS.pop(supplier.id, None)
+                vuelo.tarea.cancel()
+            raise
+        finally:
+            vuelo.esperando -= 1
+            if request is not None:
+                vuelo.conexiones.discard(request)
+            else:
+                vuelo.sin_conexion -= 1
+
+    async def _recompute_ranking(
+        self,
+        supplier: Supplier,
+        now,
+        request: ClientConnection | None = None,
+    ) -> list[MatchingResult]:
         # 3. Cache vacío, inválido o force_refresh=True: ejecutar el pipeline de recomendación completo
         # 3.1 Obtener vector del proveedor desde Qdrant
         supplier_vector = await self.supplier_vector_repo.get_vector(supplier.id)

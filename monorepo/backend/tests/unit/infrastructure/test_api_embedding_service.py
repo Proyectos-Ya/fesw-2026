@@ -187,3 +187,18 @@ class TestReintentos:
             await _servicio(retry_backoff_seconds=0).embed(["hola"])
 
         assert ruta.call_count == 1
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reutiliza_el_mismo_cliente_http_entre_llamadas(self):
+        respx.post(URL).mock(return_value=_respuesta([[1.0, 0.0]]))
+
+        servicio = _servicio()
+        await servicio.embed(["hola"])
+        cliente_primero = servicio._client
+        await servicio.embed(["mundo"])
+
+        assert servicio._client is cliente_primero
+        assert not servicio._client.is_closed
+        await servicio.aclose()
+        assert servicio._client.is_closed

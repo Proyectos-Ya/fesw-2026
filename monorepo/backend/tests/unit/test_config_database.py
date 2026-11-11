@@ -72,3 +72,34 @@ class TestCredencialDePostgres:
     def test_una_contrasena_vacia_no_cuenta(self):
         with pytest.raises(ValidationError, match="POSTGRES_PASSWORD"):
             _construir(postgres_password="   ")
+
+
+class TestPoolDeConexiones:
+    def test_por_defecto_configura_pool_amplio_para_concurrencia(self):
+        s = _construir(postgres_password="secreta")
+
+        assert s.db_pool_size == 20
+        assert s.db_max_overflow == 30
+        assert s.db_pool_timeout == 30
+
+    def test_crear_engine_aplica_el_tamano_del_pool(self, monkeypatch: pytest.MonkeyPatch):
+        import app.infrastructure.db as modulo_db
+
+        capturado: dict[str, object] = {}
+
+        def fake_create_async_engine(url: str, **kwargs: object) -> str:
+            capturado["url"] = url
+            capturado.update(kwargs)
+            return "engine-falso"
+
+        monkeypatch.setattr(modulo_db, "create_async_engine", fake_create_async_engine)
+        monkeypatch.setattr(modulo_db.settings, "db_pool_size", 25)
+        monkeypatch.setattr(modulo_db.settings, "db_max_overflow", 35)
+        monkeypatch.setattr(modulo_db.settings, "db_pool_timeout", 20)
+
+        modulo_db.crear_engine()
+
+        assert capturado["pool_size"] == 25
+        assert capturado["max_overflow"] == 35
+        assert capturado["pool_timeout"] == 20
+

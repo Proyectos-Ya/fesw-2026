@@ -76,6 +76,16 @@ class ApiEmbeddingService(IEmbeddingService, ABC):
         self._batch_size = max(1, batch_size)
         self._timeout = timeout
         self._retry_backoff = retry_backoff_seconds
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     # --- Lo que cambia por proveedor ---
 
@@ -99,10 +109,10 @@ class ApiEmbeddingService(IEmbeddingService, ABC):
             return []
 
         vectores: list[list[float]] = []
-        async with httpx.AsyncClient(timeout=self._timeout) as cliente:
-            for inicio in range(0, len(texts), self._batch_size):
-                tanda = texts[inicio : inicio + self._batch_size]
-                vectores.extend(await self._embed_tanda_con_reintentos(cliente, tanda))
+        cliente = self._get_client()
+        for inicio in range(0, len(texts), self._batch_size):
+            tanda = texts[inicio : inicio + self._batch_size]
+            vectores.extend(await self._embed_tanda_con_reintentos(cliente, tanda))
         return vectores
 
     async def _embed_tanda_con_reintentos(

@@ -223,3 +223,17 @@ class TestDeepInfraRerankerService:
         assert "rate limit exceeded" in caplog.text
         assert str(ID_A) in caplog.text
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_reutiliza_el_mismo_cliente_http_entre_llamadas(self):
+        respx.post(self.DI_URL).mock(return_value=self._respuesta_di([0.9, 0.5, 0.1]))
+
+        servicio = self._servicio_di()
+        await servicio.rerank("x", CANDIDATAS, limit=2)
+        cliente_primero = servicio._client
+        await servicio.rerank("y", CANDIDATAS, limit=2)
+
+        assert servicio._client is cliente_primero
+        assert not servicio._client.is_closed
+        await servicio.aclose()
+        assert servicio._client.is_closed
