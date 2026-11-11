@@ -1601,3 +1601,184 @@ async def test_reportar_un_analisis_no_oculta_la_licitacion() -> None:
     results = await use_case.execute(user_id=user_id)
 
     assert {r.tender_id for r in results} == {buena, mala}
+
+
+@pytest.mark.asyncio
+async def test_peticiones_simultaneas_para_la_misma_empresa_no_duplican_el_recalculo() -> None:
+    """Singleflight: si dos peticiones de la misma empresa llegan con caché vacía,
+    la segunda reutiliza el cálculo en vuelo en vez de disparar otro rerank a la API.
+    """
+    import asyncio
+
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    t1, t2 = uuid4(), uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[t1] = create_dummy_tender(t1)
+    tender_repo.tenders[t2] = create_dummy_tender(t2)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(t1, 0.9), (t2, 0.8)]
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    reranker = FakeRerankerService()
+    llamadas_rerank = 0
+    rerank_original = reranker.rerank
+
+    async def rerank_lento(query_text: str, candidates: list, limit: int):
+        nonlocal llamadas_rerank
+        llamadas_rerank += 1
+        await asyncio.sleep(0.05)
+        return await rerank_original(query_text, candidates, limit)
+
+    reranker.rerank = rerank_lento  # type: ignore[method-assign]
+
+    scorer = crear_scorer(
+        reranker=reranker,
+        matching_result_repo=matching_result_repo,
+    )
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=scorer,
+        matching_result_repo=matching_result_repo,
+    )
+
+    r1, r2, r3 = await asyncio.gather(
+        use_case.execute(user_id=user_id),
+        use_case.execute(user_id=user_id),
+        use_case.execute(user_id=user_id),
+    )
+
+    assert llamadas_rerank == 1
+    assert [m.tender_id for m in r1] == [m.tender_id for m in r2] == [m.tender_id for m in r3]
+
+
+@pytest.mark.asyncio
+async def test_si_el_lider_se_desconecta_el_seguidor_conectado_igual_recibe_su_ranking() -> None:
+    """Si la primera petición cierra la pestaña a mitad del recálculo, una
+    segunda petición conectada de la misma empresa no debe fallar con CancelledError.
+    """
+    import asyncio
+
+    class _ConexionQueSeCorta:
+        def __init__(self, cortar_en_llamada: int | None = None) -> None:
+            self.cortar_en_llamada = cortar_en_llamada
+            self.llamadas = 0
+
+        async def is_disconnected(self) -> bool:
+            self.llamadas += 1
+            if self.cortar_en_llamada is not None and self.llamadas >= self.cortar_en_llamada:
+                return True
+            return False
+
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    t1, t2 = uuid4(), uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[t1] = create_dummy_tender(t1)
+    tender_repo.tenders[t2] = create_dummy_tender(t2)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(t1, 0.9), (t2, 0.8)]
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    reranker = FakeRerankerService()
+    rerank_original = reranker.rerank
+
+    async def rerank_lento(query_text: str, candidates: list, limit: int):
+        await asyncio.sleep(0.05)
+        return await rerank_original(query_text, candidates, limit)
+
+    reranker.rerank = rerank_lento  # type: ignore[method-assign]
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(reranker=reranker, matching_result_repo=matching_result_repo),
+        matching_result_repo=matching_result_repo,
+    )
+
+    lider = asyncio.create_task(
+        use_case.execute(user_id=user_id, request=_ConexionQueSeCorta(cortar_en_llamada=5))
+    )
+    await asyncio.sleep(0.01)
+    seguidor = asyncio.create_task(
+        use_case.execute(user_id=user_id, request=_ConexionQueSeCorta())
+    )
+
+    res_lider, res_seguidor = await asyncio.gather(lider, seguidor, return_exceptions=True)
+
+    assert isinstance(res_lider, asyncio.CancelledError)
+    assert isinstance(res_seguidor, list)
+    assert len(res_seguidor) == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelar_al_lider_no_cancela_al_seguidor() -> None:
+    import asyncio
+    import app.application.use_cases.matching.rank_tenders as mod
+
+    user_id = uuid4()
+    supplier_repo = InMemorySupplierRepository()
+    supplier = Supplier(rut="76086428-5", legal_name="Empresa SpA", user_id=user_id)
+    await supplier_repo.save(supplier)
+
+    vector_repo = FakeSupplierVectorRepository()
+    await vector_repo.upsert(supplier.id, [0.1] * 1024)
+
+    t1, t2 = uuid4(), uuid4()
+    tender_repo = InMemoryTenderRepository()
+    tender_repo.tenders[t1] = create_dummy_tender(t1)
+    tender_repo.tenders[t2] = create_dummy_tender(t2)
+
+    tender_vector_repo = FakeTenderVectorRepository()
+    tender_vector_repo.search_results = [(t1, 0.9), (t2, 0.8)]
+
+    matching_result_repo = InMemoryMatchingResultRepository()
+    reranker = FakeRerankerService()
+    rerank_original = reranker.rerank
+
+    async def rerank_lento(query_text: str, candidates: list, limit: int):
+        await asyncio.sleep(0.05)
+        return await rerank_original(query_text, candidates, limit)
+
+    reranker.rerank = rerank_lento  # type: ignore[method-assign]
+
+    use_case = RankTendersUseCase(
+        supplier_repo=supplier_repo,
+        supplier_vector_repo=vector_repo,
+        tender_vector_repo=tender_vector_repo,
+        tender_repo=tender_repo,
+        scorer=crear_scorer(reranker=reranker, matching_result_repo=matching_result_repo),
+        matching_result_repo=matching_result_repo,
+    )
+
+    lider = asyncio.create_task(use_case.execute(user_id=user_id))
+    await asyncio.sleep(0.01)
+    seguidor = asyncio.create_task(use_case.execute(user_id=user_id))
+    await asyncio.sleep(0.01)
+    lider.cancel()
+
+    res_lider, res_seguidor = await asyncio.gather(lider, seguidor, return_exceptions=True)
+
+    assert isinstance(res_lider, asyncio.CancelledError)
+    assert isinstance(res_seguidor, list)
+    assert len(res_seguidor) == 2
+    assert mod._IN_FLIGHT_RANKINGS == {}

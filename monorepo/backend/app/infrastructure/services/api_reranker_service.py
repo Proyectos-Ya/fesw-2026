@@ -56,12 +56,22 @@ class ApiRerankerService(IRerankerService):
         self._model_name = model_name
         self._api_version = api_version
         self._timeout = timeout
+        self._client: httpx.AsyncClient | None = None
         # La calibración se comparte con el modo local a propósito: es lo que hace
         # que un mismo par consulta/licitación puntúe igual en los dos entornos.
         self._temperature = (
             temperature if temperature is not None else settings.reranker_temperature
         )
         self._bias = bias if bias is not None else settings.reranker_bias
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def rerank(
         self,
@@ -77,45 +87,45 @@ class ApiRerankerService(IRerankerService):
             for indice, (_, texto) in enumerate(candidates)
         ]
 
-        async with httpx.AsyncClient(timeout=self._timeout) as cliente:
-            respuesta = await cliente.post(
-                f"{self._base_url}/rerank",
-                headers={
-                    "Api-Key": self._api_key,
-                    # La API versiona por header y rechaza las peticiones sin él.
-                    "X-Pinecone-API-Version": self._api_version,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self._model_name,
-                    "query": query_text,
-                    "documents": documentos,
-                    "top_n": limit,
-                    "rank_fields": ["text"],
-                    # El texto ya lo tenemos: pedirlo de vuelta solo infla la
-                    # respuesta, y en una tanda de candidatas eso pesa.
-                    "return_documents": False,
-                    # El modelo acepta 1024 tokens por par consulta + licitación,
-                    # y por omisión un solo par que se pase tumba la petición
-                    # entera con 400. Una licitación con decenas de ítems se
-                    # pasa. Es un parche: ver
-                    # docs/decisions/0001-truncar-textos-del-reranker.md.
-                    "parameters": {"truncate": "END"},
-                },
+        cliente = self._get_client()
+        respuesta = await cliente.post(
+            f"{self._base_url}/rerank",
+            headers={
+                "Api-Key": self._api_key,
+                # La API versiona por header y rechaza las peticiones sin él.
+                "X-Pinecone-API-Version": self._api_version,
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self._model_name,
+                "query": query_text,
+                "documents": documentos,
+                "top_n": limit,
+                "rank_fields": ["text"],
+                # El texto ya lo tenemos: pedirlo de vuelta solo infla la
+                # respuesta, y en una tanda de candidatas eso pesa.
+                "return_documents": False,
+                # El modelo acepta 1024 tokens por par consulta + licitación,
+                # y por omisión un solo par que se pase tumba la petición
+                # entera con 400. Una licitación con decenas de ítems se
+                # pasa. Es un parche: ver
+                # docs/decisions/0001-truncar-textos-del-reranker.md.
+                "parameters": {"truncate": "END"},
+            },
+        )
+        if respuesta.is_error:
+            # `raise_for_status()` solo dice el código. El motivo viene en el
+            # cuerpo, y si nombra un `index`, los ids en orden lo traducen
+            # a una licitación.
+            logger.error(
+                "Pinecone rechazó el rerank (%s): %s. Candidatas en orden: %s",
+                respuesta.status_code,
+                respuesta.text[:1000],
+                [str(tid) for tid, _ in candidates],
             )
-            if respuesta.is_error:
-                # `raise_for_status()` solo dice el código. El motivo viene en el
-                # cuerpo, y si nombra un `index`, los ids en orden lo traducen
-                # a una licitación.
-                logger.error(
-                    "Pinecone rechazó el rerank (%s): %s. Candidatas en orden: %s",
-                    respuesta.status_code,
-                    respuesta.text[:1000],
-                    [str(tid) for tid, _ in candidates],
-                )
-            # Un 429 devolviendo la lista sin ordenar sería indistinguible de un
-            # reranker que simplemente no acertó, y nadie lo notaría.
-            respuesta.raise_for_status()
+        # Un 429 devolviendo la lista sin ordenar sería indistinguible de un
+        # reranker que simplemente no acertó, y nadie lo notaría.
+        respuesta.raise_for_status()
 
         resultados = respuesta.json().get("data", [])
         ordenados: list[tuple[UUID, float]] = []
@@ -160,6 +170,16 @@ class DeepInfraRerankerService(IRerankerService):
         self._base_url = base_url.rstrip("/")
         self._model_name = model_name.lstrip("/")
         self._timeout = timeout
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def rerank(
         self,
@@ -172,26 +192,26 @@ class DeepInfraRerankerService(IRerankerService):
 
         documentos = [texto for _, texto in candidates]
 
-        async with httpx.AsyncClient(timeout=self._timeout) as cliente:
-            respuesta = await cliente.post(
-                f"{self._base_url}/{self._model_name}",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "queries": [query_text],
-                    "documents": documentos,
-                },
+        cliente = self._get_client()
+        respuesta = await cliente.post(
+            f"{self._base_url}/{self._model_name}",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "queries": [query_text],
+                "documents": documentos,
+            },
+        )
+        if respuesta.is_error:
+            logger.error(
+                "DeepInfra rechazó el rerank (%s): %s. Candidatas en orden: %s",
+                respuesta.status_code,
+                respuesta.text[:1000],
+                [str(tid) for tid, _ in candidates],
             )
-            if respuesta.is_error:
-                logger.error(
-                    "DeepInfra rechazó el rerank (%s): %s. Candidatas en orden: %s",
-                    respuesta.status_code,
-                    respuesta.text[:1000],
-                    [str(tid) for tid, _ in candidates],
-                )
-            respuesta.raise_for_status()
+        respuesta.raise_for_status()
 
         scores = respuesta.json().get("scores", [])
         if len(scores) != len(candidates):

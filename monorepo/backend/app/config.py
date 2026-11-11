@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # sentencia preparada en otra sesión no existe. El síntoma son errores
     # intermitentes de "prepared statement does not exist", no un fallo limpio.
     db_disable_prepared_statements: bool = False
+    db_pool_size: int = Field(default=20, gt=0)
+    db_max_overflow: int = Field(default=30, ge=0)
+    db_pool_timeout: int = Field(default=30, gt=0)
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
